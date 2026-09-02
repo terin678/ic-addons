@@ -245,11 +245,21 @@ eventFrame:SetScript("OnUpdate", function(self, elapsed) MAW:OnUpdateHandler(sel
 eventFrame:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" and arg1 == addonName then
         MAW:InitializeDB()
-        print(addonName .. " v1.3.3 loaded. Type /maw help for commands.")
+        print(addonName .. " v1.6.2 loaded. Type /maw help for commands.")
 
         -- Create minimap button
         if MalexisAuctionWatcherMinimap then
             MalexisAuctionWatcherMinimap:Create()
+        end
+
+        -- Auction house tab: the AH UI is load-on-demand, so create now if it is already in
+        local isLoaded = (C_AddOns and C_AddOns.IsAddOnLoaded) or IsAddOnLoaded
+        if isLoaded and isLoaded("Blizzard_AuctionUI") and MalexisAuctionWatcherAHTab then
+            MalexisAuctionWatcherAHTab.Create()
+        end
+    elseif event == "ADDON_LOADED" and arg1 == "Blizzard_AuctionUI" then
+        if MalexisAuctionWatcherAHTab then
+            MalexisAuctionWatcherAHTab.Create()
         end
 
         -- Register slash commands

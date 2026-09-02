@@ -11,6 +11,7 @@ Extract the zip into `_anniversary_\Interface\AddOns` so you get
 `AddOns\MalexisAuctionWatcher\MalexisAuctionWatcher.toc`. Type `/maw show` in game or
 click the coin icon on the minimap.
 
+
 ## Window tabs
 
 | Tab | What it shows |
@@ -35,6 +36,16 @@ The window grows taller on the History tab.
 At the auction house click "Scan AH" or type `/maw scan`. The button shows progress and
 becomes a Cancel button while running. Starting another scan while one runs adds the new
 items to the queue. Closing the auction house cancels the scan.
+
+Expect about 3 seconds per item. The game client allows one auction query roughly every
+3 seconds and the addon needs one exact-match query per item; nothing in the addon can
+shorten that. Keep scans small with the per-tab and per-row scans below, and let
+Auctionator's full scan feed prices in bulk.
+
+The second button scans only what the current tab shows: "Scan Materials", "Scan
+Products", "Scan All" on Stores, "Scan Recipes" for every item any recipe uses, and "Scan
+Item" on History for the selected item. Each Materials, Products, and Recipes row also has
+a refresh icon that scans just that row's items.
 
 ```
 /maw scan            start, or add items to the running scan
@@ -64,6 +75,13 @@ hour old; otherwise they go into history only.
 
 The History tab has "Pull Auctionator" and "Pull TSM" buttons that do the same.
 
+When TSM is loaded and enabled, Materials, Products, and Stores gain two columns right
+after the item name: "TSM 60d" (historical) then "TSM 14d" (market value), followed by
+Today, so a row reads long-term, recent, now. They are colored against your own low and
+high bounds with the same gradient as Today, so a green TSM 14d on a material means the
+wider market is cheaper than your recent scans. Hover a cell for the value, when it was
+pulled, and your bounds. A dash means TSM has no data for that item yet.
+
 ## History
 
 Prices are kept in daily buckets for 180 days by default (`/maw retention <days>`,
@@ -88,6 +106,20 @@ latest price. Rows sort by profit. Hover a recipe for the full breakdown with so
 
 Everything a recipe uses is tracked automatically. "Can make" counts bags plus bank; it does
 not know about cooldowns or which patterns you have learned.
+
+The refresh icon on a row scans that recipe's product and materials. "Scan Recipes" in the
+control bar scans every item used by any recipe. "Refresh Table" recomputes the numbers
+from the latest prices and your current bags and bank without scanning.
+
+When TSM is loaded, two extra columns, "Profit 60d" and "Profit 14d", sit before Profit
+and show what the batch would make if every item were priced at its TSM historical or
+market average. Read left to right they give long-term, recent, then now.
+
+The "Prices:" button switches the whole table between three price bases: Latest (each
+item's most recent price from any source), TSM 14d, and TSM 60d. Under a TSM basis, items
+TSM has no data for fall back to Latest. Hovering a recipe shows its profit under all three
+bases side by side, so you can see whether a conversion is only profitable right now or
+holds up against the longer averages. The button is disabled when TSM is not loaded.
 
 ```
 /maw recipes

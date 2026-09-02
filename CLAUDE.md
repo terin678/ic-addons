@@ -10,6 +10,14 @@ Guild World of Warcraft addons. Read `CODING_STANDARDS.md` before changing any L
 - Deploy and package: `scripts/deploy.ps1`, `scripts/package.ps1` (PowerShell 5.1).
 - Skill for addon work: `.claude/skills/wow-addon-dev/SKILL.md`.
 
+## Git workflow
+
+- Never commit on `main`; it is protected and only accepts pull requests. Check
+  `git branch --show-current` before committing. If on `main`, create `feature/<topic>`
+  or `fix/<topic>` first.
+- Commit on the feature branch and push it. Open a PR with `gh pr create` when the user
+  asks for a merge; the template in `.github/` is the review checklist. Squash-merge.
+
 ## Rules that matter most
 
 - Interface versions: anniversary is 20506 (TBC). Verify against an installed addon on the
