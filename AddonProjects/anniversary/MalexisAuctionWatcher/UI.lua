@@ -19,6 +19,8 @@ local CONTROLS_WIDTH = 65  -- Space for up/down/refresh buttons
 local PADDING = 5
 local CONTROL_SECTION_HEIGHT = 60
 local TAB_HEIGHT = 30
+local RECIPE_WIDTHS = { 230, 90, 90, 90, 90, 70, 60 }  -- Recipes tab columns
+local RECIPE_CONTROLS_WIDTH = 26
 
 -- Main frame and tabs
 local mainFrame = nil
@@ -435,6 +437,7 @@ function MAWUI:CreateUI()
     mainFrame:SetSize(800, 400 + CONTROL_SECTION_HEIGHT)  -- Wider to accommodate longer item names and controls
     mainFrame.defaultHeight = 400 + CONTROL_SECTION_HEIGHT
     mainFrame.historyHeight = 620 + CONTROL_SECTION_HEIGHT
+    mainFrame.defaultWidth = 800
     mainFrame:SetPoint("CENTER")
     mainFrame:SetMovable(true)
     mainFrame:EnableMouse(true)
@@ -717,10 +720,20 @@ function MAWUI:RefreshData()
         mainFrame.refreshBtn:Hide()
     end
 
-    -- The History tab needs more vertical room than the tables
+    -- Size the window to the tab: History needs height, Recipes needs width
     local wantHeight = (currentTab == "history") and mainFrame.historyHeight or mainFrame.defaultHeight
     if mainFrame:GetHeight() ~= wantHeight then
         mainFrame:SetHeight(wantHeight)
+    end
+    local wantWidth = mainFrame.defaultWidth
+    if currentTab == "recipes" then
+        -- controls column + recipe columns + remove button + scrollbar + frame insets
+        local cols = 0
+        for _, w in ipairs(RECIPE_WIDTHS) do cols = cols + w end
+        wantWidth = math.max(wantWidth, PADDING + RECIPE_CONTROLS_WIDTH + cols + 30 + 24 + 16)
+    end
+    if mainFrame:GetWidth() ~= wantWidth then
+        mainFrame:SetWidth(wantWidth)
     end
 
     -- Update Add Item button visibility (hide on Stores/History tabs)
@@ -1723,8 +1736,6 @@ end
 
 -- ===================== Recipes tab =====================
 
-local RECIPE_WIDTHS = { 230, 90, 90, 90, 90, 70, 60 }
-local RECIPE_CONTROLS_WIDTH = 26
 
 -- Small refresh icon that scans a list of items
 local function CreateRowRefreshButton(parent, x, y, tooltipText, onClick)
