@@ -21,7 +21,17 @@ function MAWAHTab.IsOurTab(button)
     return tab ~= nil and button == tab
 end
 
+-- Off by default: the current implementation docks the floating window over the AH frame
+-- rather than rendering inside it like Blizzard's tabs. Kept for a future in-frame version.
+function MAWAHTab.IsEnabled()
+    local s = MalexisAuctionWatcherDB and MalexisAuctionWatcherDB.settings
+    return s and s.ahTab == true
+end
+
 function MAWAHTab.Create()
+    if not MAWAHTab.IsEnabled() then
+        return
+    end
     if tab or not AuctionFrame or not AuctionFrame.numTabs then
         return
     end
@@ -53,7 +63,7 @@ end
 
 -- Select our tab programmatically (used by /maw show when the AH is open)
 function MAWAHTab.Select()
-    if tab and AuctionFrame and AuctionFrame:IsShown() then
+    if MAWAHTab.IsEnabled() and tab and AuctionFrame and AuctionFrame:IsShown() then
         tab:Click()
         return true
     end

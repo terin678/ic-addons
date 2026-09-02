@@ -11,10 +11,6 @@ Extract the zip into `_anniversary_\Interface\AddOns` so you get
 `AddOns\MalexisAuctionWatcher\MalexisAuctionWatcher.toc`. Type `/maw show` in game or
 click the coin icon on the minimap.
 
-At the auction house there is a "Watcher" tab next to Browse, Bid, and Auctions. It docks
-the whole window over the auction house frame, and `/maw show` or the minimap button open
-that tab instead of a floating window while the auction house is open. Closing the docked
-window, or clicking another auction house tab, returns to Browse.
 
 ## Window tabs
 
