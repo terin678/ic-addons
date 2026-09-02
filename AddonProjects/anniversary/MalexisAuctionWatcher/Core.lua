@@ -245,7 +245,7 @@ eventFrame:SetScript("OnUpdate", function(self, elapsed) MAW:OnUpdateHandler(sel
 eventFrame:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" and arg1 == addonName then
         MAW:InitializeDB()
-        print(addonName .. " v1.4.1 loaded. Type /maw help for commands.")
+        print(addonName .. " v1.4.2 loaded. Type /maw help for commands.")
 
         -- Create minimap button
         if MalexisAuctionWatcherMinimap then

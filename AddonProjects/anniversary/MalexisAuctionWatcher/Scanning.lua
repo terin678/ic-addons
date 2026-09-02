@@ -11,7 +11,7 @@ local MAW = _G.MalexisAuctionWatcher or {}
 local TICK = 0.05                -- OnUpdate throttle, seconds
 local PENDING_TIMEOUT = 15       -- give up if the client never allows a query
 local RESULT_TIMEOUT = 8         -- give up on one item if no usable results arrive
-local SLOT_NO_EVENT_GRACE = 1.5  -- CanSendAuctionQuery true but no event: read the list anyway
+local SLOT_NO_EVENT_GRACE = 0.3  -- CanSendAuctionQuery true but no event: read the list anyway
 local SETTLE_DELAY = 0.1         -- rows arrive unpopulated at first; re-read after this
 local SETTLE_MAX = 15
 
@@ -27,6 +27,7 @@ MAW.scan = MAW.scan or {
     total = 0,
     done = 0,
     accum = 0,
+    timing = nil,   -- per-item phase timestamps when debug mode is on
 }
 
 local function Debug(msg)
@@ -209,6 +210,9 @@ function MAW:OnAuctionListUpdate()
     local s = self.scan
     if s.state == "waiting" or s.state == "settling" then
         Debug("AUCTION_ITEM_LIST_UPDATE received for " .. tostring(s.current))
+        if s.timing and not s.timing.eventAt then
+            s.timing.eventAt = GetTime()
+        end
         s.listUpdated = true
         self:TryProcessCurrent()
     end
@@ -250,6 +254,9 @@ local function SendQuery()
     s.listUpdated = false
     s.sentAt = GetTime()
     s.state = "waiting"
+    if MAW.debugMode then
+        s.timing = { item = s.current, sentAt = GetTime() }
+    end
     Debug("Querying: " .. s.current)
     -- Cheapest per unit first, so page 1 always holds the best price even with 50+ listings
     if SortAuctionSetSort then
@@ -322,6 +329,10 @@ function MAW:TryProcessCurrent()
         return
     end
     if ProcessResults() then
+        if s.timing then
+            s.timing.processedAt = GetTime()
+            s.timing.settles = s.settleTries
+        end
         s.done = s.done + 1
         Advance()
     else
@@ -354,6 +365,17 @@ function MAW:OnUpdateHandler(frame, elapsed)
 
     if s.state == "pending" then
         if CanSendAuctionQuery() then
+            if s.timing and s.timing.processedAt then
+                s.timing.slotFreeAfter = now - s.timing.processedAt
+                Debug(string.format("timing %s: sent->event %.2fs, event->read %.2fs (%d settles), read->next slot %.2fs, total %.2fs",
+                    s.timing.item,
+                    (s.timing.eventAt or s.timing.processedAt) - s.timing.sentAt,
+                    s.timing.processedAt - (s.timing.eventAt or s.timing.sentAt),
+                    s.timing.settles or 0,
+                    s.timing.slotFreeAfter,
+                    now - s.timing.sentAt))
+                s.timing = nil
+            end
             SendQuery()
         elseif now - s.pendingSince > PENDING_TIMEOUT then
             self:CancelScan("the client would not allow another query for " .. PENDING_TIMEOUT .. "s")
@@ -363,7 +385,7 @@ function MAW:OnUpdateHandler(frame, elapsed)
         -- Normal path: the event handler already processed the page. These are fallbacks.
         local since = now - s.sentAt
         if CanSendAuctionQuery() and since > SLOT_NO_EVENT_GRACE then
-            Debug("Query slot free but no event; reading the list anyway")
+            Debug("No AUCTION_ITEM_LIST_UPDATE after " .. string.format("%.2f", since) .. "s but slot free; reading the list anyway")
             self:TryProcessCurrent()
         elseif since > RESULT_TIMEOUT then
             print(addonName .. ": No results for " .. tostring(s.current) .. " (timed out), skipping")
