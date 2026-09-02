@@ -111,6 +111,10 @@ The refresh icon on a row scans that recipe's product and materials. "Scan Recip
 control bar scans every item used by any recipe. "Refresh Table" recomputes the numbers
 from the latest prices and your current bags and bank without scanning.
 
+When TSM is loaded, two extra columns, "Profit 60d" and "Profit 14d", sit before Profit
+and show what the batch would make if every item were priced at its TSM historical or
+market average. Read left to right they give long-term, recent, then now.
+
 The "Prices:" button switches the whole table between three price bases: Latest (each
 item's most recent price from any source), TSM 14d, and TSM 60d. Under a TSM basis, items
 TSM has no data for fall back to Latest. Hovering a recipe shows its profit under all three

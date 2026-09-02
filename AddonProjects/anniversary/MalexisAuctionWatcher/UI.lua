@@ -19,8 +19,26 @@ local CONTROLS_WIDTH = 65  -- Space for up/down/refresh buttons
 local PADDING = 5
 local CONTROL_SECTION_HEIGHT = 60
 local TAB_HEIGHT = 30
-local RECIPE_WIDTHS = { 230, 90, 90, 90, 90, 70, 60 }  -- Recipes tab columns
 local RECIPE_CONTROLS_WIDTH = 26
+-- Recipes tab columns. The two TSM profit columns appear only when the TSM feed is on.
+local function RecipeColumns()
+    local cols = {
+        { header = "Recipe",   width = 230, key = "name" },
+        { header = "Mat cost", width = 90,  key = "matCost" },
+        { header = "Product",  width = 90,  key = "productValue" },
+        { header = "AH net",   width = 90,  key = "ahNet" },
+    }
+    local MAW = _G.MalexisAuctionWatcher
+    local tsmOn = MAW and MAW.sources and MAW.sources.tsm and MAW.sources.tsm.available and MAW:IsSourceEnabled("tsm")
+    if tsmOn then
+        table.insert(cols, { header = "Profit 60d", width = 90, key = "profitTsm60", basis = "tsm60" })
+        table.insert(cols, { header = "Profit 14d", width = 90, key = "profitTsm14", basis = "tsm14" })
+    end
+    table.insert(cols, { header = "Profit",   width = 90, key = "profit" })
+    table.insert(cols, { header = "Margin",   width = 70, key = "margin" })
+    table.insert(cols, { header = "Can make", width = 60, key = "canMake" })
+    return cols
+end
 local TSM_CELL_WIDTH = 80
 local TSM_COLUMNS = {
     { key = "historical", header = "TSM 60d", label = "TSM historical (60 day)" },
@@ -808,7 +826,7 @@ function MAWUI:RefreshData()
     local chrome = 30 + 24 + 16  -- remove button + scrollbar + frame insets
     if currentTab == "recipes" then
         local cols = 0
-        for _, w in ipairs(RECIPE_WIDTHS) do cols = cols + w end
+        for _, c in ipairs(RecipeColumns()) do cols = cols + c.width end
         wantWidth = math.max(wantWidth, PADDING + RECIPE_CONTROLS_WIDTH + cols + chrome)
     elseif currentTab == "materials" or currentTab == "products" then
         wantWidth = math.max(wantWidth, PADDING + CONTROLS_WIDTH + ROW_NAME_WIDTH + CELL_WIDTH * 4 + TsmColumnsWidth() + chrome)
@@ -2002,18 +2020,20 @@ function MAWUI:RenderRecipesTab(scrollChild, yOffset)
     yOffset = yOffset - 30
 
     -- Headers (first a narrow controls column for the per-row refresh icon)
-    local headers = { "Recipe", "Mat cost", "Product", "AH net", "Profit", "Margin", "Can make" }
+    local columns = RecipeColumns()
+    local totalWidth = RECIPE_CONTROLS_WIDTH
     local x = PADDING
     local ctlHeader = CreateCell(scrollChild, "", { r = 0.2, g = 0.2, b = 0.4 }, RECIPE_CONTROLS_WIDTH, HEADER_HEIGHT)
     ctlHeader:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", x, yOffset)
     table.insert(mainFrame.rows, ctlHeader)
     x = x + RECIPE_CONTROLS_WIDTH
-    for i, text in ipairs(headers) do
-        local header = CreateCell(scrollChild, text, { r = 0.2, g = 0.2, b = 0.4 }, RECIPE_WIDTHS[i], HEADER_HEIGHT)
+    for _, col in ipairs(columns) do
+        local header = CreateCell(scrollChild, col.header, col.basis and { r = 0.3, g = 0.2, b = 0.4 } or { r = 0.2, g = 0.2, b = 0.4 }, col.width, HEADER_HEIGHT)
         header:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", x, yOffset)
-        header.label:SetTextColor(1, 1, 1)
+        header.label:SetTextColor(col.basis and 0.9 or 1, col.basis and 0.7 or 1, 1)
         table.insert(mainFrame.rows, header)
-        x = x + RECIPE_WIDTHS[i]
+        x = x + col.width
+        totalWidth = totalWidth + col.width
     end
     yOffset = yOffset - HEADER_HEIGHT
 
@@ -2051,31 +2071,71 @@ function MAWUI:RenderRecipesTab(scrollChild, yOffset)
         table.insert(mainFrame.rows, rowRefresh)
         x = x + RECIPE_CONTROLS_WIDTH
 
-        local nameCell = CreateCell(scrollChild, calc.recipe.name, { r = 0.15, g = 0.15, b = 0.15 }, RECIPE_WIDTHS[1], CELL_HEIGHT)
-        nameCell:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", x, yOffset)
-        nameCell.label:SetJustifyH("LEFT")
-        nameCell.label:SetPoint("LEFT", nameCell, "LEFT", 5, 0)
-        AttachRecipeTooltip(nameCell, calc)
-        table.insert(mainFrame.rows, nameCell)
-        x = x + RECIPE_WIDTHS[1]
+        -- Profit under the TSM bases, for the optional columns
+        local byBasis = {}
+        if columns[5] and columns[5].basis then
+            for _, row in ipairs(MAW:CompareRecipeBases(calc.recipe)) do
+                byBasis[row.basis.key] = row
+            end
+        end
 
-        local values = {
-            calc.complete and FormatMoney(calc.matCost) or (#calc.missing > 0 and "?" or FormatMoney(calc.matCost)),
-            calc.productValue and FormatMoney(calc.productValue) or "?",
-            calc.ahNet and FormatMoney(calc.ahNet) or "?",
-            calc.profit and FormatMoney(calc.profit) or "?",
-            calc.margin and string.format("%.0f%%", calc.margin) or "?",
-            calc.canMake and tostring(calc.canMake) or "-",
-        }
-        for i, text in ipairs(values) do
-            local cellColor = (i == 4 or i == 5) and color or { r = 0.1, g = 0.1, b = 0.1 }
-            local cell = CreateCell(scrollChild, text, cellColor, RECIPE_WIDTHS[i + 1], CELL_HEIGHT)
+        for _, col in ipairs(columns) do
+            local text, cellColor = "?", { r = 0.1, g = 0.1, b = 0.1 }
+            local textColor = nil
+            if col.key == "name" then
+                text = calc.recipe.name
+                cellColor = { r = 0.15, g = 0.15, b = 0.15 }
+            elseif col.key == "matCost" then
+                text = (calc.complete or #calc.missing == 0) and FormatMoney(calc.matCost) or "?"
+            elseif col.key == "productValue" then
+                text = calc.productValue and FormatMoney(calc.productValue) or "?"
+            elseif col.key == "ahNet" then
+                text = calc.ahNet and FormatMoney(calc.ahNet) or "?"
+            elseif col.basis then
+                local row = byBasis[col.basis]
+                if row and row.profit then
+                    text = FormatMoney(row.profit)
+                    cellColor = ProfitColor(row.profit)
+                    textColor = row.profit >= 0 and { 0.6, 1, 0.6 } or { 1, 0.6, 0.6 }
+                else
+                    text = "-"
+                    cellColor = { r = 0.15, g = 0.12, b = 0.18 }
+                end
+            elseif col.key == "profit" then
+                text = calc.profit and FormatMoney(calc.profit) or "?"
+                cellColor = color
+                if calc.profit then
+                    textColor = calc.profit >= 0 and { 0.6, 1, 0.6 } or { 1, 0.6, 0.6 }
+                end
+            elseif col.key == "margin" then
+                text = calc.margin and string.format("%.0f%%", calc.margin) or "?"
+                cellColor = color
+            elseif col.key == "canMake" then
+                text = calc.canMake and tostring(calc.canMake) or "-"
+            end
+
+            local cell = CreateCell(scrollChild, text, cellColor, col.width, CELL_HEIGHT)
             cell:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", x, yOffset)
-            if i == 4 and calc.profit then
-                cell.label:SetTextColor(calc.profit >= 0 and 0.6 or 1, calc.profit >= 0 and 1 or 0.6, 0.6)
+            if textColor then
+                cell.label:SetTextColor(textColor[1], textColor[2], textColor[3])
+            end
+            if col.key == "name" then
+                cell.label:SetJustifyH("LEFT")
+                cell.label:SetPoint("LEFT", cell, "LEFT", 5, 0)
+                AttachRecipeTooltip(cell, calc)
+            elseif col.basis then
+                cell:EnableMouse(true)
+                cell:SetScript("OnEnter", function(self)
+                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                    GameTooltip:AddLine(calc.recipe.name)
+                    GameTooltip:AddLine("Profit if every item were priced at its " .. col.header:gsub("Profit ", "TSM ") .. " average", 0.9, 0.7, 1)
+                    GameTooltip:AddLine("Items TSM has no data for use their latest price.", 0.7, 0.7, 0.7)
+                    GameTooltip:Show()
+                end)
+                cell:SetScript("OnLeave", function() GameTooltip:Hide() end)
             end
             table.insert(mainFrame.rows, cell)
-            x = x + RECIPE_WIDTHS[i + 1]
+            x = x + col.width
         end
 
         local removeBtn = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate")
@@ -2099,7 +2159,7 @@ function MAWUI:RenderRecipesTab(scrollChild, yOffset)
         yOffset = yOffset - 6
         local sumText = string.format("If you converted everything you own now: %d batches, %s profit",
             totalMakeable, FormatMoney(totalProfit))
-        local sumCell = CreateCell(scrollChild, sumText, { r = 0.2, g = 0.3, b = 0.4 }, 720, CELL_HEIGHT)
+        local sumCell = CreateCell(scrollChild, sumText, { r = 0.2, g = 0.3, b = 0.4 }, totalWidth - RECIPE_CONTROLS_WIDTH, CELL_HEIGHT)
         sumCell:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", PADDING + RECIPE_CONTROLS_WIDTH, yOffset)
         sumCell.label:SetTextColor(1, 1, 0.6)
         table.insert(mainFrame.rows, sumCell)
