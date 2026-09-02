@@ -21,6 +21,11 @@ local CONTROL_SECTION_HEIGHT = 60
 local TAB_HEIGHT = 30
 local RECIPE_WIDTHS = { 230, 90, 90, 90, 90, 70, 60 }  -- Recipes tab columns
 local RECIPE_CONTROLS_WIDTH = 26
+local TSM_CELL_WIDTH = 80
+local TSM_COLUMNS = {
+    { key = "market",     header = "TSM 14d", label = "TSM market value (14 day)" },
+    { key = "historical", header = "TSM 60d", label = "TSM historical (60 day)" },
+}
 
 -- Main frame and tabs
 local mainFrame = nil
@@ -263,6 +268,19 @@ local function SourceTag(itemData)
     return tag and (" |cffe0b060[" .. tag .. "]|r") or ""
 end
 
+-- TSM columns show when the TSM feed is loaded and enabled
+local function TsmColumnsShown()
+    local MAW = _G.MalexisAuctionWatcher
+    return MAW and MAW.sources and MAW.sources.tsm and MAW.sources.tsm.available and MAW:IsSourceEnabled("tsm")
+end
+
+local function TsmColumnsWidth()
+    return TsmColumnsShown() and (#TSM_COLUMNS * TSM_CELL_WIDTH) or 0
+end
+
+-- Forward declarations; defined below CreateCell
+local AddTsmCells, AddTsmHeaders
+
 -- Create a cell
 local function CreateCell(parent, text, color, width, height, clickable, onClick)
     local cell = CreateFrame("Frame", nil, parent)
@@ -319,6 +337,63 @@ local function CreateCell(parent, text, color, width, height, clickable, onClick
     return cell
 end
 
+
+-- Header cells for the TSM columns; returns the new x
+AddTsmHeaders = function(parent, x, y)
+    if not TsmColumnsShown() then return x end
+    for _, col in ipairs(TSM_COLUMNS) do
+        local header = CreateCell(parent, col.header, { r = 0.3, g = 0.2, b = 0.4 }, TSM_CELL_WIDTH, HEADER_HEIGHT)
+        header:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
+        header.label:SetTextColor(0.9, 0.7, 1)
+        table.insert(mainFrame.rows, header)
+        x = x + TSM_CELL_WIDTH
+    end
+    return x
+end
+
+-- Value cells for the TSM columns, colored against the item's low/high bounds; returns the new x
+AddTsmCells = function(parent, x, y, itemName, itemData, stats)
+    if not TsmColumnsShown() then return x end
+    local ref = itemData and itemData.tsmRef
+    local invert = (itemData and itemData.itemType) == "product"
+    for _, col in ipairs(TSM_COLUMNS) do
+        local value = ref and ref[col.key]
+        local color = { r = 0.15, g = 0.12, b = 0.18 }
+        local text = "-"
+        if value and value > 0 then
+            text = FormatMoney(value)
+            if stats and stats.low and stats.high and stats.high > 0 then
+                color = GetPriceColor(value, stats.low, stats.high, invert)
+            else
+                color = { r = 0.3, g = 0.25, b = 0.35 }
+            end
+        end
+        local cell = CreateCell(parent, text, color, TSM_CELL_WIDTH, CELL_HEIGHT)
+        cell:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
+        cell:EnableMouse(true)
+        cell:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:AddLine(itemName)
+            GameTooltip:AddLine(col.label, 0.9, 0.7, 1)
+            if value and value > 0 then
+                GameTooltip:AddDoubleLine("Value", FormatMoney(value), 1, 1, 1, 1, 0.8, 0.5)
+                if ref.time then
+                    GameTooltip:AddDoubleLine("Pulled", date("%Y-%m-%d %H:%M", ref.time), 1, 1, 1, 0.8, 0.8, 0.8)
+                end
+                if stats and stats.low and stats.high then
+                    GameTooltip:AddDoubleLine("Your bounds", FormatMoney(stats.low) .. " - " .. FormatMoney(stats.high), 1, 1, 1, 0.8, 0.8, 0.8)
+                end
+            else
+                GameTooltip:AddLine("No TSM data. Use Pull TSM on the History tab.", 0.7, 0.7, 0.7)
+            end
+            GameTooltip:Show()
+        end)
+        cell:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        table.insert(mainFrame.rows, cell)
+        x = x + TSM_CELL_WIDTH
+    end
+    return x
+end
 
 -- Take whatever item is on the cursor and add it with default settings
 local function AddItemFromCursor(itemType)
@@ -723,11 +798,15 @@ function MAWUI:RefreshData()
     -- Size the window to the tab: History needs height, Recipes needs width
     local wantHeight = (currentTab == "history") and mainFrame.historyHeight or mainFrame.defaultHeight
     local wantWidth = mainFrame.defaultWidth
+    local chrome = 30 + 24 + 16  -- remove button + scrollbar + frame insets
     if currentTab == "recipes" then
-        -- controls column + recipe columns + remove button + scrollbar + frame insets
         local cols = 0
         for _, w in ipairs(RECIPE_WIDTHS) do cols = cols + w end
-        wantWidth = math.max(wantWidth, PADDING + RECIPE_CONTROLS_WIDTH + cols + 30 + 24 + 16)
+        wantWidth = math.max(wantWidth, PADDING + RECIPE_CONTROLS_WIDTH + cols + chrome)
+    elseif currentTab == "materials" or currentTab == "products" then
+        wantWidth = math.max(wantWidth, PADDING + CONTROLS_WIDTH + ROW_NAME_WIDTH + CELL_WIDTH * 4 + TsmColumnsWidth() + chrome)
+    elseif currentTab == "stores" then
+        wantWidth = math.max(wantWidth, PADDING + ROW_NAME_WIDTH + 80 * 4 + 100 * 2 + TsmColumnsWidth() + chrome)
     end
     if mainFrame:GetHeight() ~= wantHeight or mainFrame:GetWidth() ~= wantWidth then
         -- Pin the top-left corner so the window grows down and to the right, not around its centre
@@ -792,6 +871,7 @@ function MAWUI:RefreshData()
         end
     end
 
+    AddTsmHeaders(scrollChild, headerX, yOffset)
     yOffset = yOffset - HEADER_HEIGHT
 
     -- Add item rows (filtered by current tab)
@@ -955,6 +1035,8 @@ function MAWUI:RefreshData()
             table.insert(mainFrame.rows, highCell)
             rowX = rowX + CELL_WIDTH
 
+            rowX = AddTsmCells(scrollChild, rowX, yOffset, itemName, itemData, stats)
+
             -- Remove button
             local removeBtn = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate")
             removeBtn:SetSize(20, 20)
@@ -985,7 +1067,7 @@ function MAWUI:RefreshData()
     legend:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", PADDING, yOffset - 2)
     legend.text = legend:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     legend.text:SetPoint("LEFT")
-    legend.text:SetText("Today column: no tag = your scan, |cffe0b060[A]|r = Auctionator, |cffe0b060[T]|r = TSM. Hover for details.")
+    legend.text:SetText("Today: no tag = your scan, |cffe0b060[A]|r = Auctionator, |cffe0b060[T]|r = TSM. TSM 14d/60d = TSM averages, colored against your low/high. Hover for details.")
     legend.text:SetTextColor(0.6, 0.6, 0.6)
     table.insert(mainFrame.rows, legend)
     yOffset = yOffset - 16
@@ -1016,6 +1098,7 @@ function MAWUI:RenderStoresTab(scrollChild, yOffset)
         table.insert(mainFrame.rows, header)
         header.label:SetTextColor(1, 1, 1)
     end
+    AddTsmHeaders(scrollChild, headerX, yOffset)
 
     yOffset = yOffset - HEADER_HEIGHT
 
@@ -1254,6 +1337,7 @@ function MAWUI:RenderStoresTab(scrollChild, yOffset)
         local ahNetCell = CreateCell(scrollChild, ahNetText, ahNetColor, widths[7], CELL_HEIGHT)
         ahNetCell:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", rowX, yOffset)
         table.insert(mainFrame.rows, ahNetCell)
+        AddTsmCells(scrollChild, rowX + widths[7], yOffset, itemName, item.data, stats)
 
         yOffset = yOffset - CELL_HEIGHT
     end
@@ -1404,6 +1488,7 @@ function MAWUI:RenderStoresTab(scrollChild, yOffset)
         local ahNetCell = CreateCell(scrollChild, ahNetText, ahNetColor, widths[7], CELL_HEIGHT)
         ahNetCell:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", rowX, yOffset)
         table.insert(mainFrame.rows, ahNetCell)
+        AddTsmCells(scrollChild, rowX + widths[7], yOffset, itemName, item.data, stats)
 
         yOffset = yOffset - CELL_HEIGHT
     end

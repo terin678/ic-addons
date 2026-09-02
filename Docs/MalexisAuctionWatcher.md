@@ -74,6 +74,12 @@ hour old; otherwise they go into history only.
 
 The History tab has "Pull Auctionator" and "Pull TSM" buttons that do the same.
 
+When TSM is loaded and enabled, Materials, Products, and Stores gain two columns, "TSM
+14d" (market value) and "TSM 60d" (historical). They are colored against your own low and
+high bounds with the same gradient as Today, so a green TSM 14d on a material means the
+wider market is cheaper than your recent scans. Hover a cell for the value, when it was
+pulled, and your bounds. A dash means TSM has no data for that item yet.
+
 ## History
 
 Prices are kept in daily buckets for 180 days by default (`/maw retention <days>`,
