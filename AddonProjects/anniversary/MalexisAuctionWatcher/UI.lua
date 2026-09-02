@@ -23,8 +23,8 @@ local RECIPE_WIDTHS = { 230, 90, 90, 90, 90, 70, 60 }  -- Recipes tab columns
 local RECIPE_CONTROLS_WIDTH = 26
 local TSM_CELL_WIDTH = 80
 local TSM_COLUMNS = {
-    { key = "market",     header = "TSM 14d", label = "TSM market value (14 day)" },
     { key = "historical", header = "TSM 60d", label = "TSM historical (60 day)" },
+    { key = "market",     header = "TSM 14d", label = "TSM market value (14 day)" },
 }
 
 -- Main frame and tabs
@@ -529,6 +529,13 @@ function MAWUI:CreateUI()
 
     mainFrame:Hide()
 
+    -- Closing while docked in the auction house goes back to the Browse tab
+    mainFrame:HookScript("OnHide", function(self)
+        if self.docked and AuctionFrame and AuctionFrame:IsShown() and AuctionFrameTab1 then
+            AuctionFrameTab1:Click()
+        end
+    end)
+
     mainFrame.title = mainFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     mainFrame.title:SetPoint("CENTER", mainFrame.TitleBg, "CENTER", 5, 0)
     mainFrame.title:SetText(windowTitle)
@@ -808,7 +815,11 @@ function MAWUI:RefreshData()
     elseif currentTab == "stores" then
         wantWidth = math.max(wantWidth, PADDING + ROW_NAME_WIDTH + 80 * 4 + 100 * 2 + TsmColumnsWidth() + chrome)
     end
-    if mainFrame:GetHeight() ~= wantHeight or mainFrame:GetWidth() ~= wantWidth then
+    if mainFrame.docked and mainFrame.dockHost then
+        -- Docked in the auction house: fill the host's height, never narrower than it
+        local host = mainFrame.dockHost
+        mainFrame:SetSize(math.max(wantWidth, host:GetWidth()), host:GetHeight())
+    elseif mainFrame:GetHeight() ~= wantHeight or mainFrame:GetWidth() ~= wantWidth then
         -- Pin the top-left corner so the window grows down and to the right, not around its centre
         local left, top = mainFrame:GetLeft(), mainFrame:GetTop()
         mainFrame:SetSize(wantWidth, wantHeight)
@@ -857,6 +868,9 @@ function MAWUI:RefreshData()
         header:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", headerX, yOffset)
         headerX = headerX + width
         table.insert(mainFrame.rows, header)
+        if i == 2 then
+            headerX = AddTsmHeaders(scrollChild, headerX, yOffset)
+        end
 
         if i == 3 then
             header.label:SetTextColor(1, 0.8, 0.5) -- Orange for Today
@@ -871,7 +885,6 @@ function MAWUI:RefreshData()
         end
     end
 
-    AddTsmHeaders(scrollChild, headerX, yOffset)
     yOffset = yOffset - HEADER_HEIGHT
 
     -- Add item rows (filtered by current tab)
@@ -990,6 +1003,8 @@ function MAWUI:RefreshData()
             table.insert(mainFrame.rows, nameCell)
             rowX = rowX + ROW_NAME_WIDTH
 
+            rowX = AddTsmCells(scrollChild, rowX, yOffset, itemName, itemData, stats)
+
             -- Today (with color based on position). External sources get a tag and tooltip.
             local todayColor = GetPriceColor(stats.today, stats.low, stats.high, invertColors)
             local todayText = FormatMoney(stats.today) .. SourceTag(itemData)
@@ -1034,8 +1049,6 @@ function MAWUI:RefreshData()
             highCell:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", rowX, yOffset)
             table.insert(mainFrame.rows, highCell)
             rowX = rowX + CELL_WIDTH
-
-            rowX = AddTsmCells(scrollChild, rowX, yOffset, itemName, itemData, stats)
 
             -- Remove button
             local removeBtn = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate")
@@ -1097,8 +1110,10 @@ function MAWUI:RenderStoresTab(scrollChild, yOffset)
         headerX = headerX + widths[i]
         table.insert(mainFrame.rows, header)
         header.label:SetTextColor(1, 1, 1)
+        if i == 1 then
+            headerX = AddTsmHeaders(scrollChild, headerX, yOffset)
+        end
     end
-    AddTsmHeaders(scrollChild, headerX, yOffset)
 
     yOffset = yOffset - HEADER_HEIGHT
 
@@ -1210,7 +1225,7 @@ function MAWUI:RenderStoresTab(scrollChild, yOffset)
     totalLabel:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", rowX, yOffset)
     table.insert(mainFrame.rows, totalLabel)
     totalLabel.label:SetTextColor(1, 1, 1)
-    rowX = rowX + widths[1]
+    rowX = rowX + widths[1] + TsmColumnsWidth()
 
     local totalInvCell = CreateCell(scrollChild, tostring(grandTotalInv), {r=0.15, g=0.2, b=0.25}, widths[2], CELL_HEIGHT)
     totalInvCell:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", rowX, yOffset)
@@ -1254,7 +1269,7 @@ function MAWUI:RenderStoresTab(scrollChild, yOffset)
     -- Render Products section
     if #products > 0 then
         -- Products section header
-        local productsHeader = CreateCell(scrollChild, "PRODUCTS", {r=0.3, g=0.4, b=0.3}, widths[1] + widths[2] + widths[3] + widths[4] + widths[5] + widths[6] + widths[7], CELL_HEIGHT)
+        local productsHeader = CreateCell(scrollChild, "PRODUCTS", {r=0.3, g=0.4, b=0.3}, widths[1] + widths[2] + widths[3] + widths[4] + widths[5] + widths[6] + widths[7] + TsmColumnsWidth(), CELL_HEIGHT)
         productsHeader:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", PADDING, yOffset)
         table.insert(mainFrame.rows, productsHeader)
         productsHeader.label:SetTextColor(1, 1, 0.5)
@@ -1286,6 +1301,7 @@ function MAWUI:RenderStoresTab(scrollChild, yOffset)
         AttachSourceTooltip(nameCell, itemName, item.data)
         table.insert(mainFrame.rows, nameCell)
         rowX = rowX + widths[1]
+        rowX = AddTsmCells(scrollChild, rowX, yOffset, itemName, item.data, stats)
 
         -- Inventory count
         local invCell = CreateCell(scrollChild, tostring(itemCounts.inventory), {r=0.1, g=0.1, b=0.1}, widths[2], CELL_HEIGHT)
@@ -1337,7 +1353,6 @@ function MAWUI:RenderStoresTab(scrollChild, yOffset)
         local ahNetCell = CreateCell(scrollChild, ahNetText, ahNetColor, widths[7], CELL_HEIGHT)
         ahNetCell:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", rowX, yOffset)
         table.insert(mainFrame.rows, ahNetCell)
-        AddTsmCells(scrollChild, rowX + widths[7], yOffset, itemName, item.data, stats)
 
         yOffset = yOffset - CELL_HEIGHT
     end
@@ -1350,7 +1365,7 @@ function MAWUI:RenderStoresTab(scrollChild, yOffset)
         productSubtotalLabel:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", rowX, yOffset)
         table.insert(mainFrame.rows, productSubtotalLabel)
         productSubtotalLabel.label:SetTextColor(0.9, 0.9, 0.9)
-        rowX = rowX + widths[1]
+        rowX = rowX + widths[1] + TsmColumnsWidth()
 
         local pInvCell = CreateCell(scrollChild, tostring(productTotalInv), {r=0.15, g=0.18, b=0.15}, widths[2], CELL_HEIGHT)
         pInvCell:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", rowX, yOffset)
@@ -1398,7 +1413,7 @@ function MAWUI:RenderStoresTab(scrollChild, yOffset)
         yOffset = yOffset - 10
 
         -- Materials section header
-        local materialsHeader = CreateCell(scrollChild, "MATERIALS", {r=0.3, g=0.4, b=0.3}, widths[1] + widths[2] + widths[3] + widths[4] + widths[5] + widths[6] + widths[7], CELL_HEIGHT)
+        local materialsHeader = CreateCell(scrollChild, "MATERIALS", {r=0.3, g=0.4, b=0.3}, widths[1] + widths[2] + widths[3] + widths[4] + widths[5] + widths[6] + widths[7] + TsmColumnsWidth(), CELL_HEIGHT)
         materialsHeader:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", PADDING, yOffset)
         table.insert(mainFrame.rows, materialsHeader)
         materialsHeader.label:SetTextColor(1, 1, 0.5)
@@ -1437,6 +1452,7 @@ function MAWUI:RenderStoresTab(scrollChild, yOffset)
         AttachSourceTooltip(nameCell, itemName, item.data)
         table.insert(mainFrame.rows, nameCell)
         rowX = rowX + widths[1]
+        rowX = AddTsmCells(scrollChild, rowX, yOffset, itemName, item.data, stats)
 
         -- Inventory count
         local invCell = CreateCell(scrollChild, tostring(itemCounts.inventory), {r=0.1, g=0.1, b=0.1}, widths[2], CELL_HEIGHT)
@@ -1488,7 +1504,6 @@ function MAWUI:RenderStoresTab(scrollChild, yOffset)
         local ahNetCell = CreateCell(scrollChild, ahNetText, ahNetColor, widths[7], CELL_HEIGHT)
         ahNetCell:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", rowX, yOffset)
         table.insert(mainFrame.rows, ahNetCell)
-        AddTsmCells(scrollChild, rowX + widths[7], yOffset, itemName, item.data, stats)
 
         yOffset = yOffset - CELL_HEIGHT
     end
@@ -1501,7 +1516,7 @@ function MAWUI:RenderStoresTab(scrollChild, yOffset)
         materialSubtotalLabel:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", rowX, yOffset)
         table.insert(mainFrame.rows, materialSubtotalLabel)
         materialSubtotalLabel.label:SetTextColor(0.9, 0.9, 0.9)
-        rowX = rowX + widths[1]
+        rowX = rowX + widths[1] + TsmColumnsWidth()
 
         local mInvCell = CreateCell(scrollChild, tostring(materialTotalInv), {r=0.15, g=0.18, b=0.15}, widths[2], CELL_HEIGHT)
         mInvCell:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", rowX, yOffset)
@@ -1578,6 +1593,7 @@ local CHART_HEIGHT = 340
 
 MAWUI.historyItem = nil
 MAWUI.historyMode = "daily30"
+MAWUI.recipeBasis = "latest"
 
 local function SortedTrackedItems()
     local MAW = _G.MalexisAuctionWatcher
@@ -1891,6 +1907,15 @@ local function AttachRecipeTooltip(cell, calc)
         if calc.canMake then
             GameTooltip:AddDoubleLine("Batches you can make now", tostring(calc.canMake), 1, 1, 1, 1, 1, 0.5)
         end
+        if TsmColumnsShown() then
+            GameTooltip:AddLine(" ")
+            GameTooltip:AddLine("Profit by price basis (table uses " .. MAW:PriceBasisDef(calc.basis).label .. "):", 0.8, 0.8, 0.8)
+            for _, row in ipairs(MAW:CompareRecipeBases(calc.recipe)) do
+                local text = row.profit and (FormatMoney(row.profit) .. (row.margin and string.format(" (%.0f%%)", row.margin) or "")) or "n/a"
+                local g = (row.profit or 0) >= 0
+                GameTooltip:AddDoubleLine("  " .. row.basis.label, text, 1, 1, 1, g and 0.5 or 1, g and 1 or 0.5, 0.5)
+            end
+        end
         GameTooltip:Show()
     end)
     cell:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -1942,14 +1967,37 @@ function MAWUI:RenderRecipesTab(scrollChild, yOffset)
     end)
     table.insert(mainFrame.rows, addRecipeBtn)
 
-    local hintHolder = CreateFrame("Frame", nil, scrollChild)
-    hintHolder:SetSize(160, 22)
-    hintHolder:SetPoint("LEFT", addRecipeBtn, "RIGHT", 10, 0)
-    local hint = hintHolder:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    hint:SetPoint("LEFT")
-    hint:SetText("Profit = AH net (5% cut) - mats")
-    hint:SetTextColor(0.6, 0.6, 0.6)
-    table.insert(mainFrame.rows, hintHolder)
+    -- Price basis: cycles Latest -> TSM 14d -> TSM 60d
+    local basisDef = MAW:PriceBasisDef(MAWUI.recipeBasis)
+    local basisBtn = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate")
+    basisBtn:SetSize(130, 22)
+    basisBtn:SetPoint("LEFT", addRecipeBtn, "RIGHT", 6, 0)
+    basisBtn:SetText("Prices: " .. basisDef.label)
+    basisBtn:SetScript("OnClick", function()
+        local bases = MAW.PRICE_BASES
+        for i, b in ipairs(bases) do
+            if b.key == MAWUI.recipeBasis then
+                MAWUI.recipeBasis = bases[(i % #bases) + 1].key
+                break
+            end
+        end
+        MAWUI:RefreshData()
+    end)
+    basisBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:AddLine("Price basis for the table")
+        GameTooltip:AddLine("Latest: each item's most recent price from any source.", 1, 1, 1)
+        GameTooltip:AddLine("TSM 14d / 60d: TSM market or historical average; items without TSM data use Latest.", 1, 1, 1)
+        GameTooltip:AddLine("Hover a recipe to see profit under all three.", 0.7, 0.7, 0.7)
+        GameTooltip:Show()
+    end)
+    basisBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    if not TsmColumnsShown() then
+        basisBtn:Disable()
+        basisBtn:SetText("Prices: Latest")
+        MAWUI.recipeBasis = "latest"
+    end
+    table.insert(mainFrame.rows, basisBtn)
 
     yOffset = yOffset - 30
 
@@ -1972,7 +2020,7 @@ function MAWUI:RenderRecipesTab(scrollChild, yOffset)
     local recipes = MAW:GetRecipes()
     local rows = {}
     for _, recipe in ipairs(recipes) do
-        table.insert(rows, MAW:ComputeRecipeProfit(recipe))
+        table.insert(rows, MAW:ComputeRecipeProfit(recipe, MAWUI.recipeBasis))
     end
     -- Most profitable first; recipes without prices go to the bottom
     table.sort(rows, function(a, b)
@@ -2062,6 +2110,49 @@ function MAWUI:RenderRecipesTab(scrollChild, yOffset)
     self:UpdateTabHighlights()
 end
 
+-- Dock the window over the auction house frame (selected via the Watcher AH tab)
+function MAWUI:Dock(host)
+    if not mainFrame then
+        self:CreateUI()
+    end
+    if not mainFrame.docked then
+        -- Remember where the floating window was
+        mainFrame.floatLeft, mainFrame.floatTop = mainFrame:GetLeft(), mainFrame:GetTop()
+    end
+    mainFrame.docked = true
+    mainFrame.dockHost = host
+    mainFrame:SetParent(host)
+    mainFrame:ClearAllPoints()
+    mainFrame:SetPoint("TOPLEFT", host, "TOPLEFT", 0, 0)
+    mainFrame:SetFrameStrata("HIGH")
+    mainFrame:SetFrameLevel(host:GetFrameLevel() + 20)
+    self:RefreshData()
+    mainFrame:Show()
+end
+
+-- Return the window to a floating frame and hide it
+function MAWUI:Undock()
+    if not mainFrame or not mainFrame.docked then
+        return
+    end
+    mainFrame.docked = false
+    mainFrame.dockHost = nil
+    mainFrame:Hide()
+    mainFrame:SetParent(UIParent)
+    mainFrame:ClearAllPoints()
+    if mainFrame.floatLeft and mainFrame.floatTop then
+        local scale = mainFrame:GetEffectiveScale() / UIParent:GetEffectiveScale()
+        mainFrame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", mainFrame.floatLeft / scale, mainFrame.floatTop / scale)
+    else
+        mainFrame:SetPoint("CENTER")
+    end
+    mainFrame:SetSize(mainFrame.defaultWidth, mainFrame.defaultHeight)
+end
+
+function MAWUI:IsDocked()
+    return mainFrame ~= nil and mainFrame.docked == true
+end
+
 -- Open the window on a given tab
 function MAWUI:ShowTab(tabName)
     currentTab = tabName
@@ -2072,6 +2163,10 @@ end
 function MAWUI:Show()
     if not mainFrame then
         self:CreateUI()
+    end
+    -- At the auction house, open as the Watcher tab instead of a floating window
+    if not mainFrame.docked and _G.MalexisAuctionWatcherAHTab and _G.MalexisAuctionWatcherAHTab.Select() then
+        return
     end
     self:RefreshData()
     if mainFrame.UpdateScanButton then

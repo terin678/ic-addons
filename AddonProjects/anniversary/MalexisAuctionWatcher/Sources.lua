@@ -90,7 +90,7 @@ local function NewestEntryAge(itemData)
     return time() - latest.timestamp
 end
 
-MAW.SOURCE_LABELS = { scan = "Scan", atr = "Auctionator", tsm = "TSM", ext = "External" }
+MAW.SOURCE_LABELS = { scan = "Scan", atr = "Auctionator", tsm = "TSM", ext = "External", custom = "Custom bound", tsm14 = "TSM 14d", tsm60 = "TSM 60d" }
 MAW.SOURCE_TAGS = { atr = "A", tsm = "T" }
 
 function MAW:SourceLabel(source)

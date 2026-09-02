@@ -11,6 +11,11 @@ Extract the zip into `_anniversary_\Interface\AddOns` so you get
 `AddOns\MalexisAuctionWatcher\MalexisAuctionWatcher.toc`. Type `/maw show` in game or
 click the coin icon on the minimap.
 
+At the auction house there is a "Watcher" tab next to Browse, Bid, and Auctions. It docks
+the whole window over the auction house frame, and `/maw show` or the minimap button open
+that tab instead of a floating window while the auction house is open. Closing the docked
+window, or clicking another auction house tab, returns to Browse.
+
 ## Window tabs
 
 | Tab | What it shows |
@@ -74,8 +79,9 @@ hour old; otherwise they go into history only.
 
 The History tab has "Pull Auctionator" and "Pull TSM" buttons that do the same.
 
-When TSM is loaded and enabled, Materials, Products, and Stores gain two columns, "TSM
-14d" (market value) and "TSM 60d" (historical). They are colored against your own low and
+When TSM is loaded and enabled, Materials, Products, and Stores gain two columns right
+after the item name: "TSM 60d" (historical) then "TSM 14d" (market value), followed by
+Today, so a row reads long-term, recent, now. They are colored against your own low and
 high bounds with the same gradient as Today, so a green TSM 14d on a material means the
 wider market is cheaper than your recent scans. Hover a cell for the value, when it was
 pulled, and your bounds. A dash means TSM has no data for that item yet.
@@ -108,6 +114,12 @@ not know about cooldowns or which patterns you have learned.
 The refresh icon on a row scans that recipe's product and materials. "Scan Recipes" in the
 control bar scans every item used by any recipe. "Refresh Table" recomputes the numbers
 from the latest prices and your current bags and bank without scanning.
+
+The "Prices:" button switches the whole table between three price bases: Latest (each
+item's most recent price from any source), TSM 14d, and TSM 60d. Under a TSM basis, items
+TSM has no data for fall back to Latest. Hovering a recipe shows its profit under all three
+bases side by side, so you can see whether a conversion is only profitable right now or
+holds up against the longer averages. The button is disabled when TSM is not loaded.
 
 ```
 /maw recipes

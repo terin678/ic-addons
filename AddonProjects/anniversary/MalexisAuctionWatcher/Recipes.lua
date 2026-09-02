@@ -43,13 +43,36 @@ function MAW:AddItemByID(itemName, itemID, itemType)
     return true
 end
 
--- Latest per-unit price for a tracked item, with the source and time it came from.
--- Falls back to custom bounds midpoint when there are no observations.
-function MAW:GetUnitPrice(itemName)
+-- Price bases for recipe math
+MAW.PRICE_BASES = {
+    { key = "latest", label = "Latest",  short = "Latest" },
+    { key = "tsm14",  label = "TSM 14d", short = "TSM14", tsmKey = "market" },
+    { key = "tsm60",  label = "TSM 60d", short = "TSM60", tsmKey = "historical" },
+}
+
+function MAW:PriceBasisDef(key)
+    for _, b in ipairs(self.PRICE_BASES) do
+        if b.key == key then return b end
+    end
+    return self.PRICE_BASES[1]
+end
+
+-- Per-unit price for a tracked item under a basis ("latest", "tsm14", "tsm60"), with the
+-- source and time it came from. TSM bases fall back to the latest price when TSM has no
+-- value for the item. Falls back to custom bounds when there are no observations at all.
+function MAW:GetUnitPrice(itemName, basis)
     local db = self:GetActiveDB()
     local itemData = db.items[itemName]
     if not itemData then
         return nil
+    end
+    local def = self:PriceBasisDef(basis)
+    if def.tsmKey then
+        local ref = itemData.tsmRef
+        local value = ref and ref[def.tsmKey]
+        if value and value > 0 then
+            return value, def.key, ref.time and date("%Y-%m-%d %H:%M", ref.time) or nil
+        end
     end
     local latest = itemData.prices and itemData.prices[1]
     if latest then
@@ -154,11 +177,13 @@ function MAW:AddPrimalMightPreset()
     return ok
 end
 
--- Compute the economics of one recipe from the latest prices.
+-- Compute the economics of one recipe under a price basis (default "latest").
 -- Returns a table; fields are nil when a price is missing and `missing` lists the item names.
-function MAW:ComputeRecipeProfit(recipe)
+function MAW:ComputeRecipeProfit(recipe, basis)
+    basis = basis or "latest"
     local result = {
         recipe = recipe,
+        basis = basis,
         matCost = 0,
         missing = {},
         materials = {},
@@ -167,7 +192,7 @@ function MAW:ComputeRecipeProfit(recipe)
 
     local complete = true
     for _, mat in ipairs(recipe.materials) do
-        local unit, source, when = self:GetUnitPrice(mat.item)
+        local unit, source, when = self:GetUnitPrice(mat.item, basis)
         local lineCost = unit and unit * mat.count or nil
         table.insert(result.materials, { item = mat.item, count = mat.count, unit = unit, cost = lineCost, source = source, when = when })
         if unit then
@@ -185,7 +210,7 @@ function MAW:ComputeRecipeProfit(recipe)
         end
     end
 
-    local productUnit, productSource, productWhen = self:GetUnitPrice(recipe.product)
+    local productUnit, productSource, productWhen = self:GetUnitPrice(recipe.product, basis)
     result.productUnit = productUnit
     result.productSource = productSource
     result.productWhen = productWhen
@@ -203,6 +228,16 @@ function MAW:ComputeRecipeProfit(recipe)
         result.margin = result.matCost > 0 and (result.profit / result.matCost) * 100 or nil
     end
     return result
+end
+
+-- Profit under every basis, for side-by-side comparison in tooltips
+function MAW:CompareRecipeBases(recipe)
+    local out = {}
+    for _, b in ipairs(self.PRICE_BASES) do
+        local calc = self:ComputeRecipeProfit(recipe, b.key)
+        table.insert(out, { basis = b, profit = calc.profit, margin = calc.margin, complete = calc.complete })
+    end
+    return out
 end
 
 
