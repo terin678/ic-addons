@@ -120,7 +120,8 @@ function MAW:StartScan(itemNames, label)
     s.total = #wanted
     s.state = "pending"
     s.pendingSince = GetTime()
-    print(string.format("%s: %s (%d items)...", addonName, label or "Starting scan", s.total))
+    -- The client allows one auction query about every 3 seconds; that is the pace, not the addon
+    print(string.format("%s: %s (%d items, expect about %d seconds)...", addonName, label or "Starting scan", s.total, s.total * 3))
     Progress()
     return true
 end

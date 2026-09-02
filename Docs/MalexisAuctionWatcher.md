@@ -36,6 +36,11 @@ At the auction house click "Scan AH" or type `/maw scan`. The button shows progr
 becomes a Cancel button while running. Starting another scan while one runs adds the new
 items to the queue. Closing the auction house cancels the scan.
 
+Expect about 3 seconds per item. The game client allows one auction query roughly every
+3 seconds and the addon needs one exact-match query per item; nothing in the addon can
+shorten that. Keep scans small with the per-tab and per-row scans below, and let
+Auctionator's full scan feed prices in bulk.
+
 The second button scans only what the current tab shows: "Scan Materials", "Scan
 Products", "Scan All" on Stores, "Scan Recipes" for every item any recipe uses, and "Scan
 Item" on History for the selected item. Each Materials, Products, and Recipes row also has
