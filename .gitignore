@@ -1,0 +1,18 @@
+# Packaged archives
+dist/
+*.zip
+
+# Editor and OS noise
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+.DS_Store
+
+# Never commit game saved variables or WTF folders
+WTF/
+SavedVariables/
+*.lua.bak
+
+# Local Claude settings (shared skills live in .claude/skills and are committed)
+.claude/settings.local.json
