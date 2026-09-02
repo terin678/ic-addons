@@ -722,9 +722,6 @@ function MAWUI:RefreshData()
 
     -- Size the window to the tab: History needs height, Recipes needs width
     local wantHeight = (currentTab == "history") and mainFrame.historyHeight or mainFrame.defaultHeight
-    if mainFrame:GetHeight() ~= wantHeight then
-        mainFrame:SetHeight(wantHeight)
-    end
     local wantWidth = mainFrame.defaultWidth
     if currentTab == "recipes" then
         -- controls column + recipe columns + remove button + scrollbar + frame insets
@@ -732,8 +729,15 @@ function MAWUI:RefreshData()
         for _, w in ipairs(RECIPE_WIDTHS) do cols = cols + w end
         wantWidth = math.max(wantWidth, PADDING + RECIPE_CONTROLS_WIDTH + cols + 30 + 24 + 16)
     end
-    if mainFrame:GetWidth() ~= wantWidth then
-        mainFrame:SetWidth(wantWidth)
+    if mainFrame:GetHeight() ~= wantHeight or mainFrame:GetWidth() ~= wantWidth then
+        -- Pin the top-left corner so the window grows down and to the right, not around its centre
+        local left, top = mainFrame:GetLeft(), mainFrame:GetTop()
+        mainFrame:SetSize(wantWidth, wantHeight)
+        if left and top then
+            local scale = mainFrame:GetEffectiveScale() / UIParent:GetEffectiveScale()
+            mainFrame:ClearAllPoints()
+            mainFrame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left / scale, top / scale)
+        end
     end
 
     -- Update Add Item button visibility (hide on Stores/History tabs)

@@ -4,4 +4,4 @@ Target interface: 20506. Client folder `_anniversary_`.
 
 | Addon | Version | Guide |
 | --- | --- | --- |
-| MalexisAuctionWatcher | 1.4.4 | [Docs/MalexisAuctionWatcher.md](../../Docs/MalexisAuctionWatcher.md) |
+| MalexisAuctionWatcher | 1.4.5 | [Docs/MalexisAuctionWatcher.md](../../Docs/MalexisAuctionWatcher.md) |
