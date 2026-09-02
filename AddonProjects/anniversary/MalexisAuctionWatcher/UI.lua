@@ -496,10 +496,23 @@ function MAWUI:CreateUI()
     end
     mainFrame.UpdateScanButton = UpdateScanButton
 
+    -- Scan only the items shown on the current tab
+    local scanTabBtn = CreateFrame("Button", nil, controlFrame, "UIPanelButtonTemplate")
+    scanTabBtn:SetSize(120, 25)
+    scanTabBtn:SetPoint("LEFT", scanBtn, "RIGHT", 5, 0)
+    scanTabBtn:SetText("Scan Tab")
+    scanTabBtn:SetScript("OnClick", function()
+        local MAW = _G.MalexisAuctionWatcher
+        if not MAW then return end
+        local items = MAW:GetTabItems(currentTab)
+        MAW:StartScan(items, "Scanning " .. currentTab)
+    end)
+    mainFrame.scanTabBtn = scanTabBtn
+
     -- Add item button
     local addBtn = CreateFrame("Button", nil, controlFrame, "UIPanelButtonTemplate")
     addBtn:SetSize(100, 25)
-    addBtn:SetPoint("LEFT", scanBtn, "RIGHT", 5, 0)
+    addBtn:SetPoint("LEFT", scanTabBtn, "RIGHT", 5, 0)
     addBtn:SetText("Add Item")
     addBtn:SetScript("OnClick", function()
         local itemType = currentTab == "materials" and "material" or "product"
@@ -509,10 +522,10 @@ function MAWUI:CreateUI()
     end)
     mainFrame.addBtn = addBtn
 
-    -- Refresh Counts button (for Stores tab)
+    -- Refresh-only button (Stores: counts, Recipes: table). No scan, just recompute.
     local refreshBtn = CreateFrame("Button", nil, controlFrame, "UIPanelButtonTemplate")
     refreshBtn:SetSize(130, 25)
-    refreshBtn:SetPoint("LEFT", scanBtn, "RIGHT", 5, 0)
+    refreshBtn:SetPoint("LEFT", scanTabBtn, "RIGHT", 5, 0)
     refreshBtn:SetText("Refresh Counts")
     refreshBtn:SetScript("OnClick", function()
         MAWUI:RefreshData()
@@ -686,6 +699,22 @@ function MAWUI:RefreshData()
     -- History panel is persistent; hide it unless we're on that tab
     if mainFrame.historyPanel and currentTab ~= "history" then
         mainFrame.historyPanel:Hide()
+    end
+
+    -- Per-tab control bar labels
+    local scanLabels = {
+        materials = "Scan Materials", products = "Scan Products", stores = "Scan All",
+        recipes = "Scan Recipes", history = "Scan Item",
+    }
+    mainFrame.scanTabBtn:SetText(scanLabels[currentTab] or "Scan Tab")
+    if currentTab == "stores" then
+        mainFrame.refreshBtn:SetText("Refresh Counts")
+        mainFrame.refreshBtn:Show()
+    elseif currentTab == "recipes" then
+        mainFrame.refreshBtn:SetText("Refresh Table")
+        mainFrame.refreshBtn:Show()
+    else
+        mainFrame.refreshBtn:Hide()
     end
 
     -- The History tab needs more vertical room than the tables
@@ -1695,6 +1724,29 @@ end
 -- ===================== Recipes tab =====================
 
 local RECIPE_WIDTHS = { 230, 90, 90, 90, 90, 70, 60 }
+local RECIPE_CONTROLS_WIDTH = 26
+
+-- Small refresh icon that scans a list of items
+local function CreateRowRefreshButton(parent, x, y, tooltipText, onClick)
+    local btn = CreateFrame("Button", nil, parent)
+    btn:SetSize(CONTROL_BUTTON_SIZE, CONTROL_BUTTON_SIZE)
+    btn:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
+    btn.texture = btn:CreateTexture(nil, "ARTWORK")
+    btn.texture:SetAllPoints()
+    btn.texture:SetTexture("Interface\\Buttons\\UI-RefreshButton")
+    btn:SetScript("OnEnter", function(self)
+        self.texture:SetVertexColor(1.0, 1.0, 0.5)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:AddLine(tooltipText, 1, 1, 1)
+        GameTooltip:Show()
+    end)
+    btn:SetScript("OnLeave", function(self)
+        self.texture:SetVertexColor(1.0, 1.0, 1.0)
+        GameTooltip:Hide()
+    end)
+    btn:SetScript("OnClick", onClick)
+    return btn
+end
 
 local function ProfitColor(profit)
     if not profit then
@@ -1801,9 +1853,13 @@ function MAWUI:RenderRecipesTab(scrollChild, yOffset)
 
     yOffset = yOffset - 30
 
-    -- Headers
+    -- Headers (first a narrow controls column for the per-row refresh icon)
     local headers = { "Recipe", "Mat cost", "Product", "AH net", "Profit", "Margin", "Can make" }
     local x = PADDING
+    local ctlHeader = CreateCell(scrollChild, "", { r = 0.2, g = 0.2, b = 0.4 }, RECIPE_CONTROLS_WIDTH, HEADER_HEIGHT)
+    ctlHeader:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", x, yOffset)
+    table.insert(mainFrame.rows, ctlHeader)
+    x = x + RECIPE_CONTROLS_WIDTH
     for i, text in ipairs(headers) do
         local header = CreateCell(scrollChild, text, { r = 0.2, g = 0.2, b = 0.4 }, RECIPE_WIDTHS[i], HEADER_HEIGHT)
         header:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", x, yOffset)
@@ -1828,7 +1884,7 @@ function MAWUI:RenderRecipesTab(scrollChild, yOffset)
 
     if #rows == 0 then
         local empty = CreateCell(scrollChild, "No recipes yet. Use the buttons above.", { r = 0.1, g = 0.1, b = 0.1 }, 700, CELL_HEIGHT)
-        empty:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", PADDING, yOffset)
+        empty:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", PADDING + RECIPE_CONTROLS_WIDTH, yOffset)
         table.insert(mainFrame.rows, empty)
         yOffset = yOffset - CELL_HEIGHT
     end
@@ -1837,6 +1893,15 @@ function MAWUI:RenderRecipesTab(scrollChild, yOffset)
     for _, calc in ipairs(rows) do
         x = PADDING
         local color = ProfitColor(calc.profit)
+
+        -- Per-row refresh: scan just this recipe's product and materials
+        local recipe = calc.recipe
+        local rowRefresh = CreateRowRefreshButton(scrollChild, x + 4, yOffset - 1,
+            "Scan this recipe's items", function()
+                MAW:StartScan(MAW:GetRecipeItems(recipe), "Scanning " .. recipe.name)
+            end)
+        table.insert(mainFrame.rows, rowRefresh)
+        x = x + RECIPE_CONTROLS_WIDTH
 
         local nameCell = CreateCell(scrollChild, calc.recipe.name, { r = 0.15, g = 0.15, b = 0.15 }, RECIPE_WIDTHS[1], CELL_HEIGHT)
         nameCell:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", x, yOffset)
@@ -1887,7 +1952,7 @@ function MAWUI:RenderRecipesTab(scrollChild, yOffset)
         local sumText = string.format("If you converted everything you own now: %d batches, %s profit",
             totalMakeable, FormatMoney(totalProfit))
         local sumCell = CreateCell(scrollChild, sumText, { r = 0.2, g = 0.3, b = 0.4 }, 720, CELL_HEIGHT)
-        sumCell:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", PADDING, yOffset)
+        sumCell:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", PADDING + RECIPE_CONTROLS_WIDTH, yOffset)
         sumCell.label:SetTextColor(1, 1, 0.6)
         table.insert(mainFrame.rows, sumCell)
         yOffset = yOffset - CELL_HEIGHT

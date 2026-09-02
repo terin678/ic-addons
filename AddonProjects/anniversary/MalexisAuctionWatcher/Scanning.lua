@@ -145,6 +145,45 @@ function MAW:ScanStatusText()
     return string.format("%s, %d/%d done, current: %s", s.state, s.done, s.total, s.current or "-")
 end
 
+-- Item names shown on a given tab, sorted
+function MAW:GetTabItems(tabName)
+    local db = self:GetActiveDB()
+    local names, seen = {}, {}
+    local function add(name)
+        if name and db.items[name] and not seen[name] then
+            seen[name] = true
+            table.insert(names, name)
+        end
+    end
+
+    if tabName == "materials" or tabName == "products" then
+        local wanted = (tabName == "materials") and "material" or "product"
+        for name, data in pairs(db.items) do
+            if (data.itemType or "material") == wanted then add(name) end
+        end
+    elseif tabName == "recipes" then
+        for _, recipe in ipairs(self:GetRecipes()) do
+            for _, n in ipairs(self:GetRecipeItems(recipe)) do add(n) end
+        end
+    elseif tabName == "history" then
+        local ui = _G.MalexisAuctionWatcherUI
+        add(ui and ui.historyItem)
+    else
+        for name in pairs(db.items) do add(name) end
+    end
+    table.sort(names)
+    return names
+end
+
+-- Product plus material names for one recipe
+function MAW:GetRecipeItems(recipe)
+    local names = { recipe.product }
+    for _, mat in ipairs(recipe.materials or {}) do
+        table.insert(names, mat.item)
+    end
+    return names
+end
+
 -- Public entry points
 function MAW:ScanAuctionHouse()
     local db = self:GetActiveDB()

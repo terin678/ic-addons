@@ -36,6 +36,11 @@ At the auction house click "Scan AH" or type `/maw scan`. The button shows progr
 becomes a Cancel button while running. Starting another scan while one runs adds the new
 items to the queue. Closing the auction house cancels the scan.
 
+The second button scans only what the current tab shows: "Scan Materials", "Scan
+Products", "Scan All" on Stores, "Scan Recipes" for every item any recipe uses, and "Scan
+Item" on History for the selected item. Each Materials, Products, and Recipes row also has
+a refresh icon that scans just that row's items.
+
 ```
 /maw scan            start, or add items to the running scan
 /maw scan stop       cancel
@@ -88,6 +93,10 @@ latest price. Rows sort by profit. Hover a recipe for the full breakdown with so
 
 Everything a recipe uses is tracked automatically. "Can make" counts bags plus bank; it does
 not know about cooldowns or which patterns you have learned.
+
+The refresh icon on a row scans that recipe's product and materials. "Scan Recipes" in the
+control bar scans every item used by any recipe. "Refresh Table" recomputes the numbers
+from the latest prices and your current bags and bank without scanning.
 
 ```
 /maw recipes

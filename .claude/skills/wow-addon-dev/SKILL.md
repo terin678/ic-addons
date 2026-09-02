@@ -39,4 +39,7 @@ fail loudly in chat over ones that fail silently.
 2. Update the version table in `AddonProjects/<flavor>/README.md`.
 3. `scripts/package.ps1 -Flavor <flavor> -Addon <Addon>` writes `dist/<Addon>-<ver>-<flavor>.zip`.
 4. Send the zip to the user with SendUserFile. `dist/` is git-ignored.
-5. Commit with an imperative subject and a body listing player-visible changes.
+5. Commit on the feature branch with an imperative subject and a body listing
+   player-visible changes, then push the branch. `main` only accepts pull requests:
+   when the user wants it merged, `gh pr create --fill` and squash-merge after the
+   in-game checklist in the PR template is done.
