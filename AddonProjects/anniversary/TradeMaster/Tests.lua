@@ -1154,3 +1154,27 @@ T.Case("Confirm: a request goes stale rather than arriving late", function()
     T.Eq(#ns.Confirm.Fresh({}, now, 180), 0, "an empty queue")
     T.Eq(#ns.Confirm.Fresh(nil, now, 180), 0, "no queue at all")
 end)
+
+T.Case("Requests: everything in brackets is a specific", function()
+    -- A recipe link carries no item id at all, which is how
+    -- "LF LW [Leatherworking: Bindings of Lightning Reflexes]" was answered with
+    -- "what item do you need?".
+    local recipe = "LF LW |cffffd000|Htrade:3811:1:300:2:0|h[Leatherworking: Bindings of "
+        .. "Lightning Reflexes]|h|r"
+    T.Eq(#ns.Util.ExtractItemIDs(recipe), 0, "no item id to find")
+    T.Eq(#ns.Util.BracketNames(recipe), 1, "but it named something")
+    T.Eq(ns.Util.BracketNames(recipe)[1], "Leatherworking: Bindings of Lightning Reflexes",
+        "and this is what")
+
+    local item = "LF JC |cff1eff00|Hitem:24030:0:0:0:0:0:0:0:70|h[Bold Living Ruby]|h|r"
+    T.Eq(ns.Util.BracketNames(item)[1], "Bold Living Ruby", "an item link too")
+
+    T.Eq(ns.Util.BracketNames("LF LW [Shadow Armor Kit] please")[1], "Shadow Armor Kit",
+        "and a name typed by hand")
+    T.Eq(#ns.Util.BracketNames("LF LW"), 0, "a bare request names nothing")
+    T.Eq(#ns.Util.BracketNames("anyone jc on? []"), 0, "empty brackets are not a request")
+    T.Eq(#ns.Util.BracketNames(nil), 0, "no message at all")
+
+    local two = "LF JC [Bold Living Ruby] and [Runed Living Ruby]"
+    T.Eq(#ns.Util.BracketNames(two), 2, "one per name, not one big blob")
+end)

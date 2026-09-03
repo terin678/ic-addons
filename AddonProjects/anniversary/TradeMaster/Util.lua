@@ -36,6 +36,24 @@ function Util.ExtractItemIDs(raw)
     return ids
 end
 
+-- Pure. Everything in square brackets. That is an item link, a recipe link, or a
+-- name somebody typed out by hand, and all three mean the same thing: they asked
+-- for something specific rather than for the profession.
+--
+-- Recipe links are the reason this exists. Shift-clicking a recipe out of a
+-- profession window posts |Htrade:...|h[Leatherworking: Bindings of Lightning
+-- Reflexes]|h, which has no item id in it at all, so anything hunting for
+-- |Hitem: walks straight past the most specific request there is.
+function Util.BracketNames(raw)
+    local out = {}
+    if not raw then return out end
+    for name in raw:gmatch("%[(.-)%]") do
+        name = Util.Trim(name)
+        if name ~= "" then out[#out + 1] = name end
+    end
+    return out
+end
+
 -- Full item links, not just ids, so we can quote back exactly what someone
 -- linked at us.
 function Util.ExtractItemLinks(raw)

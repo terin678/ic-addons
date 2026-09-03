@@ -196,10 +196,15 @@ The **Review** button on the Invite tab sets when this happens: `never` sends st
 Requests older than three minutes are dropped rather than answered late, and anything queued
 behind the one on screen is counted in its header.
 
-A line that names an item no book knows is not treated as a bare profession request at all,
-so it gets no invite and no whisper. The item's type cannot be read for something this
-client has never seen, and failing to identify what they linked is not a reason to ask what
-they want.
+A line that names something no book of yours answers gets no invite and no whisper at all.
+Anything in square brackets counts as naming something: an item link, a recipe link, or a
+name typed out by hand. Recipe links are the reason this is not simply an item check —
+shift-clicking a recipe out of a profession window posts a `|Htrade:` link with no item id
+in it, so "LF LW [Leatherworking: Bindings of Lightning Reflexes]" looked like a bare "LF
+LW" to anything hunting for items, and got asked what item it needed.
+
+If you *do* know the recipe they linked, the name inside the brackets matches your book as
+usual and they get the normal invite naming what you can make.
 
 ### Sets up the craft
 

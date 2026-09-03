@@ -167,18 +167,15 @@ function Events.Process(text, author, source, opts)
         filter.requireBuyerSignal = false
     end
 
-    -- Did they name a specific product that is not in our book?
+    -- Did they name something specific that no book of ours answers?
+    --
+    -- Nothing matched, so whatever is in brackets is not ours: an item link, a
+    -- recipe link, or a typed-out name, all of them a request for one thing in
+    -- particular. Answering that with "what item do you need?" is the reply that
+    -- reads as though nobody was listening, and it is worth no invite either.
     local namedUnknownItem = false
     if #matched == 0 then
-        for _, id in ipairs(ns.Util.ExtractItemIDs(text)) do
-            -- Any link no book knows counts, whatever it turns out to be. The
-            -- class is unreadable for an item this client has never cached, and
-            -- "we could not identify it" is not a reason to ask what they want.
-            if not AnyBookHas(id) then
-                namedUnknownItem = true
-                break
-            end
-        end
+        namedUnknownItem = #ns.Util.BracketNames(text) > 0
         if not namedUnknownItem and ns.Matcher.NearMiss(norm, pick.index) then
             namedUnknownItem = true
         end
