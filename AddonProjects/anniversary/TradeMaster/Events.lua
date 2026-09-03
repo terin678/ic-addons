@@ -198,6 +198,30 @@ function Events.Process(text, author, source, opts)
                 cannotDo[#cannotDo + 1] = nm.entry.link or nm.entry.name
             end
         end
+
+        -- A recipe link carries no item id, so the loop above walks straight past
+        -- the most specific request there is, which is how two linked recipes got
+        -- answered by naming one of them.
+        --
+        -- Read out of the link rather than out of the raw text: this list is
+        -- quoted back to the customer, and every [...] in a message also catches
+        -- player names, guild names and asides. "[Malexis] said u can make [X]"
+        -- must not answer "but I don't have Malexis".
+        local answered = {}
+        for _, h in ipairs(matched) do
+            local e = book[h.itemID]
+            if e and e.name then answered[e.name:lower()] = true end
+        end
+        for bracket in text:gmatch("|H%a+:.-|h%[(.-)%]|h") do
+            -- "Leatherworking: Bindings of Lightning Reflexes" names the same item
+            -- as "Bindings of Lightning Reflexes".
+            local plain = bracket:gsub("^[^:]+:%s*", "")
+            if plain == "" then plain = bracket end
+            if plain ~= "" and not answered[bracket:lower()] and not answered[plain:lower()]
+                and not ns.Reply.Names(canDo, plain) and not ns.Reply.Names(cannotDo, plain) then
+                cannotDo[#cannotDo + 1] = plain
+            end
+        end
     end
 
     local blocked
@@ -262,13 +286,21 @@ function Events.Process(text, author, source, opts)
     if #matched > 0 and #craftable == 0 and not opts.dryRun and result.verdict ~= "vetoed"
         and (isDirect or result.verdict == "invite") then
         local w = ps.invite.whisper
-        local first = noMats[1]
-        local item = first.entry.link or first.entry.name
+        local items, mats = {}, {}
+        for i = 1, math.min(#noMats, 3) do
+            local nm = noMats[i]
+            items[#items + 1] = nm.entry.link or nm.entry.name
+            local missing = ns.Scanner.DescribeMissing(nm.missing)
+            if missing ~= "" and not ns.Reply.Names(mats, missing) then
+                mats[#mats + 1] = missing
+            end
+        end
+        local itemText = table.concat(items, " ")
         ns.Print(string.format("|cffffcc00%s asked for %s but you lack %s.|r Not invited.",
-            short, item, ns.Scanner.DescribeMissing(first.missing, true)))
+            short, itemText, ns.Scanner.DescribeMissing(noMats[1].missing, true)))
         if w.enabled and w.autoReply then
             ns.Inviter.Say(short, w.noMatsTemplate,
-                { mats = ns.Scanner.DescribeMissing(first.missing), item = item }, profile)
+                { mats = table.concat(mats, ", "), item = itemText }, profile)
         end
         if isDirect and ns.db.settings.orders.captureTranscript then
             ns.Orders.AddTranscript(short, "in", text, now)
@@ -280,20 +312,40 @@ function Events.Process(text, author, source, opts)
         local w = ps.invite.whisper
 
         if #matched > 0 then
-            local e = book[matched[1].itemID]
-            local link = e and (e.link or e.name)
+            -- One composer decides the sentence from what we can cover across
+            -- everything they named. Taking matched[1] here is what answered two
+            -- linked recipes with one item's name.
+            local reply = ns.Reply.Compose({
+                book = book,
+                -- craftable, not matched: an item we matched but have no reagents
+                -- for is already in cannotDo, and offering it and withdrawing it
+                -- in one sentence is worse than either.
+                matched = craftable,
+                cannotDo = cannotDo,
+                whisper = w,
+                profile = profile,
+                player = short,
+                base = "reply",
+                withPatterns = not ns.Util.HasCraftLink(text),
+            })
 
-            if #cannotDo > 0 and not willInvite and w.enabled and w.autoReply then
-                local have = #canDo > 0 and table.concat(canDo, " ") or (link or "that")
-                ns.Inviter.Say(short, w.partialTemplate, {
-                    have = have,
-                    lack = table.concat(cannotDo, " "),
-                }, profile)
-                ns.Print(string.format(
-                    "|cffffcc00%s asked for %d %s, you have %d.|r Cannot do: %s",
-                    short, #canDo + #cannotDo, profile.craftNoun[2], #canDo, table.concat(cannotDo, " ")))
-            elseif state.awaitingItem and not willInvite and w.enabled and w.autoReply then
-                ns.Inviter.Say(short, w.confirmTemplate, { item = link }, profile)
+            if not willInvite and w.enabled and w.autoReply
+                and (#cannotDo > 0 or state.awaitingItem) then
+                ns.Inviter.SayComposed(short, reply.text, profile)
+                if #reply.lack > 0 then
+                    ns.Print(string.format(
+                        "|cffffcc00%s asked for %d %s, you have %d.|r Cannot do: %s",
+                        short, #reply.have + #reply.lack, profile.craftNoun[2],
+                        #reply.have, table.concat(reply.lack, " ")))
+                end
+                if reply.dropped > 0 or reply.lackDropped > 0
+                    or reply.patternsDropped > 0 or reply.overLength then
+                    ns.Print(string.format(
+                        "|cff888888(whisper cap: %d item(s) and %d unknown left unnamed, "
+                        .. "%d pattern link(s) left off%s)|r",
+                        reply.dropped, reply.lackDropped, reply.patternsDropped,
+                        reply.overLength and ", and it still overran" or ""))
+                end
             end
             state.awaitingItem = nil
 
@@ -385,7 +437,7 @@ function Events.Process(text, author, source, opts)
     end
 
     if willInvite and not opts.dryRun then
-        local ctx = { cannotDo = cannotDo, profession = profile.key }
+        local ctx = { cannotDo = cannotDo, profession = profile.key, text = text }
         -- "LF LW" on its own is answered at once: asking what they need is exactly
         -- right when they named nothing. A line carrying a specific we could not
         -- place gets read by a person first, because asking the same question

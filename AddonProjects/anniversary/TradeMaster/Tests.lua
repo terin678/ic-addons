@@ -1218,3 +1218,202 @@ T.Case("Log: the All view is every message, newest first", function()
     T.Eq(#capped, 2, "n caps the rows")
     T.Eq(held, 0, "rows past n are not filtered out, just not shown")
 end)
+
+--------------------------------------------------------------------------------
+-- Reply composition
+--------------------------------------------------------------------------------
+
+-- The whisper settings, with the templates a leatherworker would have.
+local function whisperSettings()
+    local t = ns.Prof.DefaultSettings(ns.Prof.ByKey("leatherworking"))
+    return t.invite.whisper
+end
+
+local LW = ns.Prof.ByKey("leatherworking")
+
+local function lwBook()
+    return {
+        [32574] = {
+            itemID = 32574, name = "Bindings of Lightning Reflexes",
+            link = link(32574, "Bindings of Lightning Reflexes"),
+            recipeLink = "|cffffd000|Htrade:3811:1:300:2:0|h[Pattern: Bindings of Lightning Reflexes]|h|r",
+            reagentList = {
+                { itemID = 21887, name = "Knothide Leather", count = 8 },
+                { itemID = 22456, name = "Primal Shadow", count = 4 },
+            },
+        },
+        [32397] = {
+            itemID = 32397, name = "Waistguard of Shackled Souls",
+            link = link(32397, "Waistguard of Shackled Souls"),
+            -- Scanned before books kept the recipe link: the fallback case.
+            reagentList = {
+                { itemID = 21887, name = "Knothide Leather", count = 10 },
+            },
+        },
+    }
+end
+
+local function hits(...)
+    local out = {}
+    for _, id in ipairs({ ... }) do out[#out + 1] = { itemID = id, tier = "name" } end
+    return out
+end
+
+T.Case("Reply: two items named get two items answered", function()
+    -- Bwasa linked two recipes and was told about one, then had to ask
+    -- "can u do both ur just the belt?".
+    local r = ns.Reply.Compose({
+        book = lwBook(), matched = hits(32574, 32397), whisper = whisperSettings(),
+        profile = LW, player = "Bwasa", base = "reply", withPatterns = false,
+    })
+    T.Eq(r.kind, "all", "everything they named is ours")
+    T.Eq(r.named, 2, "and both are named")
+    T.Eq(r.dropped, 0, "nothing left out")
+    T.Eq(r.text:find("Bindings of Lightning Reflexes", 1, true) ~= nil, true, "the first")
+    T.Eq(r.text:find("Waistguard of Shackled Souls", 1, true) ~= nil, true, "and the second")
+end)
+
+T.Case("Reply: knowing one of two says which", function()
+    local r = ns.Reply.Compose({
+        book = lwBook(), matched = hits(32574),
+        cannotDo = { "Boots of Shackled Souls" },
+        whisper = whisperSettings(), profile = LW, player = "Bwasa",
+        base = "reply", withPatterns = false,
+    })
+    T.Eq(r.kind, "some", "partial coverage")
+    T.Eq(r.text:find("Bindings of Lightning Reflexes", 1, true) ~= nil, true, "names what we have")
+    T.Eq(r.text:find("Boots of Shackled Souls", 1, true) ~= nil, true, "and what we do not")
+end)
+
+T.Case("Reply: knowing none of it says so", function()
+    local r = ns.Reply.Compose({
+        book = lwBook(), matched = {},
+        cannotDo = { "Boots of Shackled Souls" },
+        whisper = whisperSettings(), profile = LW, player = "Bwasa",
+        base = "reply", withPatterns = true,
+    })
+    T.Eq(r.kind, "none", "nothing of theirs is ours")
+    T.Eq(r.named, 0, "so nothing is named")
+    T.Eq(r.patternsDropped, 0, "and no pattern is attached to nothing")
+end)
+
+T.Case("Reply: the pattern goes back when they linked the item", function()
+    local r = ns.Reply.Compose({
+        book = lwBook(), matched = hits(32574), whisper = whisperSettings(),
+        profile = LW, player = "Bwasa", base = "reply", withPatterns = true,
+    })
+    T.Eq(r.text:find("|Htrade:", 1, true) ~= nil, true, "the pattern link, which lists its reagents on hover")
+end)
+
+T.Case("Reply: no pattern goes back when they linked the pattern", function()
+    -- They already have the reagent list in front of them.
+    local r = ns.Reply.Compose({
+        book = lwBook(), matched = hits(32574), whisper = whisperSettings(),
+        profile = LW, player = "Bwasa", base = "reply", withPatterns = false,
+    })
+    T.Eq(r.text:find("|Htrade:", 1, true), nil, "nothing to hand back")
+end)
+
+T.Case("Reply: a book scanned before recipe links falls back to the reagents", function()
+    local r = ns.Reply.Compose({
+        book = lwBook(), matched = hits(32397), whisper = whisperSettings(),
+        profile = LW, player = "Bwasa", base = "reply", withPatterns = true,
+    })
+    T.Eq(r.text:find("10x Knothide Leather", 1, true) ~= nil, true, "same information, more characters")
+end)
+
+T.Case("Reply: the whisper cap drops links before it drops names", function()
+    local book = lwBook()
+    -- A pattern link long enough that neither can be attached.
+    book[32574].recipeLink = string.rep("L", 200)
+    book[32397].recipeLink = string.rep("W", 200)
+    local r = ns.Reply.Compose({
+        book = book, matched = hits(32574, 32397), whisper = whisperSettings(),
+        profile = LW, player = "Bwasa", base = "reply", withPatterns = true,
+        maxLen = 250,
+    })
+    T.Eq(r.named, 2, "both are still named")
+    T.Eq(r.patternsDropped, 2, "and both patterns are reported as left off")
+    T.Eq(#r.text <= 250, true, "inside the cap")
+    T.Eq(r.overLength, false, "so it did not overrun")
+
+    -- Names that cannot all fit either: one is dropped and counted.
+    book[32574].link = string.rep("A", 200)
+    book[32397].link = string.rep("B", 200)
+    local tight = ns.Reply.Compose({
+        book = book, matched = hits(32574, 32397), whisper = whisperSettings(),
+        profile = LW, player = "Bwasa", base = "reply", withPatterns = false,
+        maxLen = 250,
+    })
+    T.Eq(tight.named, 1, "as many as fit")
+    T.Eq(tight.dropped, 1, "and it knows what it left out")
+end)
+
+T.Case("Reply: what we cannot do is trimmed before what we can", function()
+    -- The half that matters less goes first, and neither half goes to nothing:
+    -- partialTemplate with an empty {lack} reads "I can do X, but I don't have ."
+    local r = ns.Reply.Compose({
+        book = lwBook(), matched = hits(32574),
+        cannotDo = { string.rep("Y", 120), string.rep("Z", 120) },
+        whisper = whisperSettings(), profile = LW, player = "Bwasa",
+        base = "reply", withPatterns = false, maxLen = 250,
+    })
+    T.Eq(r.named, 1, "what we can do is kept")
+    T.Eq(r.lacked, 1, "one of the two we cannot")
+    T.Eq(r.lackDropped, 1, "and the other is reported")
+    T.Eq(r.text:find("but I don't have %.") == nil, true, "never an empty lack")
+end)
+
+T.Case("Reply: a message that overruns even at the floor says so", function()
+    local book = lwBook()
+    book[32574].link = string.rep("A", 300)
+    local r = ns.Reply.Compose({
+        book = book, matched = hits(32574), whisper = whisperSettings(),
+        profile = LW, player = "Bwasa", base = "reply", withPatterns = false,
+        maxLen = 250,
+    })
+    T.Eq(r.named, 1, "one item is the floor")
+    T.Eq(r.overLength, true, "and the caller is told the client will cut it")
+end)
+
+T.Case("Reply: at most three items, and the fourth is reported", function()
+    local book = lwBook()
+    book[1] = { itemID = 1, name = "A", link = "[A]" }
+    book[2] = { itemID = 2, name = "B", link = "[B]" }
+    book[3] = { itemID = 3, name = "C", link = "[C]" }
+    book[4] = { itemID = 4, name = "D", link = "[D]" }
+    local r = ns.Reply.Compose({
+        book = book, matched = hits(1, 2, 3, 4), whisper = whisperSettings(),
+        profile = LW, player = "Bwasa", base = "reply", withPatterns = false,
+    })
+    T.Eq(#r.have, 3, "the whisper cap is on characters, this one is on patience")
+    T.Eq(r.named, 3, "all three named")
+    T.Eq(r.dropped, 1, "counted against what they asked for, not against the cap")
+end)
+
+T.Case("Reply: reagents read in window order and stop", function()
+    T.Eq(ns.Reply.Reagents(lwBook()[32574]), "8x Knothide Leather, 4x Primal Shadow", "in order")
+    T.Eq(ns.Reply.Reagents(lwBook()[32574], 1), "8x Knothide Leather", "capped")
+    T.Eq(ns.Reply.Reagents({}), "", "an entry with no reagent list says nothing")
+    T.Eq(ns.Reply.Reagents(nil), "", "and neither does no entry")
+end)
+
+T.Case("Reply.Names matches the whole name, not a piece of one", function()
+    local list = { link(32574, "Bindings of Lightning Reflexes"), "Boots of Shackled Souls" }
+    T.Eq(ns.Reply.Names(list, "Bindings of Lightning Reflexes"), true, "inside a link")
+    T.Eq(ns.Reply.Names(list, "Boots of Shackled Souls"), true, "as a bare name")
+    T.Eq(ns.Reply.Names(list, "Bracers of Shackled Souls"), false, "and not one that is absent")
+
+    -- A substring test here would swallow a different gem entirely.
+    local gems = { link(24033, "Bold Living Ruby") }
+    T.Eq(ns.Reply.Names(gems, "Living Ruby"), false, "a shorter name is its own item")
+    T.Eq(ns.Reply.Names(gems, ""), false, "and an empty name matches nothing")
+end)
+
+T.Case("Requests: a craft link is theirs to read, an item link is not", function()
+    T.Eq(ns.Util.HasCraftLink("LF LW |Htrade:3811:1:300:2:0|h[Pattern: X]|h|r"), true, "recipe link")
+    T.Eq(ns.Util.HasCraftLink("LF ENCH |Henchant:25086|h[Cloak - Greater Shadow]|h"), true, "enchant link")
+    T.Eq(ns.Util.HasCraftLink("LF LW " .. link(32574, "Bindings of Lightning Reflexes")), false, "item link")
+    T.Eq(ns.Util.HasCraftLink("LF LW"), false, "nothing linked")
+    T.Eq(ns.Util.HasCraftLink(nil), false, "no message at all")
+end)

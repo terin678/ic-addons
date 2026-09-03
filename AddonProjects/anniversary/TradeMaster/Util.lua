@@ -54,6 +54,15 @@ function Util.BracketNames(raw)
     return out
 end
 
+-- Did they link the craft itself rather than the thing it makes? Shift-clicking a
+-- recipe out of a profession window posts |Htrade:, and hovering that already
+-- shows the reagents, so there is nothing to hand back.
+function Util.HasCraftLink(raw)
+    if not raw then return false end
+    return raw:find("|Htrade:", 1, true) ~= nil
+        or raw:find("|Henchant:", 1, true) ~= nil
+end
+
 -- Full item links, not just ids, so we can quote back exactly what someone
 -- linked at us.
 function Util.ExtractItemLinks(raw)

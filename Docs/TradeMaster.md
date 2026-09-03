@@ -139,14 +139,34 @@ profession in **Filter**.
 | They say | TradeMaster replies |
 | --- | --- |
 | Names an item you have | Invites, whispers that it's on the way |
+| Names several you have | Names **all** of them, up to three |
 | `LF alch`, nothing named | Invites, asks what they need, waits |
 | Names an item you lack | "Sorry, I don't have that potion." No alternatives pitched. |
 | Names several, you have some | "I can do X, but I don't have Y." |
 | Types half a gem name (Jewelcrafting) | "Did you mean one of these?" |
 | Just chatting about prices | Nothing. Not a question. |
 
+The reply is decided over **everything** they named, not the first thing that matched:
+all of it, some of it, or none. Answering two linked recipes by naming one is what got
+asked back "can u do both ur just the belt?".
+
 Every line is editable in **Invite**, per profession, with a Reset per field. Placeholders
 are `{item}`, `{items}`, `{have}`, `{lack}`, `{player}`.
+
+#### The pattern comes back with the answer
+
+If they linked the **item**, the reply carries the pattern link for each thing you can make,
+so hovering it shows the reagents and they can gather before trading. If they linked the
+**pattern**, nothing is attached: they already have that list open.
+
+The pattern link is read off the profession window when you scan a book, so **rescan each
+book after updating to 1.9.0** to pick it up. Until you do, and on any client that does not
+provide it, the reply names the reagents as text instead. Run `/tm probe` with a profession
+window open to see whether this client provides it.
+
+A whisper is cut off at 255 characters once links expand, so the reply names as many items as
+fit and attaches as many patterns as fit after that. Anything left off is reported to you in
+chat rather than silently truncated on the wire.
 
 ### Tracks orders
 
@@ -204,7 +224,9 @@ in it, so "LF LW [Leatherworking: Bindings of Lightning Reflexes]" looked like a
 LW" to anything hunting for items, and got asked what item it needed.
 
 If you *do* know the recipe they linked, the name inside the brackets matches your book as
-usual and they get the normal invite naming what you can make.
+usual and they get the normal invite naming what you can make. If they link several and you
+know only some, the bracketed names you cannot place are quoted back too, so the answer is
+"I can do X, but I don't have Y" rather than a reply that mentions only X.
 
 ### Sets up the craft
 

@@ -27,6 +27,13 @@ LibICUI's `Table` does this).
 **`Button:SetText` does nothing.** A bare Button has no font string until
 `SetFontString(fs)` is called. LibICUI's `Button` does it; a hand-rolled one must too.
 
+**A rotated texture comes out unrotated.** `Texture:SetRotation` turns the picture
+*inside* a rectangle that does not move, so a `SetColorTexture` fill looks identical at
+every angle. There is no polyline primitive either. To draw a sloped line you need artwork
+that is already sloped plus the 8-argument `SetTexCoord`; to draw a chart line without art,
+use steps — a flat run per slot and an upright joining one run to the next, all
+axis-aligned. MAW's `Chart.lua` does the latter.
+
 ## Items and links
 
 **A guard that reads an item's class silently fails for a stranger's link.**
@@ -61,8 +68,16 @@ collapsed category is absent, not filtered. `ExpandTradeSkillSubClass(0)` opens 
 detail pane and leaves the list where it was. The list is a faux scroll frame: set
 `FauxScrollFrame_SetOffset` *and* the scrollbar's value, which is what redraws it.
 
-**The create count box** is the global `TradeSkillInputBox`. Do not overwrite it while it
-has focus; the player may be typing in it.
+**The create count box** is the global `TradeSkillInputBox`. Confirmed present on 20506:
+`/run print(TradeSkillInputBox, TradeSkillInputBox:GetNumber())` answers with the frame and
+the number between the arrows. Do not overwrite it while it has focus; the player may be
+typing in it.
+
+**Two different links, and only one lists reagents.** `GetTradeSkillItemLink(i)` is the
+*product* (`|Hitem:`). `GetTradeSkillRecipeLink(i)` is the *craft* (`|Htrade:`), and that is
+the one whose tooltip lists the reagents — which is what makes it worth handing to a
+customer. Nothing here called it before TradeMaster 1.9.0, so treat nil as expected and
+guard it; `/tm probe` reports whether this client has it.
 
 ## Secure frames and combat
 
