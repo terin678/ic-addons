@@ -359,7 +359,7 @@ function UI.BuildIncome(page)
     custHead:SetPoint("TOPLEFT", 0, -104)
 
     local customers = UI.Table(page, {
-        top = -122, bottom = 22, left = 0, width = 330,
+        top = -122, bottom = 22, left = 0, width = 310,
         columns = {
             { key = "rank", label = "#", width = 26, justify = "RIGHT" },
             { key = "name", label = "Customer", width = "flex" },

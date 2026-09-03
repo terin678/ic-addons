@@ -74,6 +74,7 @@ local DEFAULT = {
     hoverBg = { r = 0.25, g = 0.25, b = 0.35, a = 0.4 },
     selectedBg = { r = 0.875, g = 0.612, b = 0.200, a = 0.25 },
     border = { r = 0.3, g = 0.3, b = 0.3, a = 0.8 },
+    pageWidth = 700,
 }
 Lib.styles.default = DEFAULT
 
@@ -318,7 +319,13 @@ function Lib:Table(parent, opts)
     local style = StyleOf(opts.style)
     local left = opts.left or 0
     local top = opts.top or 0
-    local width = opts.width or ((parent:GetWidth() or 700) - 26)
+    local width = opts.width
+    if not width then
+        local pw = parent:GetWidth() or 0
+        -- A frame anchored on two sides can report 0 before its first layout.
+        if pw < 50 then pw = style.pageWidth or 700 end
+        width = pw - 26
+    end
     local rowHeight = opts.rowHeight or style.rowHeight
 
     local t = {
@@ -384,23 +391,24 @@ function Lib:Table(parent, opts)
     end
     t.header = header
 
+    -- The scroll frame is exactly as wide as the header and the rows. Its
+    -- scrollbar is drawn just outside that width, in the 26px the caller left
+    -- for it; making the frame itself wider pushes the bar off the page.
     local scrollTop = top - style.headerHeight
-    local scroll, content
+    local parentWidth = parent:GetWidth() or 0
+    if parentWidth < 50 then parentWidth = style.pageWidth or 700 end
+
+    local scroll = CreateFrame("ScrollFrame", nil, parent, "UIPanelScrollFrameTemplate")
+    scroll:SetPoint("TOPLEFT", left, scrollTop)
     if opts.height then
-        scroll = CreateFrame("ScrollFrame", nil, parent, "UIPanelScrollFrameTemplate")
-        scroll:SetPoint("TOPLEFT", left, scrollTop)
         scroll:SetSize(width, opts.height)
-        content = CreateFrame("Frame", nil, scroll)
-        content:SetSize(1, 1)
-        scroll:SetScrollChild(content)
     else
-        scroll, content = Lib:ScrollList(parent, scrollTop, opts.bottom or 0,
-            left + width + 26 - (parent:GetWidth() or 700))
-        scroll:ClearAllPoints()
-        scroll:SetPoint("TOPLEFT", left, scrollTop)
         scroll:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT",
-            left + width + 26 - (parent:GetWidth() or 700), opts.bottom or 0)
+            left + width - parentWidth, opts.bottom or 0)
     end
+    local content = CreateFrame("Frame", nil, scroll)
+    content:SetSize(1, 1)
+    scroll:SetScrollChild(content)
     t.scroll, t.content = scroll, content
 
     return t

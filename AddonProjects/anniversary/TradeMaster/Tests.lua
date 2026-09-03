@@ -819,11 +819,12 @@ end)
 T.Case("Market: Counts separates people from posts and honours the window", function()
     local db = marketDB()
     local now = 100000
-    ns.Market.Record(db, now - 10, "seller", "leatherworking", "Bob", "lw lfw")
-    ns.Market.Record(db, now - 20, "seller", "leatherworking", "Bob", "lw lfw")
-    ns.Market.Record(db, now - 30, "seller", "leatherworking", "Bob", "lw lfw")
-    ns.Market.Record(db, now - 40, "buyer", "leatherworking", "Ann", "lf lw")
+    -- Oldest first, the order Trade chat arrives in.
     ns.Market.Record(db, now - 7200, "seller", "leatherworking", "Cid", "lw lfw")
+    ns.Market.Record(db, now - 40, "buyer", "leatherworking", "Ann", "lf lw")
+    ns.Market.Record(db, now - 30, "seller", "leatherworking", "Bob", "lw lfw")
+    ns.Market.Record(db, now - 20, "seller", "leatherworking", "Bob", "lw lfw")
+    ns.Market.Record(db, now - 10, "seller", "leatherworking", "Bob", "lw lfw")
 
     local s, b, sp, bp = ns.Market.Counts(db, now, "leatherworking", 3600)
     T.Eq(s, 1, "one distinct seller in the hour")
@@ -841,13 +842,17 @@ end)
 T.Case("Market: Prune drops old samples and caps the ring", function()
     local db = marketDB()
     local now = 200000
-    ns.Market.Record(db, now - 90000, "seller", "alchemy", "Old", "x")
+    -- Written straight in, so Record's own throttled prune does not run first.
+    local m = db.market
+    m.samples[1] = { at = now - 90000, prof = "alchemy", kind = "seller", who = "Old" }
     for i = 1, 5 do
-        ns.Market.Record(db, now - i, "buyer", "alchemy", "P" .. i, "x")
+        m.samples[i + 1] = { at = now - (6 - i), prof = "alchemy", kind = "buyer", who = "P" .. i }
     end
+    m.prunedAt = now
     ns.Market.Prune(db, now)
     T.Eq(#db.market.samples, 5, "the day-old sample is gone")
-    T.Eq(db.market.samples[1].who, "P5", "oldest kept is the earliest recent one")
+    T.Eq(db.market.samples[1].who, "P1", "oldest kept is the earliest recent one")
+    T.Eq(db.market.samples[5].who, "P5", "newest still last")
 end)
 
 T.Case("Market: Label thresholds", function()

@@ -107,6 +107,9 @@ local function GetRow(i)
     row.text:SetPoint("LEFT", 20, 0)
     row.text:SetWidth(WIDTH - 60)
     row.text:SetJustifyH("LEFT")
+    -- Fixed 16px rows: a long item link must truncate, not wrap into the next.
+    row.text:SetWordWrap(false)
+    if row.text.SetMaxLines then row.text:SetMaxLines(1) end
 
     Tracker.rows[i] = row
     return row

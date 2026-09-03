@@ -805,6 +805,7 @@ function UI.BuildLog(page)
             UI.RefreshLog()
         end)
         b.filterKey = f.key
+        b.plainLabel = f.label
         bar:Left(b)
         UI.logFilterButtons[i] = b
     end
@@ -864,8 +865,7 @@ function UI.BuildLog(page)
     function UI.RefreshLog()
         for _, b in ipairs(UI.logFilterButtons) do
             local on = b.filterKey == UI.logFilter
-            b.text:SetText(on and ("|cffffcc00" .. b.text:GetText():gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "") .. "|r")
-                or b.text:GetText():gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""))
+            b.text:SetText(on and ("|cffffcc00" .. b.plainLabel .. "|r") or b.plainLabel)
         end
 
         local now = ns.Now()

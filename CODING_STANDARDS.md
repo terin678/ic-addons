@@ -68,7 +68,8 @@ AddonName/
 ## Window layout
 
 - Every list has a column header row, in a frame **above** the ScrollFrame, never inside the
-  scroll child, so headers stay put while rows scroll.
+  scroll child, so headers stay put while rows scroll. A compact always-on HUD panel may use
+  section rows instead, as long as its rows are still fixed height and single line.
 - List rows are fixed height and single line. Cells use `SetWordWrap(false)` (plus
   `SetMaxLines(1)` where it exists) and truncate; the full text goes in a hover tooltip or a
   detail panel. Never let a row's text decide the row's height, and never measure wrapped
