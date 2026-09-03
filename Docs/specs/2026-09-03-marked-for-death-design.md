@@ -162,12 +162,15 @@ seatPlan = {
     [5] = { intent = "SHEEP", ordinal = 1, pin = "Grimmtusk" },
 }
 
--- Mob rule. Position in its instance list is its priority; index 1 is highest.
+-- Mob rule. rank is priority, lower wins, spaced by 10 so the editor can insert
+-- without renumbering. An explicit rank rather than list position is what makes
+-- rule sets authored by different players mergeable (section 8).
 -- npcID is the match key. name is for display and as a fallback match.
 {
     npcID    = 22890,
     name     = "Illidari Nightlord",
     intent   = "SHEEP",
+    rank     = 20,
     fallback = "KILL",      -- optional, used when intent has no owned seat
     maxCount = 3,           -- optional cap on simultaneous marks for this npcID
 }
@@ -202,7 +205,7 @@ always produce the same output table, with no reliance on table iteration order.
    Mobs without a rule are never marked. The addon does not guess.
 3. Apply `locked` first. Locked assignments keep their icon and consume their seat, so a
    combat lock survives re-optimization.
-4. Sort the remaining candidates by `(rule priority, key ascending)`. The key tiebreak is
+4. Sort the remaining candidates by `(rule rank, key ascending)`. The key tiebreak is
    what removes sighting order from the result.
 5. For each candidate in order, take the lowest free owned seat of its intent. If no owned
    seat is free, retry once with `fallback`. If that also fails, leave it unmarked.
@@ -246,12 +249,55 @@ why rather than failing silently.
 print a warning naming the exact `/mfd fixcvars` command. CVars are never changed without
 the user asking.
 
-## 8. Authority and coverage merging
+## 8. Authority, rule merging and coverage merging
 
-**Election.** Every client broadcasts `HELLO` on load and on roster change. Authority
-score is leader (1000) over assistant (500) over neither (0), ties broken by name
-ascending. The winner broadcasts `ELECT` and then a `BEAT` heartbeat every 5 seconds.
-Peers re-elect after 15 seconds of silence. Every wait has a timeout.
+### Raid Lead designation
+
+A named **Raid Lead**, distinct from the game's raid leader. Set with `/mfd lead <name>`
+or from a dropdown in config listing raid members running the addon. Anyone holding the
+game's raid leader or assistant rank may set it. It persists in saved variables, so it
+survives a `/reload` and carries week to week, because it is usually the same person.
+
+Authority resolves as **designated lead if valid, elected otherwise**. Valid means present
+in the raid, online, and holding assist so they can actually place icons. If the lead
+becomes invalid the addon falls back to the election after a 10 second timeout and prints
+the reason. `/mfd status` always reports which mode is active and why.
+
+Designation conflicts resolve last-write-wins by timestamp, with game raid leader
+outranking assistant, then name ascending.
+
+### Election, as the fallback
+
+Every client broadcasts `HELLO` on load and on roster change. Authority score is leader
+(1000) over assistant (500) over neither (0), ties broken by name ascending. The winner
+broadcasts `ELECT` and then a `BEAT` heartbeat every 5 seconds. Peers re-elect after 15
+seconds of silence. Every wait has a timeout.
+
+### Rule merging
+
+Effective rules are the union of every participant's rule set, keyed by
+`(instanceKey, npcID)`. Where two contributors have a rule for the same mob, **the lead's
+wins outright**, including its rank. Where the lead has no rule for that mob, the
+remaining contributors resolve by name ascending. That is deterministic, so every client
+computes the same merged set from the same inputs.
+
+Explicit `rank` integers exist for this reason. Two people's list orderings for one
+instance have no defined interleaving, so position-as-priority cannot merge. Ranks sort.
+
+**Merging never writes to saved variables.** The merged set is computed in memory on every
+change. A participant's own rules stay exactly as they authored them, which means a
+contributor with unusual rules can never permanently alter anyone else's configuration.
+
+Merged rules render in amber with the contributing player's name, per the standards' color
+for external or derived values, and `/mfd status` reports the per-contributor counts
+("12 rules merged from Grimmtusk").
+
+**Transfer shape.** Peers send their own rule set to the lead once, gated on a version
+counter and cached per `(peer, version)`. The lead publishes back only a compact digest of
+ruled npcIDs, which is all a backup needs in order to decide which mobs are worth
+reporting as sightings. Full merged rules transfer only on demand, when someone opens the
+rule editor. Twenty five clients broadcasting complete rule sets would be reckless on a
+shared, throttled channel.
 
 **Sighting merge, and the reason coverage improves.** The candidate set differs per
 client, because nameplate visibility differs per client. Backups therefore do not
@@ -275,13 +321,18 @@ Prefix `MFD`, registered via `C_ChatInfo.RegisterAddonMessagePrefix`, guarded an
 
 | Type | Direction | Payload |
 | --- | --- | --- |
-| `H` | all | addon version, canMark, score, rules version |
-| `E` | winner | authority claim |
+| `H` | all | addon version, canMark, score, own rules version |
+| `L` | leader or assist | Raid Lead designation: name, setBy, setAt |
+| `E` | election winner | authority claim, only when no valid designation |
 | `B` | authority | heartbeat sequence |
 | `S` | backups | batched sightings, `key:npcID` pairs |
 | `A` | authority | assignments, `key:icon:intent:owner` |
 | `C` | backups | key applied by a backup |
-| `RV` `RQ` `RD` | authority / peers | rules version, request, chunked data |
+| `RV` | all | own rules version advertisement |
+| `RQ` | authority | request a peer's full rule set at a version |
+| `RD` | peers | own rule set, chunked, sent to the authority |
+| `RG` | authority | digest of ruled npcIDs, for sighting filtering |
+| `RM` | authority | merged rule set, on demand for the rule editor |
 | `PC` | all | raid check self-report |
 
 Wire identity is the compact `npcID:spawnUID` key rather than a full GUID, derived
@@ -289,12 +340,12 @@ identically on both sides, because full GUIDs waste most of a 240 byte message.
 
 **Rate limiting is mandatory, not defensive.** The addon message channel is throttled
 server side and that budget is shared with every other addon the player runs. All sends
-go through one queue capped at 8 messages per second with priority ordering: `B` and `A`
-first, then `S`, then `PC`, then `RD` last. Rule transfers are chunked at 240 bytes and
-carry a transfer timeout with a visible failure message.
+go through one queue capped at 8 messages per second with priority ordering: `B`, `A` and
+`L` first, then `S` and `RG`, then `PC`, then `RD` and `RM` last. Rule transfers are
+chunked at 240 bytes and carry a transfer timeout with a visible failure message.
 
-Rule sync is gated on a version counter plus a content hash, so a transfer only happens
-when rules actually changed.
+Rule sync is gated on a version counter plus a content hash, and cached per
+`(peer, version)`, so a transfer only happens when that peer's rules actually changed.
 
 ## 10. Mob database and search
 
@@ -325,9 +376,15 @@ mousing over as a rule, opening the editor pre-filled with the exact npcID and n
 Search exists for planning at a desk. The keybind is for planning in the instance, and it
 is the real answer to names being hard to find.
 
-**Rule editing.** Per instance, an ordered list. Priority is list position with up and
-down arrows and automatic renumbering, because hand-editing rank integers is miserable.
-Each row sets intent, optional fallback, optional max count.
+**Rule editing.** Per instance, a list sorted by `rank`. The user still reorders with up
+and down arrows and never types a number, because hand-editing rank integers is miserable.
+The arrows write the ranks, spaced by 10 so an insertion rarely renumbers anything. Each
+row sets intent, optional fallback, optional max count.
+
+Rules merged from other players appear in the same list in amber with the contributor's
+name and are read only. Editing one copies it into the local set first, which then wins
+under the merge rules if the editor is the Raid Lead, and is visible as a divergence
+otherwise.
 
 **Sharing.** A hand-rolled compact serializer plus base64, no external library. The repo
 does vendor libraries elsewhere (CutMaster ships LibStub and LibDBIcon), so this is a
@@ -403,12 +460,13 @@ Bag stock auditing was considered and declined by the user.
 ```lua
 {
     schemaVersion = 1,
-    seatPlan      = {},   -- [icon] = { intent, ordinal, pin }
-    rules         = {},   -- [instanceKey] = ordered list of rules
-    rulesVersion  = { counter = 0, hash = "", owner = "" },
-    learnedMobs   = {},   -- [npcID] = { name, zone, seenAt }
-    settings      = {},
-    lastTestRun   = {},
+    seatPlan       = {},  -- [icon] = { intent, ordinal, pin }
+    rules          = {},  -- [instanceKey] = list of rules, sorted by rank
+    rulesVersion   = { counter = 0, hash = "" },
+    designatedLead = { name = "", setBy = "", setAt = 0 },
+    learnedMobs    = {},  -- [npcID] = { name, zone, seenAt }
+    settings       = {},
+    lastTestRun    = {},
 }
 ```
 
@@ -417,6 +475,9 @@ Bag stock auditing was considered and declined by the user.
 Every field is defaulted on `ADDON_LOADED` through an `ApplyDefaults` walk. Schema changes
 migrate in place, keep reading the previous shape for one version, and never delete user
 data. Timestamps are `time()` integers.
+
+`rules` holds only what this player authored. Rules merged from other participants are
+never written here. They live in memory for the session and are recomputed on change.
 
 ## 14. Commands and keybinds
 
@@ -428,6 +489,7 @@ Every command appears in `/mfd help` with a one line description.
 | `/mfd config` | seat plan and settings |
 | `/mfd rules` | rule editor and mob search |
 | `/mfd add` | add current target or mouseover as a rule |
+| `/mfd lead <name>` | designate the Raid Lead, or clear it with no argument |
 | `/mfd mark` | force a full re-mark of the visible pack |
 | `/mfd clear` | clear all icons the addon placed |
 | `/mfd buffs` | quick buff board |
@@ -448,7 +510,8 @@ panel.
 - Every wait is a state machine with a timeout and a visible failure message: rule
   transfer, election, self-report request.
 - Anything that can silently do nothing prints why: no assist, nameplates disabled, no
-  rules for this instance, no seat owner for an intent, all icons consumed.
+  rules for this instance, no seat owner for an intent, all icons consumed, or a
+  designated Raid Lead who is absent, offline or without assist.
 - Errors also go to `UIErrorsFrame` per the standards.
 
 ## 16. Testing
@@ -465,6 +528,12 @@ loop for the allocation logic, which is where the user's duplicate and priority 
 The in-game `/mfd selftest` ships regardless so correctness is checkable on the live
 client.
 
+`Rules` merging gets its own cases, because a merge that is not deterministic produces
+exactly the disagreement between markers this design exists to prevent: lead wins a
+conflict, name-ascending resolves a conflict the lead is absent from, ranks from different
+contributors interleave in a stable order, and merging the same inputs in a different
+arrival order yields an identical table.
+
 In-game verification per the repo rule: deploy, `/reload`, run the commands, check
 BugSack, and state explicitly in the PR whether in-game testing actually happened.
 
@@ -476,7 +545,7 @@ but this client is on `C:\`, so deploys need the override.
 1. `Core`, `Helpers`, `Seats`, `Rules`, `Allocator`, `Tests`. Pure, fully unit tested, no
    game needed.
 2. `Candidates`, `Marker`. Marking works single player.
-3. `Comms`. Election, sighting merge, rule sync.
+3. `Comms`. Raid Lead designation, election fallback, rule merging, sighting merge.
 4. `UI_Config`. Seat editor, rule editor, search, add-target keybind.
 5. `UI_Assignments` and announcements.
 6. `Data_Auras`, `RaidCheck`, `UI_RaidCheck`. Grid, buff board, callouts.
@@ -494,6 +563,14 @@ but this client is on `C:\`, so deploys need the override.
 - **Marking requires leader or assist.** Cannot be worked around, only reported clearly.
 - **Nameplate distance cap** still bounds the union of coverage. More users widens it but
   does not remove it.
+- **Merged rules changing behavior.** A contributor's rules become raid behavior for mobs
+  the lead has not covered. Mitigated by amber provenance in the rule list, per-contributor
+  counts in `/mfd status`, and the fact that merging never touches saved variables. Not
+  eliminated. If it proves noisy in practice, a trusted-contributor list is the next step.
+- **Protocol version skew.** Participants on different addon versions may disagree about
+  message shapes. `HELLO` carries the addon version, mismatched peers are excluded from
+  merging and sighting rather than half-trusted, and the exclusion is reported in
+  `/mfd status` instead of failing quietly.
 - **Combined scope.** Marking and raid check are independent subsystems in one addon at
   the user's explicit direction. The file layout keeps them separable if that is ever
   revisited.
