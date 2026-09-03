@@ -29,7 +29,11 @@ The window grows taller on the History tab.
 
 - Click "Add Item" on Materials or Products, or drag an item onto the drop row at the
   bottom of any list to add it with defaults.
-- Click the low or high cell to set a custom bound. Custom bounds show a `*`.
+- Click the low or high cell to set a custom bound. Custom bounds show a `*`. When you
+  have not set one, the bound comes from TSM's averages (the lower of 60d and 14d for low,
+  the higher for high) and shows a `~`; with no TSM data it falls back to the min and max
+  of your scans. The same bounds drive every color grade, the Stores values, and the
+  Movers tab, and the set-price dialog starts from them.
 - Arrows reorder rows, the refresh icon scans one item, X removes it.
 
 ## Scanning

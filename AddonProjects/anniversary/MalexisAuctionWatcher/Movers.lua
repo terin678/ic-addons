@@ -17,12 +17,28 @@ function MAW:MoverSetting(key)
     return v
 end
 
--- Low/high bounds for an item: custom bounds win, else min/max of recorded buyouts
+-- Low/high bounds for an item, with where each came from. Used everywhere a bound is read.
+-- Priority: custom bound -> TSM averages (lower/higher of 60d and 14d) -> min/max of recorded buyouts.
+-- Returns low, high, lowSource, highSource  (sources: "custom", "tsm", "scan")
 function MAW:GetPriceBounds(itemName)
     local db = self:GetActiveDB()
     local itemData = db.items[itemName]
     if not itemData then return nil end
+
     local low, high = itemData.customLow, itemData.customHigh
+    local lowSrc, highSrc = low and "custom" or nil, high and "custom" or nil
+
+    if not low or not high then
+        local ref = itemData.tsmRef
+        local tsmOn = self.sources and self.sources.tsm and self.sources.tsm.available and self:IsSourceEnabled("tsm")
+        if tsmOn and ref and (ref.market or ref.historical) then
+            local a, b = ref.market or ref.historical, ref.historical or ref.market
+            local tLow, tHigh = math.min(a, b), math.max(a, b)
+            if not low then low, lowSrc = tLow, "tsm" end
+            if not high then high, highSrc = tHigh, "tsm" end
+        end
+    end
+
     if not low or not high then
         local minB, maxB
         for _, entry in ipairs(itemData.prices or {}) do
@@ -32,11 +48,14 @@ function MAW:GetPriceBounds(itemName)
                 if not maxB or u > maxB then maxB = u end
             end
         end
-        low = low or minB
-        high = high or maxB
+        if not low and minB then low, lowSrc = minB, "scan" end
+        if not high and maxB then high, highSrc = maxB, "scan" end
     end
+
     if not low or not high or high <= 0 then return nil end
-    return low, high
+    -- Keep the pair ordered if a custom bound crosses a derived one
+    if low > high then low, high = high, low; lowSrc, highSrc = highSrc, lowSrc end
+    return low, high, lowSrc, highSrc
 end
 
 local function Owned(self, itemName)

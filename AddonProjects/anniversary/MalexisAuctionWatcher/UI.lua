@@ -121,20 +121,21 @@ local function CalculatePriceStats(itemName)
     local itemData = db.items[itemName]
     local prices = itemData.prices
 
-    -- If no prices yet, return custom prices if set, otherwise zeros (still show in list)
+    -- If no prices yet, still show the row with whatever bounds exist (custom, TSM, or none)
     if #prices == 0 then
-        local low = itemData.customLow or 0
-        local high = itemData.customHigh or 0
-        local average = (low + high) / 2
+        local low, high, lowSrc, highSrc = MAW:GetPriceBounds(itemName)
+        low, high = low or 0, high or 0
         return {
             low = low,
-            average = average,
+            average = (low + high) / 2,
             high = high,
             today = 0,
             todayBuyout = 0,
             todayBid = 0,
-            isCustomLow = itemData.customLow ~= nil,
-            isCustomHigh = itemData.customHigh ~= nil,
+            isCustomLow = lowSrc == "custom",
+            isCustomHigh = highSrc == "custom",
+            isTsmLow = lowSrc == "tsm",
+            isTsmHigh = highSrc == "tsm",
             itemType = itemData.itemType or "material",
             noPriceData = true
         }
@@ -143,48 +144,25 @@ local function CalculatePriceStats(itemName)
     -- Get most recent price (today)
     local today = prices[1]
 
-    -- Check if custom bounds are set
-    local low, high
-    if itemData.customLow then
-        low = itemData.customLow
-    end
-    if itemData.customHigh then
-        high = itemData.customHigh
-    end
+    -- Bounds: custom -> TSM averages -> scan min/max (one shared function for every tab)
+    local low, high, lowSrc, highSrc = MAW:GetPriceBounds(itemName)
 
-    -- Calculate low, average, high from all prices if not custom set
-    local minBids = {}
     local buyouts = {}
-
     for _, entry in ipairs(prices) do
-        if entry.minBid and entry.minBid > 0 then
-            table.insert(minBids, entry.minBidPerUnit)
-        end
         if entry.buyout and entry.buyout > 0 then
             table.insert(buyouts, entry.buyoutPerUnit)
         end
     end
 
-    if #buyouts == 0 then
+    if not low or not high then
         return nil
     end
 
-    -- Calculate statistics on buyout prices (per unit)
-    table.sort(buyouts)
-    if not low then
-        low = buyouts[1]
-    end
-    if not high then
-        high = buyouts[#buyouts]
-    end
-
-    -- Calculate average: if custom bounds are set, use midpoint; otherwise use actual average
+    -- Average: midpoint when either bound is custom or TSM-derived; else the scan average
     local average
-    if itemData.customLow or itemData.customHigh then
-        -- Use midpoint of low and high when custom bounds are set
+    if lowSrc ~= "scan" or highSrc ~= "scan" or #buyouts == 0 then
         average = (low + high) / 2
     else
-        -- Use actual average from price data
         local sum = 0
         for _, price in ipairs(buyouts) do
             sum = sum + price
@@ -199,8 +177,10 @@ local function CalculatePriceStats(itemName)
         today = today.buyoutPerUnit > 0 and today.buyoutPerUnit or today.minBidPerUnit,
         todayBuyout = today.buyoutPerUnit,
         todayBid = today.minBidPerUnit,
-        isCustomLow = itemData.customLow ~= nil,
-        isCustomHigh = itemData.customHigh ~= nil,
+        isCustomLow = lowSrc == "custom",
+        isCustomHigh = highSrc == "custom",
+        isTsmLow = lowSrc == "tsm",
+        isTsmHigh = highSrc == "tsm",
         itemType = itemData.itemType or "material"
     }
 end
@@ -1062,6 +1042,8 @@ function MAWUI:RefreshData()
             local lowText = FormatMoney(stats.low)
             if stats.isCustomLow then
                 lowText = lowText .. "*"
+            elseif stats.isTsmLow then
+                lowText = lowText .. "~"
             end
             local lowColor = invertColors and COLOR_HIGH or COLOR_LOW
             local lowCell = CreateCell(scrollChild, lowText, lowColor, CELL_WIDTH, CELL_HEIGHT, true, function()
@@ -1083,6 +1065,8 @@ function MAWUI:RefreshData()
             local highText = FormatMoney(stats.high)
             if stats.isCustomHigh then
                 highText = highText .. "*"
+            elseif stats.isTsmHigh then
+                highText = highText .. "~"
             end
             local highColor = invertColors and COLOR_LOW or COLOR_HIGH
             local highCell = CreateCell(scrollChild, highText, highColor, CELL_WIDTH, CELL_HEIGHT, true, function()
@@ -1124,7 +1108,7 @@ function MAWUI:RefreshData()
     legend:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", PADDING, yOffset - 2)
     legend.text = legend:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     legend.text:SetPoint("LEFT")
-    legend.text:SetText("Today: no tag = your scan, |cffe0b060[A]|r = Auctionator, |cffe0b060[T]|r = TSM. TSM 60d/14d = TSM averages (region values when the realm has none), colored against your low/high. Hover for the full TSM picture.")
+    legend.text:SetText("Today: no tag = your scan, |cffe0b060[A]|r = Auctionator, |cffe0b060[T]|r = TSM. TSM 60d/14d = TSM averages (region values when the realm has none). low/high: * = set by you, ~ = from TSM, plain = your scans.")
     legend.text:SetTextColor(0.6, 0.6, 0.6)
     table.insert(mainFrame.rows, legend)
     yOffset = yOffset - 16
