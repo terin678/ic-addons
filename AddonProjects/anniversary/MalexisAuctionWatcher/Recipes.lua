@@ -460,8 +460,44 @@ function MAW:RepairGemPresetData()
             end
         end
     end
-    if fixedItems > 0 or fixedRecipes > 0 then
-        print(string.format("%s: Repaired gem preset data (%d item IDs, %d recipe materials)", addonName, fixedItems, fixedRecipes))
+    -- Alchemy preset recipes saved by builds before 1.13.0: bring materials in line with Wowhead data
+    local alchemyByProduct = {}
+    for _, r in ipairs(self.PRESET_ALCHEMY or {}) do
+        alchemyByProduct[r.product.name] = r
+    end
+    local fixedAlchemy = 0
+    for _, db in ipairs({ MalexisAuctionWatcherDB, MalexisAuctionWatcherCharDB }) do
+        if db and db.recipes then
+            for _, recipe in ipairs(db.recipes) do
+                local r = alchemyByProduct[recipe.product]
+                if r and recipe.profession == "Alchemy" and not (recipe.note or ""):find("Imported") then
+                    local want = {}
+                    for _, m in ipairs(r.mats) do
+                        table.insert(want, m.vendor and { item = m.name, count = m.count, vendor = m.vendor } or { item = m.name, count = m.count })
+                        if not m.vendor and db.items and not db.items[m.name] then
+                            self:AddItemByID(m.name, m.id, "material")
+                        end
+                    end
+                    local same = #want == #(recipe.materials or {})
+                    if same then
+                        for i, m in ipairs(want) do
+                            local have = recipe.materials[i]
+                            if not have or have.item ~= m.item or have.count ~= m.count then same = false break end
+                        end
+                    end
+                    if not same or (recipe.productCount or 1) ~= (r.made or 1) then
+                        recipe.materials = want
+                        recipe.productCount = r.made or 1
+                        recipe.note = (r.kind == "transmute") and "Transmute: shares the daily transmute cooldown" or nil
+                        fixedAlchemy = fixedAlchemy + 1
+                    end
+                end
+            end
+        end
+    end
+
+    if fixedItems > 0 or fixedRecipes > 0 or fixedAlchemy > 0 then
+        print(string.format("%s: Repaired preset data (%d item IDs, %d gem recipes, %d alchemy recipes)", addonName, fixedItems, fixedRecipes, fixedAlchemy))
     end
 end
 
