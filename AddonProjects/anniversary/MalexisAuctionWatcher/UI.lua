@@ -344,13 +344,19 @@ end
 
 
 -- Header cells for the TSM columns; returns the new x
+-- A column header cell in the fixed strip (parent is always mainFrame.headerFrame)
+local function HeaderCell(text, color, width, x, y)
+    local header = CreateCell(mainFrame.headerFrame, text, color, width, HEADER_HEIGHT)
+    header:SetPoint("TOPLEFT", mainFrame.headerFrame, "TOPLEFT", x, y or 0)
+    table.insert(mainFrame.headerRows, header)
+    return header
+end
+
 AddTsmHeaders = function(parent, x, y)
     if not TsmColumnsShown() then return x end
     for _, col in ipairs(TSM_COLUMNS) do
-        local header = CreateCell(parent, col.header, { r = 0.3, g = 0.2, b = 0.4 }, TSM_CELL_WIDTH, HEADER_HEIGHT)
-        header:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
+        local header = HeaderCell(col.header, { r = 0.3, g = 0.2, b = 0.4 }, TSM_CELL_WIDTH, x, y)
         header.label:SetTextColor(0.9, 0.7, 1)
-        table.insert(mainFrame.rows, header)
         x = x + TSM_CELL_WIDTH
     end
     return x
@@ -712,8 +718,16 @@ function MAWUI:CreateUI()
     mainFrame.moversTab = CreateTabButton(controlFrame, "Movers", "movers", 524)
 
     -- Scroll frame (below control section and tabs)
+    -- Fixed header strip: column headers (and the Recipes toolbar) live here, outside the scroll
+    local headerFrame = CreateFrame("Frame", nil, mainFrame)
+    headerFrame:SetPoint("TOPLEFT", controlFrame, "BOTTOMLEFT", 0, -TAB_HEIGHT - 5)
+    headerFrame:SetPoint("TOPRIGHT", mainFrame.InsetBg or mainFrame, "TOPRIGHT", -24, 0)
+    headerFrame:SetHeight(HEADER_HEIGHT)
+    mainFrame.headerFrame = headerFrame
+    mainFrame.headerRows = {}
+
     local scrollFrame = CreateFrame("ScrollFrame", nil, mainFrame, "UIPanelScrollFrameTemplate")
-    scrollFrame:SetPoint("TOPLEFT", controlFrame, "BOTTOMLEFT", 0, -TAB_HEIGHT - 5)
+    scrollFrame:SetPoint("TOPLEFT", headerFrame, "BOTTOMLEFT", 0, 0)
     scrollFrame:SetPoint("BOTTOMRIGHT", mainFrame.InsetBg or mainFrame, "BOTTOMRIGHT", -24, 4)
 
     local scrollChild = CreateFrame("Frame", nil, scrollFrame)
@@ -795,6 +809,12 @@ function MAWUI:RefreshData()
         row:Hide()
     end
     mainFrame.rows = {}
+    for _, row in ipairs(mainFrame.headerRows) do
+        row:Hide()
+    end
+    mainFrame.headerRows = {}
+    -- Tabs without column headers collapse the strip; tabs with one set it in their render
+    mainFrame.headerFrame:SetHeight((currentTab == "history" or currentTab == "movers") and 1 or HEADER_HEIGHT)
 
     local yOffset = -PADDING
     local scrollChild = mainFrame.scrollChild
@@ -888,12 +908,10 @@ function MAWUI:RefreshData()
             width = CELL_WIDTH  -- Price columns
         end
 
-        local header = CreateCell(scrollChild, headerText, {r=0.2, g=0.2, b=0.4}, width, HEADER_HEIGHT)
-        header:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", headerX, yOffset)
+        local header = HeaderCell(headerText, {r=0.2, g=0.2, b=0.4}, width, headerX, 0)
         headerX = headerX + width
-        table.insert(mainFrame.rows, header)
         if i == 2 then
-            headerX = AddTsmHeaders(scrollChild, headerX, yOffset)
+            headerX = AddTsmHeaders(mainFrame.headerFrame, headerX, 0)
         end
 
         if i == 3 then
@@ -908,8 +926,6 @@ function MAWUI:RefreshData()
             header.label:SetTextColor(1, 1, 1)
         end
     end
-
-    yOffset = yOffset - HEADER_HEIGHT
 
     -- Add item rows (filtered by current tab)
     local MAW = _G.MalexisAuctionWatcher
@@ -1133,17 +1149,13 @@ function MAWUI:RenderStoresTab(scrollChild, yOffset)
     local headerX = PADDING
 
     for i, headerText in ipairs(headers) do
-        local header = CreateCell(scrollChild, headerText, {r=0.2, g=0.2, b=0.4}, widths[i], HEADER_HEIGHT)
-        header:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", headerX, yOffset)
+        local header = HeaderCell(headerText, {r=0.2, g=0.2, b=0.4}, widths[i], headerX, 0)
         headerX = headerX + widths[i]
-        table.insert(mainFrame.rows, header)
         header.label:SetTextColor(1, 1, 1)
         if i == 1 then
-            headerX = AddTsmHeaders(scrollChild, headerX, yOffset)
+            headerX = AddTsmHeaders(mainFrame.headerFrame, headerX, 0)
         end
     end
-
-    yOffset = yOffset - HEADER_HEIGHT
 
     -- Get inventory counts from Core
     local counts = MAW and MAW:GetAllInventoryCounts() or {}
@@ -1995,16 +2007,18 @@ function MAWUI:RenderRecipesTab(scrollChild, yOffset)
             end
         end, "MENU")
     end
-    local presetBtn = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate")
+    local hf = mainFrame.headerFrame
+    hf:SetHeight(30 + HEADER_HEIGHT)
+    local presetBtn = CreateFrame("Button", nil, hf, "UIPanelButtonTemplate")
     presetBtn:SetSize(120, 22)
-    presetBtn:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", PADDING, yOffset)
+    presetBtn:SetPoint("TOPLEFT", hf, "TOPLEFT", PADDING, -2)
     presetBtn:SetText("Presets...")
     presetBtn:SetScript("OnClick", function(self)
         ToggleDropDownMenu(1, nil, mainFrame.presetMenu, self, 0, 0)
     end)
-    table.insert(mainFrame.rows, presetBtn)
+    table.insert(mainFrame.headerRows, presetBtn)
 
-    local addRecipeBtn = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate")
+    local addRecipeBtn = CreateFrame("Button", nil, hf, "UIPanelButtonTemplate")
     addRecipeBtn:SetSize(110, 22)
     addRecipeBtn:SetPoint("LEFT", presetBtn, "RIGHT", 6, 0)
     addRecipeBtn:SetText("Add Recipe")
@@ -2013,11 +2027,11 @@ function MAWUI:RenderRecipesTab(scrollChild, yOffset)
             _G.MalexisAuctionWatcherRecipeDialog.Show()
         end
     end)
-    table.insert(mainFrame.rows, addRecipeBtn)
+    table.insert(mainFrame.headerRows, addRecipeBtn)
 
     -- Price basis: cycles Latest -> TSM 14d -> TSM 60d
     local basisDef = MAW:PriceBasisDef(MAWUI.recipeBasis)
-    local basisBtn = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate")
+    local basisBtn = CreateFrame("Button", nil, hf, "UIPanelButtonTemplate")
     basisBtn:SetSize(130, 22)
     basisBtn:SetPoint("LEFT", addRecipeBtn, "RIGHT", 6, 0)
     basisBtn:SetText("Prices: " .. basisDef.label)
@@ -2045,27 +2059,20 @@ function MAWUI:RenderRecipesTab(scrollChild, yOffset)
         basisBtn:SetText("Prices: Latest")
         MAWUI.recipeBasis = "latest"
     end
-    table.insert(mainFrame.rows, basisBtn)
+    table.insert(mainFrame.headerRows, basisBtn)
 
-    yOffset = yOffset - 30
-
-    -- Headers (first a narrow controls column for the per-row refresh icon)
+    -- Column headers in the strip, below the toolbar (first a narrow controls column)
     local columns = RecipeColumns()
     local totalWidth = RECIPE_CONTROLS_WIDTH
     local x = PADDING
-    local ctlHeader = CreateCell(scrollChild, "", { r = 0.2, g = 0.2, b = 0.4 }, RECIPE_CONTROLS_WIDTH, HEADER_HEIGHT)
-    ctlHeader:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", x, yOffset)
-    table.insert(mainFrame.rows, ctlHeader)
+    HeaderCell("", { r = 0.2, g = 0.2, b = 0.4 }, RECIPE_CONTROLS_WIDTH, x, -30)
     x = x + RECIPE_CONTROLS_WIDTH
     for _, col in ipairs(columns) do
-        local header = CreateCell(scrollChild, col.header, col.basis and { r = 0.3, g = 0.2, b = 0.4 } or { r = 0.2, g = 0.2, b = 0.4 }, col.width, HEADER_HEIGHT)
-        header:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", x, yOffset)
+        local header = HeaderCell(col.header, col.basis and { r = 0.3, g = 0.2, b = 0.4 } or { r = 0.2, g = 0.2, b = 0.4 }, col.width, x, -30)
         header.label:SetTextColor(col.basis and 0.9 or 1, col.basis and 0.7 or 1, 1)
-        table.insert(mainFrame.rows, header)
         x = x + col.width
         totalWidth = totalWidth + col.width
     end
-    yOffset = yOffset - HEADER_HEIGHT
 
     local recipes = MAW:GetRecipes()
     local rows = {}
