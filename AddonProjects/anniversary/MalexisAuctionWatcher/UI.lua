@@ -627,6 +627,26 @@ function MAWUI:CreateUI()
     end)
     mainFrame.addBtn = addBtn
 
+    -- Sort toggle for Materials/Products: by mover position or by your manual order
+    local sortBtn = CreateFrame("Button", nil, controlFrame, "UIPanelButtonTemplate")
+    sortBtn:SetSize(120, 25)
+    sortBtn:SetPoint("LEFT", addBtn, "RIGHT", 5, 0)
+    sortBtn:SetText("Sort: Movers")
+    sortBtn:SetScript("OnClick", function()
+        local s = MalexisAuctionWatcherDB.settings
+        s.sortMode = (s.sortMode == "manual") and "movers" or "manual"
+        MAWUI:RefreshData()
+    end)
+    sortBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:AddLine("Row order")
+        GameTooltip:AddLine("Movers: materials cheapest-in-range first, products highest-in-range first. Items without a range go last.", 1, 1, 1)
+        GameTooltip:AddLine("Manual: the order you set with the arrows.", 1, 1, 1)
+        GameTooltip:Show()
+    end)
+    sortBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    mainFrame.sortBtn = sortBtn
+
     -- Refresh-only button (Stores: counts, Recipes: table). No scan, just recompute.
     local refreshBtn = CreateFrame("Button", nil, controlFrame, "UIPanelButtonTemplate")
     refreshBtn:SetSize(130, 25)
@@ -890,6 +910,13 @@ function MAWUI:RefreshData()
     else
         mainFrame.addBtn:Show()
     end
+    local sortMode = (MalexisAuctionWatcherDB.settings.sortMode == "manual") and "manual" or "movers"
+    if currentTab == "materials" or currentTab == "products" then
+        mainFrame.sortBtn:SetText(sortMode == "manual" and "Sort: Manual" or "Sort: Movers")
+        mainFrame.sortBtn:Show()
+    else
+        mainFrame.sortBtn:Hide()
+    end
 
     -- Determine if we should invert colors (products = true)
     local invertColors = (currentTab == "products")
@@ -947,12 +974,26 @@ function MAWUI:RefreshData()
         end
     end
 
-    -- Sort by order field
-    table.sort(sortedItems, function(a, b)
-        local orderA = a.data.order or 0
-        local orderB = b.data.order or 0
-        return orderA < orderB
-    end)
+    -- Sort: by mover position (materials cheap first, products high first), or manual order
+    if sortMode == "movers" then
+        for _, item in ipairs(sortedItems) do
+            item.pos = MAW:GetRangePosition(item.name)
+        end
+        table.sort(sortedItems, function(a, b)
+            if (a.pos == nil) ~= (b.pos == nil) then
+                return a.pos ~= nil
+            end
+            if a.pos ~= nil and a.pos ~= b.pos then
+                if targetType == "material" then return a.pos < b.pos end
+                return a.pos > b.pos
+            end
+            return (a.data.order or 0) < (b.data.order or 0)
+        end)
+    else
+        table.sort(sortedItems, function(a, b)
+            return (a.data.order or 0) < (b.data.order or 0)
+        end)
+    end
 
     -- Render sorted items
     for _, item in ipairs(sortedItems) do

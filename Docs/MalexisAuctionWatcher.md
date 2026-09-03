@@ -34,7 +34,10 @@ The window grows taller on the History tab.
   the higher for high) and shows a `~`; with no TSM data it falls back to the min and max
   of your scans. The same bounds drive every color grade, the Stores values, and the
   Movers tab, and the set-price dialog starts from them.
-- Arrows reorder rows, the refresh icon scans one item, X removes it.
+- Rows sort by mover position by default: Materials cheapest-in-range first, Products
+  highest-in-range first, items with no range at the bottom. The "Sort" button in the
+  control bar switches to the manual order you set with the arrows, and back.
+- Arrows reorder rows (manual order), the refresh icon scans one item, X removes it.
 
 ## Scanning
 

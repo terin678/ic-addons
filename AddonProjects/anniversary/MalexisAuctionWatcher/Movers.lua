@@ -58,6 +58,16 @@ function MAW:GetPriceBounds(itemName)
     return low, high, lowSrc, highSrc
 end
 
+-- Position of today's price within the item's range: 0 = at low, 1 = at high. nil without data.
+function MAW:GetRangePosition(itemName)
+    local today = self:GetUnitPrice(itemName)
+    local low, high = self:GetPriceBounds(itemName)
+    if not today or not low or not high or high <= low then
+        return nil
+    end
+    return (today - low) / (high - low)
+end
+
 local function Owned(self, itemName)
     return (self:CountInventory(itemName) or 0) + (self:CountBank(itemName) or 0)
 end
