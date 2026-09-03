@@ -273,6 +273,13 @@ local function AttachSourceTooltip(cell, itemName, itemData)
         GameTooltip:AddDoubleLine("Latest price", FormatMoney(unit or 0), 1, 1, 1, 1, 0.8, 0.5)
         GameTooltip:AddDoubleLine("Source", MAW.SourceLabel and MAW:SourceLabel(latest.source) or (latest.source or "scan"), 1, 1, 1, 0.9, 0.7, 0.4)
         GameTooltip:AddDoubleLine("Recorded", latest.date or "?", 1, 1, 1, 0.8, 0.8, 0.8)
+        for _, line in ipairs(MAW:TsmTooltipLines(itemData)) do
+            if line.header then
+                GameTooltip:AddLine(line.header, 0.9, 0.7, 1)
+            else
+                GameTooltip:AddDoubleLine("  " .. line.label, line.value, 1, 1, 1, 1, 0.9, 0.6)
+            end
+        end
         GameTooltip:Show()
     end)
     cell:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -394,12 +401,21 @@ AddTsmCells = function(parent, x, y, itemName, itemData, stats)
             GameTooltip:AddLine(itemName)
             GameTooltip:AddLine(col.label, 0.9, 0.7, 1)
             if value and value > 0 then
-                GameTooltip:AddDoubleLine("Value", FormatMoney(value), 1, 1, 1, 1, 0.8, 0.5)
+                local usedKey = (col.key == "market") and ref.marketKey or ref.historicalKey
+                GameTooltip:AddDoubleLine("Value", FormatMoney(value) .. (usedKey and (" (" .. usedKey .. ")") or ""), 1, 1, 1, 1, 0.8, 0.5)
                 if ref.time then
                     GameTooltip:AddDoubleLine("Pulled", date("%Y-%m-%d %H:%M", ref.time), 1, 1, 1, 0.8, 0.8, 0.8)
                 end
                 if stats and stats.low and stats.high then
                     GameTooltip:AddDoubleLine("Your bounds", FormatMoney(stats.low) .. " - " .. FormatMoney(stats.high), 1, 1, 1, 0.8, 0.8, 0.8)
+                end
+                local MAW = _G.MalexisAuctionWatcher
+                for _, line in ipairs(MAW:TsmTooltipLines(itemData)) do
+                    if line.header then
+                        GameTooltip:AddLine(line.header, 0.9, 0.7, 1)
+                    else
+                        GameTooltip:AddDoubleLine("  " .. line.label, line.value, 1, 1, 1, 1, 0.9, 0.6)
+                    end
                 end
             else
                 GameTooltip:AddLine("No TSM data. Use Pull TSM on the History tab.", 0.7, 0.7, 0.7)
@@ -1098,7 +1114,7 @@ function MAWUI:RefreshData()
     legend:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", PADDING, yOffset - 2)
     legend.text = legend:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     legend.text:SetPoint("LEFT")
-    legend.text:SetText("Today: no tag = your scan, |cffe0b060[A]|r = Auctionator, |cffe0b060[T]|r = TSM. TSM 14d/60d = TSM averages, colored against your low/high. Hover for details.")
+    legend.text:SetText("Today: no tag = your scan, |cffe0b060[A]|r = Auctionator, |cffe0b060[T]|r = TSM. TSM 60d/14d = TSM averages (region values when the realm has none), colored against your low/high. Hover for the full TSM picture.")
     legend.text:SetTextColor(0.6, 0.6, 0.6)
     table.insert(mainFrame.rows, legend)
     yOffset = yOffset - 16

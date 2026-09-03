@@ -82,6 +82,12 @@ high bounds with the same gradient as Today, so a green TSM 14d on a material me
 wider market is cheaper than your recent scans. Hover a cell for the value, when it was
 pulled, and your bounds. A dash means TSM has no data for that item yet.
 
+On realms where TSM lacks realm-level Market Value or Historical, the columns fall back to
+the region figures (region market average, region historical, then region sale average),
+and the tooltip names which TSM field was used. The tooltip also lists everything else TSM
+reported for the item: min buyout, region sale rate and sold per day, your own Accounting
+buy and sell averages, vendor sell, and TSM crafting cost.
+
 ## History
 
 Prices are kept in daily buckets for 180 days by default (`/maw retention <days>`,
