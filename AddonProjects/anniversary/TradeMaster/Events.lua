@@ -19,11 +19,57 @@ local function HasRecipeLink(raw, profile)
     return raw:find(prefix, 1, true) ~= nil
 end
 
--- The index covers the ACTIVE profession only. Matching idle books would
--- invite people for orders we are not running.
+-- One index per scanned book. Invites cover every profession the character
+-- can craft for: a request is matched against each book and the one with the
+-- most hits handles it, the active profession breaking ties. Events.index is
+-- kept as the active book's index for callers that only care about that one.
 function Events.RebuildIndex()
-    Events.index = ns.Matcher.BuildIndex(ns.Book(), ns.Prof.Current())
+    Events.indexes = {}
+    for _, key in ipairs(ns.Prof.Known()) do
+        Events.indexes[key] = ns.Matcher.BuildIndex(ns.Prof.DB(key).book, ns.Prof.ByKey(key))
+    end
+    local active = ns.db and ns.db.activeProfession
+    Events.index = (active and Events.indexes[active])
+        or ns.Matcher.BuildIndex(ns.Book(), ns.Prof.Current())
     return Events.index
+end
+
+-- Pure. candidates = { { key = <profession>, index = <matcher index> }, ... }
+-- in priority order. Returns the candidate with the most matches and its hits;
+-- the first candidate with no hits when nothing matches anywhere.
+function Events.PickProfession(raw, norm, candidates)
+    local best, bestHits = nil, {}
+    for _, c in ipairs(candidates) do
+        local hits = ns.Matcher.Match(raw, norm, c.index)
+        if #hits > #bestHits then best, bestHits = c, hits end
+    end
+    return best or candidates[1], bestHits
+end
+
+-- Active profession first, then every other scanned book. Falls back to the
+-- active index alone (a generic, empty one before any scan) so the classifier
+-- can still be exercised with /tm try.
+local function Candidates()
+    if not Events.indexes then Events.RebuildIndex() end
+    local list = {}
+    local active = ns.db.activeProfession
+    if active and Events.indexes[active] then
+        list[1] = { key = active, index = Events.indexes[active] }
+    end
+    for _, key in ipairs(ns.Prof.Known()) do
+        if key ~= active and Events.indexes[key] then
+            list[#list + 1] = { key = key, index = Events.indexes[key] }
+        end
+    end
+    if #list == 0 then list[1] = { key = nil, index = Events.index } end
+    return list
+end
+
+local function AnyBookHas(itemID)
+    for _, key in ipairs(ns.Prof.Known()) do
+        if ns.Prof.DB(key).book[itemID] then return true end
+    end
+    return false
 end
 
 local function IsProductItem(profile, itemID)
@@ -38,11 +84,17 @@ end
 function Events.Process(text, author, source, opts)
     opts = opts or {}
     if not ns.db then return end
-    if not Events.index then Events.RebuildIndex() end
+    local candidates = Candidates()
 
-    local profile = ns.Prof.Current()
-    local book = ns.Book()
-    local ps = ns.PS()
+    -- Which book is answering. Set once the request has been matched.
+    local pick, profile, book, ps
+    local function Use(c)
+        pick = c
+        local pd = c.key and ns.Prof.DB(c.key)
+        profile = c.key and ns.Prof.ByKey(c.key) or ns.Prof.Current()
+        book = pd and pd.book or ns.Book()
+        ps = pd and pd.settings or ns.PS()
+    end
 
     local short = (author or ""):gsub("%-.*", "")
     if short == "" then return end
@@ -60,7 +112,8 @@ function Events.Process(text, author, source, opts)
 
     local norm = ns.Util.Normalize(text)
     local now = ns.Now()
-    local matched = ns.Matcher.Match(text, norm, Events.index)
+    local first, matched = Events.PickProfession(text, norm, candidates)
+    Use(first)
 
     -- A dry run must never touch persistent player state.
     local state = opts.dryRun and {} or ns.Players.Get(ns.db, short)
@@ -78,8 +131,9 @@ function Events.Process(text, author, source, opts)
         if combined ~= "" then
             combined = combined .. " " .. text
             local cnorm = ns.Util.Normalize(combined)
-            local cm = ns.Matcher.Match(combined, cnorm, Events.index)
+            local cpick, cm = Events.PickProfession(combined, cnorm, candidates)
             if #cm > 0 then
+                Use(cpick)
                 matched = cm
                 norm = cnorm
                 usedContext = true
@@ -88,6 +142,19 @@ function Events.Process(text, author, source, opts)
     end
     if isDirect and not opts.dryRun then
         ns.Players.PushRecent(state, text, now)
+    end
+
+    -- Matches you can't make for lack of a Bind on Pickup reagent are split
+    -- off: they still count for classification, but never for inviting.
+    local craftable, noMats = {}, {}
+    for _, h in ipairs(matched) do
+        local e = book[h.itemID]
+        local missing = e and ns.Scanner.MissingBoP(e) or {}
+        if #missing > 0 then
+            noMats[#noMats + 1] = { entry = e, missing = missing, hit = h }
+        else
+            craftable[#craftable + 1] = h
+        end
     end
 
     local filter = ps.filter
@@ -100,12 +167,12 @@ function Events.Process(text, author, source, opts)
     local namedUnknownItem = false
     if #matched == 0 then
         for _, id in ipairs(ns.Util.ExtractItemIDs(text)) do
-            if not book[id] and IsProductItem(profile, id) then
+            if not AnyBookHas(id) and IsProductItem(profile, id) then
                 namedUnknownItem = true
                 break
             end
         end
-        if not namedUnknownItem and ns.Matcher.NearMiss(norm, Events.index) then
+        if not namedUnknownItem and ns.Matcher.NearMiss(norm, pick.index) then
             namedUnknownItem = true
         end
     end
@@ -118,8 +185,13 @@ function Events.Process(text, author, source, opts)
         for _, l in ipairs(ns.Util.ExtractItemLinks(text)) do
             if matchedSet[l.id] then
                 canDo[#canDo + 1] = l.link
-            elseif not book[l.id] and IsProductItem(profile, l.id) then
+            elseif not AnyBookHas(l.id) and IsProductItem(profile, l.id) then
                 cannotDo[#cannotDo + 1] = l.link
+            end
+        end
+        if #craftable > 0 then
+            for _, nm in ipairs(noMats) do
+                cannotDo[#cannotDo + 1] = nm.entry.link or nm.entry.name
             end
         end
     end
@@ -130,6 +202,10 @@ function Events.Process(text, author, source, opts)
             blocked = "whisper invites disabled"
         elseif UnitInParty(short) or UnitInRaid(short) then
             blocked = "already grouped"
+        elseif not ns.InvitesOn() then
+            blocked = "invites off"
+        elseif #matched > 0 and #craftable == 0 then
+            blocked = "not enough " .. ns.Scanner.DescribeMissing(noMats[1].missing)
         else
             blocked = ns.Inviter.BlockReason(state, now, GetNumGroupMembers() or 0, ps.invite)
         end
@@ -156,7 +232,7 @@ function Events.Process(text, author, source, opts)
     end
 
     if result.reason ~= "no item match" and not opts.dryRun then
-        ns.Log.Add(short, text, matched, result, now)
+        ns.Log.Add(short, text, matched, result, now, book)
         if ns.db.settings.debug then
             ns.Print(ns.Log.Describe(ns.db.log[1]))
             ns.Print(ns.Log.DescribeHits(ns.db.log[1]))
@@ -167,8 +243,27 @@ function Events.Process(text, author, source, opts)
         state.awaitingItem = nil
     end
 
-    local willInvite = result.verdict == "invite" and not result.blocked
+    local willInvite = result.verdict == "invite" and not result.blocked and #craftable > 0
     local nounS = profile.craftNoun[1]
+
+    -- Everything they named needs a Bind on Pickup reagent you don't hold.
+    -- Tell them, on any channel where an invite would otherwise have gone out.
+    if #matched > 0 and #craftable == 0 and not opts.dryRun and result.verdict ~= "vetoed"
+        and (isDirect or result.verdict == "invite") then
+        local w = ps.invite.whisper
+        local first = noMats[1]
+        local item = first.entry.link or first.entry.name
+        ns.Print(string.format("|cffffcc00%s asked for %s but you lack %s.|r Not invited.",
+            short, item, ns.Scanner.DescribeMissing(first.missing, true)))
+        if w.enabled and w.autoReply then
+            ns.Inviter.Say(short, w.noMatsTemplate,
+                { mats = ns.Scanner.DescribeMissing(first.missing), item = item }, profile)
+        end
+        if isDirect and ns.db.settings.orders.captureTranscript then
+            ns.Orders.AddTranscript(short, "in", text, now)
+        end
+        return result
+    end
 
     if isWhisper and not opts.dryRun and result.verdict ~= "vetoed" then
         local w = ps.invite.whisper
@@ -182,12 +277,12 @@ function Events.Process(text, author, source, opts)
                 ns.Inviter.Say(short, w.partialTemplate, {
                     have = have,
                     lack = table.concat(cannotDo, " "),
-                })
+                }, profile)
                 ns.Print(string.format(
                     "|cffffcc00%s asked for %d %s, you have %d.|r Cannot do: %s",
                     short, #canDo + #cannotDo, profile.craftNoun[2], #canDo, table.concat(cannotDo, " ")))
             elseif state.awaitingItem and not willInvite and w.enabled and w.autoReply then
-                ns.Inviter.Say(short, w.confirmTemplate, { item = link })
+                ns.Inviter.Say(short, w.confirmTemplate, { item = link }, profile)
             end
             state.awaitingItem = nil
 
@@ -196,7 +291,7 @@ function Events.Process(text, author, source, opts)
             local mayReply = w.enabled and w.autoReply
                 and (w.autoSuggest or (asked and w.answerQuestions))
 
-            local family, ids, exactFamily = ns.Matcher.NearMiss(norm, Events.index)
+            local family, ids, exactFamily = ns.Matcher.NearMiss(norm, pick.index)
             local links = {}
             for _, id in ipairs(ids or {}) do
                 local b = book[id]
@@ -209,12 +304,12 @@ function Events.Process(text, author, source, opts)
             if fragment and w.enabled and w.autoReply then
                 local show = {}
                 for i = 1, math.min(3, #links) do show[i] = links[i] end
-                ns.Inviter.Say(short, w.askWhichTemplate, { items = table.concat(show, " ") })
+                ns.Inviter.Say(short, w.askWhichTemplate, { items = table.concat(show, " ") }, profile)
                 ns.Print(string.format(
                     "|cffffcc00%s typed a partial %s name.|r Asked which of: %s",
                     short, nounS, table.concat(show, " ")))
                 result.reason = "asked which " .. nounS
-                ns.Log.Add(short, text, matched, result, now)
+                ns.Log.Add(short, text, matched, result, now, book)
                 return result
             end
 
@@ -228,14 +323,14 @@ function Events.Process(text, author, source, opts)
                         "|cffffcc00%s asked for a %s you do not have.|r", short, nounS))
                 end
                 result.reason = "unknown " .. nounS
-                ns.Log.Add(short, text, matched, result, now)
+                ns.Log.Add(short, text, matched, result, now, book)
 
                 if mayReply then
                     if w.autoSuggest and #links > 0 then
                         while #links > 3 do table.remove(links) end
-                        ns.Inviter.Say(short, w.suggestTemplate, { items = table.concat(links, " ") })
+                        ns.Inviter.Say(short, w.suggestTemplate, { items = table.concat(links, " ") }, profile)
                     else
-                        ns.Inviter.Say(short, w.noneTemplate, {})
+                        ns.Inviter.Say(short, w.noneTemplate, {}, profile)
                     end
                 end
             end
@@ -247,11 +342,11 @@ function Events.Process(text, author, source, opts)
         local wanted = (isWhisper and o.autoFromWhisper)
             or (isParty and o.autoFromParty)
             or (not isDirect and o.autoFromInvite)
-        if wanted and result.verdict == "invite" and #matched > 0 then
+        if wanted and result.verdict == "invite" and #craftable > 0 then
             if usedContext then
                 ns.Print(string.format("|cff888888(matched %s using their previous message)|r", short))
             end
-            ns.Orders.Record(short, source, text, matched, now)
+            ns.Orders.Record(short, source, text, craftable, now, profile.key)
         end
         if isDirect and o.captureTranscript then
             ns.Orders.AddTranscript(short, "in", text, now)
@@ -259,7 +354,7 @@ function Events.Process(text, author, source, opts)
     end
 
     if willInvite and not opts.dryRun then
-        ns.Inviter.Invite(short, matched, { cannotDo = cannotDo })
+        ns.Inviter.Invite(short, craftable, { cannotDo = cannotDo, profession = profile.key })
     end
 
     return result

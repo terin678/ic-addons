@@ -13,7 +13,7 @@ local MAX_ITEMS_PER_WHISPER = 3
 
 -- Pure. Reasons the invite cannot happen regardless of message content.
 function Inviter.BlockReason(playerState, now, groupSize, settings)
-    if not settings.enabled then return "invites disabled" end
+    if settings.enabled == false then return "invites disabled" end
     if groupSize >= settings.maxParty then return "group full" end
     if playerState and playerState.lastInviteAt
         and (now - playerState.lastInviteAt) < settings.playerCooldownSec then
@@ -35,9 +35,12 @@ end
 function Inviter.Invite(name, matched, ctx)
     if not ns.Enabled() then return end
     local short = name:gsub("%-.*", "")
-    local settings = ns.PS().invite
-    local book = ns.Book()
-    local profile = ns.Prof.Current()
+    -- ctx.profession names the book that matched; older callers get the active one.
+    local key = ctx and ctx.profession
+    local pd = key and ns.Prof.DB(key)
+    local settings = (pd and pd.settings or ns.PS()).invite
+    local book = pd and pd.book or ns.Book()
+    local profile = key and ns.Prof.ByKey(key) or ns.Prof.Current()
     local now = ns.Now()
 
     DoInvite(short)
@@ -60,7 +63,8 @@ function Inviter.Invite(name, matched, ctx)
         lack[i] = ctx.cannotDo[i]
     end
 
-    ns.Print(string.format("invited %s for %s%s", short, haveText or ("a " .. profile.craftNoun[1]),
+    ns.Print(string.format("invited %s for %s%s%s", short, haveText or ("a " .. profile.craftNoun[1]),
+        (key and key ~= ns.db.activeProfession) and ("  |cff888888" .. profile.name .. "|r") or "",
         #lack > 0 and ("  |cffff9900cannot do: " .. table.concat(lack, " ") .. "|r") or ""))
 
     if not settings.whisper.enabled then return end
@@ -81,23 +85,27 @@ function Inviter.Invite(name, matched, ctx)
     end
 
     C_Timer.After(WHISPER_DELAY, function()
-        Inviter.Say(short, template, vars)
+        Inviter.Say(short, template, vars, profile)
     end)
 end
 
 -- Sends a whisper immediately, subject to the short conversational cooldown.
-function Inviter.Say(name, template, vars)
+-- profile picks whose templates and cooldown apply; defaults to the active one.
+function Inviter.Say(name, template, vars, profile)
     if not ns.Enabled() then return false end
     if not template or template == "" then return false end
+    profile = profile or ns.Prof.Current()
+    local pd = ns.db.professions and ns.db.professions[profile.key]
+    local inv = (pd and pd.settings or ns.PS()).invite
     local now = ns.Now()
     local state = ns.Players.Get(ns.db, name)
     local last = state.lastReplyAt or 0
-    if (now - last) < (ns.PS().invite.whisper.replyCooldownSec or 10) then
+    if (now - last) < (inv.whisper.replyCooldownSec or 10) then
         return false
     end
     state.lastReplyAt = now
 
-    local text = Inviter.Render(template, vars, name, ns.Prof.Current())
+    local text = Inviter.Render(template, vars, name, profile)
     SendChatMessage(text, "WHISPER", nil, name)
     Inviter.whisperCount = Inviter.whisperCount + 1
     if Inviter.whisperCount == WHISPER_WARN_AT then

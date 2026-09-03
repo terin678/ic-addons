@@ -18,12 +18,12 @@ function Orders.Open(player)
     return nil
 end
 
-function Orders.Create(player, source, requestText, matched, now, status)
+function Orders.Create(player, source, requestText, matched, now, status, profession)
     local o = {
         id = ns.db.nextOrderID,
         player = player,
         source = source,
-        profession = ns.db.activeProfession,
+        profession = profession or ns.db.activeProfession,
         requestText = ns.Util.StripEscapes(requestText or ""),
         createdAt = now,
         updatedAt = now,
@@ -62,10 +62,10 @@ end
 
 -- A repeat request from someone with an order already open updates it rather
 -- than creating a second one.
-function Orders.Record(player, source, text, matched, now)
+function Orders.Record(player, source, text, matched, now, profession)
     local o = Orders.Open(player)
     if not o then
-        o = Orders.Create(player, source, text, matched, now)
+        o = Orders.Create(player, source, text, matched, now, nil, profession)
         ns.Print(string.format("|cff44ff44order #%d opened|r for %s: %s",
             o.id, player, Orders.Summarise(o)))
         if ns.Tracker then ns.Tracker.Refresh() end

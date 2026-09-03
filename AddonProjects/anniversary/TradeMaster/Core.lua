@@ -2,7 +2,7 @@ local addonName, ns = ...
 
 ns.Util = ns.Util or {}
 
-local VERSION = "1.1.0"
+local VERSION = "1.2.0"
 
 -- Output goes straight into a chat frame rather than through the chat event
 -- system, so it has no message type and the chat settings UI cannot route it.
@@ -22,6 +22,30 @@ end
 -- Reading the UI, scanning, and the /tm try commands still work.
 function ns.Enabled()
     return not ns.db or ns.db.settings.enabled ~= false
+end
+
+-- Invites are one switch for every scanned book. Barking stays with the
+-- active profession (see ns.SetBark).
+function ns.InvitesOn()
+    return ns.Enabled() and (not ns.db or ns.db.settings.invites ~= false)
+end
+
+local function onoffText(v) return v and "|cff44ff44on|r" or "|cffff4444off|r" end
+
+function ns.SetBark(on)
+    local s = ns.PS().bark
+    s.enabled = on and true or false
+    if s.enabled then ns.Barker.Start(true) else ns.Barker.Stop() end
+    local p = ns.Prof.Current()
+    ns.Print("barking " .. onoffText(s.enabled)
+        .. (p.key ~= "generic" and (" for " .. p.name) or ""))
+    if ns.UI and ns.UI.Refresh then ns.UI.Refresh() end
+end
+
+function ns.SetInvites(on)
+    ns.db.settings.invites = on and true or false
+    ns.Print("invites " .. onoffText(on) .. " for every scanned profession")
+    if ns.UI and ns.UI.Refresh then ns.UI.Refresh() end
 end
 
 function ns.DeepCopy(t)
@@ -80,6 +104,7 @@ ns.Defaults = {
         tracker = { shown = false, autoShow = true, point = nil },
         debug = false,
         bookSort = "category",
+        invites = true,
     },
 }
 
@@ -161,6 +186,25 @@ frame:SetScript("OnEvent", function(self, event, ...)
         for key in pairs(ns.db.professions) do
             local pd = ns.Prof.DB(key)
             if pd then ns.Prof.MigratePlaceholders(pd.settings) end
+        end
+        -- 1.2.0 changed the default bark wording; a saved copy of the old
+        -- default follows it, a customised template is left alone.
+        for key, pd in pairs(ns.db.professions) do
+            local p = ns.Prof.ByKey(key)
+            if p and pd.settings and pd.settings.bark
+                and pd.settings.bark.template == ns.Prof.LegacyBarkTemplate(p) then
+                pd.settings.bark.template = p.templates.bark
+            end
+        end
+        -- Invites used to be switched per profession. One switch now covers
+        -- every book; a profession that had it off turns the whole thing off.
+        if ns.db.settings.invites == nil then ns.db.settings.invites = true end
+        for _, pd in pairs(ns.db.professions) do
+            local inv = pd.settings and pd.settings.invite
+            if inv and inv.enabled == false then
+                ns.db.settings.invites = false
+                inv.enabled = true
+            end
         end
         local imported = ImportCutMaster()
         if not ns.db.activeProfession then
@@ -301,8 +345,7 @@ local function HandleSlash(input)
                 h.qtyHint and (", qty " .. h.qtyHint) or ""))
         end
     elseif cmd == "invite" then
-        ps.invite.enabled = not ps.invite.enabled
-        ns.Print("auto invite " .. onoff(ps.invite.enabled))
+        ns.SetInvites(ns.db.settings.invites == false)
     elseif cmd == "bark" then
         local s = ps.bark
         local secs = tonumber(rest)
@@ -316,9 +359,7 @@ local function HandleSlash(input)
             ns.Print(string.format("barking every %d seconds.", s.intervalSec))
             ns.Barker.Start(true)
         else
-            s.enabled = not s.enabled
-            ns.Print("barking " .. onoff(s.enabled))
-            if s.enabled then ns.Barker.Start(true) else ns.Barker.Stop() end
+            ns.SetBark(not s.enabled)
         end
     elseif cmd == "disable" or cmd == "off" then
         ns.db.settings.enabled = false
@@ -327,7 +368,7 @@ local function HandleSlash(input)
     elseif cmd == "enable" or cmd == "on" then
         ns.db.settings.enabled = true
         if ps.bark.enabled then ns.Barker.Start() end
-        ns.Print("|cff44ff44enabled.|r Back to: auto invite " .. onoff(ps.invite.enabled)
+        ns.Print("|cff44ff44enabled.|r Back to: invites " .. onoff(ns.db.settings.invites ~= false)
             .. ", whisper invites " .. onoff(ps.invite.fromWhisper)
             .. ", barking " .. (ps.bark.enabled and ("|cff44ff44on|r every " .. ps.bark.intervalSec .. "s") or "|cffff4444off|r")
             .. ", trade fill " .. onoff(ns.db.settings.orders.autoFillTrade))
@@ -428,8 +469,8 @@ local function HandleSlash(input)
         end
         ns.Print(string.format("active profession: %s   known: %s",
             profile.key ~= "generic" and profile.name or "none", table.concat(ns.Prof.Known(), ", ")))
-        ns.Print(string.format("auto invite %s   barking %s (%ds, timer %s)   capture %s   debug %s",
-            onoff(ps.invite.enabled), onoff(ps.bark.enabled), ps.bark.intervalSec,
+        ns.Print(string.format("invites %s (all scanned)   barking %s (%ds, timer %s, active only)   capture %s   debug %s",
+            onoff(ns.db.settings.invites ~= false), onoff(ps.bark.enabled), ps.bark.intervalSec,
             ns.Barker.ticker and ("next in " .. ns.Barker.SecondsUntilDue() .. "s") or "stopped",
             onoff(s.captureAll), onoff(s.debug)))
         ns.Print(string.format("advertising %d recipes", #ns.Barker.AdvertisedEntries()))

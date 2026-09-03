@@ -116,6 +116,18 @@ function UI.Create()
     end)
     UI.enableButton = power
 
+    -- Two plain on/off switches. Bark belongs to the active profession;
+    -- invites cover every scanned book.
+    local invites = Button(f, "Invites: ?", 104, 22)
+    invites:SetPoint("TOPRIGHT", power, "TOPLEFT", -6, 0)
+    invites:SetScript("OnClick", function() ns.SetInvites(ns.db.settings.invites == false) end)
+    UI.inviteToggle = invites
+
+    local barkToggle = Button(f, "Bark: ?", 90, 22)
+    barkToggle:SetPoint("TOPRIGHT", invites, "TOPLEFT", -6, 0)
+    barkToggle:SetScript("OnClick", function() ns.SetBark(not ns.PS().bark.enabled) end)
+    UI.barkToggle = barkToggle
+
     UI.tabs, UI.pages = {}, {}
     local names = { "Professions", "Book", "Bark", "Orders", "Income", "Filter", "Log", "Invite" }
     for i, name in ipairs(names) do
@@ -161,11 +173,18 @@ function UI.Toggle()
     if f:IsShown() then f:Hide() else f:Show(); UI.Refresh() end
 end
 
+-- Shared ON/OFF rendering for the toggle buttons.
+function UI.State(on)
+    return on and "|cff44ff44ON|r" or "|cffff4444OFF|r"
+end
+
 function UI.Refresh()
     if not UI.frame or not UI.frame:IsShown() then return end
     local profile = ns.Prof.Current()
     local s = ns.PS()
     UI.title:SetText("TradeMaster  |cff888888" .. (profile.key ~= "generic" and profile.name or "no active profession") .. "|r")
+    UI.barkToggle.text:SetText("Bark: " .. UI.State(s.bark.enabled))
+    UI.inviteToggle.text:SetText("Invites: " .. UI.State(ns.db.settings.invites ~= false))
 
     if not ns.Enabled() then
         UI.status:SetText("|cffff4444DISABLED|r  |cff888888no invites, whispers, barks or trade filling. Click Enable.|r")
@@ -176,7 +195,7 @@ function UI.Refresh()
         UI.status:SetText(string.format(
             "%d recipes (%d %s)  |  advertising %d  |  %d open orders  |  bark %s  |  invite %s%s",
             n, products, noun, #ns.Barker.AdvertisedEntries(), #ns.Orders.OpenList(),
-            onoff(s.bark.enabled), onoff(s.invite.enabled),
+            onoff(s.bark.enabled), onoff(ns.db.settings.invites ~= false),
             ns.Barker.pending and "  |  |cffffcc00BARK READY|r"
                 or (s.bark.enabled and ("  |  next bark in " .. ns.Barker.SecondsUntilDue() .. "s") or "")))
     end
@@ -213,7 +232,8 @@ UI.ScrollList = ScrollList
 function UI.BuildProfessions(page)
     local intro = Label(page,
         "Every supported profession window you open is scanned into its own book. "
-        .. "One profession is |cff44ff44active|r: only it barks, invites, books orders and fills trades.\n"
+        .. "One profession is |cff44ff44active|r: it owns the bark. Invites cover every scanned book, and the\n"
+        .. "book that matches a request handles its order and trade.\n"
         .. "Supported: " .. table.concat(ns.Professions.Order, ", ") .. ". Enchanting is not supported yet.",
         "GameFontHighlightSmall")
     intro:SetPoint("TOPLEFT", 0, 0)
@@ -450,6 +470,12 @@ function UI.BuildBook(page)
                         any = true
                     end
                     if not any then GameTooltip:AddLine("no reagent data; rescan the book", 0.6, 0.6, 0.6) end
+                    local missing = ns.Scanner.MissingBoP(e)
+                    if #missing > 0 then
+                        GameTooltip:AddLine("Bind on Pickup reagent you don't hold: "
+                            .. ns.Scanner.DescribeMissing(missing, true), 1, 0.4, 0.4, true)
+                        GameTooltip:AddLine("not advertised; requests get the \"not enough\" reply", 0.6, 0.6, 0.6)
+                    end
                     if (e.numMade or 1) > 1 then
                         GameTooltip:AddLine(string.format("makes %d per craft", e.numMade), 0.7, 0.9, 1)
                     end
@@ -476,10 +502,12 @@ function UI.BuildBook(page)
                 row.entry.match = self:GetChecked() and true or false
                 ns.Events.RebuildIndex()
             end)
-            row.label:SetText(string.format("%s  |cff777777%s|r%s%s",
+            local missing = ns.Scanner.MissingBoP(e)
+            row.label:SetText(string.format("%s  |cff777777%s|r%s%s%s",
                 e.link or e.name or "?", e.header or "",
                 (e.numMade or 1) > 1 and ("  |cff888888x" .. e.numMade .. "|r") or "",
-                e.stats and ("  |cff88ccff" .. e.stats .. "|r") or ""))
+                e.stats and ("  |cff88ccff" .. e.stats .. "|r") or "",
+                #missing > 0 and ("  |cffff8888needs " .. ns.Scanner.DescribeMissing(missing) .. "|r") or ""))
             row:Show()
         end
 
@@ -496,18 +524,12 @@ end
 --------------------------------------------------------------------------------
 
 function UI.BuildBark(page)
-    local remind = CreateFrame("CheckButton", nil, page, "UICheckButtonTemplate")
-    remind:SetSize(24, 24)
+    local remind = Button(page, "Bark reminders: ?", 170, 22)
     remind:SetPoint("TOPLEFT", 0, 0)
-    remind:SetScript("OnClick", function(self)
-        local s = ns.PS().bark
-        s.enabled = self:GetChecked() and true or false
-        if s.enabled then ns.Barker.Start(true) else ns.Barker.Stop() end
-        UI.Refresh()
-    end)
+    remind:SetScript("OnClick", function() ns.SetBark(not ns.PS().bark.enabled) end)
 
-    local remindLbl = Label(page, "Remind me when it's time to bark")
-    remindLbl:SetPoint("LEFT", remind, "RIGHT", 4, 0)
+    local remindLbl = Label(page, "|cff888888active profession only; switch it on the Professions tab|r")
+    remindLbl:SetPoint("LEFT", remind, "RIGHT", 8, 0)
 
     local sendNow = Button(page, "Send Now", 90, 22)
     sendNow:SetPoint("TOPLEFT", 0, -28)
@@ -567,7 +589,7 @@ function UI.BuildBark(page)
 
     function UI.RefreshBark()
         local s = ns.PS().bark
-        remind:SetChecked(s.enabled and true or false)
+        remind.text:SetText("Bark reminders: " .. UI.State(s.enabled))
         slider:SetValue(s.intervalSec)
         _G[slider:GetName() .. "Text"]:SetText("Reminder interval: " .. s.intervalSec .. "s")
         if not tpl:HasFocus() then tpl:SetText(s.template) end
@@ -751,9 +773,14 @@ end
 --------------------------------------------------------------------------------
 
 function UI.BuildInvite(page)
+    local toggle = Button(page, "Invites: ?", 104, 22)
+    toggle:SetPoint("TOPLEFT", 0, 0)
+    toggle:SetScript("OnClick", function() ns.SetInvites(ns.db.settings.invites == false) end)
+    local toggleLbl = Label(page,
+        "|cff888888every scanned profession; the book that matches the request handles it|r")
+    toggleLbl:SetPoint("LEFT", toggle, "RIGHT", 8, 0)
+
     local rows = {
-        { "Auto invite from Trade chat", function() return ns.PS().invite.enabled end,
-          function(v) ns.PS().invite.enabled = v end },
         { "Auto invite from whispers", function() return ns.PS().invite.fromWhisper end,
           function(v) ns.PS().invite.fromWhisper = v end },
         { "Whisper them after inviting", function() return ns.PS().invite.whisper.enabled end,
@@ -767,7 +794,7 @@ function UI.BuildInvite(page)
     UI.inviteChecks = {}
     for i, r in ipairs(rows) do
         local cb = CreateFrame("CheckButton", nil, page, "UICheckButtonTemplate")
-        cb:SetPoint("TOPLEFT", 0, -(i - 1) * 26)
+        cb:SetPoint("TOPLEFT", 0, -30 - (i - 1) * 26)
         cb:SetSize(22, 22)
         local lbl = Label(page, r[1])
         lbl:SetPoint("LEFT", cb, "RIGHT", 4, 0)
@@ -801,6 +828,7 @@ function UI.BuildInvite(page)
         { key = "partialTemplate", label = "They asked for several, you have some  |cff888888{have} {lack}|r" },
         { key = "noneTemplate", label = "They asked outright and you have nothing close" },
         { key = "askWhichTemplate", label = "They typed half a name  |cff888888{items}|r" },
+        { key = "noMatsTemplate", label = "You lack a Bind on Pickup reagent for it  |cff888888{mats} {item}|r" },
     }
 
     UI.templateBoxes = {}
@@ -830,7 +858,7 @@ function UI.BuildInvite(page)
         end)
         UI.templateBoxes[t.key] = box
 
-        y = y - 35
+        y = y - 33
     end
 
     local hint = Label(page,
@@ -841,6 +869,7 @@ function UI.BuildInvite(page)
     hint:SetJustifyH("LEFT")
 
     function UI.RefreshInvite()
+        toggle.text:SetText("Invites: " .. UI.State(ns.db.settings.invites ~= false))
         for _, c in ipairs(UI.inviteChecks) do c.cb:SetChecked(c.get() and true or false) end
         slider:SetValue(ns.PS().invite.maxParty)
         _G[slider:GetName() .. "Text"]:SetText("Max party: " .. ns.PS().invite.maxParty)

@@ -173,7 +173,11 @@ function UI.BuildOrders(page)
                 UI.RefreshOrders()
             end)
             row.ask:SetScript("OnClick", function()
-                ns.Inviter.Say(o.player, ns.PS().invite.whisper.templateNoItem, {})
+                -- The order's own profession answers, not the active one.
+                local pd = o.profession and ns.db.professions and ns.db.professions[o.profession]
+                local inv = (pd and pd.settings or ns.PS()).invite
+                ns.Inviter.Say(o.player, inv.whisper.templateNoItem, {},
+                    o.profession and ns.Prof.ByKey(o.profession) or nil)
             end)
 
             local height = ROW_BASE_H

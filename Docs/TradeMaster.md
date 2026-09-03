@@ -16,7 +16,11 @@ Leatherworking, Engineering, Cooking. Enchanting is not supported yet: it produc
 item and is applied to the customer's gear in the trade window, which needs its own model.
 
 Every supported profession window you open is scanned into its own book. **One profession
-is active at a time**: only the active one barks, invites, books orders, and fills trades.
+is active at a time** and owns the bark: its bark template, interval, and advertised list are
+what gets sent. **Invites cover every scanned book.** A request in Trade, a whisper, or party
+chat is matched against each book; the one with the most hits invites, whispers with its own
+templates, and books the order, so its recipes fill the trade. Both switches sit in the window
+header as **Bark: ON/OFF** (active profession) and **Invites: ON/OFF** (all books).
 The others are scanned, browsable, and one click from becoming active. The first
 profession you scan becomes active automatically.
 
@@ -58,6 +62,11 @@ makes per craft, item quality, and whether it is Bind on Pickup. Rescanning merg
 advertise/match choices and custom aliases survive. It runs automatically on window open
 when it could learn something (empty book, a skill gained, or the book over 6 hours old).
 `/tm scan` forces one.
+
+A recipe that needs a **Bind on Pickup reagent** you don't hold (Primal Nether, Nether Vortex,
+...) can't be made for a customer, so it is never barked, and a request for it gets the
+"not enough ..." whisper instead of an invite. Bags and bank count; the bank is known once
+you have opened it this session. The Book row shows "needs ..." in red for these.
 
 The Book tab shows one book at a time (the **Book:** button cycles through every scanned
 profession). **Sort:** in the bottom-right corner cycles Category (the window's own
@@ -148,7 +157,7 @@ For Jewelcrafting, gem names in the profession window are replaced with what the
 | `/tm adv epic\|rare\|all\|none` / `+text` / `-text` | Bulk-select what to advertise |
 | `/tm annotate` | Toggle annotations in the profession window |
 | `/tm bark <seconds>` / `/tm send` / `/tm preview` | Reminder interval, send now, preview |
-| `/tm invite` | Toggle auto-invite from Trade chat |
+| `/tm invite` | Toggle invites for every scanned profession |
 | `/tm log` / `/tm clearflags` | Recent decisions; clear competitor flags |
 | `/tm orders` / `/tm order add\|done\|cancel\|reopen <id>` | Manage orders |
 | `/tm tracker` / `/tm income` | Tracker window; earnings summary |

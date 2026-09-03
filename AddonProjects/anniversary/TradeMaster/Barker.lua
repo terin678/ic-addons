@@ -67,7 +67,9 @@ function Barker.AdvertisedEntries(book)
     book = book or ns.Book()
     local list = {}
     for itemID, e in pairs(book) do
-        if e.advertise and not e.stale and e.link and BindTypeOf(itemID, e) ~= 1 then
+        -- Never advertise what can't be traded or can't be made right now.
+        if e.advertise and not e.stale and e.link and BindTypeOf(itemID, e) ~= 1
+            and #ns.Scanner.MissingBoP(e) == 0 then
             list[#list + 1] = {
                 itemID = itemID, link = e.link,
                 header = e.header or "", name = e.name or "",

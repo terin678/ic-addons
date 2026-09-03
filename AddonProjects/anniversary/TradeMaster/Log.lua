@@ -42,11 +42,12 @@ function Log.Capture(player, msg, result, now)
     end
 end
 
-function Log.Add(player, msg, matched, result, now)
+function Log.Add(player, msg, matched, result, now, book)
+    book = book or ns.Book()
     local ids, names = {}, {}
     for _, h in ipairs(matched or {}) do
         ids[#ids + 1] = h.itemID
-        local e = ns.Book()[h.itemID]
+        local e = book[h.itemID]
         names[#names + 1] = string.format("%s (%s)", e and e.name or h.itemID, h.tier)
     end
 
@@ -56,6 +57,7 @@ function Log.Add(player, msg, matched, result, now)
         msg = ns.Util.StripEscapes(msg),
         matched = ids,
         matchedNames = names,
+        profession = result.profession,
         verdict = result.verdict,
         reason = result.reason,
         blocked = result.blocked,

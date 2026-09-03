@@ -621,3 +621,34 @@ T.Case("RecentText stitches together what someone just said", function()
     T.Eq(ns.Players.RecentText(st, 1015, 90), "Shifting Shadowsong? Amethyst", "joined")
     T.Eq(ns.Players.RecentText(st, 2000, 90), "", "old messages drop out")
 end)
+
+--------------------------------------------------------------------------------
+-- Invites across every scanned book
+--------------------------------------------------------------------------------
+
+T.Case("PickProfession: the book with the most hits answers", function()
+    local cands = {
+        { key = "jewelcrafting", index = ns.Matcher.BuildIndex(jcBook(), JC) },
+        { key = "alchemy", index = ns.Matcher.BuildIndex(alchBook(), ALCH) },
+    }
+    local text = "WTB " .. HASTE_LINK .. " x5"
+    local pick, hits = ns.Events.PickProfession(text, ns.Util.Normalize(text), cands)
+    T.Eq(pick.key, "alchemy", "alchemy item picks alchemy even with JC active")
+    T.Eq(#hits > 0, true, "hits")
+
+    text = "WTB " .. RUBY_LINK
+    pick, hits = ns.Events.PickProfession(text, ns.Util.Normalize(text), cands)
+    T.Eq(pick.key, "jewelcrafting", "gem picks jewelcrafting")
+
+    text = "anyone selling boats"
+    pick, hits = ns.Events.PickProfession(text, ns.Util.Normalize(text), cands)
+    T.Eq(pick.key, "jewelcrafting", "no match falls back to the first (active) candidate")
+    T.Eq(#hits, 0, "no hits")
+end)
+
+T.Case("Inviter.BlockReason: only an explicit false disables", function()
+    T.Eq(ns.Inviter.BlockReason({}, 100, 1, { enabled = false, maxParty = 5, playerCooldownSec = 60 }),
+        "invites disabled", "false")
+    T.Eq(ns.Inviter.BlockReason({}, 100, 1, { maxParty = 5, playerCooldownSec = 60 }),
+        nil, "nil is on")
+end)

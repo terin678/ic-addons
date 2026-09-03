@@ -41,7 +41,7 @@ function M.Init()
             tt:AddLine(string.format("|cffffffff%d|r open orders", #ns.Orders.OpenList()))
             tt:AddLine(string.format("barking %s   invites %s",
                 s.bark.enabled and "|cff44ff44on|r" or "|cffff4444off|r",
-                s.invite.enabled and "|cff44ff44on|r" or "|cffff4444off|r"))
+                ns.InvitesOn() and "|cff44ff44on|r" or "|cffff4444off|r"))
             if ns.Barker.pending then
                 tt:AddLine("|cffffcc00A bark is ready. Right click to send.|r")
             elseif s.bark.enabled then

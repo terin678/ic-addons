@@ -24,6 +24,7 @@ function Scanner.MergeBook(oldBook, scanned)
             bindType = s.bindType,
             numMade = s.numMade,
             reagents = s.reagents or {},
+            reagentBind = s.reagentBind,
         }
         if prev then
             entry.advertise = prev.advertise
@@ -85,6 +86,17 @@ local function RestoreFilters(saved)
     end
 end
 
+-- Bind type of every reagent that is in the item cache. Missing ones are
+-- filled in later by Scanner.MissingBoP.
+local function ReagentBinds(reagents)
+    local out = {}
+    for id in pairs(reagents or {}) do
+        local bind = select(14, GetItemInfo(id))
+        if bind ~= nil then out[id] = bind end
+    end
+    return out
+end
+
 local function ReadReagents(idx)
     local reagents = {}
     local n = GetTradeSkillNumReagents and GetTradeSkillNumReagents(idx) or 0
@@ -115,6 +127,7 @@ local function CollectRows()
                 local name, _, quality, _, _, _, _, _, _, _, _, classID,
                       subClassID, bindType = GetItemInfo(link)
                 local numMade = GetTradeSkillNumMade and GetTradeSkillNumMade(idx) or 1
+                local reagents = ReadReagents(idx)
                 rows[#rows + 1] = {
                     itemID = itemID,
                     name = name or skillName,
@@ -125,7 +138,8 @@ local function CollectRows()
                     quality = quality,
                     bindType = bindType,
                     numMade = math.max(1, math.floor(numMade or 1)),
-                    reagents = ReadReagents(idx),
+                    reagents = reagents,
+                    reagentBind = ReagentBinds(reagents),
                 }
             else
                 failed[#failed + 1] = idx
@@ -219,4 +233,43 @@ function Scanner.Scan(opts)
     end
 
     return commit(rows, failed)
+end
+
+--------------------------------------------------------------------------------
+-- Bind on Pickup reagents
+--------------------------------------------------------------------------------
+
+-- A Bind on Pickup reagent (Primal Nether, Nether Vortex, ...) can't be handed
+-- over by the customer, so a recipe needing one you don't hold can't be done.
+-- Returns { { itemID, need, have }, ... } for each such reagent; empty when
+-- the recipe is doable. Bags plus bank; bank counts are known once the bank
+-- has been opened this session.
+function Scanner.MissingBoP(e)
+    local out = {}
+    if not e or not e.reagents then return out end
+    e.reagentBind = e.reagentBind or {}
+    for id, need in pairs(e.reagents) do
+        local bind = e.reagentBind[id]
+        if bind == nil then
+            bind = select(14, GetItemInfo(id))
+            if bind ~= nil then e.reagentBind[id] = bind end
+        end
+        if bind == 1 then
+            local have = GetItemCount and GetItemCount(id, true) or 0
+            if have < need then out[#out + 1] = { itemID = id, need = need, have = have } end
+        end
+    end
+    table.sort(out, function(a, b) return a.itemID < b.itemID end)
+    return out
+end
+
+-- "Primal Nether" or, with counts, "Primal Nether x1 (have 0)".
+function Scanner.DescribeMissing(missing, withCounts)
+    local parts = {}
+    for _, m in ipairs(missing or {}) do
+        local name = GetItemInfo(m.itemID) or ("item " .. m.itemID)
+        parts[#parts + 1] = withCounts
+            and string.format("%s x%d (have %d)", name, m.need, m.have) or name
+    end
+    return table.concat(parts, ", ")
 end

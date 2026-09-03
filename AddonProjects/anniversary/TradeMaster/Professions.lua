@@ -86,7 +86,7 @@ local function BuildTemplates(spec)
     local tag = spec.barkTag or spec.abbrevs[1]:upper()
     local done = spec.doneWord or "made"
     return {
-        bark = string.format("WTS %s %s: {items} and more! /w me", tag, nounP),
+        bark = string.format("%s LFW: {items} and more! /w me", tag),
         template = "Invited you for {item}! Accept and trade me the mats.",
         templateNoItem = string.format("Hey! What %s do you need? Link the item or name it and I'll tell you if I have it.", nounS),
         confirmTemplate = string.format("Yep, I can do {item}. Trade me the mats and I'll get it %s.", done),
@@ -94,7 +94,14 @@ local function BuildTemplates(spec)
         partialTemplate = "I can do {have}, but I don't have {lack}.",
         noneTemplate = string.format("Sorry, I don't have that %s.", nounS),
         askWhichTemplate = "Did you mean one of these? {items}",
+        noMatsTemplate = "Not enough {mats} for {item} right now, sorry.",
     }
+end
+
+-- The bark default before 1.2.0, so a saved copy of it can follow the new one.
+function Prof.LegacyBarkTemplate(profile)
+    local tag = profile.barkTag or profile.abbrevs[1]:upper()
+    return string.format("WTS %s %s: {items} and more! /w me", tag, profile.craftNoun[2])
 end
 
 -- Bulk advertise rules shared by every profession. BoP is excluded elsewhere.
@@ -304,7 +311,7 @@ function Prof.DefaultSettings(profile)
                 template = t.template, templateNoItem = t.templateNoItem,
                 confirmTemplate = t.confirmTemplate, suggestTemplate = t.suggestTemplate,
                 partialTemplate = t.partialTemplate, noneTemplate = t.noneTemplate,
-                askWhichTemplate = t.askWhichTemplate,
+                askWhichTemplate = t.askWhichTemplate, noMatsTemplate = t.noMatsTemplate,
                 cooldownSec = 600, replyCooldownSec = 10,
             },
         },
