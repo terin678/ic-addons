@@ -31,5 +31,4 @@ UI.lua
 UI_Orders.lua
 Tracker.lua
 Minimap.lua
-Bindings.xml
 Tests.lua
