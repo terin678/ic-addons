@@ -1,5 +1,6 @@
 -- MalexisAuctionWatcher Core - Main coordination and utilities
 local addonName = "MalexisAuctionWatcher"
+local VERSION = "1.17.0"
 local MAW = {}
 
 -- Debug mode flag
@@ -211,6 +212,8 @@ local function SlashCommandHandler(msg)
         else
             print(addonName .. ": History retention is " .. MAW:GetHistoryDays() .. " days (use /maw retention <days>, min 7)")
         end
+    elseif command == "test" then
+        MAW.Tests.Run()
     elseif command == "minimap" then
         if MalexisAuctionWatcherMinimap then
             MalexisAuctionWatcherMinimap:Toggle()
@@ -219,6 +222,7 @@ local function SlashCommandHandler(msg)
         print(addonName .. " Commands:")
         print("  /maw show (or /maw ui) - Toggle merchant price spreadsheet")
         print("  /maw minimap - Show/hide the minimap button")
+        print("  /maw test - Run the built-in checks")
         print("  /maw history [item name] - Open the price history chart")
         print("  /maw recipes - Open the material -> product profit table")
         print("  /maw movers - What to buy, convert, and list right now")
@@ -258,7 +262,7 @@ eventFrame:SetScript("OnUpdate", function(self, elapsed) MAW:OnUpdateHandler(sel
 eventFrame:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" and arg1 == addonName then
         MAW:InitializeDB()
-        print(addonName .. " v1.14.0 loaded. Type /maw help for commands.")
+        print(addonName .. " v" .. VERSION .. " loaded. Type /maw help for commands.")
 
         -- Create minimap button
         if MalexisAuctionWatcherMinimap then

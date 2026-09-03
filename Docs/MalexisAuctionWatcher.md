@@ -19,7 +19,7 @@ click the coin icon on the minimap.
 | Materials | Items you buy. Today, low, average, high per unit. Green is cheap, amber is mid-range, red is expensive; cyan is under your low bound and magenta is over your high one. |
 | Products | Items you sell. Same columns, colors inverted so high is green. |
 | Stores | How many of each item you hold in bags, bank, and on the AH, and what it is worth. |
-| History | Chart of one item over time: 30 or 90 days, by weekday, by day of month, by hour. Highlights the cheapest and priciest bucket. |
+| History | Chart of one item, or one recipe, over time: 30 or 90 days, by weekday, by day of month, by hour. Highlights the cheapest and priciest bucket. |
 | Recipes | Material to product conversions with cost, AH net, profit, margin, and how many batches you can make now. |
 | Movers | What to act on right now: cheap materials to buy, profitable recipes you can make, products you hold at a good price. Each row has a Buy, Convert, or List button. |
 
@@ -115,8 +115,42 @@ minimum 7) plus a per-hour-of-day accumulator. Weekday and day-of-month views ar
 from the daily buckets. The summary line names the cheapest and priciest bucket and says
 when there are fewer than 3 samples, which is too few to trust.
 
+### Picking what to watch
+
+The dropdown groups tracked items by auction house category, the same headings the auction
+house itself uses, because the class comes from the client rather than from a table here.
+An item this client has never cached has no category to report, so it sits under **Other**
+and moves to its real one the next time you open the menu: asking for the category is also
+what asks the server for it. A category holding more than 24 items splits into alphabetical
+chunks, since a classic dropdown does not scroll and would otherwise run off the screen.
+
+The last entry is **Tracked Recipes**. What you are looking at, and which period, are saved:
+the tab comes back where you left it.
+
+### The recipe view
+
+One recipe, three kinds of line:
+
+- **Green**, bold: what one batch of the product sells for, after the auction house cut.
+- **Red**, bold: what its materials cost, all of them together.
+- **Thin**: each material on its own, priced times however many the recipe needs, so you can
+  see which one moved.
+
+The gap between the two bold lines is the margin. Hover any slot for every line's value plus
+the margin, which is listed but not drawn: it has its own scale and would flatten the two
+lines it is the distance between.
+
+A **break in a line** is a slot with no price for that item. The cost line breaks whenever
+any material does, because a cost that is missing a material is not a cost — drawn as zero it
+would read as a free craft. Vendor materials are folded into the cost at their fixed price
+rather than drawn, since a fixed price is a flat line.
+
+Prices here are daily averages, so the numbers sit close to the Recipes tab rather than equal
+to it: that tab uses each item's latest observation. **Scan Tab** on a recipe scans the
+product and every non-vendor material, not just one item.
+
 ```
-/maw history [item]    open the chart, optionally for one item
+/maw history [item or recipe]    open the chart, optionally on something specific
 ```
 
 ## Recipes
@@ -214,6 +248,7 @@ open. "Refresh Table" recomputes without scanning.
 /maw remove <name>        stop tracking
 /maw minimap              show or hide the minimap button
 /maw debug                verbose chat output
+/maw test                 run the built-in checks
 /maw help
 ```
 

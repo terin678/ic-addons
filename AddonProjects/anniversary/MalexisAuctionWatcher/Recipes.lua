@@ -41,6 +41,14 @@ function MAW:GetRecipes()
     return db.recipes
 end
 
+function MAW:FindRecipe(name)
+    if not name then return nil end
+    for _, recipe in ipairs(self:GetRecipes()) do
+        if recipe.name == name then return recipe end
+    end
+    return nil
+end
+
 -- Track an item when we already know its ID (so the item cache doesn't matter)
 function MAW:AddItemByID(itemName, itemID, itemType)
     local db = self:GetActiveDB()

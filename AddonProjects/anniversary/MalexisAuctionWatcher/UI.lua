@@ -940,29 +940,94 @@ local HISTORY_MODES = {
     { key = "hour",     label = "Hour",         mode = "hour",     maxLabels = 12 },
 }
 
-MAWUI.historyItem = nil
-MAWUI.historyMode = "daily30"
-MAWUI.recipeBasis = "latest"
-
-local function SortedTrackedItems()
-    local MAW = _G.MalexisAuctionWatcher
-    local db = MAW:GetActiveDB()
-    local list = {}
-    for itemName, itemData in pairs(db.items or {}) do
-        table.insert(list, { name = itemName, data = itemData })
-    end
-    table.sort(list, function(a, b)
-        local ta = a.data.itemType or "material"
-        local tb = b.data.itemType or "material"
-        if ta ~= tb then
-            return ta == "material"
-        end
-        return (a.data.order or 0) < (b.data.order or 0)
-    end)
-    return list
+-- Which price basis the Recipes tab reads. Saved for the same reason the History
+-- selection is: it changes every number on the page, so finding a different one on
+-- the next login reads as the numbers having moved rather than as a setting.
+local function RecipeBasis()
+    return Setting("recipeBasis", "latest")
 end
 
-local HISTORY_PANEL_H = 60 + CHART_HEIGHT + 130
+local function SetRecipeBasis(key)
+    local settings = MalexisAuctionWatcherDB and MalexisAuctionWatcherDB.settings
+    if settings then settings.recipeBasis = key end
+end
+
+-- What History is looking at, and the period it shows, are saved settings now:
+-- see MAW:GetHistorySelection. The ordering is shared with the data layer.
+local function SortedTrackedItems()
+    return _G.MalexisAuctionWatcher:SortedTrackedItemNames()
+end
+
+-- A classic dropdown does not scroll. With a preset loaded, "Gem" alone is 120
+-- entries and runs off the bottom of the screen, so a long category is split into
+-- alphabetical chunks rather than given a third level to hide in.
+local PICKER_CHUNK = 24
+
+local function Chunked(groups, label, entries)
+    if #entries <= PICKER_CHUNK then
+        groups[#groups + 1] = {
+            text = string.format("%s (%d)", label, #entries),
+            entries = entries,
+        }
+        return
+    end
+    local from = 1
+    while from <= #entries do
+        local to = math.min(from + PICKER_CHUNK - 1, #entries)
+        local part = {}
+        for i = from, to do part[#part + 1] = entries[i] end
+        groups[#groups + 1] = {
+            text = string.format("%s  %s - %s", label,
+                entries[from].name:sub(1, 3), entries[to].name:sub(1, 3)),
+            entries = part,
+        }
+        from = to + 1
+    end
+end
+
+-- Level one of the picker: auction house categories, then the recipes. An item
+-- whose class this client has not cached yet lands in Other; asking for the class
+-- is also what queues the request, so it moves to its real category the next time
+-- the menu is opened.
+local function HistoryPickerGroups()
+    local MAW = _G.MalexisAuctionWatcher
+    local byClass, classes = {}, {}
+    for _, item in ipairs(SortedTrackedItems()) do
+        local class = MAW:GetItemClass(item.name, item.data) or "Other"
+        if not byClass[class] then
+            byClass[class] = {}
+            classes[#classes + 1] = class
+        end
+        local list = byClass[class]
+        list[#list + 1] = { name = item.name, kind = "item" }
+    end
+    table.sort(classes, function(a, b)
+        -- Other last: it is the "we do not know yet" pile, not a category.
+        if (a == "Other") ~= (b == "Other") then return b == "Other" end
+        return a < b
+    end)
+
+    local groups = {}
+    for _, class in ipairs(classes) do
+        local entries = byClass[class]
+        table.sort(entries, function(a, b) return a.name < b.name end)
+        Chunked(groups, class, entries)
+    end
+
+    local recipes = {}
+    for _, recipe in ipairs(MAW:GetRecipes()) do
+        recipes[#recipes + 1] = { name = recipe.name, kind = "recipe" }
+    end
+    table.sort(recipes, function(a, b) return a.name < b.name end)
+    if #recipes == 0 then
+        groups[#groups + 1] = { text = "Tracked Recipes (none)", entries = {} }
+    else
+        Chunked(groups, "Tracked Recipes", recipes)
+    end
+    return groups
+end
+
+local HISTORY_PANEL_H = 60 + CHART_HEIGHT + 160
 
 local function BuildHistoryPage(page)
     local view = {}
@@ -981,14 +1046,35 @@ local function BuildHistoryPage(page)
     local dropdown = CreateFrame("Frame", "MalexisAuctionWatcherHistoryDropdown", top, "UIDropDownMenuTemplate")
     dropdown:SetPoint("LEFT", top, "LEFT", -14, 0)
     UIDropDownMenu_SetWidth(dropdown, 220)
+    -- Two levels: categories, then what is in one. The group list is rebuilt on
+    -- every level-1 pass and read back by index at level 2, which is what
+    -- UIDROPDOWNMENU_MENU_VALUE carries between the two calls.
     UIDropDownMenu_Initialize(dropdown, function(_, level)
-        for _, item in ipairs(SortedTrackedItems()) do
+        local MAW = _G.MalexisAuctionWatcher
+        if level == 1 then
+            view.pickerGroups = HistoryPickerGroups()
+            for index, group in ipairs(view.pickerGroups) do
+                local info = UIDropDownMenu_CreateInfo()
+                info.text = group.text
+                info.hasArrow = true
+                info.notCheckable = true
+                info.disabled = #group.entries == 0
+                info.value = index
+                UIDropDownMenu_AddButton(info, level)
+            end
+            return
+        end
+
+        local group = view.pickerGroups and view.pickerGroups[UIDROPDOWNMENU_MENU_VALUE]
+        if not group then return end
+        local kind, name = MAW:GetHistorySelection()
+        for _, entry in ipairs(group.entries) do
             local info = UIDropDownMenu_CreateInfo()
-            info.text = item.name
-            info.checked = (item.name == MAWUI.historyItem)
+            info.text = entry.name
+            info.checked = (entry.kind == kind and entry.name == name)
             info.func = function()
-                MAWUI.historyItem = item.name
-                UIDropDownMenu_SetText(dropdown, item.name)
+                MAW:SetHistorySelection(entry.kind, entry.name)
+                CloseDropDownMenus()
                 MAWUI:RefreshData()
             end
             UIDropDownMenu_AddButton(info, level)
@@ -1020,7 +1106,7 @@ local function BuildHistoryPage(page)
     for _, m in ipairs(HISTORY_MODES) do
         local btn = Button(modes, m.label, m.key == "monthday" and 100 or 80, 22)
         btn:SetScript("OnClick", function()
-            MAWUI.historyMode = m.key
+            _G.MalexisAuctionWatcher:SetHistoryMode(m.key)
             MAWUI:RefreshData()
         end)
         modes:Left(btn)
@@ -1030,11 +1116,8 @@ local function BuildHistoryPage(page)
     view.chart = _G.MalexisAuctionWatcherChart.Create(page, chartWidth, CHART_HEIGHT)
     view.chart:SetPoint("TOPLEFT", page, "TOPLEFT", 0, -60)
 
-    view.legend = Note(page,
-        "Bars: |cff8ca6d9blue|r = your scans, |cffccb366amber|r = Auctionator/TSM, "
-        .. "|cff59e659green|r = cheapest, |cfff25959red|r = priciest."
-        .. "\nWhite tick = average. |cffffd94dYellow lines|r bracket the bucket you are in "
-        .. "now; the ones past it are from the previous cycle.", chartWidth)
+    -- Set per view: an item and a recipe are read differently.
+    view.legend = Note(page, "", chartWidth)
     view.legend:SetPoint("TOPLEFT", view.chart, "BOTTOMLEFT", 0, -6)
 
     view.summary = page:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -1049,16 +1132,188 @@ local function BuildHistoryPage(page)
     view.sources:SetPoint("TOPLEFT", view.note, "BOTTOMLEFT", 0, -6)
     view.sources:SetTextColor(0.6, 0.7, 0.8)
 
-    function view:Refresh()
+    -- Material lines cycle through these. Blues, purples and teals only: green is
+    -- money in, red is money out, and amber already means an external price feed in
+    -- the legend directly above this chart. A thin line must not look like a washed
+    -- out version of the bold line it means the opposite of.
+    local MAT_COLORS = {
+        { 0.45, 0.72, 0.98 }, { 0.72, 0.58, 0.95 }, { 0.35, 0.82, 0.85 },
+        { 0.58, 0.62, 0.92 }, { 0.45, 0.88, 0.98 }, { 0.85, 0.60, 0.90 },
+    }
+    local COST_COLOR = { 0.98, 0.45, 0.42 }
+    local VALUE_COLOR = { 0.45, 0.92, 0.45 }
+
+    -- Where "now" falls in cyclic views, so the wrap from last period to this one
+    -- is visible. Shared by both views.
+    local function MarkerFor(modeDef)
+        local nowT = date("*t")
+        if modeDef.mode == "monthday" then
+            return nowT.day, "Today (" .. nowT.day .. ")"
+        elseif modeDef.mode == "weekday" then
+            return nowT.wday, "Today"
+        elseif modeDef.mode == "hour" then
+            return nowT.hour + 1, "Now"
+        end
+    end
+
+    local function TitleFor(modeDef)
+        return function(p)
+            if modeDef.mode == "hour" then
+                return p.label .. ":00"
+            elseif modeDef.mode == "monthday" then
+                return "Day " .. p.label
+            end
+            return p.label
+        end
+    end
+
+    -- Signed, because a craft can lose money and the coin API refuses a negative.
+    local function Signed(copper)
+        local text = FormatMoney(math.abs(copper))
+        if copper < 0 then return "|cffff8080-" .. text .. "|r" end
+        return "|cff80ff80+" .. text .. "|r"
+    end
+
+    function view:RefreshItem(itemName, modeDef, markerIndex, markerLabel)
         local MAW = _G.MalexisAuctionWatcher
         local db = MAW:GetActiveDB()
 
-        -- Pick a default item if none selected or the selection went away
-        if not MAWUI.historyItem or not (db.items and db.items[MAWUI.historyItem]) then
-            local list = SortedTrackedItems()
-            MAWUI.historyItem = list[1] and list[1].name or nil
+        self.legend:SetText(
+            "Bars: |cff8ca6d9blue|r = your scans, |cffccb366amber|r = Auctionator/TSM, "
+            .. "|cff59e659green|r = cheapest, |cfff25959red|r = priciest."
+            .. "\nWhite tick = average. |cffffd94dYellow lines|r bracket the bucket you are in "
+            .. "now; the ones past it are from the previous cycle.")
+
+        local analysis = MAW:AnalyzePeriodicity(itemName, modeDef.mode, modeDef.span)
+        local highlight = {}
+        if analysis.best and analysis.worst and analysis.best.index ~= analysis.worst.index then
+            highlight.best = analysis.best.index
+            highlight.worst = analysis.worst.index
         end
-        UIDropDownMenu_SetText(self.dropdown, MAWUI.historyItem or "No items tracked")
+
+        -- TSM reference averages (snapshot values, not a time series)
+        local refLines = {}
+        local tsmRef = db.items[itemName] and db.items[itemName].tsmRef
+        if tsmRef and MAW.sources.tsm.available and MAW:IsSourceEnabled("tsm") then
+            if tsmRef.market then
+                table.insert(refLines, { value = tsmRef.market, label = "TSM mrkt 14d", color = { 0.95, 0.65, 0.95 } })
+            end
+            if tsmRef.historical then
+                table.insert(refLines, { value = tsmRef.historical, label = "TSM hist 60d", color = { 0.7, 0.55, 0.95 } })
+            end
+        end
+
+        self.chart:SetData(analysis.points, {
+            highlight = highlight,
+            refLines = refLines,
+            markerIndex = markerIndex,
+            markerLabel = markerLabel,
+            maxLabels = modeDef.maxLabels,
+            tooltipTitle = TitleFor(modeDef),
+        })
+
+        if analysis.best and analysis.worst then
+            local unit = ({ daily = "", weekday = "", monthday = "day ", hour = "hour " })[modeDef.mode] or ""
+            self.summary:SetText(string.format(
+                "|cff80ff80Cheapest:|r %s%s (avg %s, %d samples)   |cffff8080Priciest:|r %s%s (avg %s, %d samples)   Spread %.0f%%",
+                unit, analysis.best.label, FormatMoney(analysis.best.avg), analysis.best.n,
+                unit, analysis.worst.label, FormatMoney(analysis.worst.avg), analysis.worst.n,
+                analysis.spreadPct))
+            if analysis.confident then
+                self.note:SetText("Pattern is based on at least 3 samples in both buckets.")
+            else
+                self.note:SetText("Not enough data yet for a reliable pattern (need 3+ samples in the cheapest and priciest buckets).")
+            end
+        else
+            self.summary:SetText("No price history for " .. itemName .. " yet. Scan the auction house or enable an external source.")
+            self.note:SetText("")
+        end
+    end
+
+    -- One recipe as three kinds of line: what a batch sells for, what its
+    -- materials cost, and each material on its own. The distance between the two
+    -- bold lines is the conversion you are deciding about.
+    function view:RefreshRecipe(recipe, modeDef, markerIndex, markerLabel)
+        local MAW = _G.MalexisAuctionWatcher
+        local series = MAW:GetRecipeSeries(recipe, modeDef.mode, modeDef.span)
+        local cutPct = math.floor((series.cut or 0) * 100 + 0.5)
+
+        self.legend:SetText(string.format(
+            "|cff73eb73Green|r = a batch of %s sold, after the %d%% cut. "
+            .. "|cfffa736bRed|r = its materials. Thin lines = each material x how many."
+            .. "\nA break in a line is a slot with no price for that item; the cost "
+            .. "line breaks whenever any material does. Vendor materials are folded "
+            .. "into the cost at their fixed price.",
+            recipe.product or "the product", cutPct))
+
+        -- The chart still wants one entry per slot: they carry the labels and are
+        -- the hover targets, they just draw no candle.
+        local points = {}
+        for i = 1, series.count do
+            points[i] = { label = series.labels[i], n = 0 }
+        end
+
+        local lines = {}
+        for index, mat in ipairs(series.mats) do
+            if mat.values then
+                lines[#lines + 1] = {
+                    label = string.format("%s x%d", mat.name, mat.count),
+                    color = MAT_COLORS[((index - 1) % #MAT_COLORS) + 1],
+                    width = 1,
+                    values = mat.values,
+                }
+            end
+        end
+        lines[#lines + 1] = { label = "Material cost", color = COST_COLOR, width = 2, values = series.cost }
+        lines[#lines + 1] = { label = "Batch value", color = VALUE_COLOR, width = 2, values = series.value }
+        -- Listed but not drawn: a margin has its own scale and would flatten the
+        -- two lines it is the distance between.
+        lines[#lines + 1] = { label = "Margin", color = { 1, 0.9, 0.5 }, values = series.margin, plot = false }
+
+        self.chart:SetData(points, {
+            noBars = true,
+            lines = lines,
+            markerIndex = markerIndex,
+            markerLabel = markerLabel,
+            maxLabels = modeDef.maxLabels,
+            tooltipTitle = TitleFor(modeDef),
+        })
+
+        local slot = MAW.RecipeSlotAt(series, markerIndex or series.count)
+        if slot then
+            local margin = series.margin[slot]
+            local cost = series.cost[slot]
+            local pct = cost > 0 and (margin / cost * 100) or 0
+            self.summary:SetText(string.format(
+                "%s: value %s, materials %s, margin %s (%.0f%%)",
+                series.labels[slot] or "Latest",
+                FormatMoney(series.value[slot]), FormatMoney(cost), Signed(margin), pct))
+        else
+            self.summary:SetText("No slot yet has a price for the product and every material.")
+        end
+
+        local parts = {}
+        if #series.missing > 0 then
+            parts[#parts + 1] = "|cffffcc00Not tracked:|r " .. table.concat(series.missing, ", ")
+                .. " - add them, or use Scan Tab to price the whole recipe."
+        end
+        if series.best and series.worst and series.best.index ~= series.worst.index then
+            parts[#parts + 1] = string.format("Best %s %s, worst %s %s.",
+                series.best.label, Signed(series.best.margin),
+                series.worst.label, Signed(series.worst.margin))
+        end
+        parts[#parts + 1] = string.format("%d of %d slots priced.", series.complete, series.count)
+        self.note:SetText(table.concat(parts, "   "))
+    end
+
+    function view:Refresh()
+        local MAW = _G.MalexisAuctionWatcher
+
+        local kind, name = MAW:GetHistorySelection()
+        UIDropDownMenu_SetText(self.dropdown,
+            (kind == "recipe" and ("Recipe: " .. name))
+            or name
+            or "No items tracked")
 
         -- Pull buttons only when the source is loaded
         if MAW.DetectSources then
@@ -1067,79 +1322,32 @@ local function BuildHistoryPage(page)
             self.pullTsm:SetEnabled(MAW.sources.tsm.available)
         end
 
+        local mode = MAW:GetHistoryMode()
         for key, btn in pairs(self.modeButtons) do
-            btn:SetActive(key == MAWUI.historyMode)
+            btn:SetActive(key == mode)
         end
 
         local modeDef = HISTORY_MODES[1]
         for _, m in ipairs(HISTORY_MODES) do
-            if m.key == MAWUI.historyMode then modeDef = m end
+            if m.key == mode then modeDef = m end
         end
 
-        if MAWUI.historyItem then
-            local analysis = MAW:AnalyzePeriodicity(MAWUI.historyItem, modeDef.mode, modeDef.span)
-            local highlight = {}
-            if analysis.best and analysis.worst and analysis.best.index ~= analysis.worst.index then
-                highlight.best = analysis.best.index
-                highlight.worst = analysis.worst.index
-            end
-            -- TSM reference averages (snapshot values, not a time series)
-            local refLines = {}
-            local tsmRef = db.items[MAWUI.historyItem].tsmRef
-            if tsmRef and MAW.sources.tsm.available and MAW:IsSourceEnabled("tsm") then
-                if tsmRef.market then
-                    table.insert(refLines, { value = tsmRef.market, label = "TSM mrkt 14d", color = { 0.95, 0.65, 0.95 } })
-                end
-                if tsmRef.historical then
-                    table.insert(refLines, { value = tsmRef.historical, label = "TSM hist 60d", color = { 0.7, 0.55, 0.95 } })
-                end
-            end
+        local markerIndex, markerLabel = MarkerFor(modeDef)
 
-            -- Where "now" falls in cyclic views, so the wrap from last period to this one is visible
-            local nowT = date("*t")
-            local markerIndex, markerLabel
-            if modeDef.mode == "monthday" then
-                markerIndex, markerLabel = nowT.day, "Today (" .. nowT.day .. ")"
-            elseif modeDef.mode == "weekday" then
-                markerIndex, markerLabel = nowT.wday, "Today"
-            elseif modeDef.mode == "hour" then
-                markerIndex, markerLabel = nowT.hour + 1, "Now"
-            end
-
-            self.chart:SetData(analysis.points, {
-                highlight = highlight,
-                refLines = refLines,
-                markerIndex = markerIndex,
-                markerLabel = markerLabel,
-                maxLabels = modeDef.maxLabels,
-                tooltipTitle = function(p)
-                    if modeDef.mode == "hour" then
-                        return p.label .. ":00"
-                    elseif modeDef.mode == "monthday" then
-                        return "Day " .. p.label
-                    end
-                    return p.label
-                end,
-            })
-
-            if analysis.best and analysis.worst then
-                local unit = ({ daily = "", weekday = "", monthday = "day ", hour = "hour " })[modeDef.mode] or ""
-                self.summary:SetText(string.format(
-                    "|cff80ff80Cheapest:|r %s%s (avg %s, %d samples)   |cffff8080Priciest:|r %s%s (avg %s, %d samples)   Spread %.0f%%",
-                    unit, analysis.best.label, FormatMoney(analysis.best.avg), analysis.best.n,
-                    unit, analysis.worst.label, FormatMoney(analysis.worst.avg), analysis.worst.n,
-                    analysis.spreadPct))
-                if analysis.confident then
-                    self.note:SetText("Pattern is based on at least 3 samples in both buckets.")
-                else
-                    self.note:SetText("Not enough data yet for a reliable pattern (need 3+ samples in the cheapest and priciest buckets).")
-                end
+        if kind == "recipe" then
+            local recipe = MAW:FindRecipe(name)
+            if recipe then
+                self:RefreshRecipe(recipe, modeDef, markerIndex, markerLabel)
             else
-                self.summary:SetText("No price history for " .. MAWUI.historyItem .. " yet. Scan the auction house or enable an external source.")
-                self.note:SetText("")
+                kind = nil
             end
-        else
+        elseif kind == "item" then
+            self:RefreshItem(name, modeDef, markerIndex, markerLabel)
+        end
+
+        if not kind then
             self.chart:SetData({}, {})
+            self.legend:SetText("")
             self.summary:SetText("Track an item first, then come back here.")
             self.note:SetText("")
         end
@@ -1244,8 +1452,8 @@ local function BuildRecipesPage(page)
         local MAW = _G.MalexisAuctionWatcher
         local bases = MAW.PRICE_BASES
         for i, b in ipairs(bases) do
-            if b.key == MAWUI.recipeBasis then
-                MAWUI.recipeBasis = bases[(i % #bases) + 1].key
+            if b.key == RecipeBasis() then
+                SetRecipeBasis(bases[(i % #bases) + 1].key)
                 break
             end
         end
@@ -1269,9 +1477,9 @@ local function BuildRecipesPage(page)
         local MAW = _G.MalexisAuctionWatcher
         local tsmOn = TsmColumnsShown()
         if not tsmOn then
-            MAWUI.recipeBasis = "latest"
+            SetRecipeBasis("latest")
         end
-        local basisDef = MAW:PriceBasisDef(MAWUI.recipeBasis)
+        local basisDef = MAW:PriceBasisDef(RecipeBasis())
         self.basisBtn:SetText("Prices: " .. basisDef.label)
         self.basisBtn:SetEnabled(tsmOn)
 
@@ -1304,7 +1512,7 @@ local function BuildRecipesPage(page)
 
         local rows = {}
         for _, recipe in ipairs(MAW:GetRecipes()) do
-            rows[#rows + 1] = MAW:ComputeRecipeProfit(recipe, MAWUI.recipeBasis)
+            rows[#rows + 1] = MAW:ComputeRecipeProfit(recipe, RecipeBasis())
         end
         -- Best margin first; recipes without prices go to the bottom
         table.sort(rows, function(a, b)
@@ -1768,14 +1976,16 @@ function MAWUI:RefreshData()
 end
 
 -- Open the window on the History tab, optionally for a specific item
-function MAWUI:ShowHistory(itemName)
-    if itemName and itemName ~= "" then
+function MAWUI:ShowHistory(name)
+    if name and name ~= "" then
         local MAW = _G.MalexisAuctionWatcher
         local db = MAW:GetActiveDB()
-        if db.items and db.items[itemName] then
-            self.historyItem = itemName
+        if db.items and db.items[name] then
+            MAW:SetHistorySelection("item", name)
+        elseif MAW:FindRecipe(name) then
+            MAW:SetHistorySelection("recipe", name)
         else
-            print("Malexis Auction Watcher: Not tracking " .. itemName)
+            print("Malexis Auction Watcher: Not tracking " .. name)
         end
     end
     currentTab = "history"
