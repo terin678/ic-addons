@@ -70,13 +70,21 @@ asked for, CutMaster refuses to guess and asks you to set the split in **Orders*
 
 The **Tracker** (`/cm tracker`, or middle-click the minimap icon) is a slim window you
 can leave on screen: open orders, a tick box per gem, ticking the last one closes the
-order, right-click a name to cancel.
+order, right-click a name to cancel. Its own small **On/Off** button pauses everything
+(same as `/cm disable`/`/cm enable`) without alt-tabbing to type a command -- handy for
+stepping away from the keyboard for a minute.
 
 ### Fills the trade window
 
 Open a trade with someone who has an open order and CutMaster loads their finished cuts
-for you: only gems on that order, never Bind on Pickup, and it re-checks the bag slot
-immediately before adding.
+for you: only gems on that order, never Bind on Pickup, re-scanning your bags fresh
+before every item so a shifted bag slot can never cause one to be silently skipped.
+Multi-item orders -- several of one gem, or several different gems -- are handled
+properly. Two honest limits from the trade window itself, not bugs: only 6 distinct
+gems fit in one trade (WoW's own slot cap), so a larger order fills what it can and
+tells you what is left for a second trade; and a bag stack can only move whole, so if
+you are holding more of a cut than this order needs, the whole stack goes in and
+CutMaster says so rather than quietly over-delivering.
 
 ### Records income
 
