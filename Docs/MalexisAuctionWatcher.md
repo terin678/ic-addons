@@ -23,9 +23,15 @@ click the coin icon on the minimap.
 | Recipes | Material to product conversions with cost, AH net, profit, margin, and how many batches you can make now. |
 | Movers | What to act on right now: cheap materials to buy, profitable recipes you can make, products you hold at a good price. Each row has a Buy, Convert, or List button. |
 
-The tabs run along the top as the navigation bar. Under them sits the control row: Scan
-AH, the per-tab scan, Sort, then the tab's option (Add Item or Refresh) and the
-character-specific checkbox on the right. The window is one fixed size on every tab.
+The tabs run along the top as the navigation bar; the live one is gold. Under them sits
+the control row: Scan AH, the per-tab scan, Sort, then the tab's option (Add Item or
+Refresh) and the character-specific checkbox on the right. The window is one fixed size on
+every tab, and how long ago you last scanned reads in the header beside the guild mark.
+
+Every list is built from the shared widget library (see [ICLibs](ICLibs.md)): the column
+headers stay put while the rows scroll, a row is one line that truncates rather than
+wrapping, and the full text is in the hover tooltip. Rows are reused as you refresh
+instead of being rebuilt, so a long list no longer grows the frame count every scan.
 
 ## Adding items
 

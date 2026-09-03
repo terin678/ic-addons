@@ -2,6 +2,22 @@
 local addonName = "MalexisAuctionWatcher"
 local MAWRecipeDialog = {}
 
+-- Dialogs wear the same palette as the main window. The style is registered by name in
+-- UI.lua, which loads later, so it is looked up when a dialog is actually built.
+local ICUI = LibStub("LibICUI-1.0")
+local STYLE_NAME = "MalexisAuctionWatcher"
+
+local function Button(parent, text, w, h, opts)
+    opts = opts or {}
+    opts.style = STYLE_NAME
+    return ICUI:Button(parent, text, w, h, opts)
+end
+
+local function Window(name, w, h, title)
+    return ICUI:Window(name, { style = STYLE_NAME, width = w, height = h, title = title,
+        status = false, strata = "DIALOG" })
+end
+
 local MAX_MATERIALS = 5
 local frame = nil
 
@@ -106,20 +122,7 @@ local function EnsureTracked(itemName, itemID, itemType)
 end
 
 local function Build()
-    frame = CreateFrame("Frame", "MAWRecipeDialog", UIParent, "BasicFrameTemplateWithInset")
-    frame:SetSize(420, 120 + MAX_MATERIALS * 32 + 80)
-    frame:SetPoint("CENTER")
-    frame:SetFrameStrata("DIALOG")
-    frame:SetMovable(true)
-    frame:EnableMouse(true)
-    frame:RegisterForDrag("LeftButton")
-    frame:SetScript("OnDragStart", frame.StartMoving)
-    frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
-    table.insert(UISpecialFrames, "MAWRecipeDialog")
-
-    frame.title = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    frame.title:SetPoint("CENTER", frame.TitleBg, "CENTER", 5, 0)
-    frame.title:SetText("Add Recipe")
+    frame = Window("MAWRecipeDialog", 420, 120 + MAX_MATERIALS * 32 + 80, "Add Recipe")
 
     local y = -44
     frame.product = CreateItemPicker(frame, "Product (drag an item or type its name)", 300)
@@ -160,14 +163,14 @@ local function Build()
     frame.status:SetJustifyH("LEFT")
     frame.status:SetTextColor(1, 0.6, 0.6)
 
-    local addBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+    local addBtn = Button(frame)
     addBtn:SetSize(100, 22)
     addBtn:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 16, 14)
     addBtn:SetText("Add Recipe")
     addBtn:SetScript("OnClick", function() MAWRecipeDialog.Submit() end)
     frame.addBtn = addBtn
 
-    local cancelBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+    local cancelBtn = Button(frame)
     cancelBtn:SetSize(80, 22)
     cancelBtn:SetPoint("LEFT", addBtn, "RIGHT", 6, 0)
     cancelBtn:SetText("Cancel")
@@ -326,20 +329,7 @@ local function BuildGemPicker()
     local MAW = _G.MalexisAuctionWatcher
     local raws = MAW:GetPresetRawGems()
 
-    gemFrame = CreateFrame("Frame", "MAWGemPicker", UIParent, "BasicFrameTemplateWithInset")
-    gemFrame:SetSize(740, 300)
-    gemFrame:SetPoint("CENTER")
-    gemFrame:SetFrameStrata("DIALOG")
-    gemFrame:SetMovable(true)
-    gemFrame:EnableMouse(true)
-    gemFrame:RegisterForDrag("LeftButton")
-    gemFrame:SetScript("OnDragStart", gemFrame.StartMoving)
-    gemFrame:SetScript("OnDragStop", gemFrame.StopMovingOrSizing)
-    table.insert(UISpecialFrames, "MAWGemPicker")
-
-    gemFrame.title = gemFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    gemFrame.title:SetPoint("CENTER", gemFrame.TitleBg, "CENTER", 5, 0)
-    gemFrame.title:SetText("Add Gem Cut Recipes (TBC Jewelcrafting)")
+    gemFrame = Window("MAWGemPicker", 740, 300, "Add Gem Cut Recipes (TBC Jewelcrafting)")
 
     local info = gemFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     info:SetPoint("TOPLEFT", gemFrame, "TOPLEFT", 16, -32)
@@ -368,7 +358,7 @@ local function BuildGemPicker()
 
     gemFrame.rawButtons = {}
     for _, raw in ipairs(raws) do
-        local btn = CreateFrame("Button", nil, gemFrame, "UIPanelButtonTemplate")
+        local btn = Button(gemFrame)
         btn:SetSize(165, 22)
         btn:SetPoint("TOPLEFT", gemFrame, "TOPLEFT", colX[raw.tier], -88 - rowY[raw.tier] * 26)
         btn.raw = raw
@@ -382,7 +372,7 @@ local function BuildGemPicker()
 
     local x = 16
     for _, tier in ipairs(tiers) do
-        local btn = CreateFrame("Button", nil, gemFrame, "UIPanelButtonTemplate")
+        local btn = Button(gemFrame)
         btn:SetSize(120, 22)
         btn:SetPoint("BOTTOMLEFT", gemFrame, "BOTTOMLEFT", x, 14)
         btn:SetText("All " .. tierTitles[tier])
@@ -393,7 +383,7 @@ local function BuildGemPicker()
         x = x + 126
     end
 
-    local closeBtn = CreateFrame("Button", nil, gemFrame, "UIPanelButtonTemplate")
+    local closeBtn = Button(gemFrame)
     closeBtn:SetSize(80, 22)
     closeBtn:SetPoint("BOTTOMRIGHT", gemFrame, "BOTTOMRIGHT", -16, 14)
     closeBtn:SetText("Close")
@@ -445,23 +435,11 @@ local function QualityColor(row)
 end
 
 local function BuildImportDialog()
-    importFrame = CreateFrame("Frame", "MAWProfessionImport", UIParent, "BasicFrameTemplateWithInset")
-    importFrame:SetSize(560, 110 + IMPORT_ROWS * 22 + 60)
-    importFrame:SetPoint("CENTER")
-    importFrame:SetFrameStrata("DIALOG")
-    importFrame:SetMovable(true)
-    importFrame:EnableMouse(true)
-    importFrame:RegisterForDrag("LeftButton")
-    importFrame:SetScript("OnDragStart", importFrame.StartMoving)
-    importFrame:SetScript("OnDragStop", importFrame.StopMovingOrSizing)
-    table.insert(UISpecialFrames, "MAWProfessionImport")
-
-    importFrame.title = importFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    importFrame.title:SetPoint("CENTER", importFrame.TitleBg, "CENTER", 5, 0)
-    importFrame.title:SetText("Add from your recipe book")
+    importFrame = Window("MAWProfessionImport", 560, 110 + IMPORT_ROWS * 22 + 60,
+        "Add from your recipe book")
 
     -- Which book is on display; cycles through every scanned profession.
-    local bookBtn = CreateFrame("Button", nil, importFrame, "UIPanelButtonTemplate")
+    local bookBtn = Button(importFrame)
     bookBtn:SetSize(170, 22)
     bookBtn:SetPoint("TOPLEFT", importFrame, "TOPLEFT", 16, -32)
     bookBtn:SetText("Book: -")
@@ -476,7 +454,7 @@ local function BuildImportDialog()
     end)
     importFrame.bookBtn = bookBtn
 
-    local scanBtn = CreateFrame("Button", nil, importFrame, "UIPanelButtonTemplate")
+    local scanBtn = Button(importFrame)
     scanBtn:SetSize(130, 22)
     scanBtn:SetPoint("LEFT", bookBtn, "RIGHT", 6, 0)
     scanBtn:SetText("Scan open window")
@@ -506,6 +484,9 @@ local function BuildImportDialog()
     importFrame.info:SetPoint("TOPLEFT", importFrame, "TOPLEFT", 16, -60)
     importFrame.info:SetWidth(520)
     importFrame.info:SetJustifyH("LEFT")
+    -- At most two lines: the list underneath starts at a fixed offset, and prose
+    -- that grew a third line would land on its first row.
+    if importFrame.info.SetMaxLines then importFrame.info:SetMaxLines(2) end
     importFrame.info:SetTextColor(0.7, 0.7, 0.7)
 
     local scroll = CreateFrame("ScrollFrame", nil, importFrame, "UIPanelScrollFrameTemplate")
@@ -517,7 +498,7 @@ local function BuildImportDialog()
     importFrame.child = child
     importFrame.rows = {}
 
-    local addAll = CreateFrame("Button", nil, importFrame, "UIPanelButtonTemplate")
+    local addAll = Button(importFrame)
     addAll:SetSize(120, 22)
     addAll:SetPoint("BOTTOMLEFT", importFrame, "BOTTOMLEFT", 16, 14)
     addAll:SetText("Add all shown")
@@ -535,7 +516,7 @@ local function BuildImportDialog()
         if _G.MalexisAuctionWatcherUI then _G.MalexisAuctionWatcherUI:RefreshData() end
     end)
 
-    local closeBtn = CreateFrame("Button", nil, importFrame, "UIPanelButtonTemplate")
+    local closeBtn = Button(importFrame)
     closeBtn:SetSize(80, 22)
     closeBtn:SetPoint("BOTTOMRIGHT", importFrame, "BOTTOMRIGHT", -16, 14)
     closeBtn:SetText("Close")
@@ -557,12 +538,12 @@ function MAWRecipeDialog.RefreshImport()
     local rows = line and MAW:GetBookRows(line) or {}
     local book = line and MAW:GetBook(line)
     if not line then
-        importFrame.info:SetText("No recipe book scanned yet on this character. Open a profession window (Alchemy, Jewelcrafting, ...) and it is read automatically. Enchanting is not supported.")
+        importFrame.info:SetText("No recipe book scanned yet on this character. Open a profession window and it is read automatically. Enchanting is not supported.")
     else
         local age = book and book.scannedAt and math.floor((time() - book.scannedAt) / 60) or nil
-        importFrame.info:SetText(string.format("%s: %d recipes, scanned %s.%s Reagents and batch sizes come from your book. Vials are vendor priced.",
+        importFrame.info:SetText(string.format("%s: %d recipes, scanned %s. Reagents and batch sizes come from your book; vials are vendor priced.%s",
             line, #rows, age and (age .. " min ago") or "never",
-            book and book.partial and " Some rows could not be read; scan again with the window open." or ""))
+            book and book.partial and " Some rows could not be read; scan again." or ""))
     end
 
     local needle = importFrame.search or ""
@@ -588,7 +569,9 @@ function MAWRecipeDialog.RefreshImport()
             row.text:SetPoint("LEFT", row, "LEFT", 4, 0)
             row.text:SetWidth(370)
             row.text:SetJustifyH("LEFT")
-            row.btn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+            row.text:SetWordWrap(false)
+            if row.text.SetMaxLines then row.text:SetMaxLines(1) end
+            row.btn = Button(row)
             row.btn:SetSize(70, 20)
             row.btn:SetPoint("RIGHT", row, "RIGHT", -4, 0)
             row:SetScript("OnEnter", function(self)
@@ -613,6 +596,7 @@ function MAWRecipeDialog.RefreshImport()
             r.header or "", table.concat(matText, ", ")))
         if s.have then
             row.btn:SetText("Added")
+            row.btn:SetScript("OnClick", nil)
             row.btn:Disable()
         else
             row.btn:SetText("Add")

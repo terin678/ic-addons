@@ -254,7 +254,7 @@ function Events.Process(text, author, source, opts)
         state.awaitingItem = nil
     end
 
-    local willInvite = result.verdict == "invite" and not result.blocked and #craftable > 0
+    local willInvite = Events.ShouldInvite(result, #craftable, #matched)
     local nounS = profile.craftNoun[1]
 
     -- Everything they named needs a Bind on Pickup reagent you don't hold.
@@ -373,7 +373,7 @@ function Events.Process(text, author, source, opts)
         local wanted = (isWhisper and o.autoFromWhisper)
             or (isParty and o.autoFromParty)
             or (not isDirect and o.autoFromInvite)
-        if wanted and result.verdict == "invite" and #craftable > 0 then
+        if wanted and Events.ShouldOpenOrder(result, #craftable, #matched, isDirect) then
             if usedContext then
                 ns.Print(string.format("|cff888888(matched %s using their previous message)|r", short))
             end
@@ -389,6 +389,24 @@ function Events.Process(text, author, source, opts)
     end
 
     return result
+end
+
+-- Pure. Invite when the content says customer, nothing operational blocks it, and
+-- either we can make what they named or they named nothing at all. A bare "LF JC"
+-- is a customer standing at the door: Inviter has a no-item whisper for exactly
+-- that case, and requiring an item made it unreachable.
+function Events.ShouldInvite(result, craftableCount, matchedCount)
+    if result.verdict ~= "invite" or result.blocked then return false end
+    return craftableCount > 0 or matchedCount == 0
+end
+
+-- Pure. Open an order for anything worth an invite, and also for a direct request
+-- that named nothing. The customer who whispers "any JC on?" and then hands over
+-- mats is the case Dezedin reported: with no order, the mats have nothing to fill
+-- in and the trade cannot auto-fill on the way back.
+function Events.ShouldOpenOrder(result, craftableCount, matchedCount, isDirect)
+    if result.verdict ~= "invite" then return false end
+    return craftableCount > 0 or (isDirect and matchedCount == 0)
 end
 
 function Events.OnTradeMessage(text, author, opts)

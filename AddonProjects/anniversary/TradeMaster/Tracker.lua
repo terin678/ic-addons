@@ -37,7 +37,7 @@ function Tracker.Create()
         Save()
     end)
     f:SetClampedToScreen(true)
-    ns.UI.Skin(f, 0.05, 0.05, 0.07, 0.92)
+    ns.UI.Skin(f, 0.082, 0.137, 0.200, 0.92)
     f:Hide()
 
     local p = ns.db.settings.tracker.point
@@ -121,9 +121,8 @@ function Tracker.Refresh()
 
     if Tracker.powerButton then
         local on = ns.Enabled()
-        Tracker.powerButton.text:SetText(on and "On" or "Off")
-        Tracker.powerButton:SetBackdropColor(
-            on and 0.15 or 0.35, on and 0.35 or 0.15, 0.15, 1)
+        Tracker.powerButton:SetText(on and "On" or "Off")
+        Tracker.powerButton:SetKind(on and "normal" or "danger")
     end
 
     if not ns.Enabled() then

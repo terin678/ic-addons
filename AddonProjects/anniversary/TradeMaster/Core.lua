@@ -2,7 +2,7 @@ local addonName, ns = ...
 
 ns.Util = ns.Util or {}
 
-local VERSION = "1.5.0"
+local VERSION = "1.6.0"
 
 -- Output goes straight into a chat frame rather than through the chat event
 -- system, so it has no message type and the chat settings UI cannot route it.
@@ -91,6 +91,7 @@ ns.Defaults = {
             autoFromInvite = true,
             autoFromWhisper = true,
             autoFromParty = true,
+            autoFromTrade = true,
             captureTranscript = true,
             autoAdvanceMats = true,
             autoFillTrade = true,

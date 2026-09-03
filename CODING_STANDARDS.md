@@ -76,7 +76,9 @@ AddonName/
   text to lay out a list.
 - Toolbars (add, search, sort, filters, bulk actions) sit in a row above the headers.
   Nothing is anchored over the scroll area: no bottom-anchored control sharing space with a
-  list. Legends go in the toolbar or a header tooltip.
+  list. Legends go in the toolbar or a header tooltip. A footer strip below a list is
+  allowed only for things that belong at the end of it (a drop target, a totals line) and
+  only when the list reserves its full height, so the two can never share a pixel.
 - A page never overflows its frame. Add up the vertical offsets when you edit a form; if the
   total exceeds the page height, put the form in a ScrollFrame.
 - Prose above a list has explicit line breaks and a known line count, so the list's top
@@ -88,6 +90,10 @@ AddonName/
   amber pending or derived, grey missing or finished. One meaning per colour per addon.
 - Build lists with the shared widget library `LibICUI-1.0` (ICLibs) through the addon's own
   thin wrapper, not with hand-placed FontStrings per tab.
+- Windows, tabs, buttons, edit boxes and check buttons come from the same library, so the
+  guild palette is what you get by default. Do not hand-roll a button or paint one with
+  literal colour values; an addon that wants the Blizzard look sets `theme = false` on its
+  registered style instead.
 
 ## Versioning and release
 

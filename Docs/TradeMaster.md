@@ -151,6 +151,11 @@ are `{item}`, `{items}`, `{have}`, `{lack}`, `{player}`.
 ### Tracks orders
 
 An order opens when someone asks and counts as *open* only once they join your group.
+It does not matter who moved first. A customer who whispers "any JC on?" without naming
+anything gets an invite and an order, and someone who skips the conversation entirely and
+just opens a trade gets one the moment they put mats in the window. Nothing has to be
+matched in chat for the order book to pick a customer up.
+
 Quantities come from the mats they hand you, multiplied by how many the recipe makes per
 craft, so a Major Protection Potion order counts in fives. If the mats fit two things
 they asked for, TradeMaster asks you to set the split. If they hand over a reagent that

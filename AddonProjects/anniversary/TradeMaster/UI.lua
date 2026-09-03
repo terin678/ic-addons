@@ -6,57 +6,10 @@ local UI = ns.UI
 local WIDTH, HEIGHT = 720, 572
 local ROW_H = 18
 
-local BACKDROP = {
-    bgFile = "Interface\\Buttons\\WHITE8x8",
-    edgeFile = "Interface\\Buttons\\WHITE8x8",
-    edgeSize = 1,
-    insets = { left = 1, right = 1, top = 1, bottom = 1 },
-}
-
-local function Skin(f, r, g, b, a)
-    if f.SetBackdrop then
-        f:SetBackdrop(BACKDROP)
-        f:SetBackdropColor(r or 0.082, g or 0.137, b or 0.200, a or 0.95)
-        f:SetBackdropBorderColor(0.3, 0.3, 0.3, 0.8)
-    end
-    return f
-end
-
-local function Button(parent, text, w, h)
-    local b = CreateFrame("Button", nil, parent, BackdropTemplateMixin and "BackdropTemplate")
-    b:SetSize(w or 90, h or 22)
-    Skin(b, 0.15, 0.15, 0.18, 1)
-    b.text = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    b.text:SetPoint("CENTER")
-    b.text:SetText(text)
-    b:SetScript("OnEnter", function(self) self:SetBackdropColor(0.25, 0.25, 0.3, 1) end)
-    b:SetScript("OnLeave", function(self) self:SetBackdropColor(0.15, 0.15, 0.18, 1) end)
-    return b
-end
-
-local function Label(parent, text, template)
-    local fs = parent:CreateFontString(nil, "OVERLAY", template or "GameFontNormalSmall")
-    fs:SetText(text)
-    return fs
-end
-
-local function EditBox(parent, w, h)
-    local box = CreateFrame("EditBox", nil, parent, BackdropTemplateMixin and "BackdropTemplate")
-    box:SetSize(w or 200, h or 22)
-    box:SetAutoFocus(false)
-    box:SetFontObject("GameFontHighlightSmall")
-    box:SetTextInsets(6, 6, 0, 0)
-    Skin(box, 0.1, 0.1, 0.12, 1)
-    return box
-end
-
--- Shared with UI_Orders.lua and Tracker.lua.
-UI.Skin, UI.Button, UI.Label, UI.EditBox = Skin, Button, Label, EditBox
-
 --------------------------------------------------------------------------------
--- Lists and toolbars come from the shared widget library, so every tab gets
--- column headers outside the scroll child and fixed single-line rows. See
--- "Window layout" in CODING_STANDARDS.md.
+-- Every widget comes from the shared library, so the window wears the guild
+-- palette and every tab gets column headers outside the scroll child with fixed
+-- single-line rows. See "Window layout" in CODING_STANDARDS.md.
 --------------------------------------------------------------------------------
 
 local ICUI = LibStub("LibICUI-1.0")
@@ -67,7 +20,34 @@ local STYLE = ICUI:Style("TradeMaster", {
     headerHeight = 18,
     font = "GameFontHighlightSmall",
     headerFont = "GameFontDisableSmall",
+    pageWidth = WIDTH - 20,
 })
+
+-- Colours stay optional: pass none and a frame lands on the brand navy.
+local function Skin(f, r, g, b, a)
+    return ICUI:Skin(f, { r = r or 0.082, g = g or 0.137, b = b or 0.200, a = a or 0.95 },
+        STYLE.buttonBorder)
+end
+
+-- opts goes through to the library: kind = "accent" | "danger", template, font.
+local function Button(parent, text, w, h, opts)
+    opts = opts or {}
+    opts.style = STYLE
+    return ICUI:Button(parent, text, w, h, opts)
+end
+
+local function Label(parent, text, template)
+    local fs = parent:CreateFontString(nil, "OVERLAY", template or "GameFontNormalSmall")
+    fs:SetText(text)
+    return fs
+end
+
+local function EditBox(parent, w, h)
+    return ICUI:EditBox(parent, w, h, { style = STYLE })
+end
+
+-- Shared with UI_Orders.lua, UI_Market.lua and Tracker.lua.
+UI.Skin, UI.Button, UI.Label, UI.EditBox = Skin, Button, Label, EditBox
 
 function UI.Age(seconds) return ICUI:Age(seconds) end
 
@@ -80,8 +60,8 @@ end
 function UI.Table(page, opts)
     opts = opts or {}
     opts.style = STYLE
-    opts.makeButton = opts.makeButton or function(parent, text, w, h)
-        return Button(parent, text, w, h)
+    opts.makeButton = opts.makeButton or function(parent, text, w, h, desc)
+        return Button(parent, text, w, h, { kind = desc and desc.kind })
     end
     return ICUI:Table(page, opts)
 end
@@ -204,8 +184,7 @@ end
 function UI.SelectTab(index)
     for i, tab in ipairs(UI.tabs) do
         UI.pages[i]:SetShown(i == index)
-        tab:SetBackdropColor(i == index and 0.25 or 0.15,
-            i == index and 0.25 or 0.15, i == index and 0.35 or 0.18, 1)
+        tab:SetActive(i == index)
     end
     UI.current = index
     UI.Refresh()
@@ -226,14 +205,14 @@ function UI.Refresh()
     local profile = ns.Prof.Current()
     local s = ns.PS()
     UI.title:SetText("TradeMaster  |cff888888" .. (profile.key ~= "generic" and profile.name or "no active profession") .. "|r")
-    UI.barkToggle.text:SetText("Bark: " .. UI.State(s.bark.enabled))
-    UI.inviteToggle.text:SetText("Invites: " .. UI.State(ns.db.settings.invites ~= false))
+    UI.barkToggle:SetText("Bark: " .. UI.State(s.bark.enabled))
+    UI.inviteToggle:SetText("Invites: " .. UI.State(ns.db.settings.invites ~= false))
 
     if not ns.Enabled() then
         UI.status:SetText("|cffff4444DISABLED|r  |cff888888no invites, whispers, barks or trade filling. Click Enable.|r")
-        if UI.enableButton then UI.enableButton.text:SetText("Enable") end
+        if UI.enableButton then UI.enableButton:SetText("Enable") end
     else
-        if UI.enableButton then UI.enableButton.text:SetText("Disable") end
+        if UI.enableButton then UI.enableButton:SetText("Disable") end
         local n, products, noun = ns.Prof.BookCounts(profile, ns.Book())
         UI.status:SetText(string.format(
             "%d recipes (%d %s)  |  advertising %d  |  %d open orders%s",
@@ -322,7 +301,7 @@ function UI.BuildProfessions(page)
                     and UI.Age(now - pd.bookScannedAt) or "never")
                 t:Set(row, "adv", tostring(#ns.Barker.AdvertisedEntries(pd.book)))
                 t:Set(row, "note", pd.bookPartial and "|cffff9900partial scan|r" or "")
-                btn.text:SetText(isActive and "|cff44ff44Active|r" or "Make active")
+                btn:SetText(isActive and "|cff44ff44Active|r" or "Make active")
                 btn:Show()
                 btn:SetScript("OnClick", function()
                     ns.Prof.SetActive(key)
@@ -352,7 +331,9 @@ function UI.BuildBook(page)
     UI.bookProf = nil
     local function ViewedKey()
         local known = ns.Prof.Known()
-        if UI.bookProf and ns.db.professions[UI.bookProf] then return UI.bookProf end
+        if UI.bookProf and ns.db.professions and ns.db.professions[UI.bookProf] then
+            return UI.bookProf
+        end
         return ns.db.activeProfession or known[1]
     end
     local function ViewedBook()
@@ -480,14 +461,14 @@ function UI.BuildBook(page)
     function UI.RefreshBook()
         local book, profile = ViewedBook()
         local key = ViewedKey()
-        viewBtn.text:SetText("Book: " .. (profile.key ~= "generic" and profile.name or "-")
+        viewBtn:SetText("Book: " .. (profile.key ~= "generic" and profile.name or "-")
             .. (key and key == ns.db.activeProfession and " |cff44ff44(active)|r" or ""))
 
         for _, b in ipairs(UI.bulkButtons) do b:Hide() end
         for i, m in ipairs(profile.bulkFilters or {}) do
             local b = UI.bulkButtons[i]
             if b then
-                b.text:SetText(m[1])
+                b:SetText(m[1])
                 b:SetScript("OnClick", function()
                     ns.Barker.ApplyAdvertiseFilter(book, m[2], profile)
                     UI.Refresh()
@@ -508,7 +489,7 @@ function UI.BuildBook(page)
         end
 
         local _, mode = SortMode()
-        sortBtn.text:SetText("Sort: " .. mode.label)
+        sortBtn:SetText("Sort: " .. mode.label)
         local function byName(a, b) return (a.name or "") < (b.name or "") end
         local function byQuality(a, b)
             local qa, qb = a.quality or 0, b.quality or 0
@@ -627,7 +608,7 @@ function UI.BuildBark(page)
 
     function UI.RefreshBark()
         local s = ns.PS().bark
-        remind.text:SetText("Bark reminders: " .. UI.State(s.enabled))
+        remind:SetText("Bark reminders: " .. UI.State(s.enabled))
         slider:SetValue(s.intervalSec)
         _G[slider:GetName() .. "Text"]:SetText("Reminder interval: " .. s.intervalSec .. "s")
         if not tpl:HasFocus() then tpl:SetText(s.template) end
@@ -805,7 +786,6 @@ function UI.BuildLog(page)
             UI.RefreshLog()
         end)
         b.filterKey = f.key
-        b.plainLabel = f.label
         bar:Left(b)
         UI.logFilterButtons[i] = b
     end
@@ -864,8 +844,7 @@ function UI.BuildLog(page)
 
     function UI.RefreshLog()
         for _, b in ipairs(UI.logFilterButtons) do
-            local on = b.filterKey == UI.logFilter
-            b.text:SetText(on and ("|cffffcc00" .. b.plainLabel .. "|r") or b.plainLabel)
+            b:SetActive(b.filterKey == UI.logFilter)
         end
 
         local now = ns.Now()
@@ -883,7 +862,7 @@ function UI.BuildLog(page)
             local btn = row.buttons.never
             local st = e.player and ns.db.players[e.player]
             local never = st and st.neverInvite
-            btn.text:SetText(never and "|cffff4444Never|r" or "Never")
+            btn:SetKind(never and "danger" or "normal")
             btn:SetShown(e.player ~= nil)
             btn:SetScript("OnClick", function()
                 local state = ns.Players.Get(ns.db, e.player)
@@ -1000,7 +979,7 @@ function UI.BuildInvite(page)
     hint:SetJustifyH("LEFT")
 
     function UI.RefreshInvite()
-        toggle.text:SetText("Invites: " .. UI.State(ns.db.settings.invites ~= false))
+        toggle:SetText("Invites: " .. UI.State(ns.db.settings.invites ~= false))
         for _, c in ipairs(UI.inviteChecks) do c.cb:SetChecked(c.get() and true or false) end
         slider:SetValue(ns.PS().invite.maxParty)
         _G[slider:GetName() .. "Text"]:SetText("Max party: " .. ns.PS().invite.maxParty)

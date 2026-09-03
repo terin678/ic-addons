@@ -79,7 +79,7 @@ function UI.BuildOrders(page)
     detail:SetPoint("BOTTOMLEFT", 0, 0)
     detail:SetPoint("BOTTOMRIGHT", 0, 0)
     detail:SetHeight(DETAIL_H)
-    UI.Skin(detail, 0.10, 0.14, 0.19, 0.95)
+    UI.Skin(detail, 0.098, 0.149, 0.216, 0.95)
 
     local detailHead = UI.Label(detail, "", "GameFontNormalSmall")
     detailHead:SetPoint("TOPLEFT", 8, -6)
@@ -173,7 +173,7 @@ function UI.BuildOrders(page)
             r.label:SetText("|cffff9900quantities above are a guess|r")
             r.minus:Hide(); r.plus:Hide(); r.count:SetText("")
             for _, b in ipairs(r.picks) do b:Hide() end
-            r.action.text:SetText("Confirm split")
+            r.action:SetText("Confirm split")
             r.action:SetScript("OnClick", function()
                 for _, it in ipairs(o.items) do
                     if it.qtySource == "ambiguous" then it.qtySource = "manual" end
@@ -203,7 +203,7 @@ function UI.BuildOrders(page)
                 local productID = info.options[b]
                 if productID then
                     local e = book[productID]
-                    btn.text:SetText(e and e.name or tostring(productID))
+                    btn:SetText(e and e.name or tostring(productID))
                     btn:SetScript("OnClick", function()
                         local per = e and e.reagents and e.reagents[rawID] or 1
                         o.items[#o.items + 1] = {
@@ -280,7 +280,7 @@ function UI.BuildOrders(page)
     UI.orderTable = t
 
     function UI.RefreshOrders()
-        showDone.text:SetText(UI.showDoneOrders and "Finished: shown" or "Finished: hidden")
+        showDone:SetText(UI.showDoneOrders and "Finished: shown" or "Finished: hidden")
 
         local list = {}
         for _, o in ipairs(ns.db.orders) do

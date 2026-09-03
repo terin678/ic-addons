@@ -2,6 +2,22 @@
 local addonName = "MalexisAuctionWatcher"
 local MAWDialogs = {}
 
+-- Dialogs wear the same palette as the main window. The style is registered by name in
+-- UI.lua, which loads later, so it is looked up when a dialog is actually built.
+local ICUI = LibStub("LibICUI-1.0")
+local STYLE_NAME = "MalexisAuctionWatcher"
+
+local function Button(parent, text, w, h, opts)
+    opts = opts or {}
+    opts.style = STYLE_NAME
+    return ICUI:Button(parent, text, w, h, opts)
+end
+
+local function Window(name, w, h, title)
+    return ICUI:Window(name, { style = STYLE_NAME, width = w, height = h, title = title,
+        status = false, strata = "DIALOG" })
+end
+
 -- Helper function to get all cached recipes organized by profession
 local function GetCachedRecipes()
     if not _G.MalexisAuctionWatcher then
@@ -88,19 +104,8 @@ function MAWDialogs.ShowAddItemDialog(itemType)
     end
 
     -- Create frame (made taller to accommodate recipe list)
-    addItemFrame = CreateFrame("Frame", "MAWAddItemFrame", UIParent, "BasicFrameTemplateWithInset")
-    addItemFrame:SetSize(500, 450)
-    addItemFrame:SetPoint("CENTER")
-    addItemFrame:SetFrameStrata("DIALOG")
-    addItemFrame:SetMovable(true)
-    addItemFrame:EnableMouse(true)
-    addItemFrame:RegisterForDrag("LeftButton")
-    addItemFrame:SetScript("OnDragStart", addItemFrame.StartMoving)
-    addItemFrame:SetScript("OnDragStop", addItemFrame.StopMovingOrSizing)
-
-    addItemFrame.title = addItemFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    addItemFrame.title:SetPoint("CENTER", addItemFrame.TitleBg, "CENTER", 5, 0)
-    addItemFrame.title:SetText("Add " .. (itemType == "product" and "Product" or "Material"))
+    addItemFrame = Window("MAWAddItemFrame", 500, 450,
+        "Add " .. (itemType == "product" and "Product" or "Material"))
 
     local yOffset = -35
 
@@ -241,8 +246,11 @@ function MAWDialogs.ShowAddItemDialog(itemType)
                 -- Button text
                 btn.text = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
                 btn.text:SetPoint("LEFT", btn, "LEFT", 15, 0)
+                btn.text:SetPoint("RIGHT", btn, "RIGHT", -6, 0)
                 btn.text:SetText(recipeName)
                 btn.text:SetJustifyH("LEFT")
+                btn.text:SetWordWrap(false)
+                if btn.text.SetMaxLines then btn.text:SetMaxLines(1) end
 
                 -- Highlight on hover
                 btn:SetScript("OnEnter", function(self)
@@ -371,7 +379,7 @@ function MAWDialogs.ShowAddItemDialog(itemType)
     highCopperSuffix:SetText("c")
 
     -- Add button
-    local addBtn = CreateFrame("Button", nil, addItemFrame, "UIPanelButtonTemplate")
+    local addBtn = Button(addItemFrame)
     addBtn:SetSize(80, 22)
     addBtn:SetPoint("BOTTOMLEFT", addItemFrame, "BOTTOMLEFT", 15, 15)
     addBtn:SetText("Add")
@@ -425,7 +433,7 @@ function MAWDialogs.ShowAddItemDialog(itemType)
     end)
 
     -- Cancel button
-    local cancelBtn = CreateFrame("Button", nil, addItemFrame, "UIPanelButtonTemplate")
+    local cancelBtn = Button(addItemFrame)
     cancelBtn:SetSize(80, 22)
     cancelBtn:SetPoint("LEFT", addBtn, "RIGHT", 5, 0)
     cancelBtn:SetText("Cancel")
@@ -445,19 +453,7 @@ function MAWDialogs.ShowPriceInputDialog(itemName, priceType)
     end
 
     -- Create frame
-    priceInputFrame = CreateFrame("Frame", "MAWPriceInputFrame", UIParent, "BasicFrameTemplateWithInset")
-    priceInputFrame:SetSize(280, 140)
-    priceInputFrame:SetPoint("CENTER")
-    priceInputFrame:SetFrameStrata("DIALOG")
-    priceInputFrame:SetMovable(true)
-    priceInputFrame:EnableMouse(true)
-    priceInputFrame:RegisterForDrag("LeftButton")
-    priceInputFrame:SetScript("OnDragStart", priceInputFrame.StartMoving)
-    priceInputFrame:SetScript("OnDragStop", priceInputFrame.StopMovingOrSizing)
-
-    priceInputFrame.title = priceInputFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    priceInputFrame.title:SetPoint("CENTER", priceInputFrame.TitleBg, "CENTER", 5, 0)
-    priceInputFrame.title:SetText("Set " .. priceType .. " Price")
+    priceInputFrame = Window("MAWPriceInputFrame", 280, 140, "Set " .. priceType .. " Price")
 
     local yOffset = -35
 
@@ -509,7 +505,7 @@ function MAWDialogs.ShowPriceInputDialog(itemName, priceType)
     yOffset = yOffset - 35
 
     -- Set button
-    local setBtn = CreateFrame("Button", nil, priceInputFrame, "UIPanelButtonTemplate")
+    local setBtn = Button(priceInputFrame)
     setBtn:SetSize(80, 22)
     setBtn:SetPoint("BOTTOMLEFT", priceInputFrame, "BOTTOMLEFT", 15, 15)
     setBtn:SetText("Set")
@@ -523,10 +519,16 @@ function MAWDialogs.ShowPriceInputDialog(itemName, priceType)
         if totalCopper > 0 then
             local MAW = _G.MalexisAuctionWatcher
             local db = MAW:GetActiveDB()
+            local item = db.items and db.items[itemName]
+            if not item then
+                print("Malexis Auction Watcher: no longer tracking " .. itemName)
+                priceInputFrame:Hide()
+                return
+            end
             if priceType == "LOW" then
-                db.items[itemName].customLow = totalCopper
+                item.customLow = totalCopper
             else
-                db.items[itemName].customHigh = totalCopper
+                item.customHigh = totalCopper
             end
             if _G.MalexisAuctionWatcherUI then
                 _G.MalexisAuctionWatcherUI:RefreshData()
@@ -538,17 +540,20 @@ function MAWDialogs.ShowPriceInputDialog(itemName, priceType)
     end)
 
     -- Clear button
-    local clearBtn = CreateFrame("Button", nil, priceInputFrame, "UIPanelButtonTemplate")
+    local clearBtn = Button(priceInputFrame)
     clearBtn:SetSize(80, 22)
     clearBtn:SetPoint("LEFT", setBtn, "RIGHT", 5, 0)
     clearBtn:SetText("Clear")
     clearBtn:SetScript("OnClick", function()
         local MAW = _G.MalexisAuctionWatcher
         local db = MAW:GetActiveDB()
-        if priceType == "LOW" then
-            db.items[itemName].customLow = nil
-        else
-            db.items[itemName].customHigh = nil
+        local item = db.items and db.items[itemName]
+        if item then
+            if priceType == "LOW" then
+                item.customLow = nil
+            else
+                item.customHigh = nil
+            end
         end
         if _G.MalexisAuctionWatcherUI then
             _G.MalexisAuctionWatcherUI:RefreshData()
@@ -557,7 +562,7 @@ function MAWDialogs.ShowPriceInputDialog(itemName, priceType)
     end)
 
     -- Cancel button
-    local cancelBtn = CreateFrame("Button", nil, priceInputFrame, "UIPanelButtonTemplate")
+    local cancelBtn = Button(priceInputFrame)
     cancelBtn:SetSize(80, 22)
     cancelBtn:SetPoint("LEFT", clearBtn, "RIGHT", 5, 0)
     cancelBtn:SetText("Cancel")
@@ -568,11 +573,12 @@ function MAWDialogs.ShowPriceInputDialog(itemName, priceType)
     -- Pre-fill with current value if exists
     local MAW = _G.MalexisAuctionWatcher
     local db = MAW:GetActiveDB()
+    local item = db.items and db.items[itemName] or {}
     local currentValue = nil
-    if priceType == "LOW" and db.items[itemName].customLow then
-        currentValue = db.items[itemName].customLow
-    elseif priceType == "HIGH" and db.items[itemName].customHigh then
-        currentValue = db.items[itemName].customHigh
+    if priceType == "LOW" and item.customLow then
+        currentValue = item.customLow
+    elseif priceType == "HIGH" and item.customHigh then
+        currentValue = item.customHigh
     elseif MAW.GetPriceBounds then
         -- No custom value: start from the bound in effect (TSM-derived or scan-derived)
         local low, high = MAW:GetPriceBounds(itemName)
@@ -598,20 +604,7 @@ function MAWDialogs.ShowCopyDataDialog()
     if not MAW then return end
 
     -- Create frame
-    local copyFrame = CreateFrame("Frame", "MAWCopyDataDialog", UIParent, "BasicFrameTemplateWithInset")
-    copyFrame:SetSize(400, 180)
-    copyFrame:SetPoint("CENTER")
-    copyFrame:SetFrameStrata("DIALOG")
-    copyFrame:EnableMouse(true)
-    copyFrame:SetMovable(true)
-    copyFrame:RegisterForDrag("LeftButton")
-    copyFrame:SetScript("OnDragStart", copyFrame.StartMoving)
-    copyFrame:SetScript("OnDragStop", copyFrame.StopMovingOrSizing)
-
-    copyFrame.title = copyFrame:CreateFontString(nil, "OVERLAY")
-    copyFrame.title:SetFontObject("GameFontHighlight")
-    copyFrame.title:SetPoint("CENTER", copyFrame.TitleBg, "CENTER", 5, 0)
-    copyFrame.title:SetText("Copy Account Data?")
+    local copyFrame = Window("MAWCopyDataDialog", 400, 180, "Copy Account Data?")
 
     -- Message text
     local accountItemCount = MAW:CountItems(MalexisAuctionWatcherDB.items or {})
@@ -629,7 +622,7 @@ function MAWDialogs.ShowCopyDataDialog()
     infoText:SetText("(Your account-wide data will remain unchanged)")
 
     -- Copy button
-    local copyBtn = CreateFrame("Button", nil, copyFrame, "UIPanelButtonTemplate")
+    local copyBtn = Button(copyFrame)
     copyBtn:SetSize(120, 25)
     copyBtn:SetPoint("BOTTOM", copyFrame, "BOTTOM", -65, 15)
     copyBtn:SetText("Copy Data")
@@ -643,7 +636,7 @@ function MAWDialogs.ShowCopyDataDialog()
     end)
 
     -- Start Fresh button
-    local freshBtn = CreateFrame("Button", nil, copyFrame, "UIPanelButtonTemplate")
+    local freshBtn = Button(copyFrame)
     freshBtn:SetSize(120, 25)
     freshBtn:SetPoint("BOTTOM", copyFrame, "BOTTOM", 65, 15)
     freshBtn:SetText("Start Fresh")

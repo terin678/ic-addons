@@ -884,3 +884,43 @@ T.Case("Market: Observe records one sample per named profession", function()
     T.Eq(ns.Market.Counts(db, now, "leatherworking", 3600), 1, "leatherworking seller")
     ns.db = savedDB
 end)
+
+
+--------------------------------------------------------------------------------
+-- Who gets an invite, and who gets an order
+--------------------------------------------------------------------------------
+
+T.Case("Invite: a customer we can craft for", function()
+    local r = { verdict = "invite" }
+    T.Eq(ns.Events.ShouldInvite(r, 1, 1), true, "one craftable match")
+end)
+
+T.Case("Invite: a bare profession request names nothing and still counts", function()
+    local r = { verdict = "invite" }
+    T.Eq(ns.Events.ShouldInvite(r, 0, 0), true, "no items named at all")
+end)
+
+T.Case("Invite: not when every match needs a BoP mat we lack", function()
+    local r = { verdict = "invite" }
+    T.Eq(ns.Events.ShouldInvite(r, 0, 2), false, "matched but nothing craftable")
+end)
+
+T.Case("Invite: never against the verdict or an operational block", function()
+    T.Eq(ns.Events.ShouldInvite({ verdict = "lowscore" }, 1, 1), false, "lowscore")
+    T.Eq(ns.Events.ShouldInvite({ verdict = "vetoed" }, 1, 1), false, "vetoed")
+    T.Eq(ns.Events.ShouldInvite({ verdict = "invite", blocked = "invites off" }, 1, 1), false,
+        "blocked")
+end)
+
+T.Case("Order: a whisper that named nothing still opens one", function()
+    local r = { verdict = "invite" }
+    T.Eq(ns.Events.ShouldOpenOrder(r, 0, 0, true), true, "direct")
+    T.Eq(ns.Events.ShouldOpenOrder(r, 0, 0, false), false, "a Trade post is not at your door")
+end)
+
+T.Case("Order: an operational block still books the order", function()
+    -- Group full or on cooldown means we cannot invite yet. They are still a
+    -- customer, and the order is how we remember that.
+    local r = { verdict = "invite", blocked = "group full" }
+    T.Eq(ns.Events.ShouldOpenOrder(r, 1, 1, true), true, "blocked but wanted")
+end)

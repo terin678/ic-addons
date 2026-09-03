@@ -45,7 +45,9 @@ API changes. `scripts/package.ps1` bundles required addons into the zip and
 - New or edited window: follow "Window layout" in `CODING_STANDARDS.md`. Lists get a header
   row outside the scroll child, fixed single-line rows, a toolbar above the headers, no
   controls over the scroll area, and the page must fit (TradeMaster pages are 700x478) or
-  scroll. Build them with `LibStub("LibICUI-1.0")` through the addon's wrapper.
+  scroll. Build them with `LibStub("LibICUI-1.0")` through the addon's wrapper: the same
+  library supplies the window, the tabs and every button in the guild palette, so never
+  hand-roll a control or paint one with literal colours.
 - After editing any UI file, run the `wow-ui-reviewer` agent on it before packaging.
 - Do not use the Bash heredoc trick for multi-line Lua edits from Claude Code on this
   machine; it fails on some content. Write a small Python script to a scratch file with the

@@ -65,12 +65,24 @@ local function Commit(snapshot)
     local anyRaw = next(rawMats) ~= nil
     local anyDelivered = next(delivered) ~= nil
 
-    if not order then
-        if anyRaw or anyDelivered or net > 0 then
+    -- Someone who messaged you first, or said nothing at all, can reach the trade
+    -- window with no order behind them. Open one here: the mats in the window are
+    -- the request, and InferQuantities below reads them. The order takes the active
+    -- profession, which is the book this trade was already classified against.
+    if not order and (anyRaw or anyDelivered or net > 0) then
+        if ns.db.settings.orders.autoFromTrade ~= false then
+            order = ns.Orders.Create(player, "trade", "", {}, now, "grouped")
+            ns.Print(string.format(
+                "|cff44ff44order #%d opened|r for %s: they traded first.", order.id, player))
+            if ns.Tracker then ns.Tracker.Refresh() end
+        else
             ns.Print(string.format(
                 "|cffffcc00%s traded with you and has no open order.|r Use /tm order add %s to start one.",
                 player, player))
         end
+    end
+
+    if not order then
         if net ~= 0 then ns.Ledger.Record(player, nil, net, delivered, now) end
         return
     end
