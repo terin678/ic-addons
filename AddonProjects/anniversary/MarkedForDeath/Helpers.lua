@@ -89,6 +89,83 @@ function H.SortedKeys(t)
     return keys
 end
 
+local B64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+local B64_LOOKUP = {}
+for i = 1, #B64_ALPHABET do
+    B64_LOOKUP[string.sub(B64_ALPHABET, i, i)] = i - 1
+end
+
+-- Standard base64. Hand-rolled rather than pulled from a library so the addon
+-- folder stays free of dependencies; rule sets are small enough that the extra
+-- string length costs nothing worth a vendored lib.
+function H.Base64Encode(str)
+    local out = {}
+
+    for i = 1, #str, 3 do
+        local a, b, c = string.byte(str, i, i + 2)
+        local n = a * 65536 + (b or 0) * 256 + (c or 0)
+        local c1 = math.floor(n / 262144) % 64
+        local c2 = math.floor(n / 4096) % 64
+        local c3 = math.floor(n / 64) % 64
+        local c4 = n % 64
+
+        out[#out + 1] = string.sub(B64_ALPHABET, c1 + 1, c1 + 1)
+        out[#out + 1] = string.sub(B64_ALPHABET, c2 + 1, c2 + 1)
+        out[#out + 1] = b and string.sub(B64_ALPHABET, c3 + 1, c3 + 1) or "="
+        out[#out + 1] = c and string.sub(B64_ALPHABET, c4 + 1, c4 + 1) or "="
+    end
+
+    return table.concat(out)
+end
+
+-- Returns the decoded string, or nil when the input is not valid base64. A
+-- mistyped import string must fail loudly rather than produce a corrupt rule
+-- set, so both the length and every character are checked.
+function H.Base64Decode(str)
+    if type(str) ~= "string" then
+        return nil
+    end
+
+    if str == "" then
+        return ""
+    end
+
+    if #str % 4 ~= 0 then
+        return nil
+    end
+
+    local out = {}
+
+    for i = 1, #str, 4 do
+        local values, padding = {}, 0
+
+        for j = 1, 4 do
+            local char = string.sub(str, i + j - 1, i + j - 1)
+            if char == "=" then
+                padding = padding + 1
+                values[j] = 0
+            else
+                local value = B64_LOOKUP[char]
+                if not value then
+                    return nil
+                end
+                values[j] = value
+            end
+        end
+
+        local n = values[1] * 262144 + values[2] * 4096 + values[3] * 64 + values[4]
+        out[#out + 1] = string.char(math.floor(n / 65536) % 256)
+        if padding < 2 then
+            out[#out + 1] = string.char(math.floor(n / 256) % 256)
+        end
+        if padding < 1 then
+            out[#out + 1] = string.char(n % 256)
+        end
+    end
+
+    return table.concat(out)
+end
+
 -- Searches the bundled and learned mob tables. Takes a case-insensitive query,
 -- an optional instance key filter, the bundled table
 -- ({ [npcID] = { name, instanceKey } }) and the learned table

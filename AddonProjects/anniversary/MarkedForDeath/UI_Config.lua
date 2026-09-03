@@ -654,6 +654,102 @@ local function buildRulesFrame()
     tinsert(UISpecialFrames, "MarkedForDeathRulesFrame")
 end
 
+-- Import and export. One window, two modes. Export shows a selected read-only
+-- string; import takes a pasted string and merges it into the local rules.
+local transferFrame
+
+local function runImport()
+    local text = string.gsub(transferFrame.edit:GetText(), "%s+", "")
+    local decoded = MFD.H.Base64Decode(text)
+    if not decoded then
+        MFD.Error("that is not a Marked For Death rule string")
+        return
+    end
+
+    local parsed, err = MFD.Rules.Deserialize(decoded)
+    if not parsed then
+        MFD.Error("could not read the rule string: " .. tostring(err))
+        return
+    end
+
+    local added, updated = MFD.Rules.MergeImport(MFD.db, parsed)
+    commitRules()
+    MFD.Print(string.format("imported %d new rules, updated %d", added, updated))
+    transferFrame:Hide()
+end
+
+local function buildTransferFrame()
+    transferFrame = CreateFrame("Frame", "MarkedForDeathTransferFrame", UIParent, "BasicFrameTemplateWithInset")
+    transferFrame:SetSize(460, 240)
+    transferFrame:SetPoint("CENTER")
+    transferFrame:SetMovable(true)
+    transferFrame:EnableMouse(true)
+    transferFrame:RegisterForDrag("LeftButton")
+    transferFrame:SetScript("OnDragStart", transferFrame.StartMoving)
+    transferFrame:SetScript("OnDragStop", transferFrame.StopMovingOrSizing)
+    transferFrame:SetFrameStrata("DIALOG")
+    transferFrame:SetFrameLevel(50)
+
+    transferFrame.title = transferFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    transferFrame.title:SetPoint("TOP", transferFrame, "TOP", 0, -6)
+
+    transferFrame.hint = transferFrame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    transferFrame.hint:SetPoint("TOPLEFT", transferFrame, "TOPLEFT", 14, -30)
+
+    transferFrame.scroll = CreateFrame("ScrollFrame", nil, transferFrame, "UIPanelScrollFrameTemplate")
+    transferFrame.scroll:SetPoint("TOPLEFT", transferFrame, "TOPLEFT", 14, -48)
+    transferFrame.scroll:SetPoint("BOTTOMRIGHT", transferFrame, "BOTTOMRIGHT", -32, 40)
+
+    transferFrame.edit = CreateFrame("EditBox", nil, transferFrame.scroll)
+    transferFrame.edit:SetMultiLine(true)
+    transferFrame.edit:SetAutoFocus(false)
+    transferFrame.edit:SetFontObject(ChatFontNormal)
+    transferFrame.edit:SetWidth(400)
+    transferFrame.edit:SetScript("OnEscapePressed", function(box)
+        box:ClearFocus()
+    end)
+    transferFrame.scroll:SetScrollChild(transferFrame.edit)
+
+    transferFrame.action = CreateFrame("Button", nil, transferFrame, "UIPanelButtonTemplate")
+    transferFrame.action:SetSize(100, 22)
+    transferFrame.action:SetPoint("BOTTOMRIGHT", transferFrame, "BOTTOMRIGHT", -14, 10)
+    transferFrame.action:SetScript("OnClick", function()
+        if transferFrame.mode == "import" then
+            runImport()
+        else
+            transferFrame:Hide()
+        end
+    end)
+
+    tinsert(UISpecialFrames, "MarkedForDeathTransferFrame")
+end
+
+-- Shows the transfer window. mode is "export" (text is shown, selected, and
+-- the button closes) or "import" (text is editable and the button imports).
+function RulesUI:ShowTransferBox(text, mode)
+    if not transferFrame then
+        buildTransferFrame()
+    end
+
+    transferFrame.mode = mode
+    transferFrame.edit:SetText(text or "")
+
+    if mode == "import" then
+        transferFrame.title:SetText("Import rules")
+        transferFrame.hint:SetText("Paste a rule string below. It merges into your rules; nothing is deleted.")
+        transferFrame.action:SetText("Import")
+        transferFrame:Show()
+        transferFrame.edit:SetFocus()
+    else
+        transferFrame.title:SetText("Export rules")
+        transferFrame.hint:SetText("Ctrl+C to copy. Anyone can paste this with /mfd import.")
+        transferFrame.action:SetText("Close")
+        transferFrame:Show()
+        transferFrame.edit:SetFocus()
+        transferFrame.edit:HighlightText()
+    end
+end
+
 function RulesUI:Toggle()
     if not rulesFrame then
         buildRulesFrame()

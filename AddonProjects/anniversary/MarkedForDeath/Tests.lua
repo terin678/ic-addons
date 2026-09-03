@@ -1242,4 +1242,61 @@ T.Case("Announce: an empty assignment list produces nothing", function()
     T.Eq(MFD.Announce.Format({}), "", "nothing to say")
 end)
 
+T.Case("Base64: round-trips arbitrary bytes", function()
+    for _, sample in ipairs({ "", "a", "ab", "abc", "Illidari Nightlord;22890;SHEEP;10", "BT;1;KILL;10;;;A\nBT;2;SHEEP;20;KILL;3;B" }) do
+        T.Eq(MFD.H.Base64Decode(MFD.H.Base64Encode(sample)), sample, "round trip of [" .. sample .. "]")
+    end
+end)
+
+T.Case("Base64: matches the standard encoding", function()
+    T.Eq(MFD.H.Base64Encode("a"), "YQ==", "one byte")
+    T.Eq(MFD.H.Base64Encode("ab"), "YWI=", "two bytes")
+    T.Eq(MFD.H.Base64Encode("abc"), "YWJj", "three bytes")
+end)
+
+T.Case("Base64: decoding rubbish returns nil rather than garbage", function()
+    T.Eq(MFD.H.Base64Decode("not base64!!"), nil, "bad characters")
+    T.Eq(MFD.H.Base64Decode("YQ="), nil, "bad length")
+    T.Eq(MFD.H.Base64Decode(42), nil, "not a string")
+end)
+
+T.Case("Rules: a full export round-trips through base64", function()
+    local rules = { BT = { { npcID = 1, name = "A", intent = "KILL", rank = 10 } } }
+    local encoded = MFD.H.Base64Encode(MFD.Rules.Serialize(rules))
+    local restored = MFD.Rules.Deserialize(MFD.H.Base64Decode(encoded))
+    T.Eq(restored.BT[1].npcID, 1, "survived the trip")
+end)
+
+T.Case("Rules: MergeImport updates an existing rule in place and keeps its rank", function()
+    local db = { rules = { BT = { { npcID = 1, name = "A", intent = "KILL", rank = 30 } } } }
+    local added, updated = MFD.Rules.MergeImport(db, { BT = { { npcID = 1, name = "A", intent = "SHEEP", rank = 10, maxCount = 2 } } })
+    T.Eq(updated, 1, "one updated")
+    T.Eq(added, 0, "none added")
+    T.Eq(db.rules.BT[1].intent, "SHEEP", "intent taken from the import")
+    T.Eq(db.rules.BT[1].maxCount, 2, "cap taken from the import")
+    T.Eq(db.rules.BT[1].rank, 30, "the local priority is the local player's decision")
+end)
+
+T.Case("Rules: MergeImport appends new rules after existing ones", function()
+    local db = { rules = { BT = { { npcID = 1, name = "A", intent = "KILL", rank = 10 } } } }
+    local added = MFD.Rules.MergeImport(db, { BT = { { npcID = 2, name = "B", intent = "KILL", rank = 5 } } })
+    T.Eq(added, 1, "one added")
+    T.Eq(#db.rules.BT, 2, "existing rule untouched")
+    T.Eq(db.rules.BT[2].npcID, 2, "appended")
+    T.Eq(db.rules.BT[2].rank, 20, "ranked after what was already there, not at its imported rank")
+end)
+
+T.Case("Rules: MergeImport creates an instance the player had no rules for", function()
+    local db = { rules = {} }
+    MFD.Rules.MergeImport(db, { HYJAL = { { npcID = 9, name = "H", intent = "TRAP", rank = 10 } } })
+    T.Eq(db.rules.HYJAL[1].npcID, 9, "new instance list created")
+    T.Eq(db.rules.HYJAL[1].rank, 10, "first rule takes the first rank")
+end)
+
+T.Case("Rules: MergeImport never deletes", function()
+    local db = { rules = { BT = { { npcID = 1, name = "A", intent = "KILL", rank = 10 }, { npcID = 2, name = "B", intent = "KILL", rank = 20 } } } }
+    MFD.Rules.MergeImport(db, { BT = { { npcID = 1, name = "A", intent = "SHEEP", rank = 10 } } })
+    T.Eq(#db.rules.BT, 2, "the rule absent from the import survives")
+end)
+
 _G.MarkedForDeath = MFD

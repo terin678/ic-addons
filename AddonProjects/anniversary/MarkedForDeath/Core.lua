@@ -449,6 +449,20 @@ commands.intents = {
     end,
 }
 
+commands.export = {
+    desc = "show a shareable string of your own rules",
+    run = function()
+        MFD.UI.Rules:ShowTransferBox(MFD.H.Base64Encode(MFD.Rules.Serialize(MFD.db.rules)), "export")
+    end,
+}
+
+commands["import"] = {
+    desc = "open a box to paste a rule string into",
+    run = function()
+        MFD.UI.Rules:ShowTransferBox("", "import")
+    end,
+}
+
 commands.rules = {
     desc = "open the rule editor and mob search",
     run = function()

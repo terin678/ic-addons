@@ -258,6 +258,46 @@ function Rules.Deserialize(str)
     return out
 end
 
+-- Merges an imported rule set into db.rules, keyed by instance and npcID.
+-- Mutates db.rules. An existing rule keeps its rank and takes the imported
+-- intent, fallback, cap and name; a new rule appends at the end of its
+-- instance list. Merging rather than replacing means a paste can never
+-- silently destroy existing work. Returns the counts of rules added and
+-- updated.
+function Rules.MergeImport(db, parsed)
+    local added, updated = 0, 0
+
+    for _, instanceKey in ipairs(MFD.H.SortedKeys(parsed)) do
+        db.rules[instanceKey] = db.rules[instanceKey] or {}
+        local list = db.rules[instanceKey]
+
+        for _, incoming in ipairs(parsed[instanceKey]) do
+            local existing
+            for _, rule in ipairs(list) do
+                if rule.npcID == incoming.npcID then
+                    existing = rule
+                    break
+                end
+            end
+
+            if existing then
+                existing.intent = incoming.intent
+                existing.fallback = incoming.fallback
+                existing.maxCount = incoming.maxCount
+                existing.name = incoming.name or existing.name
+                updated = updated + 1
+            else
+                local copy = MFD.H.DeepCopy(incoming)
+                copy.rank = Rules.NextRank(list)
+                list[#list + 1] = copy
+                added = added + 1
+            end
+        end
+    end
+
+    return added, updated
+end
+
 -- A cheap content hash over the serialised form, used only to decide whether a
 -- peer's rules changed. Not a security primitive.
 function Rules.Hash(rulesByInstance)
