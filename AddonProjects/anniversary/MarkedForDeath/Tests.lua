@@ -492,6 +492,14 @@ T.Case("Marker: defending stops after the limit inside the window", function()
     local out = MFD.Marker.ComputeDiff(desired, actual, placed, defense, 104, MARKER_LIMITS)
     T.Eq(#out.actions, 0, "fourth attempt inside the window yields")
     T.Eq(out.yielded[1], "100:AAA", "and reports which key it gave up on")
+
+    -- The brake must hold for the rest of the window. Resetting state on yield
+    -- turned it into a loop: fresh apply, cleared, three defenses, yield, again.
+    for i = 5, 8 do
+        local later = MFD.Marker.ComputeDiff(desired, actual, placed, defense, 100 + i, MARKER_LIMITS)
+        T.Eq(#later.actions, 0, "tick " .. i .. " still holds")
+        T.Eq(later.yielded[1], "100:AAA", "tick " .. i .. " still yielded")
+    end
 end)
 
 T.Case("Marker: the defense window resets so a later clear is fought again", function()
@@ -509,17 +517,19 @@ T.Case("Marker: the defense window resets so a later clear is fought again", fun
 end)
 
 T.Case("Marker: actions are capped so a big pull does not burst", function()
-    local desired = {}
+    local desired, actual = {}, {}
     for i = 1, 10 do
         desired["10" .. i .. ":AAA"] = 1
+        actual["10" .. i .. ":AAA"] = 0
     end
-    local out = MFD.Marker.ComputeDiff(desired, {}, {}, {}, 100, MARKER_LIMITS)
+    local out = MFD.Marker.ComputeDiff(desired, actual, {}, {}, 100, MARKER_LIMITS)
     T.Eq(#out.actions, 4, "capped at maxActions")
 end)
 
 T.Case("Marker: actions come out in a deterministic order", function()
     local desired = { ["300:CCC"] = 1, ["100:AAA"] = 2, ["200:BBB"] = 3 }
-    local out = MFD.Marker.ComputeDiff(desired, {}, {}, {}, 100, MARKER_LIMITS)
+    local actual = { ["300:CCC"] = 0, ["100:AAA"] = 0, ["200:BBB"] = 0 }
+    local out = MFD.Marker.ComputeDiff(desired, actual, {}, {}, 100, MARKER_LIMITS)
     T.Eq(out.actions[1].key, "100:AAA", "sorted by key")
     T.Eq(out.actions[2].key, "200:BBB", "second")
     T.Eq(out.actions[3].key, "300:CCC", "third")
@@ -924,6 +934,44 @@ T.Case("Comms: resolution does not depend on peer ordering", function()
     T.Eq(MFD.Comms.ResolveAuthority({ a, b }, { name = "", setAt = 0 }, 100),
          MFD.Comms.ResolveAuthority({ b, a }, { name = "", setAt = 0 }, 100),
          "same answer either way, so every client agrees")
+end)
+
+-- The bug that spammed "giving up". actual only holds mobs with a currently
+-- valid unit, so a marked mob whose nameplate dropped inside the grace window
+-- read as icon 0 with placed = true and burned the whole brake budget five
+-- times a second, despite there being nothing to act through.
+T.Case("Marker: a placed mob we cannot currently address is skipped, not defended", function()
+    local defense = {}
+    local placed = { ["100:AAA"] = true }
+    for i = 1, 10 do
+        local out = MFD.Marker.ComputeDiff({ ["100:AAA"] = 8 }, {}, placed, defense, 100 + i, MARKER_LIMITS)
+        T.Eq(#out.actions, 0, "tick " .. i .. ": nothing to act through")
+        T.Eq(#out.yielded, 0, "tick " .. i .. ": and nothing to give up on")
+    end
+    T.Eq(defense["100:AAA"], nil, "the brake was never touched")
+end)
+
+T.Case("Candidates: a transient token never overwrites a nameplate token", function()
+    local set = {}
+    MFD.Candidates.Observe(set, "100:AAA", 100, "nameplate3", 500)
+    MFD.Candidates.Observe(set, "100:AAA", 100, "target", 501)
+    T.Eq(set["100:AAA"].unit, "nameplate3", "nameplate kept, it is the durable handle")
+    T.Eq(set["100:AAA"].seenAt, 501, "but the sighting is still refreshed")
+end)
+
+T.Case("Candidates: a transient token fills in when there is no unit", function()
+    local set = {}
+    MFD.Candidates.Observe(set, "100:AAA", 100, "nameplate3", 500)
+    MFD.Candidates.Lose(set, "100:AAA", 501)
+    MFD.Candidates.Observe(set, "100:AAA", 100, "target", 502)
+    T.Eq(set["100:AAA"].unit, "target", "better than nothing")
+end)
+
+T.Case("Candidates: a nameplate token replaces a transient one", function()
+    local set = {}
+    MFD.Candidates.Observe(set, "100:AAA", 100, "mouseover", 500)
+    MFD.Candidates.Observe(set, "100:AAA", 100, "nameplate1", 501)
+    T.Eq(set["100:AAA"].unit, "nameplate1", "upgraded to the durable handle")
 end)
 
 _G.MarkedForDeath = MFD

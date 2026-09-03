@@ -29,7 +29,15 @@ function Candidates.Observe(set, key, npcID, unit, now)
         set[key] = entry
     end
 
-    entry.unit = unit
+    -- A nameplate token is the only durable handle on a mob. Targeting one
+    -- must not downgrade it to "target", which stops meaning that mob the
+    -- moment the player clicks something else and leaves it unaddressable.
+    local hasNameplate = entry.unit and string.find(entry.unit, "^nameplate") ~= nil
+    local isTransient = unit and string.find(unit, "^nameplate") == nil
+    if not (hasNameplate and isTransient) then
+        entry.unit = unit
+    end
+
     entry.seenAt = now
     entry.lostAt = nil
 end

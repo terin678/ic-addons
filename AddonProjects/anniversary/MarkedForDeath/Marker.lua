@@ -46,9 +46,14 @@ function Marker.ComputeDiff(desired, actual, placed, defense, now, limits)
 
     for _, key in ipairs(MFD.H.SortedKeys(desired)) do
         local wanted = desired[key]
-        local present = actual[key] or 0
+        local present = actual[key]
 
-        if present ~= wanted then
+        -- nil means there is no valid unit to read or write through right now:
+        -- the nameplate dropped inside the grace window, or the stored token
+        -- went stale. That is neither an action nor a defense. Counting it
+        -- burned the entire brake budget in under a second on a mob we could
+        -- not even touch.
+        if present ~= nil and present ~= wanted then
             -- Either we put an icon here and it is gone or changed, or someone
             -- else has put a different icon on it. Both mean we are contesting
             -- the mob rather than marking it for the first time.
@@ -58,7 +63,10 @@ function Marker.ComputeDiff(desired, actual, placed, defense, now, limits)
                 actions[#actions + 1] = { key = key, icon = wanted, isDefense = false }
             else
                 local entry = defense[key]
-                if not entry or (entry.windowStart + limits.defenseWindow) < now then
+                -- The back-off is measured from the moment of giving up, not
+                -- from the first defense, so yielding buys a full quiet window.
+                local expiresAt = entry and ((entry.yieldedAt or entry.windowStart) + limits.defenseWindow)
+                if not entry or expiresAt < now then
                     entry = { count = 0, windowStart = now }
                     defense[key] = entry
                 end
@@ -67,6 +75,7 @@ function Marker.ComputeDiff(desired, actual, placed, defense, now, limits)
                     entry.count = entry.count + 1
                     actions[#actions + 1] = { key = key, icon = wanted, isDefense = true }
                 else
+                    entry.yieldedAt = entry.yieldedAt or now
                     yielded[#yielded + 1] = key
                 end
             end
@@ -315,10 +324,16 @@ function Marker:Tick(elapsed)
         end
     end
 
+    -- Report a yield once per back-off. Clearing state here was the loop:
+    -- fresh apply, cleared again, three defenses, yield, print, repeat. The
+    -- defense entry now holds until its window expires on its own.
     for _, key in ipairs(diff.yielded) do
-        MFD.Print("giving up on " .. key .. ", something keeps changing that icon")
-        defense[key] = nil
-        Marker.placed[key] = nil
+        local entry = defense[key]
+        if entry and not entry.hasReported then
+            entry.hasReported = true
+            MFD.Print("backing off " .. key .. " for " .. Marker.LIMITS.defenseWindow
+                .. "s, something keeps changing that icon")
+        end
     end
 
     Marker.lastDesired = desired
