@@ -184,7 +184,11 @@ function UI.Refresh()
     local refreshers = { UI.RefreshProfessions, UI.RefreshBook, UI.RefreshBark, UI.RefreshOrders,
                          UI.RefreshIncome, UI.RefreshFilter, UI.RefreshLog, UI.RefreshInvite }
     local fn = refreshers[UI.current]
-    if fn then fn() end
+    if fn then
+        -- A page that fails to draw must say so, not silently show nothing.
+        local ok, err = pcall(fn)
+        if not ok then ns.Print("|cffff4444UI error:|r " .. tostring(err)) end
+    end
 end
 
 --------------------------------------------------------------------------------
