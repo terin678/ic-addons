@@ -169,6 +169,13 @@ function MFD.PlayBadMarkSound()
     pcall(PlaySoundFile, BAD_MARK_SOUND, "Master")
 end
 
+commands.config = {
+    desc = "open the seat editor: which icon means which job, and who is pinned to it",
+    run = function()
+        MFD.UI.Config:Toggle()
+    end,
+}
+
 commands.sound = {
     desc = "toggle the sound played when a rule cannot work on its target",
     run = function()
