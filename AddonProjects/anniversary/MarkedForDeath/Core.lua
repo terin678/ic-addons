@@ -121,6 +121,20 @@ commands.selftest = {
     end,
 }
 
+commands.candidates = {
+    desc = "list the hostile units the addon can currently see",
+    run = function()
+        local list = MFD.Candidates.ToList(MFD.Candidates.set)
+        if #list == 0 then
+            MFD.Print("no candidates visible. Are enemy nameplates enabled?")
+            return
+        end
+        for _, c in ipairs(list) do
+            MFD.Print(string.format("  %s (npc %d)", c.key, c.npcID))
+        end
+    end,
+}
+
 MFD.commands = commands
 
 SLASH_MARKEDFORDEATH1 = "/mfd"

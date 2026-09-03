@@ -393,4 +393,52 @@ T.Case("Allocator: kill assignments have no owner", function()
     T.Eq(out.list[1].owner, nil, "kill seats need no owner")
 end)
 
+T.Case("Candidates: Observe records a unit and clears any prior loss", function()
+    local set = {}
+    MFD.Candidates.Observe(set, "100:AAA", 100, "nameplate1", 500)
+    MFD.Candidates.Lose(set, "100:AAA", 501)
+    T.Eq(set["100:AAA"].unit, nil, "losing clears the unit token")
+    MFD.Candidates.Observe(set, "100:AAA", 100, "nameplate2", 502)
+    T.Eq(set["100:AAA"].unit, "nameplate2", "reobserving restores it")
+    T.Eq(set["100:AAA"].lostAt, nil, "and clears the loss stamp")
+end)
+
+T.Case("Candidates: a unit still on screen is never pruned", function()
+    local set = {}
+    MFD.Candidates.Observe(set, "100:AAA", 100, "nameplate1", 500)
+    local removed = MFD.Candidates.Prune(set, 9999, 3)
+    T.Eq(#removed, 0, "nothing removed")
+    T.Eq(set["100:AAA"].npcID, 100, "entry survives")
+end)
+
+T.Case("Candidates: a lost unit survives inside the grace window", function()
+    local set = {}
+    MFD.Candidates.Observe(set, "100:AAA", 100, "nameplate1", 500)
+    MFD.Candidates.Lose(set, "100:AAA", 500)
+    local removed = MFD.Candidates.Prune(set, 502, 3)
+    T.Eq(#removed, 0, "a flickering nameplate does not churn the pack")
+end)
+
+T.Case("Candidates: a lost unit is pruned past the grace window", function()
+    local set = {}
+    MFD.Candidates.Observe(set, "100:AAA", 100, "nameplate1", 500)
+    MFD.Candidates.Lose(set, "100:AAA", 500)
+    local removed = MFD.Candidates.Prune(set, 504, 3)
+    T.Eq(#removed, 1, "one removed")
+    T.Eq(removed[1], "100:AAA", "the right one")
+    T.Eq(set["100:AAA"], nil, "and it is gone from the set")
+end)
+
+T.Case("Candidates: ToList is sorted by key so the allocator sees a stable order", function()
+    local set = {}
+    MFD.Candidates.Observe(set, "300:CCC", 300, "nameplate1", 500)
+    MFD.Candidates.Observe(set, "100:AAA", 100, "nameplate2", 500)
+    MFD.Candidates.Observe(set, "200:BBB", 200, "nameplate3", 500)
+    local list = MFD.Candidates.ToList(set)
+    T.Eq(list[1].key, "100:AAA", "first")
+    T.Eq(list[2].key, "200:BBB", "second")
+    T.Eq(list[3].key, "300:CCC", "third")
+    T.Eq(list[1].npcID, 100, "npcID carried through")
+end)
+
 _G.MarkedForDeath = MFD

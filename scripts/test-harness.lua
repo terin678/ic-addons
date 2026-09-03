@@ -10,6 +10,12 @@ assert(addonDir, "usage: luajit scripts/test-harness.lua <addon dir>")
 _G.time = _G.time or os.time
 _G.GetServerTime = function() return os.time() end
 
+-- Core.lua cannot be loaded here because it creates a frame at file scope, but
+-- the logic modules register their client-side setup through RegisterInit at
+-- file scope. Seed a no-op so those calls succeed; the registered functions are
+-- never run headlessly, which is the point of keeping them out of file scope.
+_G.MarkedForDeath = { RegisterInit = function() end }
+
 local files = {
     "Helpers.lua",
     "Seats.lua",

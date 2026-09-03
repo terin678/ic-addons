@@ -7,8 +7,9 @@
 ## SavedVariablesPerCharacter: MarkedForDeathCharDB
 
 Helpers.lua
+Core.lua
 Seats.lua
 Rules.lua
 Allocator.lua
-Core.lua
+Candidates.lua
 Tests.lua
