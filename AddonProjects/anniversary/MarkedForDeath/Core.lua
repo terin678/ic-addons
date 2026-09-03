@@ -43,6 +43,7 @@ local DB_DEFAULTS = {
         isMarkingEnabled = true,
         isAnnounceEnabled = true,
         isCvarWarnEnabled = true,
+        isWarningSoundEnabled = true,
     },
     lastTestRun = {},
 }
@@ -145,6 +146,40 @@ commands.candidates = {
         end
         for _, c in ipairs(list) do
             MFD.Print(string.format("  %s (npc %d)", c.key, c.npcID))
+        end
+    end,
+}
+
+-- Path relative to the game root, as PlaySoundFile requires. Shipped inside the
+-- addon folder the same way CutMaster ships its icon texture.
+local BAD_MARK_SOUND = "Interface\\AddOns\\MarkedForDeath\\Sounds\\BadMark.mp3"
+
+-- Plays the "that rule cannot work" sound. Guarded on every side: the setting,
+-- the API's existence, and the call itself, because a missing or unplayable
+-- file must never turn an advisory warning into a Lua error.
+function MFD.PlayBadMarkSound()
+    if not MFD.db or not MFD.db.settings.isWarningSoundEnabled then
+        return
+    end
+
+    if type(PlaySoundFile) ~= "function" then
+        return
+    end
+
+    pcall(PlaySoundFile, BAD_MARK_SOUND, "Master")
+end
+
+commands.sound = {
+    desc = "toggle the sound played when a rule cannot work on its target",
+    run = function()
+        local settings = MFD.db.settings
+        settings.isWarningSoundEnabled = not settings.isWarningSoundEnabled
+
+        if settings.isWarningSoundEnabled then
+            MFD.Print("bad-mark sound on")
+            MFD.PlayBadMarkSound()
+        else
+            MFD.Print("bad-mark sound off")
         end
     end,
 }
@@ -302,6 +337,7 @@ commands.add = {
         local canApply, why = MFD.Seats.CanIntentApply(intent, creatureType)
         if not canApply then
             MFD.Print("|cffff4444" .. why .. ". Adding it anyway.|r")
+            MFD.PlayBadMarkSound()
         end
 
         MFD.db.rules[instanceKey] = MFD.db.rules[instanceKey] or {}
@@ -339,6 +375,8 @@ commands.list = {
             return
         end
 
+        local hasBadRule = false
+
         for _, rule in ipairs(ranked) do
             local label = MFD.Seats.INTENTS[rule.intent] and MFD.Seats.INTENTS[rule.intent].label or rule.intent
             local mine = rule.owner == UnitName("player")
@@ -353,7 +391,13 @@ commands.list = {
             local canApply, why = MFD.Seats.CanIntentApply(rule.intent, learned and learned.creatureType)
             if not canApply then
                 MFD.Print("     |cffff4444" .. why .. "|r")
+                hasBadRule = true
             end
+        end
+
+        -- Once per listing, not once per bad rule.
+        if hasBadRule then
+            MFD.PlayBadMarkSound()
         end
     end,
 }
