@@ -39,6 +39,22 @@ Seats.DEFAULT_PLAN = {
     [DIAMOND]  = { intent = "BANISH", ordinal = 2 },
 }
 
+-- Seeds the default plan into db.seatPlan when the player has none. Mutates db.
+--
+-- An empty seat plan is not a neutral starting state: the allocator finds no
+-- seat for any intent and silently marks nothing, which looks exactly like the
+-- addon being broken. Rules deliberately ship empty, because guessing a guild's
+-- kill order produces confidently wrong marks, but a seat plan must not.
+--
+-- Deep copied so editing the saved plan cannot mutate the shared default.
+function Seats.EnsurePlan(db)
+    if next(db.seatPlan) then
+        return
+    end
+
+    db.seatPlan = MFD.H.DeepCopy(Seats.DEFAULT_PLAN)
+end
+
 local function isEligible(intent, class)
     local classes = Seats.INTENTS[intent] and Seats.INTENTS[intent].classes
     if not classes then

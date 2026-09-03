@@ -71,6 +71,8 @@ local function onAddonLoaded()
     MFD.db = MarkedForDeathDB
     MFD.charDb = MarkedForDeathCharDB
 
+    MFD.Seats.EnsurePlan(MFD.db)
+
     for _, fn in ipairs(inits) do
         local ok, err = pcall(fn)
         if not ok then
@@ -132,6 +134,22 @@ commands.candidates = {
         for _, c in ipairs(list) do
             MFD.Print(string.format("  %s (npc %d)", c.key, c.npcID))
         end
+    end,
+}
+
+commands.debug = {
+    desc = "explain why marking is or is not happening right now",
+    run = function()
+        local reasons, state = MFD.Marker:Diagnose()
+
+        for _, reason in ipairs(reasons) do
+            MFD.Print(reason)
+        end
+
+        MFD.Print(string.format(
+            "|cff888888seats %d, visible %d, rules %d, assigned %d, zone %s|r",
+            state.seatCount, state.candidateCount, state.ruleCount, state.desiredCount,
+            tostring(state.instanceKey or "none")))
     end,
 }
 

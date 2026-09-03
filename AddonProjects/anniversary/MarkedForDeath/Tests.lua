@@ -532,4 +532,102 @@ T.Case("Marker: someone else's icon is corrected and counts as a defense", funct
     T.Eq(out.actions[1].isDefense, true, "a foreign icon counts as a defense so the brake applies")
 end)
 
+T.Case("Seats: EnsurePlan seeds the default plan into an empty database", function()
+    local db = { seatPlan = {} }
+    MFD.Seats.EnsurePlan(db)
+    T.Eq(db.seatPlan[8].intent, "KILL", "skull seeded")
+    T.Eq(db.seatPlan[5].pin, "Grimmtusk", "pin seeded")
+end)
+
+T.Case("Seats: EnsurePlan never overwrites a plan the user has edited", function()
+    local db = { seatPlan = { [8] = { intent = "SHEEP", ordinal = 1 } } }
+    MFD.Seats.EnsurePlan(db)
+    T.Eq(db.seatPlan[8].intent, "SHEEP", "user's binding survives")
+    T.Eq(db.seatPlan[5], nil, "and nothing else is injected")
+end)
+
+T.Case("Seats: EnsurePlan deep copies, so editing the db cannot corrupt the default", function()
+    local db = { seatPlan = {} }
+    MFD.Seats.EnsurePlan(db)
+    db.seatPlan[8].intent = "IGNORE"
+    T.Eq(MFD.Seats.DEFAULT_PLAN[8].intent, "KILL", "the shared default is untouched")
+end)
+
+-- End to end over the pure modules, in the shape the live tick uses them. This
+-- is the case that would have caught the empty-seat-plan bug: every unit test
+-- passed while the addon marked nothing, because nothing asserted that the
+-- default configuration actually produces an icon.
+T.Case("Pipeline: default seat plan plus one kill rule puts skull on the mob", function()
+    local db = { seatPlan = {} }
+    MFD.Seats.EnsurePlan(db)
+
+    local seats = MFD.Seats.Resolve(db.seatPlan, roster("Thok", "WARRIOR"))
+    local candidates = MFD.Candidates.ToList({
+        ["100:AAA"] = { key = "100:AAA", npcID = 100, unit = "nameplate1" },
+    })
+    local out = MFD.Allocator.Compute(candidates, { [100] = { npcID = 100, intent = "KILL", rank = 10 } }, seats, nil)
+
+    T.Eq(out.byKey["100:AAA"], 8, "skull, from a default install with one rule")
+
+    local diff = MFD.Marker.ComputeDiff(out.byKey, { ["100:AAA"] = 0 }, {}, {}, 100, MFD.Marker.LIMITS)
+    T.Eq(#diff.actions, 1, "and the marker would actually place it")
+    T.Eq(diff.actions[1].icon, 8, "with skull")
+end)
+
+T.Case("Diagnose: an empty seat plan is reported, not silently ignored", function()
+    local reasons = MFD.Marker.DiagnoseState({
+        isMarkingEnabled = true, isAuthority = true, canMark = true,
+        cvarsOk = true, seatCount = 0, candidateCount = 3, ruleCount = 1, desiredCount = 0,
+    })
+    T.Eq(reasons[1], "no seats are configured, so no icon can be assigned. /mfd config", "names the real cause")
+end)
+
+T.Case("Diagnose: marking switched off is reported first", function()
+    local reasons = MFD.Marker.DiagnoseState({
+        isMarkingEnabled = false, isAuthority = true, canMark = true,
+        cvarsOk = true, seatCount = 8, candidateCount = 3, ruleCount = 1, desiredCount = 1,
+    })
+    T.Eq(reasons[1], "marking is switched off", "the most basic cause leads")
+end)
+
+T.Case("Diagnose: no visible mobs points at nameplates", function()
+    local reasons = MFD.Marker.DiagnoseState({
+        isMarkingEnabled = true, isAuthority = true, canMark = true,
+        cvarsOk = true, seatCount = 8, candidateCount = 0, ruleCount = 1, desiredCount = 0,
+    })
+    T.Eq(reasons[1], "no hostile mobs are visible. Are enemy nameplates on?", "actionable")
+end)
+
+T.Case("Diagnose: no rules names the instance", function()
+    local reasons = MFD.Marker.DiagnoseState({
+        isMarkingEnabled = true, isAuthority = true, canMark = true, cvarsOk = true,
+        seatCount = 8, candidateCount = 3, ruleCount = 0, desiredCount = 0, instanceKey = "BLACKTEMPLE",
+    })
+    T.Eq(reasons[1], "no rules are active for BLACKTEMPLE", "says where")
+end)
+
+T.Case("Diagnose: rules and mobs but no match is distinguished from having no rules", function()
+    local reasons = MFD.Marker.DiagnoseState({
+        isMarkingEnabled = true, isAuthority = true, canMark = true, cvarsOk = true,
+        seatCount = 8, candidateCount = 3, ruleCount = 5, desiredCount = 0,
+    })
+    T.Eq(reasons[1], "3 mobs visible but none of them match a rule", "the useful distinction")
+end)
+
+T.Case("Diagnose: a healthy state reports what it is doing", function()
+    local reasons = MFD.Marker.DiagnoseState({
+        isMarkingEnabled = true, isAuthority = true, canMark = true, cvarsOk = true,
+        seatCount = 8, candidateCount = 3, ruleCount = 5, desiredCount = 2,
+    })
+    T.Eq(reasons[1], "marking 2 of 3 visible mobs", "no problem to report")
+end)
+
+T.Case("Diagnose: a backup says who the marker is rather than looking broken", function()
+    local reasons = MFD.Marker.DiagnoseState({
+        isMarkingEnabled = true, isAuthority = false, authority = "Grimmtusk", canMark = true,
+        cvarsOk = true, seatCount = 8, candidateCount = 3, ruleCount = 5, desiredCount = 2,
+    })
+    T.Eq(reasons[1], "Grimmtusk is the marker, you are a backup", "expected, not a fault")
+end)
+
 _G.MarkedForDeath = MFD

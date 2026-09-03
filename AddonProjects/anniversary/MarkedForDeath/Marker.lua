@@ -79,6 +79,60 @@ function Marker.ComputeDiff(desired, actual, placed, defense, now, limits)
     return { actions = actions, yielded = yielded }
 end
 
+-- Takes a snapshot of the marking pipeline and returns an ordered array of
+-- human-readable reasons, most fundamental first. Pure.
+--
+-- This exists because the tick runs five times a second and cannot print, so
+-- without it the addon can do nothing at all and give the player no clue why.
+-- An empty seat plan silently marking nothing is exactly the failure this
+-- catches, and it is the one that shipped.
+function Marker.DiagnoseState(state)
+    local reasons = {}
+
+    if not state.isMarkingEnabled then
+        reasons[#reasons + 1] = "marking is switched off"
+        return reasons
+    end
+
+    if not state.isAuthority then
+        reasons[#reasons + 1] = (state.authority or "someone else")
+            .. " is the marker, you are a backup"
+        return reasons
+    end
+
+    if not state.canMark then
+        reasons[#reasons + 1] = state.canMarkReason or "you cannot place icons"
+        return reasons
+    end
+
+    if state.seatCount == 0 then
+        reasons[#reasons + 1] = "no seats are configured, so no icon can be assigned. /mfd config"
+        return reasons
+    end
+
+    if not state.cvarsOk then
+        reasons[#reasons + 1] = state.cvarMessage or "nameplate settings prevent marking"
+    end
+
+    if state.candidateCount == 0 then
+        reasons[#reasons + 1] = "no hostile mobs are visible. Are enemy nameplates on?"
+        return reasons
+    end
+
+    if state.ruleCount == 0 then
+        reasons[#reasons + 1] = "no rules are active for " .. tostring(state.instanceKey or "this zone")
+        return reasons
+    end
+
+    if state.desiredCount == 0 then
+        reasons[#reasons + 1] = state.candidateCount .. " mobs visible but none of them match a rule"
+        return reasons
+    end
+
+    reasons[#reasons + 1] = "marking " .. state.desiredCount .. " of " .. state.candidateCount .. " visible mobs"
+    return reasons
+end
+
 -- Returns whether the player may place raid icons, and a reason when they may
 -- not. Marking needs raid leader or assistant; solo and parties are allowed.
 function Marker:CanMark()
@@ -176,6 +230,51 @@ function Marker:Desired()
     local seats = MFD.Seats.Resolve(MFD.db.seatPlan, Marker.CurrentRoster())
     local rules = MFD.Rules.Active and MFD.Rules.Active() or {}
     return MFD.Allocator.Compute(MFD.Candidates.ToList(MFD.Candidates.set), rules, seats, Marker.locked)
+end
+
+-- Gathers the live pipeline state and runs it through DiagnoseState. Returns
+-- the reason array plus the snapshot, so /mfd debug can show both.
+function Marker:Diagnose()
+    local canMark, canMarkReason = Marker:CanMark()
+    local cvarsOk, cvarMessage = Marker:CheckCvars()
+
+    local candidateCount = 0
+    for _ in pairs(MFD.Candidates.set) do
+        candidateCount = candidateCount + 1
+    end
+
+    local ruleCount = 0
+    for _ in pairs(MFD.Rules.Active()) do
+        ruleCount = ruleCount + 1
+    end
+
+    local seatCount = 0
+    for _ in pairs(MFD.db.seatPlan) do
+        seatCount = seatCount + 1
+    end
+
+    local desiredCount = 0
+    local ok, desired = pcall(Marker.Desired, Marker)
+    if ok and desired then
+        desiredCount = #desired.list
+    end
+
+    local state = {
+        isMarkingEnabled = MFD.db.settings.isMarkingEnabled,
+        isAuthority = MFD.Comms:IsAuthority(),
+        authority = MFD.Comms.authority,
+        canMark = canMark,
+        canMarkReason = canMarkReason,
+        cvarsOk = cvarsOk,
+        cvarMessage = cvarMessage,
+        seatCount = seatCount,
+        candidateCount = candidateCount,
+        ruleCount = ruleCount,
+        desiredCount = desiredCount,
+        instanceKey = MFD.Rules.currentInstanceKey,
+    }
+
+    return Marker.DiagnoseState(state), state
 end
 
 function Marker:Tick(elapsed)
