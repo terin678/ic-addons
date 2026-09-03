@@ -7,7 +7,7 @@ Target interface: 20506. Client folder `_anniversary_`.
 | MalexisAuctionWatcher | 1.16.1 | [Docs/MalexisAuctionWatcher.md](../../Docs/MalexisAuctionWatcher.md) |
 | AuctionatorSellingTweaks | 1.0.0 | [Docs/AuctionatorSellingTweaks.md](../../Docs/AuctionatorSellingTweaks.md) |
 | TradeMaster | 1.8.5 | [Docs/TradeMaster.md](../../Docs/TradeMaster.md) |
-| CutMaster | 1.1.0 | [Docs/CutMaster.md](../../Docs/CutMaster.md) |
+| CutMaster | 1.2.0 | [Docs/CutMaster.md](../../Docs/CutMaster.md) |
 | ICLibs | 1.3.0 | [Docs/ICLibs.md](../../Docs/ICLibs.md) |
 
 `ICLibs` is a library addon. MalexisAuctionWatcher and TradeMaster list it under
