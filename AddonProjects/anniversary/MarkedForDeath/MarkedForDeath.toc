@@ -9,5 +9,6 @@
 Helpers.lua
 Seats.lua
 Rules.lua
+Allocator.lua
 Core.lua
 Tests.lua

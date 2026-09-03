@@ -260,4 +260,137 @@ T.Case("Rules: Reorder is a no-op at the boundaries", function()
     T.Eq(list[2].npcID, 2, "cannot move the last down")
 end)
 
+-- Builds the resolved-seat table the allocator consumes, from a plan and a
+-- roster, so allocator cases read as intent rather than as plumbing.
+local function seatsFor(plan, ...)
+    return MFD.Seats.Resolve(plan, roster(...))
+end
+
+local KILL_AND_SHEEP = {
+    [8] = { intent = "KILL",  ordinal = 1 },
+    [7] = { intent = "KILL",  ordinal = 2 },
+    [5] = { intent = "SHEEP", ordinal = 1 },
+    [4] = { intent = "SHEEP", ordinal = 2 },
+    [6] = { intent = "SHEEP", ordinal = 3 },
+}
+
+T.Case("Allocator: duplicates of one mob take successive seats of their intent", function()
+    local seats = seatsFor(KILL_AND_SHEEP, "Alfred", "MAGE", "Grimmtusk", "MAGE", "Zed", "MAGE")
+    local out = MFD.Allocator.Compute(
+        { { key = "100:AAA", npcID = 100 }, { key = "100:BBB", npcID = 100 }, { key = "100:CCC", npcID = 100 } },
+        { [100] = { intent = "SHEEP", rank = 10 } },
+        seats, nil)
+    T.Eq(out.byKey["100:AAA"], 5, "first sheep seat")
+    T.Eq(out.byKey["100:BBB"], 4, "second sheep seat")
+    T.Eq(out.byKey["100:CCC"], 6, "third sheep seat")
+end)
+
+T.Case("Allocator: rank decides which mob gets skull, not sighting order", function()
+    local seats = seatsFor(KILL_AND_SHEEP)
+    local low = { key = "200:AAA", npcID = 200 }
+    local high = { key = "100:BBB", npcID = 100 }
+    local rules = { [100] = { intent = "KILL", rank = 10 }, [200] = { intent = "KILL", rank = 90 } }
+
+    local seenLast = MFD.Allocator.Compute({ low, high }, rules, seats, nil)
+    local seenFirst = MFD.Allocator.Compute({ high, low }, rules, seats, nil)
+
+    T.Eq(seenLast.byKey["100:BBB"], 8, "rank 10 takes skull however late it was seen")
+    T.Eq(seenFirst.byKey["100:BBB"], 8, "and the same when seen first")
+    T.Eq(seenLast.byKey["200:AAA"], 7, "rank 90 takes cross")
+end)
+
+T.Case("Allocator: an unowned intent falls through to the rule's fallback", function()
+    local seats = seatsFor(KILL_AND_SHEEP, "Thok", "WARRIOR")
+    local out = MFD.Allocator.Compute(
+        { { key = "100:AAA", npcID = 100 } },
+        { [100] = { intent = "SHEEP", rank = 10, fallback = "KILL" } },
+        seats, nil)
+    T.Eq(out.byKey["100:AAA"], 8, "no mage in raid, so the sheep rule becomes a kill")
+    T.Eq(out.list[1].intent, "KILL", "and the assignment reports the fallback intent")
+end)
+
+T.Case("Allocator: an unowned intent with no fallback leaves the mob unmarked", function()
+    local seats = seatsFor(KILL_AND_SHEEP, "Thok", "WARRIOR")
+    local out = MFD.Allocator.Compute(
+        { { key = "100:AAA", npcID = 100 } },
+        { [100] = { intent = "SHEEP", rank = 10 } },
+        seats, nil)
+    T.Eq(out.byKey["100:AAA"], nil, "unmarked rather than guessed")
+end)
+
+T.Case("Allocator: mobs with no rule are never marked", function()
+    local seats = seatsFor(KILL_AND_SHEEP)
+    local out = MFD.Allocator.Compute({ { key = "999:AAA", npcID = 999 } }, {}, seats, nil)
+    T.Eq(out.byKey["999:AAA"], nil, "no rule means no icon")
+    T.Eq(#out.list, 0, "and nothing in the list")
+end)
+
+T.Case("Allocator: IGNORE is never marked even with seats free", function()
+    local seats = seatsFor(KILL_AND_SHEEP)
+    local out = MFD.Allocator.Compute(
+        { { key = "100:AAA", npcID = 100 } },
+        { [100] = { intent = "IGNORE", rank = 10 } },
+        seats, nil)
+    T.Eq(out.byKey["100:AAA"], nil, "IGNORE means never")
+end)
+
+T.Case("Allocator: running out of icons leaves the lowest priority mobs unmarked", function()
+    local seats = seatsFor({ [8] = { intent = "KILL", ordinal = 1 } })
+    local out = MFD.Allocator.Compute(
+        { { key = "100:AAA", npcID = 100 }, { key = "200:BBB", npcID = 200 } },
+        { [100] = { intent = "KILL", rank = 10 }, [200] = { intent = "KILL", rank = 20 } },
+        seats, nil)
+    T.Eq(out.byKey["100:AAA"], 8, "highest priority gets the only icon")
+    T.Eq(out.byKey["200:BBB"], nil, "the rest go unmarked")
+end)
+
+T.Case("Allocator: maxCount caps how many of one npcID get marked", function()
+    local seats = seatsFor(KILL_AND_SHEEP, "Alfred", "MAGE", "Grimmtusk", "MAGE", "Zed", "MAGE")
+    local out = MFD.Allocator.Compute(
+        { { key = "100:AAA", npcID = 100 }, { key = "100:BBB", npcID = 100 }, { key = "100:CCC", npcID = 100 } },
+        { [100] = { intent = "SHEEP", rank = 10, maxCount = 2 } },
+        seats, nil)
+    T.Eq(out.byKey["100:AAA"], 5, "first allowed")
+    T.Eq(out.byKey["100:BBB"], 4, "second allowed")
+    T.Eq(out.byKey["100:CCC"], nil, "third capped")
+end)
+
+T.Case("Allocator: a locked assignment keeps its icon and consumes that seat", function()
+    local seats = seatsFor(KILL_AND_SHEEP)
+    local out = MFD.Allocator.Compute(
+        { { key = "200:OLD", npcID = 200 }, { key = "100:NEW", npcID = 100 } },
+        { [100] = { intent = "KILL", rank = 10 }, [200] = { intent = "KILL", rank = 90 } },
+        seats, { ["200:OLD"] = 8 })
+    T.Eq(out.byKey["200:OLD"], 8, "locked mob keeps skull despite its worse rank")
+    T.Eq(out.byKey["100:NEW"], 7, "the better mob takes the next free seat instead")
+end)
+
+T.Case("Allocator: a lock counts toward maxCount", function()
+    local seats = seatsFor(KILL_AND_SHEEP, "Alfred", "MAGE", "Grimmtusk", "MAGE")
+    local out = MFD.Allocator.Compute(
+        { { key = "100:AAA", npcID = 100 }, { key = "100:BBB", npcID = 100 } },
+        { [100] = { intent = "SHEEP", rank = 10, maxCount = 1 } },
+        seats, { ["100:AAA"] = 5 })
+    T.Eq(out.byKey["100:AAA"], 5, "locked one holds the single allowed slot")
+    T.Eq(out.byKey["100:BBB"], nil, "the other is capped out")
+end)
+
+T.Case("Allocator: assignments carry the seat owner", function()
+    local seats = seatsFor(KILL_AND_SHEEP, "Grimmtusk", "MAGE")
+    local out = MFD.Allocator.Compute(
+        { { key = "100:AAA", npcID = 100 } },
+        { [100] = { intent = "SHEEP", rank = 10 } },
+        seats, nil)
+    T.Eq(out.list[1].owner, "Grimmtusk", "owner comes from the seat")
+end)
+
+T.Case("Allocator: kill assignments have no owner", function()
+    local seats = seatsFor(KILL_AND_SHEEP)
+    local out = MFD.Allocator.Compute(
+        { { key = "100:AAA", npcID = 100 } },
+        { [100] = { intent = "KILL", rank = 10 } },
+        seats, nil)
+    T.Eq(out.list[1].owner, nil, "kill seats need no owner")
+end)
+
 _G.MarkedForDeath = MFD
