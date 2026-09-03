@@ -221,52 +221,51 @@ function UI.BuildProfessions(page)
 
     function UI.RefreshProfessions()
         for _, row in ipairs(UI.profRows) do row:Hide() end
-        local known = ns.Prof.Known()
         local y = -56
-        if #known == 0 then
-            local row = UI.profRows[1] or CreateFrame("Frame", nil, page)
-            row:SetSize(680, ROW_H)
-            row:SetPoint("TOPLEFT", 0, y)
-            row.text = row.text or Label(row, "", "GameFontDisableSmall")
-            row.text:SetPoint("LEFT")
-            row.text:SetText("nothing scanned yet. Open a profession window (it scans automatically) or run /tm scan.")
-            if row.active then row.active:Hide() end
-            row:Show()
-            UI.profRows[1] = row
-            return
-        end
-        for i, key in ipairs(known) do
+        for i, key in ipairs(ns.Professions.Order) do
             local p = ns.Prof.ByKey(key)
-            local pd = ns.Prof.DB(key)
+            local pd = ns.db.professions and ns.db.professions[key]
+            local scanned = pd and pd.book and next(pd.book) ~= nil
             local row = UI.profRows[i]
             if not row then
                 row = CreateFrame("Frame", nil, page, BackdropTemplateMixin and "BackdropTemplate")
                 row:SetSize(680, 30)
                 Skin(row, 0.10, 0.10, 0.13, 0.9)
+                row.icon = row:CreateTexture(nil, "ARTWORK")
+                row.icon:SetSize(22, 22)
+                row.icon:SetPoint("LEFT", 6, 0)
                 row.text = Label(row, "", "GameFontHighlightSmall")
-                row.text:SetPoint("LEFT", 8, 0)
-                row.text:SetWidth(520)
+                row.text:SetPoint("LEFT", 34, 0)
+                row.text:SetWidth(500)
                 row.text:SetJustifyH("LEFT")
                 row.active = Button(row, "Make active", 100, 20)
                 row.active:SetPoint("RIGHT", -6, 0)
                 UI.profRows[i] = row
             end
             row:SetPoint("TOPLEFT", 0, y)
-            local n, products, noun = ns.Prof.BookCounts(p, pd.book)
-            local age = pd.bookScannedAt > 0 and math.floor((ns.Now() - pd.bookScannedAt) / 60) or -1
+            row.icon:SetTexture(p.iconPath)
+            row.icon:SetDesaturated(not scanned)
             local isActive = key == ns.db.activeProfession
-            row.text:SetText(string.format("%s%s|r   %d recipes, %d %s   |cff888888scanned %s, %d advertised%s|r",
-                isActive and "|cff44ff44" or "|cffffffff", p.name, n, products, noun,
-                age >= 0 and (age .. " min ago") or "never",
-                #ns.Barker.AdvertisedEntries(pd.book),
-                pd.bookPartial and ", partial" or ""))
-            row.active.text:SetText(isActive and "Active" or "Make active")
-            row.active:SetScript("OnClick", function()
-                ns.Prof.SetActive(key)
-                ns.Print(p.name .. " is now the active profession.")
-                UI.Refresh()
-            end)
-            row.active:Show()
+            if scanned then
+                pd = ns.Prof.DB(key)
+                local n, products, noun = ns.Prof.BookCounts(p, pd.book)
+                local age = pd.bookScannedAt > 0 and math.floor((ns.Now() - pd.bookScannedAt) / 60) or -1
+                row.text:SetText(string.format("%s%s|r   %d recipes, %d %s   |cff888888scanned %s, %d advertised%s|r",
+                    isActive and "|cff44ff44" or "|cffffffff", p.name, n, products, noun,
+                    age >= 0 and (age .. " min ago") or "never",
+                    #ns.Barker.AdvertisedEntries(pd.book),
+                    pd.bookPartial and ", partial" or ""))
+                row.active.text:SetText(isActive and "Active" or "Make active")
+                row.active:SetScript("OnClick", function()
+                    ns.Prof.SetActive(key)
+                    ns.Print(p.name .. " is now the active profession.")
+                    UI.Refresh()
+                end)
+                row.active:Show()
+            else
+                row.text:SetText(string.format("|cff777777%s   not scanned. Open its window once and it will be picked up.|r", p.name))
+                row.active:Hide()
+            end
             row:Show()
             y = y - 34
         end
