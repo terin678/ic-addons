@@ -21,15 +21,25 @@ click the coin icon on the minimap.
 | Stores | How many of each item you hold in bags, bank, and on the AH, and what it is worth. |
 | History | Chart of one item over time: 30 or 90 days, by weekday, by day of month, by hour. Highlights the cheapest and priciest bucket. |
 | Recipes | Material to product conversions with cost, AH net, profit, margin, and how many batches you can make now. |
+| Movers | What to act on right now: cheap materials to buy, profitable recipes you can make, products you hold at a good price. Each row has a Buy, Convert, or List button. |
 
-The window grows taller on the History tab.
+The tabs run along the top as the navigation bar. Under them sits the control row: Scan
+AH, the per-tab scan, Sort, then the tab's option (Add Item or Refresh) and the
+character-specific checkbox on the right. The window is one fixed size on every tab.
 
 ## Adding items
 
 - Click "Add Item" on Materials or Products, or drag an item onto the drop row at the
   bottom of any list to add it with defaults.
-- Click the low or high cell to set a custom bound. Custom bounds show a `*`.
-- Arrows reorder rows, the refresh icon scans one item, X removes it.
+- Click the low or high cell to set a custom bound. Custom bounds show a `*`. When you
+  have not set one, the bound comes from TSM's averages (the lower of 60d and 14d for low,
+  the higher for high) and shows a `~`; with no TSM data it falls back to the min and max
+  of your scans. The same bounds drive every color grade, the Stores values, and the
+  Movers tab, and the set-price dialog starts from them.
+- Rows sort by mover position by default: Materials cheapest-in-range first, Products
+  highest-in-range first, items with no range at the bottom. The "Sort" button in the
+  control bar switches to the manual order you set with the arrows, and back.
+- Arrows reorder rows (manual order), the refresh icon scans one item, X removes it.
 
 ## Scanning
 
@@ -82,7 +92,17 @@ high bounds with the same gradient as Today, so a green TSM 14d on a material me
 wider market is cheaper than your recent scans. Hover a cell for the value, when it was
 pulled, and your bounds. A dash means TSM has no data for that item yet.
 
+On realms where TSM lacks realm-level Market Value or Historical, the columns fall back to
+the region figures (region market average, region historical, then region sale average),
+and the tooltip names which TSM field was used. The tooltip also lists everything else TSM
+reported for the item: min buyout, region sale rate and sold per day, your own Accounting
+buy and sell averages, vendor sell, and TSM crafting cost.
+
 ## History
+
+Days are your local calendar days, so a scan after midnight counts toward the new day and
+the Today marker matches. Buckets recorded before 1.10.6 were keyed by UTC day, so evening
+scans from that period may sit one day late; they age out with retention.
 
 Prices are kept in daily buckets for 180 days by default (`/maw retention <days>`,
 minimum 7) plus a per-hour-of-day accumulator. Weekday and day-of-month views are derived
@@ -95,14 +115,38 @@ when there are fewer than 3 samples, which is too few to trust.
 
 ## Recipes
 
-Profit per batch = product value after the 5% AH cut minus material cost, using each item's
-latest price. Rows sort by profit. Hover a recipe for the full breakdown with sources.
+Profit per batch = product value after the auction house cut minus material cost, using
+each item's latest price. Rows sort by margin, best first. Hover a recipe for the full
+breakdown with sources.
 
-- "Add Motes -> Primals": seven recipes, 10 motes to 1 primal.
-- "Add Primal Might": the Alchemy transmute, one each of Earth, Water, Air, Fire, Mana.
-- "Add Gem Cuts": picker for TBC Jewelcrafting. Click a raw gem to add all its cuts, or add
-  a whole tier. 109 cuts across 18 raw gems; meta gems excluded.
-- "Add Recipe": custom recipe, drag a product and up to five materials with counts.
+The cut defaults to 5%, the faction auction house rate in the capitals. The neutral
+auction houses in Gadgetzan, Booty Bay, and Everlook take 15%; set that with
+`/maw ahcut 15` if you sell there. The "AH net" headers on Recipes and Stores show the
+rate in use.
+
+The "Presets..." menu offers:
+
+- Motes -> Primals: seven recipes, 10 motes to 1 primal.
+- Transmute: Primal Might: one each of Primal Earth, Water, Air, Fire, Mana.
+- Alchemy consumables: Haste Potion, Destruction Potion, Super Mana Potion, Super Healing
+  Potion, Elixir of Major Mageblood, Flask of Fortification, Flask of Mighty Restoration.
+  Reagents are built in; the recipe note reminds you to check them against your book.
+- Gem cuts: picker for TBC Jewelcrafting. Click a raw gem to add all its cuts, or add a
+  whole tier. 109 cuts across 18 raw gems; meta gems excluded.
+- Import from open profession window: lists every recipe in the profession window you have
+  open, with reagents and counts read straight from the client. Add one or all. This is the
+  reliable way to get any profession's recipes in, Alchemy included. Enchanting is not
+  supported since enchants are not items.
+- Flipping guide watchlist: tracks the herbs, primals, gems, shards, and old-world
+  consumables a TBC flipping guide singles out, without adding recipes.
+
+"Add Recipe" builds a custom recipe: drag a product and up to five materials with counts.
+The E button on a row opens the same dialog pre-filled so you can change the product,
+batch size, or materials; Save replaces the recipe in place and keeps its name and notes.
+Typing a vial name as a material prices it at vendor cost automatically.
+
+Vials (Imbued, Crystal, Leaded, Empty) are priced at their vendor cost automatically, are
+not tracked, and do not count toward "Can make".
 
 Everything a recipe uses is tracked automatically. "Can make" counts bags plus bank; it does
 not know about cooldowns or which patterns you have learned.
@@ -123,6 +167,31 @@ holds up against the longer averages. The button is disabled when TSM is not loa
 
 ```
 /maw recipes
+```
+
+## Movers
+
+Three lists, each built from the data on the other tabs:
+
+- **Buy**: any tracked item, material or product, whose Today price is at or below 25% of
+  the way from its low to its high. Cheap materials are for crafting; cheap products, such
+  as raid consumables, are for stocking up. The Buy button opens the auction house Browse tab with an exact search for
+  the item. It never buys on its own; you pick the listing.
+- **Convert**: recipes with at least 10% margin and materials for at least one batch in
+  bags plus bank. The Convert button casts the recipe, or uses the item for mote combines.
+  One click makes one batch. The game only lets an addon cast from a real click, and only
+  out of combat, so the button is disabled while fighting.
+- **List**: any tracked item at or above 75% of its range that you hold, so spare
+  materials get listed when they spike, not just products.
+  The List button switches to the Auctions tab, puts your first bag stack in the sell
+  slot, and fills start and buyout from today's price undercut by 1 copper per unit. You
+  set the duration and press Create Auction.
+
+Hover a name for the same tooltips as the other tabs. Buy and List need the auction house
+open. "Refresh Table" recomputes without scanning.
+
+```
+/maw movers
 ```
 
 ## Other commands

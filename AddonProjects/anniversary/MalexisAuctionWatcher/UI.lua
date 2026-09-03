@@ -17,18 +17,21 @@ local ROW_NAME_WIDTH = 220  -- Wider to support long names like "Greater Shadow 
 local CONTROL_BUTTON_SIZE = 18
 local CONTROLS_WIDTH = 65  -- Space for up/down/refresh buttons
 local PADDING = 5
-local CONTROL_SECTION_HEIGHT = 60
 local TAB_HEIGHT = 30
+local CONTROL_ROW_HEIGHT = 34
+local STATUS_HEIGHT = 16
+local WINDOW_WIDTH = 1024   -- fits Recipes with both TSM profit columns, E/X buttons, scrollbar
+local WINDOW_HEIGHT = 700   -- fits the History panel
 local RECIPE_CONTROLS_WIDTH = 26
 -- Recipes tab columns. The two TSM profit columns appear only when the TSM feed is on.
 local function RecipeColumns()
+    local MAW = _G.MalexisAuctionWatcher
     local cols = {
         { header = "Recipe",   width = 230, key = "name" },
         { header = "Mat cost", width = 90,  key = "matCost" },
         { header = "Product",  width = 90,  key = "productValue" },
-        { header = "AH net",   width = 90,  key = "ahNet" },
+        { header = string.format("AH net -%d%%", math.floor(MAW:GetAHCut() * 100 + 0.5)), width = 90, key = "ahNet" },
     }
-    local MAW = _G.MalexisAuctionWatcher
     local tsmOn = MAW and MAW.sources and MAW.sources.tsm and MAW.sources.tsm.available and MAW:IsSourceEnabled("tsm")
     if tsmOn then
         table.insert(cols, { header = "Profit 60d", width = 90, key = "profitTsm60", basis = "tsm60" })
@@ -121,20 +124,21 @@ local function CalculatePriceStats(itemName)
     local itemData = db.items[itemName]
     local prices = itemData.prices
 
-    -- If no prices yet, return custom prices if set, otherwise zeros (still show in list)
+    -- If no prices yet, still show the row with whatever bounds exist (custom, TSM, or none)
     if #prices == 0 then
-        local low = itemData.customLow or 0
-        local high = itemData.customHigh or 0
-        local average = (low + high) / 2
+        local low, high, lowSrc, highSrc = MAW:GetPriceBounds(itemName)
+        low, high = low or 0, high or 0
         return {
             low = low,
-            average = average,
+            average = (low + high) / 2,
             high = high,
             today = 0,
             todayBuyout = 0,
             todayBid = 0,
-            isCustomLow = itemData.customLow ~= nil,
-            isCustomHigh = itemData.customHigh ~= nil,
+            isCustomLow = lowSrc == "custom",
+            isCustomHigh = highSrc == "custom",
+            isTsmLow = lowSrc == "tsm",
+            isTsmHigh = highSrc == "tsm",
             itemType = itemData.itemType or "material",
             noPriceData = true
         }
@@ -143,48 +147,25 @@ local function CalculatePriceStats(itemName)
     -- Get most recent price (today)
     local today = prices[1]
 
-    -- Check if custom bounds are set
-    local low, high
-    if itemData.customLow then
-        low = itemData.customLow
-    end
-    if itemData.customHigh then
-        high = itemData.customHigh
-    end
+    -- Bounds: custom -> TSM averages -> scan min/max (one shared function for every tab)
+    local low, high, lowSrc, highSrc = MAW:GetPriceBounds(itemName)
 
-    -- Calculate low, average, high from all prices if not custom set
-    local minBids = {}
     local buyouts = {}
-
     for _, entry in ipairs(prices) do
-        if entry.minBid and entry.minBid > 0 then
-            table.insert(minBids, entry.minBidPerUnit)
-        end
         if entry.buyout and entry.buyout > 0 then
             table.insert(buyouts, entry.buyoutPerUnit)
         end
     end
 
-    if #buyouts == 0 then
+    if not low or not high then
         return nil
     end
 
-    -- Calculate statistics on buyout prices (per unit)
-    table.sort(buyouts)
-    if not low then
-        low = buyouts[1]
-    end
-    if not high then
-        high = buyouts[#buyouts]
-    end
-
-    -- Calculate average: if custom bounds are set, use midpoint; otherwise use actual average
+    -- Average: midpoint when either bound is custom or TSM-derived; else the scan average
     local average
-    if itemData.customLow or itemData.customHigh then
-        -- Use midpoint of low and high when custom bounds are set
+    if lowSrc ~= "scan" or highSrc ~= "scan" or #buyouts == 0 then
         average = (low + high) / 2
     else
-        -- Use actual average from price data
         local sum = 0
         for _, price in ipairs(buyouts) do
             sum = sum + price
@@ -199,8 +180,10 @@ local function CalculatePriceStats(itemName)
         today = today.buyoutPerUnit > 0 and today.buyoutPerUnit or today.minBidPerUnit,
         todayBuyout = today.buyoutPerUnit,
         todayBid = today.minBidPerUnit,
-        isCustomLow = itemData.customLow ~= nil,
-        isCustomHigh = itemData.customHigh ~= nil,
+        isCustomLow = lowSrc == "custom",
+        isCustomHigh = highSrc == "custom",
+        isTsmLow = lowSrc == "tsm",
+        isTsmHigh = highSrc == "tsm",
         itemType = itemData.itemType or "material"
     }
 end
@@ -273,6 +256,13 @@ local function AttachSourceTooltip(cell, itemName, itemData)
         GameTooltip:AddDoubleLine("Latest price", FormatMoney(unit or 0), 1, 1, 1, 1, 0.8, 0.5)
         GameTooltip:AddDoubleLine("Source", MAW.SourceLabel and MAW:SourceLabel(latest.source) or (latest.source or "scan"), 1, 1, 1, 0.9, 0.7, 0.4)
         GameTooltip:AddDoubleLine("Recorded", latest.date or "?", 1, 1, 1, 0.8, 0.8, 0.8)
+        for _, line in ipairs(MAW:TsmTooltipLines(itemData)) do
+            if line.header then
+                GameTooltip:AddLine(line.header, 0.9, 0.7, 1)
+            else
+                GameTooltip:AddDoubleLine("  " .. line.label, line.value, 1, 1, 1, 1, 0.9, 0.6)
+            end
+        end
         GameTooltip:Show()
     end)
     cell:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -357,13 +347,19 @@ end
 
 
 -- Header cells for the TSM columns; returns the new x
+-- A column header cell in the fixed strip (parent is always mainFrame.headerFrame)
+local function HeaderCell(text, color, width, x, y)
+    local header = CreateCell(mainFrame.headerFrame, text, color, width, HEADER_HEIGHT)
+    header:SetPoint("TOPLEFT", mainFrame.headerFrame, "TOPLEFT", x, y or 0)
+    table.insert(mainFrame.headerRows, header)
+    return header
+end
+
 AddTsmHeaders = function(parent, x, y)
     if not TsmColumnsShown() then return x end
     for _, col in ipairs(TSM_COLUMNS) do
-        local header = CreateCell(parent, col.header, { r = 0.3, g = 0.2, b = 0.4 }, TSM_CELL_WIDTH, HEADER_HEIGHT)
-        header:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
+        local header = HeaderCell(col.header, { r = 0.3, g = 0.2, b = 0.4 }, TSM_CELL_WIDTH, x, y)
         header.label:SetTextColor(0.9, 0.7, 1)
-        table.insert(mainFrame.rows, header)
         x = x + TSM_CELL_WIDTH
     end
     return x
@@ -394,12 +390,21 @@ AddTsmCells = function(parent, x, y, itemName, itemData, stats)
             GameTooltip:AddLine(itemName)
             GameTooltip:AddLine(col.label, 0.9, 0.7, 1)
             if value and value > 0 then
-                GameTooltip:AddDoubleLine("Value", FormatMoney(value), 1, 1, 1, 1, 0.8, 0.5)
+                local usedKey = (col.key == "market") and ref.marketKey or ref.historicalKey
+                GameTooltip:AddDoubleLine("Value", FormatMoney(value) .. (usedKey and (" (" .. usedKey .. ")") or ""), 1, 1, 1, 1, 0.8, 0.5)
                 if ref.time then
                     GameTooltip:AddDoubleLine("Pulled", date("%Y-%m-%d %H:%M", ref.time), 1, 1, 1, 0.8, 0.8, 0.8)
                 end
                 if stats and stats.low and stats.high then
                     GameTooltip:AddDoubleLine("Your bounds", FormatMoney(stats.low) .. " - " .. FormatMoney(stats.high), 1, 1, 1, 0.8, 0.8, 0.8)
+                end
+                local MAW = _G.MalexisAuctionWatcher
+                for _, line in ipairs(MAW:TsmTooltipLines(itemData)) do
+                    if line.header then
+                        GameTooltip:AddLine(line.header, 0.9, 0.7, 1)
+                    else
+                        GameTooltip:AddDoubleLine("  " .. line.label, line.value, 1, 1, 1, 1, 0.9, 0.6)
+                    end
                 end
             else
                 GameTooltip:AddLine("No TSM data. Use Pull TSM on the History tab.", 0.7, 0.7, 0.7)
@@ -485,7 +490,7 @@ end
 local function CreateTabButton(parent, text, tabName, x)
     local tab = CreateFrame("Button", nil, parent)
     tab:SetSize(100, TAB_HEIGHT)
-    tab:SetPoint("TOPLEFT", parent, "BOTTOMLEFT", x, 0)
+    tab:SetPoint("TOPLEFT", parent, "TOPLEFT", x, 0)
 
     -- Background
     tab.bg = tab:CreateTexture(nil, "BACKGROUND")
@@ -527,10 +532,7 @@ function MAWUI:CreateUI()
 
     -- Main frame
     mainFrame = CreateFrame("Frame", "MalexisAuctionWatcherFrame", UIParent, "BasicFrameTemplateWithInset")
-    mainFrame:SetSize(800, 400 + CONTROL_SECTION_HEIGHT)  -- Wider to accommodate longer item names and controls
-    mainFrame.defaultHeight = 400 + CONTROL_SECTION_HEIGHT
-    mainFrame.historyHeight = 620 + CONTROL_SECTION_HEIGHT
-    mainFrame.defaultWidth = 800
+    mainFrame:SetSize(WINDOW_WIDTH, WINDOW_HEIGHT)  -- one size for every tab
     mainFrame:SetPoint("CENTER")
     mainFrame:SetMovable(true)
     mainFrame:EnableMouse(true)
@@ -558,17 +560,31 @@ function MAWUI:CreateUI()
     mainFrame.title:SetPoint("CENTER", mainFrame.TitleBg, "CENTER", 5, 0)
     mainFrame.title:SetText(windowTitle)
 
-    -- Control section at top
+    -- Tab bar: the navigation strip along the top of the inset
+    local tabFrame = CreateFrame("Frame", nil, mainFrame)
+    tabFrame:SetPoint("TOPLEFT", mainFrame.InsetBg or mainFrame, "TOPLEFT", 4, -4)
+    tabFrame:SetPoint("TOPRIGHT", mainFrame.InsetBg or mainFrame, "TOPRIGHT", -4, -4)
+    tabFrame:SetHeight(TAB_HEIGHT)
+    mainFrame.tabFrame = tabFrame
+
+    mainFrame.materialTab = CreateTabButton(tabFrame, "Materials", "materials", 4)
+    mainFrame.productTab = CreateTabButton(tabFrame, "Products", "products", 108)
+    mainFrame.storesTab = CreateTabButton(tabFrame, "Stores", "stores", 212)
+    mainFrame.historyTab = CreateTabButton(tabFrame, "History", "history", 316)
+    mainFrame.recipesTab = CreateTabButton(tabFrame, "Recipes", "recipes", 420)
+    mainFrame.moversTab = CreateTabButton(tabFrame, "Movers", "movers", 524)
+
+    -- Control row under the tabs: scans, then sort, then options; checkbox on the right
     local controlFrame = CreateFrame("Frame", nil, mainFrame)
-    controlFrame:SetPoint("TOPLEFT", mainFrame.InsetBg or mainFrame, "TOPLEFT", 4, -4)
-    controlFrame:SetPoint("TOPRIGHT", mainFrame.InsetBg or mainFrame, "TOPRIGHT", -4, -4)
-    controlFrame:SetHeight(CONTROL_SECTION_HEIGHT)
+    controlFrame:SetPoint("TOPLEFT", tabFrame, "BOTTOMLEFT", 0, -4)
+    controlFrame:SetPoint("TOPRIGHT", tabFrame, "BOTTOMRIGHT", 0, -4)
+    controlFrame:SetHeight(CONTROL_ROW_HEIGHT)
     mainFrame.controlFrame = controlFrame
 
     -- Scan button
     local scanBtn = CreateFrame("Button", nil, controlFrame, "UIPanelButtonTemplate")
     scanBtn:SetSize(100, 25)
-    scanBtn:SetPoint("TOPLEFT", controlFrame, "TOPLEFT", 5, -5)
+    scanBtn:SetPoint("LEFT", controlFrame, "LEFT", 5, 0)
     scanBtn:SetText("Scan AH")
     scanBtn:SetScript("OnClick", function()
         local MAW = _G.MalexisAuctionWatcher
@@ -612,10 +628,31 @@ function MAWUI:CreateUI()
     end)
     mainFrame.scanTabBtn = scanTabBtn
 
-    -- Add item button
+    -- Sort toggle for Materials/Products: by mover position or by your manual order (3rd slot)
+    local sortBtn = CreateFrame("Button", nil, controlFrame, "UIPanelButtonTemplate")
+    sortBtn:SetSize(120, 25)
+    sortBtn:SetPoint("LEFT", scanTabBtn, "RIGHT", 5, 0)
+    sortBtn:SetText("Sort: Movers")
+    sortBtn:SetScript("OnClick", function()
+        local s = MalexisAuctionWatcherDB.settings
+        s.sortMode = (s.sortMode == "manual") and "movers" or "manual"
+        MAWUI:RefreshData()
+    end)
+    sortBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:AddLine("Row order")
+        GameTooltip:AddLine("Movers: materials cheapest-in-range first, products highest-in-range first. Items without a range go last.", 1, 1, 1)
+        GameTooltip:AddLine("Manual: the order you set with the arrows.", 1, 1, 1)
+        GameTooltip:Show()
+    end)
+    sortBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    mainFrame.sortBtn = sortBtn
+
+    -- Options after sort. The slot after Sort is shared: Add Item on Materials/Products,
+    -- Refresh on Stores/Recipes/Movers. Both anchor to Sort so they never shift.
     local addBtn = CreateFrame("Button", nil, controlFrame, "UIPanelButtonTemplate")
     addBtn:SetSize(100, 25)
-    addBtn:SetPoint("LEFT", scanTabBtn, "RIGHT", 5, 0)
+    addBtn:SetPoint("LEFT", sortBtn, "RIGHT", 5, 0)
     addBtn:SetText("Add Item")
     addBtn:SetScript("OnClick", function()
         local itemType = currentTab == "materials" and "material" or "product"
@@ -625,10 +662,10 @@ function MAWUI:CreateUI()
     end)
     mainFrame.addBtn = addBtn
 
-    -- Refresh-only button (Stores: counts, Recipes: table). No scan, just recompute.
+    -- Refresh-only button (Stores: counts, Recipes/Movers: table). No scan, just recompute.
     local refreshBtn = CreateFrame("Button", nil, controlFrame, "UIPanelButtonTemplate")
     refreshBtn:SetSize(130, 25)
-    refreshBtn:SetPoint("LEFT", scanTabBtn, "RIGHT", 5, 0)
+    refreshBtn:SetPoint("LEFT", sortBtn, "RIGHT", 5, 0)
     refreshBtn:SetText("Refresh Counts")
     refreshBtn:SetScript("OnClick", function()
         MAWUI:RefreshData()
@@ -638,7 +675,7 @@ function MAWUI:CreateUI()
 
     -- Character-specific mode checkbox
     local charCheckbox = CreateFrame("CheckButton", nil, controlFrame, "UICheckButtonTemplate")
-    charCheckbox:SetPoint("TOPRIGHT", controlFrame, "TOPRIGHT", -5, -5)
+    charCheckbox:SetPoint("RIGHT", controlFrame, "RIGHT", -5, 0)
     charCheckbox:SetSize(20, 20)
 
     -- Label for checkbox
@@ -663,9 +700,14 @@ function MAWUI:CreateUI()
 
     mainFrame.charCheckbox = charCheckbox
 
-    -- Last scan timestamp label (below buttons, above tabs)
-    local lastScanLabel = controlFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    lastScanLabel:SetPoint("TOPLEFT", scanBtn, "BOTTOMLEFT", 0, -8)
+    -- Status line under the control row
+    local statusFrame = CreateFrame("Frame", nil, mainFrame)
+    statusFrame:SetPoint("TOPLEFT", controlFrame, "BOTTOMLEFT", 0, 0)
+    statusFrame:SetPoint("TOPRIGHT", controlFrame, "BOTTOMRIGHT", 0, 0)
+    statusFrame:SetHeight(STATUS_HEIGHT)
+    mainFrame.statusFrame = statusFrame
+    local lastScanLabel = statusFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    lastScanLabel:SetPoint("LEFT", statusFrame, "LEFT", 6, 0)
     lastScanLabel:SetTextColor(0.7, 0.7, 0.7)
     lastScanLabel:SetText("Last scan: Never")
     mainFrame.lastScanLabel = lastScanLabel
@@ -707,16 +749,16 @@ function MAWUI:CreateUI()
     -- Store update function for later use
     mainFrame.UpdateLastScanLabel = UpdateLastScanLabel
 
-    -- Tab buttons (positioned relative to control frame)
-    mainFrame.materialTab = CreateTabButton(controlFrame, "Materials", "materials", 4)
-    mainFrame.productTab = CreateTabButton(controlFrame, "Products", "products", 108)
-    mainFrame.storesTab = CreateTabButton(controlFrame, "Stores", "stores", 212)
-    mainFrame.historyTab = CreateTabButton(controlFrame, "History", "history", 316)
-    mainFrame.recipesTab = CreateTabButton(controlFrame, "Recipes", "recipes", 420)
+    -- Fixed header strip: column headers (and the Recipes toolbar) live here, outside the scroll
+    local headerFrame = CreateFrame("Frame", nil, mainFrame)
+    headerFrame:SetPoint("TOPLEFT", statusFrame, "BOTTOMLEFT", 0, -2)
+    headerFrame:SetPoint("TOPRIGHT", mainFrame.InsetBg or mainFrame, "TOPRIGHT", -24, 0)
+    headerFrame:SetHeight(HEADER_HEIGHT)
+    mainFrame.headerFrame = headerFrame
+    mainFrame.headerRows = {}
 
-    -- Scroll frame (below control section and tabs)
     local scrollFrame = CreateFrame("ScrollFrame", nil, mainFrame, "UIPanelScrollFrameTemplate")
-    scrollFrame:SetPoint("TOPLEFT", controlFrame, "BOTTOMLEFT", 0, -TAB_HEIGHT - 5)
+    scrollFrame:SetPoint("TOPLEFT", headerFrame, "BOTTOMLEFT", 0, 0)
     scrollFrame:SetPoint("BOTTOMRIGHT", mainFrame.InsetBg or mainFrame, "BOTTOMRIGHT", -24, 4)
 
     local scrollChild = CreateFrame("Frame", nil, scrollFrame)
@@ -764,6 +806,7 @@ function MAWUI:UpdateTabHighlights()
     mainFrame.storesTab.bg:SetColorTexture(0.2, 0.2, 0.2, 0.8)
     mainFrame.historyTab.bg:SetColorTexture(0.2, 0.2, 0.2, 0.8)
     mainFrame.recipesTab.bg:SetColorTexture(0.2, 0.2, 0.2, 0.8)
+    mainFrame.moversTab.bg:SetColorTexture(0.2, 0.2, 0.2, 0.8)
 
     -- Highlight active tab
     if currentTab == "materials" then
@@ -776,6 +819,8 @@ function MAWUI:UpdateTabHighlights()
         mainFrame.historyTab.bg:SetColorTexture(0.4, 0.6, 0.4, 0.9)
     elseif currentTab == "recipes" then
         mainFrame.recipesTab.bg:SetColorTexture(0.4, 0.6, 0.4, 0.9)
+    elseif currentTab == "movers" then
+        mainFrame.moversTab.bg:SetColorTexture(0.4, 0.6, 0.4, 0.9)
     end
 end
 
@@ -795,6 +840,12 @@ function MAWUI:RefreshData()
         row:Hide()
     end
     mainFrame.rows = {}
+    for _, row in ipairs(mainFrame.headerRows) do
+        row:Hide()
+    end
+    mainFrame.headerRows = {}
+    -- Tabs without column headers collapse the strip; tabs with one set it in their render
+    mainFrame.headerFrame:SetHeight((currentTab == "history" or currentTab == "movers") and 1 or HEADER_HEIGHT)
 
     local yOffset = -PADDING
     local scrollChild = mainFrame.scrollChild
@@ -807,45 +858,23 @@ function MAWUI:RefreshData()
     -- Per-tab control bar labels
     local scanLabels = {
         materials = "Scan Materials", products = "Scan Products", stores = "Scan All",
-        recipes = "Scan Recipes", history = "Scan Item",
+        recipes = "Scan Recipes", history = "Scan Item", movers = "Scan All",
     }
     mainFrame.scanTabBtn:SetText(scanLabels[currentTab] or "Scan Tab")
     if currentTab == "stores" then
         mainFrame.refreshBtn:SetText("Refresh Counts")
         mainFrame.refreshBtn:Show()
-    elseif currentTab == "recipes" then
+    elseif currentTab == "recipes" or currentTab == "movers" then
         mainFrame.refreshBtn:SetText("Refresh Table")
         mainFrame.refreshBtn:Show()
     else
         mainFrame.refreshBtn:Hide()
     end
 
-    -- Size the window to the tab: History needs height, Recipes needs width
-    local wantHeight = (currentTab == "history") and mainFrame.historyHeight or mainFrame.defaultHeight
-    local wantWidth = mainFrame.defaultWidth
-    local chrome = 30 + 24 + 16  -- remove button + scrollbar + frame insets
-    if currentTab == "recipes" then
-        local cols = 0
-        for _, c in ipairs(RecipeColumns()) do cols = cols + c.width end
-        wantWidth = math.max(wantWidth, PADDING + RECIPE_CONTROLS_WIDTH + cols + chrome)
-    elseif currentTab == "materials" or currentTab == "products" then
-        wantWidth = math.max(wantWidth, PADDING + CONTROLS_WIDTH + ROW_NAME_WIDTH + CELL_WIDTH * 4 + TsmColumnsWidth() + chrome)
-    elseif currentTab == "stores" then
-        wantWidth = math.max(wantWidth, PADDING + ROW_NAME_WIDTH + 80 * 4 + 100 * 2 + TsmColumnsWidth() + chrome)
-    end
+    -- One window size for every tab. Docked in the auction house it follows the host instead.
     if mainFrame.docked and mainFrame.dockHost then
-        -- Docked in the auction house: fill the host's height, never narrower than it
         local host = mainFrame.dockHost
-        mainFrame:SetSize(math.max(wantWidth, host:GetWidth()), host:GetHeight())
-    elseif mainFrame:GetHeight() ~= wantHeight or mainFrame:GetWidth() ~= wantWidth then
-        -- Pin the top-left corner so the window grows down and to the right, not around its centre
-        local left, top = mainFrame:GetLeft(), mainFrame:GetTop()
-        mainFrame:SetSize(wantWidth, wantHeight)
-        if left and top then
-            local scale = mainFrame:GetEffectiveScale() / UIParent:GetEffectiveScale()
-            mainFrame:ClearAllPoints()
-            mainFrame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left / scale, top / scale)
-        end
+        mainFrame:SetSize(math.max(WINDOW_WIDTH, host:GetWidth()), host:GetHeight())
     end
 
     -- Update Add Item button visibility (hide on Stores/History tabs)
@@ -861,8 +890,19 @@ function MAWUI:RefreshData()
         mainFrame.addBtn:Hide()
         self:RenderRecipesTab(scrollChild, yOffset)
         return
+    elseif currentTab == "movers" then
+        mainFrame.addBtn:Hide()
+        self:RenderMoversTab(scrollChild, yOffset)
+        return
     else
         mainFrame.addBtn:Show()
+    end
+    local sortMode = (MalexisAuctionWatcherDB.settings.sortMode == "manual") and "manual" or "movers"
+    if currentTab == "materials" or currentTab == "products" then
+        mainFrame.sortBtn:SetText(sortMode == "manual" and "Sort: Manual" or "Sort: Movers")
+        mainFrame.sortBtn:Show()
+    else
+        mainFrame.sortBtn:Hide()
     end
 
     -- Determine if we should invert colors (products = true)
@@ -882,12 +922,10 @@ function MAWUI:RefreshData()
             width = CELL_WIDTH  -- Price columns
         end
 
-        local header = CreateCell(scrollChild, headerText, {r=0.2, g=0.2, b=0.4}, width, HEADER_HEIGHT)
-        header:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", headerX, yOffset)
+        local header = HeaderCell(headerText, {r=0.2, g=0.2, b=0.4}, width, headerX, 0)
         headerX = headerX + width
-        table.insert(mainFrame.rows, header)
         if i == 2 then
-            headerX = AddTsmHeaders(scrollChild, headerX, yOffset)
+            headerX = AddTsmHeaders(mainFrame.headerFrame, headerX, 0)
         end
 
         if i == 3 then
@@ -902,8 +940,6 @@ function MAWUI:RefreshData()
             header.label:SetTextColor(1, 1, 1)
         end
     end
-
-    yOffset = yOffset - HEADER_HEIGHT
 
     -- Add item rows (filtered by current tab)
     local MAW = _G.MalexisAuctionWatcher
@@ -925,12 +961,26 @@ function MAWUI:RefreshData()
         end
     end
 
-    -- Sort by order field
-    table.sort(sortedItems, function(a, b)
-        local orderA = a.data.order or 0
-        local orderB = b.data.order or 0
-        return orderA < orderB
-    end)
+    -- Sort: by mover position (materials cheap first, products high first), or manual order
+    if sortMode == "movers" then
+        for _, item in ipairs(sortedItems) do
+            item.pos = MAW:GetRangePosition(item.name)
+        end
+        table.sort(sortedItems, function(a, b)
+            if (a.pos == nil) ~= (b.pos == nil) then
+                return a.pos ~= nil
+            end
+            if a.pos ~= nil and a.pos ~= b.pos then
+                if targetType == "material" then return a.pos < b.pos end
+                return a.pos > b.pos
+            end
+            return (a.data.order or 0) < (b.data.order or 0)
+        end)
+    else
+        table.sort(sortedItems, function(a, b)
+            return (a.data.order or 0) < (b.data.order or 0)
+        end)
+    end
 
     -- Render sorted items
     for _, item in ipairs(sortedItems) do
@@ -1036,6 +1086,8 @@ function MAWUI:RefreshData()
             local lowText = FormatMoney(stats.low)
             if stats.isCustomLow then
                 lowText = lowText .. "*"
+            elseif stats.isTsmLow then
+                lowText = lowText .. "~"
             end
             local lowColor = invertColors and COLOR_HIGH or COLOR_LOW
             local lowCell = CreateCell(scrollChild, lowText, lowColor, CELL_WIDTH, CELL_HEIGHT, true, function()
@@ -1057,6 +1109,8 @@ function MAWUI:RefreshData()
             local highText = FormatMoney(stats.high)
             if stats.isCustomHigh then
                 highText = highText .. "*"
+            elseif stats.isTsmHigh then
+                highText = highText .. "~"
             end
             local highColor = invertColors and COLOR_LOW or COLOR_HIGH
             local highCell = CreateCell(scrollChild, highText, highColor, CELL_WIDTH, CELL_HEIGHT, true, function()
@@ -1098,7 +1152,7 @@ function MAWUI:RefreshData()
     legend:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", PADDING, yOffset - 2)
     legend.text = legend:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     legend.text:SetPoint("LEFT")
-    legend.text:SetText("Today: no tag = your scan, |cffe0b060[A]|r = Auctionator, |cffe0b060[T]|r = TSM. TSM 14d/60d = TSM averages, colored against your low/high. Hover for details.")
+    legend.text:SetText("Today: no tag = your scan, |cffe0b060[A]|r = Auctionator, |cffe0b060[T]|r = TSM. TSM 60d/14d = TSM averages (region values when the realm has none). low/high: * = set by you, ~ = from TSM, plain = your scans.")
     legend.text:SetTextColor(0.6, 0.6, 0.6)
     table.insert(mainFrame.rows, legend)
     yOffset = yOffset - 16
@@ -1118,22 +1172,18 @@ function MAWUI:RenderStoresTab(scrollChild, yOffset)
     end
 
     -- Create headers for Stores tab
-    local headers = {"Item", "Inventory", "Bank", "AH", "Total", "Value", "AH Net"}
+    local headers = {"Item", "Inventory", "Bank", "AH", "Total", "Value", string.format("AH Net -%d%%", math.floor(MAW:GetAHCut() * 100 + 0.5))}
     local widths = {ROW_NAME_WIDTH, 80, 80, 80, 80, 100, 100}
     local headerX = PADDING
 
     for i, headerText in ipairs(headers) do
-        local header = CreateCell(scrollChild, headerText, {r=0.2, g=0.2, b=0.4}, widths[i], HEADER_HEIGHT)
-        header:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", headerX, yOffset)
+        local header = HeaderCell(headerText, {r=0.2, g=0.2, b=0.4}, widths[i], headerX, 0)
         headerX = headerX + widths[i]
-        table.insert(mainFrame.rows, header)
         header.label:SetTextColor(1, 1, 1)
         if i == 1 then
-            headerX = AddTsmHeaders(scrollChild, headerX, yOffset)
+            headerX = AddTsmHeaders(mainFrame.headerFrame, headerX, 0)
         end
     end
-
-    yOffset = yOffset - HEADER_HEIGHT
 
     -- Get inventory counts from Core
     local counts = MAW and MAW:GetAllInventoryCounts() or {}
@@ -1197,7 +1247,7 @@ function MAWUI:RenderStoresTab(scrollChild, yOffset)
         elseif stats and stats.average then
             marketValue = stats.average * total
         end
-        local ahNetValue = marketValue * 0.95  -- 5% AH cut
+        local ahNetValue = marketValue * (1 - MAW:GetAHCut())
 
         productTotalInv = productTotalInv + itemCounts.inventory
         productTotalBank = productTotalBank + itemCounts.bank
@@ -1219,7 +1269,7 @@ function MAWUI:RenderStoresTab(scrollChild, yOffset)
         elseif stats and stats.average then
             marketValue = stats.average * total
         end
-        local ahNetValue = marketValue * 0.95  -- 5% AH cut
+        local ahNetValue = marketValue * (1 - MAW:GetAHCut())
 
         materialTotalInv = materialTotalInv + itemCounts.inventory
         materialTotalBank = materialTotalBank + itemCounts.bank
@@ -1360,12 +1410,12 @@ function MAWUI:RenderStoresTab(scrollChild, yOffset)
         rowX = rowX + widths[6]
 
         -- AH Net value (95% of market value, with same color grading)
-        local ahNetValue = marketValue * 0.95
+        local ahNetValue = marketValue * (1 - MAW:GetAHCut())
         local ahNetText = FormatMoney(ahNetValue)
         local ahNetColor = {r=0.1, g=0.15, b=0.1}
         if stats and stats.low and stats.high then
-            -- Use today's price * 0.95 for color grading, even if total is 0
-            local pricePerItem = (stats.today or stats.average or 0) * 0.95
+            -- Use today's price after the AH cut for color grading, even if total is 0
+            local pricePerItem = (stats.today or stats.average or 0) * (1 - MAW:GetAHCut())
             ahNetColor = GetPriceColor(pricePerItem, stats.low, stats.high, true) -- true = invertColors for products
         end
         local ahNetCell = CreateCell(scrollChild, ahNetText, ahNetColor, widths[7], CELL_HEIGHT)
@@ -1511,12 +1561,12 @@ function MAWUI:RenderStoresTab(scrollChild, yOffset)
         rowX = rowX + widths[6]
 
         -- AH Net value (95% of market value, with same color grading)
-        local ahNetValue = marketValue * 0.95
+        local ahNetValue = marketValue * (1 - MAW:GetAHCut())
         local ahNetText = FormatMoney(ahNetValue)
         local ahNetColor = {r=0.1, g=0.15, b=0.1}
         if stats and stats.low and stats.high then
-            -- Use today's price * 0.95 for color grading, even if total is 0
-            local pricePerItem = (stats.today or stats.average or 0) * 0.95
+            -- Use today's price after the AH cut for color grading, even if total is 0
+            local pricePerItem = (stats.today or stats.average or 0) * (1 - MAW:GetAHCut())
             ahNetColor = GetPriceColor(pricePerItem, stats.low, stats.high, false) -- false = normal colors for materials
         end
         local ahNetCell = CreateCell(scrollChild, ahNetText, ahNetColor, widths[7], CELL_HEIGHT)
@@ -1702,11 +1752,8 @@ local function BuildHistoryPanel(parent)
     panel.pullTsm = pullTsm
 
     -- Chart
-    local parentWidth = parent:GetWidth()
-    if not parentWidth or parentWidth < 100 then
-        parentWidth = 740
-    end
-    local chartWidth = math.max(300, parentWidth - PADDING * 2)
+    -- Window width minus scrollbar, insets, and padding; independent of layout timing
+    local chartWidth = WINDOW_WIDTH - 24 - 16 - PADDING * 2
     panel.chart = _G.MalexisAuctionWatcherChart.Create(panel, chartWidth, CHART_HEIGHT)
     panel.chart:SetPoint("TOPLEFT", panel, "TOPLEFT", PADDING, -66)
 
@@ -1715,7 +1762,7 @@ local function BuildHistoryPanel(parent)
     panel.legend:SetPoint("TOPLEFT", panel.chart, "BOTTOMLEFT", 0, -4)
     panel.legend:SetJustifyH("LEFT")
     panel.legend:SetWidth(chartWidth)
-    panel.legend:SetText("Bars: |cff8ca6d9blue|r = your scans, |cffccb366amber|r = Auctionator/TSM, |cff59e659green|r = cheapest, |cfff25959red|r = priciest. White tick = average. Hover a bar for details.")
+    panel.legend:SetText("Bars: |cff8ca6d9blue|r = your scans, |cffccb366amber|r = Auctionator/TSM, |cff59e659green|r = cheapest, |cfff25959red|r = priciest. White tick = average. |cffffd94dYellow line|r = today; buckets to its right are from the previous cycle.")
     panel.legend:SetTextColor(0.6, 0.6, 0.6)
 
     -- Summary lines
@@ -1790,16 +1837,29 @@ function MAWUI:RenderHistoryTab(scrollChild, yOffset)
         local tsmRef = db.items[self.historyItem].tsmRef
         if tsmRef and MAW.sources.tsm.available and MAW:IsSourceEnabled("tsm") then
             if tsmRef.market then
-                table.insert(refLines, { value = tsmRef.market, label = "TSM market 14d", color = { 0.95, 0.65, 0.95 } })
+                table.insert(refLines, { value = tsmRef.market, label = "TSM mrkt 14d", color = { 0.95, 0.65, 0.95 } })
             end
             if tsmRef.historical then
-                table.insert(refLines, { value = tsmRef.historical, label = "TSM historical 60d", color = { 0.7, 0.55, 0.95 } })
+                table.insert(refLines, { value = tsmRef.historical, label = "TSM hist 60d", color = { 0.7, 0.55, 0.95 } })
             end
+        end
+
+        -- Where "now" falls in cyclic views, so the wrap from last period to this one is visible
+        local nowT = date("*t")
+        local markerIndex, markerLabel
+        if modeDef.mode == "monthday" then
+            markerIndex, markerLabel = nowT.day, "Today (" .. nowT.day .. ")"
+        elseif modeDef.mode == "weekday" then
+            markerIndex, markerLabel = nowT.wday, "Today"
+        elseif modeDef.mode == "hour" then
+            markerIndex, markerLabel = nowT.hour + 1, "Now"
         end
 
         panel.chart:SetData(analysis.points, {
             highlight = highlight,
             refLines = refLines,
+            markerIndex = markerIndex,
+            markerLabel = markerLabel,
             maxLabels = modeDef.maxLabels,
             tooltipTitle = function(p)
                 if modeDef.mode == "hour" then
@@ -1908,7 +1968,7 @@ local function AttachRecipeTooltip(cell, calc)
         GameTooltip:AddLine("Materials per batch:", 0.8, 0.8, 0.8)
         for _, m in ipairs(calc.materials) do
             local right = m.unit and (m.count .. " x " .. FormatMoney(m.unit) .. " = " .. FormatMoney(m.cost)) or "no price"
-            local src = m.source and (" (" .. (MAW.SourceLabel and MAW:SourceLabel(m.source) or m.source) .. (m.when and (", " .. m.when) or "") .. ")") or ""
+            local src = m.vendor and " (vendor)" or (m.source and (" (" .. (MAW.SourceLabel and MAW:SourceLabel(m.source) or m.source) .. (m.when and (", " .. m.when) or "") .. ")") or "")
             GameTooltip:AddDoubleLine("  " .. m.item .. src, right, 1, 1, 1, 1, 0.8, 0.5)
         end
         GameTooltip:AddLine(" ")
@@ -1916,7 +1976,7 @@ local function AttachRecipeTooltip(cell, calc)
         local psrc = calc.productSource and (" (" .. (MAW.SourceLabel and MAW:SourceLabel(calc.productSource) or calc.productSource) .. (calc.productWhen and (", " .. calc.productWhen) or "") .. ")") or ""
         GameTooltip:AddDoubleLine("Product: " .. calc.recipe.product .. " x" .. (calc.recipe.productCount or 1) .. psrc, pright, 1, 1, 1, 1, 0.8, 0.5)
         if calc.complete then
-            GameTooltip:AddDoubleLine("AH net (after 5% cut)", FormatMoney(calc.ahNet), 1, 1, 1, 0.8, 0.8, 0.8)
+            GameTooltip:AddDoubleLine(string.format("AH net (after %d%% cut)", math.floor(MAW:GetAHCut() * 100 + 0.5)), FormatMoney(calc.ahNet), 1, 1, 1, 0.8, 0.8, 0.8)
             GameTooltip:AddDoubleLine("Profit per batch", FormatMoney(calc.profit), 1, 1, 1,
                 calc.profit >= 0 and 0.5 or 1, calc.profit >= 0 and 1 or 0.5, 0.5)
         else
@@ -1942,52 +2002,61 @@ end
 function MAWUI:RenderRecipesTab(scrollChild, yOffset)
     local MAW = _G.MalexisAuctionWatcher
 
-    -- Toolbar row inside the list: preset + add
-    local presetBtn = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate")
-    presetBtn:SetSize(170, 22)
-    presetBtn:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", PADDING, yOffset)
-    presetBtn:SetText("Add Motes -> Primals")
-    presetBtn:SetScript("OnClick", function()
-        MAW:AddMotePresets()
-        MAWUI:RefreshData()
+    -- Toolbar row inside the list: presets menu + add
+    -- Dropdown menu built with UIDropDownMenu_Initialize (EasyMenu is not on every client build)
+    local function PresetMenuItems()
+        local dlg = _G.MalexisAuctionWatcherRecipeDialog
+        local function after() MAWUI:RefreshData() end
+        return {
+            { text = "Add recipes", isTitle = true },
+            { text = "Motes -> Primals (7)", func = function() MAW:AddMotePresets(); after() end },
+            { text = "Transmute: Primal Might", func = function() MAW:AddPrimalMightPreset(); after() end },
+            { text = "Alchemy consumables (7)", func = function() MAW:AddAlchemyPresets(); after() end },
+            { text = "Gem cuts...", func = function() if dlg then dlg.ShowGemPicker() end end },
+            { text = "Import from open profession window...", func = function() if dlg then dlg.ShowProfessionImport() end end },
+            { text = "Track items only", isTitle = true },
+            { text = "Flipping guide watchlist (herbs, primals, gems, shards)", func = function() MAW:AddGuideWatchlist(); after() end },
+        }
+    end
+    if not mainFrame.presetMenu then
+        mainFrame.presetMenu = CreateFrame("Frame", "MalexisAuctionWatcherPresetMenu", UIParent, "UIDropDownMenuTemplate")
+        UIDropDownMenu_Initialize(mainFrame.presetMenu, function(_, level)
+            for _, item in ipairs(PresetMenuItems()) do
+                local info = UIDropDownMenu_CreateInfo()
+                info.text = item.text
+                info.isTitle = item.isTitle
+                info.notCheckable = true
+                info.disabled = item.isTitle
+                info.func = item.func
+                UIDropDownMenu_AddButton(info, level)
+            end
+        end, "MENU")
+    end
+    local hf = mainFrame.headerFrame
+    hf:SetHeight(30 + HEADER_HEIGHT)
+    local presetBtn = CreateFrame("Button", nil, hf, "UIPanelButtonTemplate")
+    presetBtn:SetSize(120, 22)
+    presetBtn:SetPoint("TOPLEFT", hf, "TOPLEFT", PADDING, -2)
+    presetBtn:SetText("Presets...")
+    presetBtn:SetScript("OnClick", function(self)
+        ToggleDropDownMenu(1, nil, mainFrame.presetMenu, self, 0, 0)
     end)
-    table.insert(mainFrame.rows, presetBtn)
+    table.insert(mainFrame.headerRows, presetBtn)
 
-    local mightBtn = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate")
-    mightBtn:SetSize(140, 22)
-    mightBtn:SetPoint("LEFT", presetBtn, "RIGHT", 6, 0)
-    mightBtn:SetText("Add Primal Might")
-    mightBtn:SetScript("OnClick", function()
-        MAW:AddPrimalMightPreset()
-        MAWUI:RefreshData()
-    end)
-    table.insert(mainFrame.rows, mightBtn)
-
-    local gemBtn = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate")
-    gemBtn:SetSize(130, 22)
-    gemBtn:SetPoint("LEFT", mightBtn, "RIGHT", 6, 0)
-    gemBtn:SetText("Add Gem Cuts")
-    gemBtn:SetScript("OnClick", function()
-        if _G.MalexisAuctionWatcherRecipeDialog then
-            _G.MalexisAuctionWatcherRecipeDialog.ShowGemPicker()
-        end
-    end)
-    table.insert(mainFrame.rows, gemBtn)
-
-    local addRecipeBtn = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate")
+    local addRecipeBtn = CreateFrame("Button", nil, hf, "UIPanelButtonTemplate")
     addRecipeBtn:SetSize(110, 22)
-    addRecipeBtn:SetPoint("LEFT", gemBtn, "RIGHT", 6, 0)
+    addRecipeBtn:SetPoint("LEFT", presetBtn, "RIGHT", 6, 0)
     addRecipeBtn:SetText("Add Recipe")
     addRecipeBtn:SetScript("OnClick", function()
         if _G.MalexisAuctionWatcherRecipeDialog then
             _G.MalexisAuctionWatcherRecipeDialog.Show()
         end
     end)
-    table.insert(mainFrame.rows, addRecipeBtn)
+    table.insert(mainFrame.headerRows, addRecipeBtn)
 
     -- Price basis: cycles Latest -> TSM 14d -> TSM 60d
     local basisDef = MAW:PriceBasisDef(MAWUI.recipeBasis)
-    local basisBtn = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate")
+    local basisBtn = CreateFrame("Button", nil, hf, "UIPanelButtonTemplate")
     basisBtn:SetSize(130, 22)
     basisBtn:SetPoint("LEFT", addRecipeBtn, "RIGHT", 6, 0)
     basisBtn:SetText("Prices: " .. basisDef.label)
@@ -2015,38 +2084,31 @@ function MAWUI:RenderRecipesTab(scrollChild, yOffset)
         basisBtn:SetText("Prices: Latest")
         MAWUI.recipeBasis = "latest"
     end
-    table.insert(mainFrame.rows, basisBtn)
+    table.insert(mainFrame.headerRows, basisBtn)
 
-    yOffset = yOffset - 30
-
-    -- Headers (first a narrow controls column for the per-row refresh icon)
+    -- Column headers in the strip, below the toolbar (first a narrow controls column)
     local columns = RecipeColumns()
     local totalWidth = RECIPE_CONTROLS_WIDTH
     local x = PADDING
-    local ctlHeader = CreateCell(scrollChild, "", { r = 0.2, g = 0.2, b = 0.4 }, RECIPE_CONTROLS_WIDTH, HEADER_HEIGHT)
-    ctlHeader:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", x, yOffset)
-    table.insert(mainFrame.rows, ctlHeader)
+    HeaderCell("", { r = 0.2, g = 0.2, b = 0.4 }, RECIPE_CONTROLS_WIDTH, x, -30)
     x = x + RECIPE_CONTROLS_WIDTH
     for _, col in ipairs(columns) do
-        local header = CreateCell(scrollChild, col.header, col.basis and { r = 0.3, g = 0.2, b = 0.4 } or { r = 0.2, g = 0.2, b = 0.4 }, col.width, HEADER_HEIGHT)
-        header:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", x, yOffset)
+        local header = HeaderCell(col.header, col.basis and { r = 0.3, g = 0.2, b = 0.4 } or { r = 0.2, g = 0.2, b = 0.4 }, col.width, x, -30)
         header.label:SetTextColor(col.basis and 0.9 or 1, col.basis and 0.7 or 1, 1)
-        table.insert(mainFrame.rows, header)
         x = x + col.width
         totalWidth = totalWidth + col.width
     end
-    yOffset = yOffset - HEADER_HEIGHT
 
     local recipes = MAW:GetRecipes()
     local rows = {}
     for _, recipe in ipairs(recipes) do
         table.insert(rows, MAW:ComputeRecipeProfit(recipe, MAWUI.recipeBasis))
     end
-    -- Most profitable first; recipes without prices go to the bottom
+    -- Best margin first; recipes without prices go to the bottom
     table.sort(rows, function(a, b)
-        local pa = a.profit or -math.huge
-        local pb = b.profit or -math.huge
-        if pa ~= pb then return pa > pb end
+        local ma = a.margin or -math.huge
+        local mb = b.margin or -math.huge
+        if ma ~= mb then return ma > mb end
         return a.recipe.name < b.recipe.name
     end)
 
@@ -2138,9 +2200,27 @@ function MAWUI:RenderRecipesTab(scrollChild, yOffset)
             x = x + col.width
         end
 
+        local editBtn = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate")
+        editBtn:SetSize(20, 20)
+        editBtn:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", x + 5, yOffset - 2)
+        editBtn:SetText("E")
+        editBtn:SetNormalFontObject("GameFontNormalSmall")
+        editBtn:SetScript("OnClick", function()
+            if _G.MalexisAuctionWatcherRecipeDialog then
+                _G.MalexisAuctionWatcherRecipeDialog.ShowEdit(calc.recipe)
+            end
+        end)
+        editBtn:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:AddLine("Edit recipe")
+            GameTooltip:Show()
+        end)
+        editBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        table.insert(mainFrame.rows, editBtn)
+
         local removeBtn = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate")
         removeBtn:SetSize(20, 20)
-        removeBtn:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", x + 5, yOffset - 2)
+        removeBtn:SetPoint("LEFT", editBtn, "RIGHT", 3, 0)
         removeBtn:SetText("X")
         removeBtn:SetNormalFontObject("GameFontNormalSmall")
         removeBtn:SetScript("OnClick", function()
@@ -2206,11 +2286,173 @@ function MAWUI:Undock()
     else
         mainFrame:SetPoint("CENTER")
     end
-    mainFrame:SetSize(mainFrame.defaultWidth, mainFrame.defaultHeight)
+    mainFrame:SetSize(WINDOW_WIDTH, WINDOW_HEIGHT)
 end
 
 function MAWUI:IsDocked()
     return mainFrame ~= nil and mainFrame.docked == true
+end
+
+-- ===================== Movers tab =====================
+
+local MOVER_WIDTHS = { 70, 260, 90, 330, 80 }  -- badge, name, price, reason, action
+
+local function UseKeyDown()
+    if GetCVarBool then
+        local ok, v = pcall(GetCVarBool, "ActionButtonUseKeyDown")
+        if ok and v ~= nil then return v end
+    end
+    return false
+end
+
+local function MoverSectionHeader(scrollChild, yOffset, text, color, width)
+    local header = CreateCell(scrollChild, text, color, width, CELL_HEIGHT)
+    header:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", PADDING, yOffset)
+    header.label:SetTextColor(1, 1, 0.6)
+    table.insert(mainFrame.rows, header)
+    return yOffset - CELL_HEIGHT
+end
+
+local function MoverRow(scrollChild, yOffset, entry)
+    local MAW = _G.MalexisAuctionWatcher
+    local x = PADDING
+    local badgeText = ({ buy = "BUY", convert = "CONVERT", sell = "LIST" })[entry.kind]
+    local badgeColor = ({ buy = { r = 0.2, g = 0.5, b = 0.2 }, convert = { r = 0.5, g = 0.4, b = 0.1 }, sell = { r = 0.5, g = 0.2, b = 0.2 } })[entry.kind]
+
+    local badge = CreateCell(scrollChild, badgeText, badgeColor, MOVER_WIDTHS[1], CELL_HEIGHT)
+    badge:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", x, yOffset)
+    table.insert(mainFrame.rows, badge)
+    x = x + MOVER_WIDTHS[1]
+
+    local nameCell = CreateCell(scrollChild, entry.name, { r = 0.15, g = 0.15, b = 0.15 }, MOVER_WIDTHS[2], CELL_HEIGHT)
+    nameCell:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", x, yOffset)
+    nameCell.label:SetJustifyH("LEFT")
+    nameCell.label:SetPoint("LEFT", nameCell, "LEFT", 5, 0)
+    table.insert(mainFrame.rows, nameCell)
+    if entry.kind == "convert" then
+        AttachRecipeTooltip(nameCell, entry.calc)
+    else
+        local db = MAW:GetActiveDB()
+        AttachSourceTooltip(nameCell, entry.name, db.items[entry.name])
+    end
+    x = x + MOVER_WIDTHS[2]
+
+    local priceText
+    if entry.kind == "convert" then
+        priceText = FormatMoney(entry.profit)
+    else
+        priceText = FormatMoney(entry.price)
+    end
+    local priceCell = CreateCell(scrollChild, priceText, { r = 0.1, g = 0.1, b = 0.1 }, MOVER_WIDTHS[3], CELL_HEIGHT)
+    priceCell:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", x, yOffset)
+    table.insert(mainFrame.rows, priceCell)
+    x = x + MOVER_WIDTHS[3]
+
+    local reasonCell = CreateCell(scrollChild, entry.reason, { r = 0.1, g = 0.1, b = 0.1 }, MOVER_WIDTHS[4], CELL_HEIGHT)
+    reasonCell:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", x, yOffset)
+    reasonCell.label:SetJustifyH("LEFT")
+    reasonCell.label:ClearAllPoints()
+    reasonCell.label:SetPoint("LEFT", reasonCell, "LEFT", 5, 0)
+    reasonCell.label:SetPoint("RIGHT", reasonCell, "RIGHT", -3, 0)
+    reasonCell.label:SetWordWrap(false)
+    reasonCell.label:SetTextColor(0.8, 0.8, 0.8)
+    table.insert(mainFrame.rows, reasonCell)
+    x = x + MOVER_WIDTHS[4]
+
+    -- Action button
+    local btn
+    if entry.kind == "convert" then
+        -- Secure button so the click can cast a spell or use an item
+        btn = CreateFrame("Button", nil, scrollChild, "SecureActionButtonTemplate, UIPanelButtonTemplate")
+        btn:SetSize(MOVER_WIDTHS[5] - 6, CELL_HEIGHT)
+        btn:SetText("Convert")
+        if InCombatLockdown() then
+            btn:Disable()
+        else
+            local attrType, attrValue = MAW:MoverConvertAction(entry.recipe)
+            btn:SetAttribute("type", attrType)
+            btn:SetAttribute(attrType, attrValue)
+            btn:RegisterForClicks(UseKeyDown() and "AnyDown" or "AnyUp")
+        end
+        btn:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            local attrType, attrValue = MAW:MoverConvertAction(entry.recipe)
+            GameTooltip:AddLine(attrType == "item" and ("Use " .. attrValue .. " (combines 10)") or ("Cast " .. attrValue))
+            GameTooltip:AddLine("One click makes one batch. Needs the recipe known and mats in bags.", 0.7, 0.7, 0.7)
+            GameTooltip:Show()
+        end)
+        btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    else
+        btn = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate")
+        btn:SetSize(MOVER_WIDTHS[5] - 6, CELL_HEIGHT)
+        if entry.kind == "buy" then
+            btn:SetText("Buy")
+            btn:SetScript("OnClick", function() MAW:MoverBuy(entry.name) end)
+            btn:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:AddLine("Search the auction house for " .. entry.name)
+                GameTooltip:AddLine("Opens Browse with an exact search. You choose what to buy.", 0.7, 0.7, 0.7)
+                GameTooltip:Show()
+            end)
+        else
+            btn:SetText("List")
+            btn:SetScript("OnClick", function() MAW:MoverList(entry.name, entry.itemID, entry.price) end)
+            btn:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:AddLine("Put " .. entry.name .. " in the sell slot")
+                GameTooltip:AddLine("Fills start and buyout from today's price, undercut by 1c per unit. You press Create Auction.", 0.7, 0.7, 0.7)
+                GameTooltip:Show()
+            end)
+        end
+        btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    end
+    btn:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", x + 3, yOffset)
+    table.insert(mainFrame.rows, btn)
+
+    return yOffset - CELL_HEIGHT
+end
+
+function MAWUI:RenderMoversTab(scrollChild, yOffset)
+    local MAW = _G.MalexisAuctionWatcher
+    local movers = MAW:GetMovers()
+    local totalWidth = 0
+    for _, w in ipairs(MOVER_WIDTHS) do totalWidth = totalWidth + w end
+
+    local hint = CreateCell(scrollChild,
+        string.format("Buy: any item at or below %d%% of its range.  Convert: recipes above %d%% margin with mats on hand.  List: any item at or above %d%% of range that you hold.",
+            MAW:MoverSetting("moverBuyPct") * 100, MAW:MoverSetting("moverMinMargin"), MAW:MoverSetting("moverSellPct") * 100),
+        { r = 0.1, g = 0.1, b = 0.15 }, totalWidth, CELL_HEIGHT)
+    hint:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", PADDING, yOffset)
+    hint.label:SetTextColor(0.6, 0.6, 0.6)
+    hint.label:SetJustifyH("LEFT")
+    hint.label:SetPoint("LEFT", hint, "LEFT", 5, 0)
+    table.insert(mainFrame.rows, hint)
+    yOffset = yOffset - CELL_HEIGHT - 6
+
+    local sections = {
+        { key = "buy", title = "BUY  -  anything cheap: materials to craft, products to stock", color = { r = 0.2, g = 0.35, b = 0.2 } },
+        { key = "convert", title = "CONVERT  -  profitable recipes you can make now", color = { r = 0.35, g = 0.3, b = 0.15 } },
+        { key = "sell", title = "LIST  -  anything expensive that you hold, materials included", color = { r = 0.35, g = 0.2, b = 0.2 } },
+    }
+    for _, sec in ipairs(sections) do
+        yOffset = MoverSectionHeader(scrollChild, yOffset, sec.title, sec.color, totalWidth)
+        local list = movers[sec.key]
+        if #list == 0 then
+            local empty = CreateCell(scrollChild, "Nothing right now", { r = 0.1, g = 0.1, b = 0.1 }, totalWidth, CELL_HEIGHT)
+            empty:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", PADDING, yOffset)
+            empty.label:SetTextColor(0.5, 0.5, 0.5)
+            table.insert(mainFrame.rows, empty)
+            yOffset = yOffset - CELL_HEIGHT
+        else
+            for _, entry in ipairs(list) do
+                yOffset = MoverRow(scrollChild, yOffset, entry)
+            end
+        end
+        yOffset = yOffset - 8
+    end
+
+    scrollChild:SetHeight(math.abs(yOffset) + PADDING)
+    self:UpdateTabHighlights()
 end
 
 -- Open the window on a given tab

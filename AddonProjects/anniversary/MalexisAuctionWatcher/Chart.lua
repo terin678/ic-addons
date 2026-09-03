@@ -7,7 +7,7 @@ local COLOR_WORST = { 0.95, 0.35, 0.35 }
 local COLOR_EMPTY = { 0.3, 0.3, 0.3 }
 local COLOR_EXTERNAL = { 0.8, 0.7, 0.4 }
 
-local LEFT_MARGIN = 62
+local LEFT_MARGIN = 78
 local BOTTOM_MARGIN = 18
 local TOP_MARGIN = 8
 local RIGHT_MARGIN = 8
@@ -194,6 +194,13 @@ function ChartMixin:SetData(points, opts)
     local refs = opts.refLines or {}
     local LABEL_H = 12
     local placedLabelYs = {}
+    -- The highest line gets its label above; every other line's label goes below its line
+    local topValue
+    for _, ref in ipairs(refs) do
+        if ref.value and ref.value > 0 and (not topValue or ref.value > topValue) then
+            topValue = ref.value
+        end
+    end
     local function LabelCollides(y)
         for _, other in ipairs(placedLabelYs) do
             if math.abs(other - y) < LABEL_H then
@@ -218,14 +225,16 @@ function ChartMixin:SetData(points, opts)
 
         if ref.value and ref.value > 0 then
             local y = math.max(0, math.min(plotH, YFor(ref.value)))
+            -- Span the full chart width, through the y-axis margin, so the line reads as a level
             line.tex:ClearAllPoints()
-            line.tex:SetPoint("BOTTOMLEFT", self.plot, "BOTTOMLEFT", 0, y)
+            line.tex:SetPoint("BOTTOMLEFT", self, "BOTTOMLEFT", 2, BOTTOM_MARGIN + y)
             line.tex:SetPoint("BOTTOMRIGHT", self.plot, "BOTTOMRIGHT", 0, y)
 
-            -- Label sits just above its line; if that overlaps another label,
-            -- try just below, then keep stepping down until it is clear.
-            local labelY = y + 1
-            if LabelCollides(labelY) or labelY + LABEL_H > plotH then
+            -- Highest line: label above. Others: label below, stepping down if it collides.
+            local labelY
+            if ref.value == topValue and y + 1 + LABEL_H <= plotH and not LabelCollides(y + 1) then
+                labelY = y + 1
+            else
                 labelY = y - LABEL_H
                 while LabelCollides(labelY) and labelY > 0 do
                     labelY = labelY - LABEL_H
@@ -234,7 +243,7 @@ function ChartMixin:SetData(points, opts)
             table.insert(placedLabelYs, labelY)
 
             line.text:ClearAllPoints()
-            line.text:SetPoint("BOTTOMRIGHT", self.plot, "BOTTOMRIGHT", -2, labelY)
+            line.text:SetPoint("BOTTOMLEFT", self, "BOTTOMLEFT", 4, BOTTOM_MARGIN + labelY)
             line.text:SetText((ref.label or "") .. " " .. FormatMoney(ref.value))
             line.tex:Show()
             line.text:Show()
@@ -246,6 +255,26 @@ function ChartMixin:SetData(points, opts)
     for i = #refs + 1, #self.refLines do
         self.refLines[i].tex:Hide()
         self.refLines[i].text:Hide()
+    end
+
+    -- Today marker: a line on the right edge of the current bucket, where the cycle wraps
+    if opts.markerIndex and opts.markerIndex >= 1 and opts.markerIndex <= count then
+        local x = opts.markerIndex * slotW
+        self.marker:ClearAllPoints()
+        self.marker:SetPoint("BOTTOMLEFT", self.plot, "BOTTOMLEFT", x - 1, 0)
+        self.marker:SetHeight(plotH)
+        self.marker:Show()
+        self.markerText:ClearAllPoints()
+        if opts.markerIndex > count / 2 then
+            self.markerText:SetPoint("TOPRIGHT", self.plot, "BOTTOMLEFT", x - 3, plotH - 2)
+        else
+            self.markerText:SetPoint("TOPLEFT", self.plot, "BOTTOMLEFT", x + 3, plotH - 2)
+        end
+        self.markerText:SetText(opts.markerLabel or "Today")
+        self.markerText:Show()
+    else
+        self.marker:Hide()
+        self.markerText:Hide()
     end
 
     self.emptyText:SetShown(not hasData)
@@ -276,6 +305,15 @@ function MAWChart.Create(parent, width, height)
     end
 
     frame.refLines = {}
+
+    -- Vertical "Today" marker for cyclic views (day of month, weekday, hour)
+    frame.marker = frame.plot:CreateTexture(nil, "OVERLAY")
+    frame.marker:SetWidth(2)
+    frame.marker:SetColorTexture(1, 0.85, 0.3, 0.9)
+    frame.marker:Hide()
+    frame.markerText = frame.plot:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    frame.markerText:SetTextColor(1, 0.85, 0.3)
+    frame.markerText:Hide()
 
     frame.emptyText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     frame.emptyText:SetPoint("CENTER")

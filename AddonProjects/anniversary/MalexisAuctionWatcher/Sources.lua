@@ -90,7 +90,65 @@ local function NewestEntryAge(itemData)
     return time() - latest.timestamp
 end
 
-MAW.SOURCE_LABELS = { scan = "Scan", atr = "Auctionator", tsm = "TSM", ext = "External", custom = "Custom bound", tsm14 = "TSM 14d", tsm60 = "TSM 60d" }
+MAW.SOURCE_LABELS = { scan = "Scan", atr = "Auctionator", tsm = "TSM", ext = "External", custom = "Custom bound", tsm14 = "TSM 14d", tsm60 = "TSM 60d", vendor = "Vendor" }
+
+-- TSM price sources pulled per item, in display order. money=false means a rate or count.
+MAW.TSM_KEYS = {
+    "DBMinBuyout", "DBMarket", "DBRecent", "DBHistorical",
+    "DBRegionMarketAvg", "DBRegionHistorical", "DBRegionSaleAvg", "DBRegionSaleRate", "DBRegionSoldPerDay",
+    "SmartAvgBuy", "AvgBuy", "MinBuy", "MaxBuy", "AvgSell", "MinSell", "MaxSell",
+    "VendorSell", "Crafting",
+}
+MAW.TSM_KEY_INFO = {
+    DBMinBuyout        = { label = "Min buyout (realm)",        group = "AuctionDB" },
+    DBMarket           = { label = "Market value (14d)",        group = "AuctionDB" },
+    DBRecent           = { label = "Recent value",              group = "AuctionDB" },
+    DBHistorical       = { label = "Historical (60d)",          group = "AuctionDB" },
+    DBRegionMarketAvg  = { label = "Region market avg",         group = "AuctionDB" },
+    DBRegionHistorical = { label = "Region historical",         group = "AuctionDB" },
+    DBRegionSaleAvg    = { label = "Region sale avg",           group = "AuctionDB" },
+    DBRegionSaleRate   = { label = "Region sale rate",          group = "AuctionDB", money = false, fmt = "%.2f" },
+    DBRegionSoldPerDay = { label = "Region sold per day",       group = "AuctionDB", money = false, fmt = "%.1f" },
+    SmartAvgBuy        = { label = "Smart avg buy (you)",       group = "Accounting" },
+    AvgBuy             = { label = "Avg buy (you)",             group = "Accounting" },
+    MinBuy             = { label = "Min buy (you)",             group = "Accounting" },
+    MaxBuy             = { label = "Max buy (you)",             group = "Accounting" },
+    AvgSell            = { label = "Avg sell (you)",            group = "Accounting" },
+    MinSell            = { label = "Min sell (you)",            group = "Accounting" },
+    MaxSell            = { label = "Max sell (you)",            group = "Accounting" },
+    VendorSell         = { label = "Vendor sell",               group = "Item" },
+    Crafting           = { label = "TSM crafting cost",         group = "Crafting" },
+}
+
+-- Lines for a tooltip listing everything TSM reported for an item
+function MAW:TsmTooltipLines(itemData)
+    local ref = itemData and itemData.tsmRef
+    if not ref or not ref.values then
+        return {}
+    end
+    local lines = {}
+    local lastGroup
+    for _, key in ipairs(self.TSM_KEYS) do
+        local value = ref.values[key]
+        if value then
+            local info = self.TSM_KEY_INFO[key]
+            if info.group ~= lastGroup then
+                table.insert(lines, { header = "TSM " .. info.group })
+                lastGroup = info.group
+            end
+            local text
+            if info.money == false then
+                text = string.format(info.fmt or "%s", value)
+            else
+                text = self:FormatMoney(value)
+            end
+            local used = (key == ref.marketKey and " [14d col]") or (key == ref.historicalKey and " [60d col]") or ""
+            table.insert(lines, { label = info.label .. used, value = text })
+        end
+    end
+    return lines
+end
+
 MAW.SOURCE_TAGS = { atr = "A", tsm = "T" }
 
 function MAW:SourceLabel(source)
@@ -117,7 +175,8 @@ function MAW:PullAuctionator(itemName, itemData)
             historyRows = #rows
             for _, row in ipairs(rows) do
                 if row.rawDay and row.minSeen then
-                    local ts = tonumber(row.rawDay) * 86400 + ATR_SCAN_DAY_0
+                    -- Auctionator days start at local midnight; use noon so DST shifts cannot move the day
+                    local ts = tonumber(row.rawDay) * 86400 + ATR_SCAN_DAY_0 + 43200
                     local day = self:DayIndexFromTime(ts)
                     if self:BackfillHistory(itemName, day, row.minSeen, row.maxSeen, "atr") then
                         recorded = true
@@ -175,14 +234,23 @@ function MAW:PullTSM(itemName, itemData)
         return nil
     end
 
-    local ref = {
-        minBuyout = Value("DBMinBuyout"),
-        market = Value("DBMarket"),          -- ~14 day weighted average
-        historical = Value("DBHistorical"),  -- ~60 day average
-        recent = Value("DBRecent"),
-        regionMarket = Value("DBRegionMarketAvg"),
-        time = time(),
-    }
+    -- Every TSM price source we care about. Money values are copper; rates are plain numbers.
+    local ref = { values = {}, time = time() }
+    for _, key in ipairs(MAW.TSM_KEYS) do
+        ref.values[key] = Value(key)
+    end
+    local v = ref.values
+
+    -- The two summary columns, with fallbacks for realms where TSM lacks realm-level averages
+    local function FirstOf(keys)
+        for _, key in ipairs(keys) do
+            if v[key] then return v[key], key end
+        end
+        return nil, nil
+    end
+    ref.minBuyout = v.DBMinBuyout
+    ref.market, ref.marketKey = FirstOf({ "DBMarket", "DBRecent", "DBRegionMarketAvg", "DBRegionSaleAvg" })
+    ref.historical, ref.historicalKey = FirstOf({ "DBHistorical", "DBRegionHistorical", "DBRegionSaleAvg" })
 
     local price = ref.minBuyout or ref.market
     if not price then
@@ -199,9 +267,12 @@ function MAW:PullTSM(itemName, itemData)
 
     local parts = {}
     if ref.minBuyout then table.insert(parts, "min buyout " .. self:FormatMoney(ref.minBuyout)) end
-    if ref.market then table.insert(parts, "market 14d " .. self:FormatMoney(ref.market)) end
-    if ref.historical then table.insert(parts, "historical 60d " .. self:FormatMoney(ref.historical)) end
-    return true, table.concat(parts, ", ") .. " (snapshot only; TSM has no daily history)"
+    if ref.market then table.insert(parts, "14d " .. self:FormatMoney(ref.market) .. " (" .. ref.marketKey .. ")") end
+    if ref.historical then table.insert(parts, "60d " .. self:FormatMoney(ref.historical) .. " (" .. ref.historicalKey .. ")") end
+    local n = 0
+    for _ in pairs(v) do n = n + 1 end
+    table.insert(parts, n .. " TSM fields")
+    return true, table.concat(parts, ", ")
 end
 
 -- Pull external prices for every tracked item.

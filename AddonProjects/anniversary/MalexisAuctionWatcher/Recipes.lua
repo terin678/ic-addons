@@ -2,7 +2,27 @@
 local addonName = "MalexisAuctionWatcher"
 local MAW = _G.MalexisAuctionWatcher or {}
 
-local AH_CUT = 0.05
+local DEFAULT_AH_CUT = 0.05  -- faction auction houses take 5%; neutral ones 15%
+
+-- Auction house cut as a fraction (0.15 = 15%)
+function MAW:GetAHCut()
+    local s = MalexisAuctionWatcherDB and MalexisAuctionWatcherDB.settings
+    local cut = s and s.ahCut
+    if type(cut) ~= "number" or cut < 0 or cut > 0.5 then
+        return DEFAULT_AH_CUT
+    end
+    return cut
+end
+
+function MAW:SetAHCutPercent(percent)
+    local p = tonumber(percent)
+    if not p or p < 0 or p > 50 then
+        return false
+    end
+    MalexisAuctionWatcherDB.settings.ahCut = p / 100
+    self:FireCallbacks("onItemAdded")
+    return true
+end
 
 -- Built-in preset: 10 motes -> 1 primal (no profession required)
 MAW.PRESET_MOTES_TO_PRIMALS = {
@@ -109,6 +129,29 @@ function MAW:AddRecipe(recipe)
     return true
 end
 
+-- Replace an existing recipe (matched by name) with new contents, keeping its position
+function MAW:UpdateRecipe(oldName, recipe)
+    local recipes = self:GetRecipes()
+    for i, r in ipairs(recipes) do
+        if r.name == oldName then
+            recipe.name = recipe.name or oldName
+            recipe.productCount = recipe.productCount or 1
+            -- A rename must not collide with another recipe
+            if recipe.name ~= oldName then
+                for _, other in ipairs(recipes) do
+                    if other.name == recipe.name then
+                        return false, "a recipe named " .. recipe.name .. " already exists"
+                    end
+                end
+            end
+            recipes[i] = recipe
+            self:FireCallbacks("onItemAdded")
+            return true
+        end
+    end
+    return false, "recipe not found: " .. tostring(oldName)
+end
+
 function MAW:RemoveRecipe(name)
     local recipes = self:GetRecipes()
     for i, r in ipairs(recipes) do
@@ -192,9 +235,14 @@ function MAW:ComputeRecipeProfit(recipe, basis)
 
     local complete = true
     for _, mat in ipairs(recipe.materials) do
-        local unit, source, when = self:GetUnitPrice(mat.item, basis)
+        local unit, source, when
+        if mat.vendor then
+            unit, source = mat.vendor, "vendor"
+        else
+            unit, source, when = self:GetUnitPrice(mat.item, basis)
+        end
         local lineCost = unit and unit * mat.count or nil
-        table.insert(result.materials, { item = mat.item, count = mat.count, unit = unit, cost = lineCost, source = source, when = when })
+        table.insert(result.materials, { item = mat.item, count = mat.count, unit = unit, cost = lineCost, source = source, when = when, vendor = mat.vendor })
         if unit then
             result.matCost = result.matCost + lineCost
         else
@@ -202,11 +250,13 @@ function MAW:ComputeRecipeProfit(recipe, basis)
             table.insert(result.missing, mat.item)
         end
 
-        -- How many full batches the player owns materials for
-        local owned = (self:CountInventory(mat.item) or 0) + (self:CountBank(mat.item) or 0)
-        local batches = math.floor(owned / mat.count)
-        if not result.canMake or batches < result.canMake then
-            result.canMake = batches
+        -- How many full batches the player owns materials for (vendor mats assumed buyable)
+        if not mat.vendor then
+            local owned = (self:CountInventory(mat.item) or 0) + (self:CountBank(mat.item) or 0)
+            local batches = math.floor(owned / mat.count)
+            if not result.canMake or batches < result.canMake then
+                result.canMake = batches
+            end
         end
     end
 
@@ -216,7 +266,7 @@ function MAW:ComputeRecipeProfit(recipe, basis)
     result.productWhen = productWhen
     if productUnit then
         result.productValue = productUnit * (recipe.productCount or 1)
-        result.ahNet = result.productValue * (1 - AH_CUT)
+        result.ahNet = result.productValue * (1 - self:GetAHCut())
     else
         complete = false
         table.insert(result.missing, recipe.product)
@@ -412,6 +462,145 @@ function MAW:AddGemPresets(filter)
     end
     print(string.format("%s: Added %d gem-cut recipes and started tracking %d items", addonName, added, tracked))
     return added
+end
+
+
+-- ---------------------------------------------------------------------------
+-- Vendor-priced reagents: fixed cost, never scanned or tracked
+-- ---------------------------------------------------------------------------
+MAW.VENDOR_MATS = {
+    [18256] = { name = "Imbued Vial",  price = 2000 },
+    [8925]  = { name = "Crystal Vial", price = 2000 },
+    [3372]  = { name = "Leaded Vial",  price = 200 },
+    [3371]  = { name = "Empty Vial",   price = 20 },
+}
+
+function MAW:VendorMatByName(name)
+    for id, v in pairs(self.VENDOR_MATS) do
+        if v.name == name then return v, id end
+    end
+    return nil
+end
+
+-- ---------------------------------------------------------------------------
+-- Built-in preset: TBC Alchemy consumables the raid market moves quickly.
+-- Only recipes whose reagents are certain are listed. Imbued Vial is vendor priced.
+-- ---------------------------------------------------------------------------
+local VIAL = { name = "Imbued Vial", id = 18256, count = 1, vendor = 2000 }
+MAW.PRESET_ALCHEMY = {
+    { product = { name = "Haste Potion", id = 22838 }, skill = 360, mats = {
+        { name = "Netherbloom", id = 22791, count = 1 }, { name = "Terocone", id = 22789, count = 1 }, VIAL } },
+    { product = { name = "Destruction Potion", id = 22839 }, skill = 350, mats = {
+        { name = "Nightmare Vine", id = 22792, count = 1 }, { name = "Terocone", id = 22789, count = 1 }, VIAL } },
+    { product = { name = "Super Mana Potion", id = 22832 }, skill = 340, mats = {
+        { name = "Dreaming Glory", id = 22786, count = 2 }, { name = "Felweed", id = 22785, count = 1 }, VIAL } },
+    { product = { name = "Super Healing Potion", id = 22829 }, skill = 325, mats = {
+        { name = "Netherbloom", id = 22791, count = 2 }, { name = "Felweed", id = 22785, count = 1 }, VIAL } },
+    { product = { name = "Elixir of Major Mageblood", id = 22840 }, skill = 355, mats = {
+        { name = "Ancient Lichen", id = 22790, count = 1 }, { name = "Netherbloom", id = 22791, count = 1 }, VIAL } },
+    { product = { name = "Flask of Fortification", id = 22851 }, skill = 375, mats = {
+        { name = "Ancient Lichen", id = 22790, count = 7 }, { name = "Mana Thistle", id = 22793, count = 3 },
+        { name = "Fel Lotus", id = 22794, count = 1 }, VIAL } },
+    { product = { name = "Flask of Mighty Restoration", id = 22853 }, skill = 375, mats = {
+        { name = "Dreaming Glory", id = 22786, count = 7 }, { name = "Mana Thistle", id = 22793, count = 3 },
+        { name = "Fel Lotus", id = 22794, count = 1 }, VIAL } },
+}
+
+function MAW:AddAlchemyPresets()
+    local added, tracked = 0, 0
+    for _, r in ipairs(self.PRESET_ALCHEMY) do
+        local mats = {}
+        for _, m in ipairs(r.mats) do
+            if m.vendor then
+                table.insert(mats, { item = m.name, count = m.count, vendor = m.vendor })
+            else
+                if self:AddItemByID(m.name, m.id, "material") then tracked = tracked + 1 end
+                table.insert(mats, { item = m.name, count = m.count })
+            end
+        end
+        if self:AddItemByID(r.product.name, r.product.id, "product") then tracked = tracked + 1 end
+        local ok = self:AddRecipe({
+            name = r.product.name,
+            product = r.product.name,
+            productCount = 1,
+            materials = mats,
+            skill = r.skill,
+            profession = "Alchemy",
+            note = "Preset reagents; check against your recipe book",
+        })
+        if ok then added = added + 1 end
+    end
+    print(string.format("%s: Added %d Alchemy recipes and started tracking %d items", addonName, added, tracked))
+    return added
+end
+
+-- ---------------------------------------------------------------------------
+-- Guide watchlist: items a TBC flipping guide singles out. Tracks only, no recipes.
+-- ---------------------------------------------------------------------------
+MAW.PRESET_GUIDE_WATCHLIST = {
+    materials = {
+        { name = "Large Prismatic Shard", id = 22449 },
+        { name = "Felweed", id = 22785 }, { name = "Dreaming Glory", id = 22786 },
+        { name = "Terocone", id = 22789 }, { name = "Ancient Lichen", id = 22790 },
+        { name = "Netherbloom", id = 22791 }, { name = "Nightmare Vine", id = 22792 },
+        { name = "Mana Thistle", id = 22793 }, { name = "Fel Lotus", id = 22794 },
+        { name = "Flame Cap", id = 22788 }, { name = "Nightmare Seed", id = 22797 },
+        { name = "Ghost Mushroom", id = 8845 }, { name = "Gromsblood", id = 8846 },
+        { name = "Firebloom", id = 4625 },
+    },
+    products = {
+        { name = "Haste Potion", id = 22838 }, { name = "Destruction Potion", id = 22839 },
+        { name = "Super Mana Potion", id = 22832 }, { name = "Elixir of Demonslaying", id = 9224 },
+        { name = "Primal Fire", id = 21884 }, { name = "Primal Mana", id = 22457 },
+        { name = "Primal Life", id = 21886 }, { name = "Primal Air", id = 22451 },
+        { name = "Primal Shadow", id = 22456 },
+        { name = "Living Ruby", id = 23436 }, { name = "Noble Topaz", id = 23439 },
+        { name = "Nightseye", id = 23441 }, { name = "Dawnstone", id = 23440 },
+        { name = "Star of Elune", id = 23438 },
+    },
+}
+
+function MAW:AddGuideWatchlist()
+    local tracked = 0
+    for _, it in ipairs(self.PRESET_GUIDE_WATCHLIST.materials) do
+        if self:AddItemByID(it.name, it.id, "material") then tracked = tracked + 1 end
+    end
+    for _, it in ipairs(self.PRESET_GUIDE_WATCHLIST.products) do
+        if self:AddItemByID(it.name, it.id, "product") then tracked = tracked + 1 end
+    end
+    print(string.format("%s: Guide watchlist added %d new tracked items", addonName, tracked))
+    return tracked
+end
+
+-- ---------------------------------------------------------------------------
+-- Import from the profession window that is open right now (exact reagents from the client)
+-- entry = { name, product, productID, numMade, reagents = { {item, id, count, vendor} } }
+-- ---------------------------------------------------------------------------
+function MAW:ImportProfessionRecipe(entry, professionName)
+    local mats, tracked = {}, 0
+    for _, r in ipairs(entry.reagents) do
+        local vendor = self.VENDOR_MATS[r.id or 0] or self:VendorMatByName(r.item)
+        if vendor then
+            table.insert(mats, { item = r.item, count = r.count, vendor = vendor.price })
+        else
+            if r.id then
+                if self:AddItemByID(r.item, r.id, "material") then tracked = tracked + 1 end
+            end
+            table.insert(mats, { item = r.item, count = r.count })
+        end
+    end
+    if entry.productID and self:AddItemByID(entry.product, entry.productID, "product") then
+        tracked = tracked + 1
+    end
+    local ok, err = self:AddRecipe({
+        name = entry.name,
+        product = entry.product,
+        productCount = entry.numMade or 1,
+        materials = mats,
+        profession = professionName,
+        note = "Imported from your " .. (professionName or "profession") .. " window",
+    })
+    return ok, err, tracked
 end
 
 _G.MalexisAuctionWatcher = MAW

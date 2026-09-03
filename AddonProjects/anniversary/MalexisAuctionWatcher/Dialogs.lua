@@ -573,6 +573,10 @@ function MAWDialogs.ShowPriceInputDialog(itemName, priceType)
         currentValue = db.items[itemName].customLow
     elseif priceType == "HIGH" and db.items[itemName].customHigh then
         currentValue = db.items[itemName].customHigh
+    elseif MAW.GetPriceBounds then
+        -- No custom value: start from the bound in effect (TSM-derived or scan-derived)
+        local low, high = MAW:GetPriceBounds(itemName)
+        currentValue = (priceType == "LOW") and low or high
     end
 
     if currentValue and currentValue > 0 then
