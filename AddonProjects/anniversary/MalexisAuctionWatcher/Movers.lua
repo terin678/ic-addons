@@ -85,19 +85,23 @@ function MAW:GetMovers()
         if today and low and high and high > low then
             local pos = (today - low) / (high - low)
             local itemType = itemData.itemType or "material"
-            if itemType == "material" and pos <= buyPct then
+            local typeTag = (itemType == "product") and "product" or "material"
+            -- Cheap is a buy whatever the type: materials to craft with, products to stock up on
+            if pos <= buyPct then
                 table.insert(out.buy, {
                     kind = "buy", name = itemName, itemID = itemData.itemID, price = today,
-                    low = low, high = high, pos = pos, source = source, when = when,
-                    reason = string.format("%.0f%% of range (low %s, high %s)", pos * 100, self:FormatMoney(low), self:FormatMoney(high)),
+                    low = low, high = high, pos = pos, source = source, when = when, itemType = itemType,
+                    reason = string.format("%s at %.0f%% of range (low %s, high %s)", typeTag, pos * 100, self:FormatMoney(low), self:FormatMoney(high)),
                 })
-            elseif itemType == "product" and pos >= sellPct then
+            end
+            -- Expensive and in hand is a listing whatever the type: spare mats sell too
+            if pos >= sellPct then
                 local owned = Owned(self, itemName)
                 if owned > 0 then
                     table.insert(out.sell, {
                         kind = "sell", name = itemName, itemID = itemData.itemID, price = today,
-                        low = low, high = high, pos = pos, owned = owned, source = source, when = when,
-                        reason = string.format("%.0f%% of range, you hold %d", pos * 100, owned),
+                        low = low, high = high, pos = pos, owned = owned, source = source, when = when, itemType = itemType,
+                        reason = string.format("%s at %.0f%% of range, you hold %d", typeTag, pos * 100, owned),
                     })
                 end
             end

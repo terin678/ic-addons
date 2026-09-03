@@ -164,14 +164,16 @@ holds up against the longer averages. The button is disabled when TSM is not loa
 
 Three lists, each built from the data on the other tabs:
 
-- **Buy**: materials whose Today price is at or below 25% of the way from their low to
-  their high. The Buy button opens the auction house Browse tab with an exact search for
+- **Buy**: any tracked item, material or product, whose Today price is at or below 25% of
+  the way from its low to its high. Cheap materials are for crafting; cheap products, such
+  as raid consumables, are for stocking up. The Buy button opens the auction house Browse tab with an exact search for
   the item. It never buys on its own; you pick the listing.
 - **Convert**: recipes with at least 10% margin and materials for at least one batch in
   bags plus bank. The Convert button casts the recipe, or uses the item for mote combines.
   One click makes one batch. The game only lets an addon cast from a real click, and only
   out of combat, so the button is disabled while fighting.
-- **List**: products whose Today price is at or above 75% of their range and that you hold.
+- **List**: any tracked item at or above 75% of its range that you hold, so spare
+  materials get listed when they spike, not just products.
   The List button switches to the Auctions tab, puts your first bag stack in the sell
   slot, and fills start and buyout from today's price undercut by 1 copper per unit. You
   set the duration and press Create Auction.

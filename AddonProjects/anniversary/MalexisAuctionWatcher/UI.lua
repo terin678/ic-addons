@@ -2414,7 +2414,7 @@ function MAWUI:RenderMoversTab(scrollChild, yOffset)
     for _, w in ipairs(MOVER_WIDTHS) do totalWidth = totalWidth + w end
 
     local hint = CreateCell(scrollChild,
-        string.format("Buy: materials at or below %d%% of their range.  Convert: recipes above %d%% margin with mats on hand.  List: products at or above %d%% of range that you hold.",
+        string.format("Buy: any item at or below %d%% of its range.  Convert: recipes above %d%% margin with mats on hand.  List: any item at or above %d%% of range that you hold.",
             MAW:MoverSetting("moverBuyPct") * 100, MAW:MoverSetting("moverMinMargin"), MAW:MoverSetting("moverSellPct") * 100),
         { r = 0.1, g = 0.1, b = 0.15 }, totalWidth, CELL_HEIGHT)
     hint:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", PADDING, yOffset)
@@ -2425,9 +2425,9 @@ function MAWUI:RenderMoversTab(scrollChild, yOffset)
     yOffset = yOffset - CELL_HEIGHT - 6
 
     local sections = {
-        { key = "buy", title = "BUY  -  cheap materials", color = { r = 0.2, g = 0.35, b = 0.2 } },
+        { key = "buy", title = "BUY  -  anything cheap: materials to craft, products to stock", color = { r = 0.2, g = 0.35, b = 0.2 } },
         { key = "convert", title = "CONVERT  -  profitable recipes you can make now", color = { r = 0.35, g = 0.3, b = 0.15 } },
-        { key = "sell", title = "LIST  -  products at a good price that you hold", color = { r = 0.35, g = 0.2, b = 0.2 } },
+        { key = "sell", title = "LIST  -  anything expensive that you hold, materials included", color = { r = 0.35, g = 0.2, b = 0.2 } },
     }
     for _, sec in ipairs(sections) do
         yOffset = MoverSectionHeader(scrollChild, yOffset, sec.title, sec.color, totalWidth)
