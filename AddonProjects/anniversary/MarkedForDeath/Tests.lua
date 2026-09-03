@@ -173,4 +173,91 @@ T.Case("Seats: the default plan matches the agreed icon bindings", function()
     T.Eq(p[2].intent, "BANISH", "circle")
 end)
 
+local function contribution(owner, instanceKey, rules)
+    return { owner = owner, rules = { [instanceKey] = rules } }
+end
+
+T.Case("Rules: a single contributor's rules pass through with owner stamped", function()
+    local merged = MFD.Rules.Merge({
+        contribution("Dillon", "BT", { { npcID = 22890, intent = "SHEEP", rank = 10 } }),
+    }, "Dillon")
+    T.Eq(merged.BT[22890].intent, "SHEEP", "intent")
+    T.Eq(merged.BT[22890].owner, "Dillon", "owner stamped")
+end)
+
+T.Case("Rules: the lead wins a conflict on the same mob", function()
+    local merged = MFD.Rules.Merge({
+        contribution("Grimmtusk", "BT", { { npcID = 22890, intent = "BANISH", rank = 5 } }),
+        contribution("Dillon", "BT", { { npcID = 22890, intent = "SHEEP", rank = 40 } }),
+    }, "Dillon")
+    T.Eq(merged.BT[22890].intent, "SHEEP", "lead's intent wins")
+    T.Eq(merged.BT[22890].rank, 40, "lead's rank wins too")
+    T.Eq(merged.BT[22890].owner, "Dillon", "owner is the lead")
+end)
+
+T.Case("Rules: a contributor's rule survives when the lead has none for that mob", function()
+    local merged = MFD.Rules.Merge({
+        contribution("Grimmtusk", "HYJAL", { { npcID = 17842, intent = "TRAP", rank = 20 } }),
+        contribution("Dillon", "BT", { { npcID = 22890, intent = "SHEEP", rank = 10 } }),
+    }, "Dillon")
+    T.Eq(merged.HYJAL[17842].intent, "TRAP", "contributor rule kept")
+    T.Eq(merged.HYJAL[17842].owner, "Grimmtusk", "provenance kept")
+end)
+
+T.Case("Rules: without the lead, conflicts resolve by contributor name ascending", function()
+    local merged = MFD.Rules.Merge({
+        contribution("Zed", "BT", { { npcID = 22890, intent = "BANISH", rank = 5 } }),
+        contribution("Alfred", "BT", { { npcID = 22890, intent = "SHEEP", rank = 40 } }),
+    }, "Nobody")
+    T.Eq(merged.BT[22890].owner, "Alfred", "lowest name wins")
+    T.Eq(merged.BT[22890].intent, "SHEEP", "and brings its intent")
+end)
+
+T.Case("Rules: merging is order independent", function()
+    local a = contribution("Zed", "BT", { { npcID = 1, intent = "KILL", rank = 30 } })
+    local b = contribution("Alfred", "BT", { { npcID = 1, intent = "SHEEP", rank = 10 } })
+    local forward = MFD.Rules.Merge({ a, b }, "Dillon")
+    local backward = MFD.Rules.Merge({ b, a }, "Dillon")
+    T.Eq(forward.BT[1].owner, backward.BT[1].owner, "same winner either way")
+    T.Eq(forward.BT[1].rank, backward.BT[1].rank, "same rank either way")
+end)
+
+T.Case("Rules: Ranked sorts by rank then npcID", function()
+    local ranked = MFD.Rules.Ranked({
+        [30] = { npcID = 30, rank = 20 },
+        [10] = { npcID = 10, rank = 10 },
+        [20] = { npcID = 20, rank = 20 },
+    })
+    T.Eq(ranked[1].npcID, 10, "lowest rank first")
+    T.Eq(ranked[2].npcID, 20, "tie broken by npcID ascending")
+    T.Eq(ranked[3].npcID, 30, "then the higher npcID")
+end)
+
+T.Case("Rules: NextRank appends past the highest existing rank", function()
+    T.Eq(MFD.Rules.NextRank({}), 10, "first rule")
+    T.Eq(MFD.Rules.NextRank({ { rank = 10 }, { rank = 40 } }), 50, "past the highest")
+end)
+
+T.Case("Rules: Reorder moves a rule up and respaces ranks", function()
+    local list = {
+        { npcID = 1, rank = 10 },
+        { npcID = 2, rank = 20 },
+        { npcID = 3, rank = 30 },
+    }
+    MFD.Rules.Reorder(list, 3, -1)
+    T.Eq(list[2].npcID, 3, "moved up one place")
+    T.Eq(list[3].npcID, 2, "displaced one moved down")
+    T.Eq(list[1].rank, 10, "ranks respaced from the step")
+    T.Eq(list[2].rank, 20, "second rank")
+    T.Eq(list[3].rank, 30, "third rank")
+end)
+
+T.Case("Rules: Reorder is a no-op at the boundaries", function()
+    local list = { { npcID = 1, rank = 10 }, { npcID = 2, rank = 20 } }
+    MFD.Rules.Reorder(list, 1, -1)
+    T.Eq(list[1].npcID, 1, "cannot move the first up")
+    MFD.Rules.Reorder(list, 2, 1)
+    T.Eq(list[2].npcID, 2, "cannot move the last down")
+end)
+
 _G.MarkedForDeath = MFD

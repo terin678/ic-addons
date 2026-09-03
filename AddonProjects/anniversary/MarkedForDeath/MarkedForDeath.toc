@@ -8,5 +8,6 @@
 
 Helpers.lua
 Seats.lua
+Rules.lua
 Core.lua
 Tests.lua
