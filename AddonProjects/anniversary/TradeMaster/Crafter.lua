@@ -203,3 +203,55 @@ function Crafter.Focus(opts)
         crafts < wanted and string.format(" |cffff9900(mats for %d of %d)|r", crafts, wanted) or "",
         left > 1 and string.format("  |cff888888%d more on this order|r", left - 1) or ""))
 end
+
+--------------------------------------------------------------------------------
+-- What this client actually provides
+--------------------------------------------------------------------------------
+
+-- Every call into the profession window is guarded, so a missing global makes the
+-- helper do less rather than error. That is the right behaviour and a terrible way
+-- to find out: /tm probe says which pieces are here and what each one costs when
+-- it is not, with the window open.
+local PROBE = {
+    { "GetNumTradeSkills", "reading the list at all" },
+    { "GetTradeSkillInfo", "recipe names and how many you can make" },
+    { "GetTradeSkillItemLink", "matching a row to an order's item" },
+    { "GetTradeSkillNumMade", "batch size for a recipe not in your book yet" },
+    { "ExpandTradeSkillSubClass", "finding a recipe under a collapsed category" },
+    { "TradeSkillFrame_SetSelection", "selecting the recipe" },
+    { "TradeSkillFrame_Update", "redrawing after the selection" },
+    { "SelectTradeSkill", "selecting the recipe (fallback)" },
+    { "TradeSkillInputBox", "typing the craft count in for you" },
+    { "TradeSkillListScrollFrame", "scrolling the list to the selection" },
+    { "FauxScrollFrame_SetOffset", "scrolling the list to the selection" },
+}
+
+function Crafter.Probe()
+    local missing = 0
+    for _, row in ipairs(PROBE) do
+        local name, why = row[1], row[2]
+        local value = _G[name]
+        if value then
+            ns.Print(string.format("|cff44ff44yes|r  %s", name))
+        else
+            missing = missing + 1
+            ns.Print(string.format("|cffff4444no |r  %s  |cff888888%s|r", name, why))
+        end
+    end
+
+    local open = GetNumTradeSkills and GetNumTradeSkills() or 0
+    if open > 0 then
+        ns.Print(string.format("open window: %d rows, %s", open,
+            GetTradeSkillLine and GetTradeSkillLine() or "?"))
+        local box = _G.TradeSkillInputBox
+        if box and box.GetNumber then
+            ns.Print("create count box currently reads " .. tostring(box:GetNumber()))
+        end
+    else
+        ns.Print("|cff888888open a profession window and run this again to test the list|r")
+    end
+
+    if missing == 0 then
+        ns.Print("|cff44ff44everything the crafting helper uses is here.|r")
+    end
+end

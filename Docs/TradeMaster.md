@@ -260,6 +260,7 @@ For Jewelcrafting, gem names in the profession window are replaced with what the
 | `/tm bark <seconds>` / `/tm send` / `/tm preview` | Reminder interval, send now, preview |
 | `/tm invite` | Toggle invites for every scanned profession |
 | `/tm craft` | Select the next item an order needs in the open profession window |
+| `/tm probe` | Say which profession-window functions this client provides, and what each missing one costs |
 | `/tm market` | Seller and buyer counts per profession, and the suggested bark interval |
 | `/tm log` / `/tm clearflags` | Recent decisions; clear competitor flags |
 | `/tm orders` / `/tm order add\|done\|cancel\|reopen <id>` | Manage orders |

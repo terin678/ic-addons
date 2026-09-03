@@ -2,7 +2,7 @@ local addonName, ns = ...
 
 ns.Util = ns.Util or {}
 
-local VERSION = "1.8.3"
+local VERSION = "1.8.4"
 
 -- Output goes straight into a chat frame rather than through the chat event
 -- system, so it has no message type and the chat settings UI cannot route it.
@@ -336,6 +336,8 @@ local function HandleSlash(input)
         ns.Scanner.Scan()
     elseif cmd == "craft" then
         ns.Crafter.Focus({ manual = true })
+    elseif cmd == "probe" then
+        ns.Crafter.Probe()
     elseif cmd == "book" then
         local n, products, noun = ns.Prof.BookCounts(profile, book)
         ns.Print(string.format("%s book holds %d recipes (%d %s).", profile.name, n, products, noun))
@@ -548,7 +550,8 @@ local function HandleSlash(input)
         ns.Print("  /tm try <msg>, /tm trywhisper <msg>, /tm tryparty <msg>, /tm bark [secs],")
         ns.Print("  /tm send, /tm preview, /tm adv epic|rare|all|none|+text|-text,")
         ns.Print("  /tm invite, /tm log, /tm debug, /tm capture, /tm clearcapture,")
-        ns.Print("  /tm orders, /tm order add|done|cancel|reopen, /tm craft, /tm tracker,")
+        ns.Print("  /tm orders, /tm order add|done|cancel|reopen, /tm craft, /tm probe,")
+        ns.Print("  /tm tracker,")
         ns.Print("  /tm income, /tm market, /tm annotate, /tm clearflags, /tm out [n],")
         ns.Print("  /tm status, /tm test, /tm disable, /tm enable")
     end
