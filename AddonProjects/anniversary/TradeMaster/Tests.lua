@@ -652,3 +652,110 @@ T.Case("Inviter.BlockReason: only an explicit false disables", function()
     T.Eq(ns.Inviter.BlockReason({}, 100, 1, { maxParty = 5, playerCooldownSec = 60 }),
         nil, "nil is on")
 end)
+
+--------------------------------------------------------------------------------
+-- Ported from CutMaster 1.1.0
+--------------------------------------------------------------------------------
+
+T.Case("WantedFromOrder never wants a soulbound craft", function()
+    local book = {
+        [1] = { itemID = 1, name = "Tradeable" },
+        [2] = { itemID = 2, name = "Soulbound", bindType = 1 },
+    }
+    local order = { items = { { itemID = 1, qty = 3 }, { itemID = 2, qty = 1 } } }
+    local wanted = ns.Trade.WantedFromOrder(order, book)
+    T.Eq(wanted[1], 3, "tradeable wanted")
+    T.Eq(wanted[2], nil, "soulbound never queued")
+end)
+
+T.Case("WantedFromOrder sums duplicate line items", function()
+    local book = { [1] = { itemID = 1, name = "X" } }
+    local order = { items = { { itemID = 1, qty = 2 }, { itemID = 1, qty = 4 } } }
+    T.Eq(ns.Trade.WantedFromOrder(order, book)[1], 6, "quantities summed")
+end)
+
+T.Case("NextFillSlot finds a bag row for a many-of-one order", function()
+    local wanted = { [50] = 6 }
+    local snapshot = {
+        { bag = 0, slot = 3, itemID = 50, link = "i50", count = 4 },
+        { bag = 1, slot = 1, itemID = 50, link = "i50", count = 2 },
+    }
+    local row = ns.Trade.NextFillSlot(wanted, snapshot)
+    T.Eq(row.bag, 0, "first matching row")
+    T.Eq(row.count, 4, "real stack size, not an assumed 1")
+    wanted[50] = wanted[50] - row.count
+    T.Eq(wanted[50], 2, "still wants the rest")
+    local row2 = ns.Trade.NextFillSlot(wanted, { snapshot[2] })
+    T.Eq(row2.bag, 1, "second stack found on the next fresh scan")
+end)
+
+T.Case("NextFillSlot handles several different items in one order", function()
+    local wanted = { [10] = 2, [20] = 1 }
+    local snapshot = {
+        { bag = 0, slot = 1, itemID = 99, link = "unrelated", count = 1 },
+        { bag = 0, slot = 2, itemID = 20, link = "i20", count = 1 },
+        { bag = 0, slot = 3, itemID = 10, link = "i10", count = 2 },
+    }
+    T.Eq(ns.Trade.NextFillSlot(wanted, snapshot).itemID, 20, "skips the unrelated item")
+end)
+
+T.Case("NextFillSlot returns nil once everything is satisfied", function()
+    T.Eq(ns.Trade.NextFillSlot({ [1] = 0 }, { { bag = 0, slot = 1, itemID = 1, link = "x", count = 5 } }),
+        nil, "nothing left to fill")
+end)
+
+T.Case("PrefixNearMiss finds unrelated gems sharing a prefix", function()
+    local book = {
+        [1] = { itemID = 1, name = "Jagged Seaspray Emerald", classID = 3, bindType = 0, match = true, aliases = {} },
+        [2] = { itemID = 2, name = "Jagged Deep Peridot", classID = 3, bindType = 0, match = true, aliases = {} },
+    }
+    local index = ns.Matcher.BuildIndex(book, JC)
+    local text = "looking for jagged and do you happen to be an enchanter as well?"
+    local word, ids = ns.Matcher.PrefixNearMiss(ns.Util.Normalize(text), index)
+    T.Eq(word, "jagged", "prefix found")
+    T.Eq(#ids, 2, "both gems returned, not merged as one family")
+end)
+
+T.Case("PrefixNearMiss requires the exact token", function()
+    local book = {
+        [1] = { itemID = 1, name = "Jagged Seaspray Emerald", classID = 3, bindType = 0, match = true, aliases = {} },
+    }
+    local index = ns.Matcher.BuildIndex(book, JC)
+    T.Eq(ns.Matcher.PrefixNearMiss(ns.Util.Normalize("ragged old boots"), index), nil, "no substring hit")
+end)
+
+T.Case("PrefixNearMiss stays silent below the length gate", function()
+    local book = {
+        [1] = { itemID = 1, name = "Bold Living Ruby", classID = 3, bindType = 0, match = true, aliases = {} },
+    }
+    local index = ns.Matcher.BuildIndex(book, JC)
+    T.Eq(ns.Matcher.PrefixNearMiss(ns.Util.Normalize("that was a bold move"), index), nil, "short prefix excluded")
+end)
+
+T.Case("PrefixNearMiss is off for flat-name professions", function()
+    local index = ns.Matcher.BuildIndex(alchBook(), ALCH)
+    T.Eq(ns.Matcher.PrefixNearMiss(ns.Util.Normalize("looking for haste potion"), index), nil, "no prefix index")
+end)
+
+T.Case("Orders.Open matches regardless of case", function()
+    local saved = ns.db.orders
+    ns.db.orders = { { id = 1, player = "wokenough", status = "grouped", items = {} } }
+    T.Eq(ns.Orders.Open("Wokenough") ~= nil, true, "proper case finds lowercase order")
+    T.Eq(ns.Orders.Open("WOKENOUGH") ~= nil, true, "all caps matches")
+    ns.db.orders = saved
+end)
+
+T.Case("Orders.Open still respects done and cancelled", function()
+    local saved = ns.db.orders
+    ns.db.orders = { { id = 1, player = "Wokenough", status = "done", items = {} } }
+    T.Eq(ns.Orders.Open("wokenough"), nil, "closed order not returned")
+    ns.db.orders = saved
+end)
+
+T.Case("Classifier scores LF item crafter as a buyer signal", function()
+    local r = classify("LF " .. RUBY_LINK .. " crafter")
+    T.Eq(r.verdict, "invite", "verdict")
+    T.Eq(r.buyerHits.crafter, 2, "crafter scored")
+    local r2 = classify("LF " .. RUBY_LINK .. " cutter")
+    T.Eq(r2.verdict, "invite", "cutter verdict")
+end)

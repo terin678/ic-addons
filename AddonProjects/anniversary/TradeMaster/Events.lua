@@ -140,7 +140,11 @@ function Events.Process(text, author, source, opts)
             end
         end
     end
-    if isDirect and not opts.dryRun then
+    -- A Trade post that named a real item is remembered too, not just
+    -- whispers: someone posts "LF [Delicate Living Ruby] crafter" in Trade,
+    -- then whispers only "delicate" and "all 9". Gated on an actual match so
+    -- raid ads and unrelated chat do not fill the buffer. (CutMaster 1.1.0)
+    if not opts.dryRun and (isDirect or #matched > 0) then
         ns.Players.PushRecent(state, text, now)
     end
 
@@ -331,6 +335,26 @@ function Events.Process(text, author, source, opts)
                         ns.Inviter.Say(short, w.suggestTemplate, { items = table.concat(links, " ") }, profile)
                     else
                         ns.Inviter.Say(short, w.noneTemplate, {}, profile)
+                    end
+                end
+            else
+                -- Last resort: a bare prefix with none of its base words
+                -- ("looking for jagged..."). Genuinely ambiguous, so this is
+                -- local only; guessing which one to whisper about would be
+                -- worse than staying quiet. (CutMaster 1.1.0)
+                local prefixWord, prefixIDs = ns.Matcher.PrefixNearMiss(norm, pick.index)
+                if prefixWord then
+                    local pl = {}
+                    for _, id in ipairs(prefixIDs) do
+                        local b = book[id]
+                        if b and (b.link or b.name) then pl[#pl + 1] = b.link or b.name end
+                    end
+                    if #pl > 0 then
+                        ns.Print(string.format(
+                            "|cffffcc00%s mentioned \"%s\", could be:|r %s",
+                            short, prefixWord, table.concat(pl, " ")))
+                        result.reason = "ambiguous prefix"
+                        ns.Log.Add(short, text, matched, result, now, book)
                     end
                 end
             end

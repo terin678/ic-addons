@@ -62,6 +62,25 @@ function Tracker.Create()
     open:SetPoint("RIGHT", close, "LEFT", -4, 0)
     open:SetScript("OnClick", function() ns.UI.Toggle() end)
 
+    -- Quick pause without typing /tm disable: one click and everything
+    -- (invites, whispers, barks, trade fill) goes quiet; click again to
+    -- resume where it was. (CutMaster 1.1.0)
+    local power = ns.UI.Button(f, "On", 34, 16)
+    power:SetPoint("RIGHT", open, "LEFT", -4, 0)
+    power:SetScript("OnClick", function()
+        ns.db.settings.enabled = not ns.Enabled()
+        if ns.Enabled() then
+            if ns.PS().bark.enabled then ns.Barker.Start() end
+            ns.Print("|cff44ff44enabled.|r")
+        else
+            ns.Barker.Stop()
+            ns.Print("|cffff4444disabled.|r")
+        end
+        Tracker.Refresh()
+        if ns.UI.Refresh then ns.UI.Refresh() end
+    end)
+    Tracker.powerButton = power
+
     local scroll, content = ns.UI.ScrollList(f, -24, 6)
     scroll:SetPoint("TOPLEFT", 4, -24)
     scroll:SetPoint("BOTTOMRIGHT", -24, 16)
@@ -96,6 +115,21 @@ end
 function Tracker.Refresh()
     local f = Tracker.frame
     if not f or not f:IsShown() then return end
+
+    if Tracker.powerButton then
+        local on = ns.Enabled()
+        Tracker.powerButton.text:SetText(on and "On" or "Off")
+        Tracker.powerButton:SetBackdropColor(
+            on and 0.15 or 0.35, on and 0.35 or 0.15, 0.15, 1)
+    end
+
+    if not ns.Enabled() then
+        Tracker.title:SetText("Orders  |cffff4444DISABLED|r")
+        Tracker.content:SetSize(WIDTH - 34, 1)
+        for _, row in ipairs(Tracker.rows) do row:Hide() end
+        f:SetHeight(90)
+        return
+    end
 
     local orders = ns.Orders.OpenList()
     for _, row in ipairs(Tracker.rows) do row:Hide() end

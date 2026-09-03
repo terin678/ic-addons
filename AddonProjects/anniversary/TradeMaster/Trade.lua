@@ -123,11 +123,27 @@ end
 -- Auto fill
 --------------------------------------------------------------------------------
 
+-- Container API moved into C_Container on newer clients. Resolve at call time
+-- so this works either way. getInfo also returns the stack count: a stack is
+-- usually more than one, and assuming one unit per slot undercounted every
+-- stacked craft. (CutMaster 1.1.0)
 local function Container()
-    return
-        GetContainerNumSlots or (C_Container and C_Container.GetContainerNumSlots),
-        GetContainerItemLink or (C_Container and C_Container.GetContainerItemLink),
-        UseContainerItem or (C_Container and C_Container.UseContainerItem)
+    local numSlots = GetContainerNumSlots or (C_Container and C_Container.GetContainerNumSlots)
+    local useItem = UseContainerItem or (C_Container and C_Container.UseContainerItem)
+    local getInfo
+    if C_Container and C_Container.GetContainerItemInfo then
+        getInfo = function(bag, slot)
+            local info = C_Container.GetContainerItemInfo(bag, slot)
+            if not info then return nil, 0 end
+            return info.hyperlink, info.stackCount or 1
+        end
+    elseif GetContainerItemInfo then
+        getInfo = function(bag, slot)
+            local _, count, _, _, _, _, link = GetContainerItemInfo(bag, slot)
+            return link, count or 1
+        end
+    end
+    return numSlots, useItem, getInfo
 end
 
 local function FreeTradeSlots()
@@ -138,13 +154,8 @@ local function FreeTradeSlots()
     return TRADE_SLOTS - used
 end
 
--- Bag slots holding the finished items this order is waiting on. Soulbound
--- crafts are skipped: they cannot be traded and would just fail.
-function Trade.FindOrderItems(order)
-    local numSlots, itemLink = Container()
-    if not numSlots or not itemLink then return {} end
-    local book = ns.Orders.BookFor(order)
-
+-- Pure. Bind on pickup is skipped: it cannot be traded, so never queue one.
+function Trade.WantedFromOrder(order, book)
     local wanted = {}
     for _, it in ipairs(order.items or {}) do
         local e = book[it.itemID]
@@ -152,19 +163,36 @@ function Trade.FindOrderItems(order)
             wanted[it.itemID] = (wanted[it.itemID] or 0) + (it.qty or 1)
         end
     end
+    return wanted
+end
 
-    local found = {}
+-- Pure. First bag row (from a fresh scan) matching something still wanted.
+-- Run against a NEW snapshot every tick rather than one computed before
+-- earlier moves: after a slot empties, bags can shift, and stale (bag, slot)
+-- coordinates silently dropped every item after the first one or two.
+function Trade.NextFillSlot(wanted, bagSnapshot)
+    for _, row in ipairs(bagSnapshot) do
+        if (wanted[row.itemID] or 0) > 0 then
+            return row
+        end
+    end
+    return nil
+end
+
+local function BagSnapshot()
+    local numSlots, _, getInfo = Container()
+    local rows = {}
+    if not numSlots or not getInfo then return rows end
     for bag = 0, 4 do
         for slot = 1, (numSlots(bag) or 0) do
-            local link = itemLink(bag, slot)
+            local link, count = getInfo(bag, slot)
             local id = link and tonumber(link:match("|Hitem:(%d+)"))
-            if id and (wanted[id] or 0) > 0 then
-                found[#found + 1] = { bag = bag, slot = slot, itemID = id, link = link }
-                wanted[id] = wanted[id] - 1
+            if id then
+                rows[#rows + 1] = { bag = bag, slot = slot, itemID = id, link = link, count = count or 1 }
             end
         end
     end
-    return found
+    return rows
 end
 
 function Trade.StopFill()
@@ -172,7 +200,27 @@ function Trade.StopFill()
         Trade.fillTicker:Cancel()
         Trade.fillTicker = nil
     end
-    Trade.fillQueue = nil
+end
+
+local function ReportFill(order, added, wanted, book)
+    if added > 0 then
+        ns.Print(string.format("added %d stack%s to the trade for order #%d.",
+            added, added == 1 and "" or "s", order.id))
+    end
+    -- WoW's own 6 slot cap on "you will give" items: an order spanning more
+    -- than 6 distinct items genuinely needs a second trade.
+    local remaining = {}
+    for id, q in pairs(wanted) do
+        if q > 0 then
+            local e = book[id]
+            remaining[#remaining + 1] = (e and (e.link or e.name) or tostring(id)) .. " x" .. q
+        end
+    end
+    if #remaining > 0 then
+        ns.Print("|cffff9900more than fits in one trade (6 slot limit): "
+            .. table.concat(remaining, ", ")
+            .. ". Complete this trade, then open a new one for the rest.|r")
+    end
 end
 
 function Trade.AutoFill()
@@ -183,35 +231,50 @@ function Trade.AutoFill()
     local order = Trade.partner and ns.Orders.Open(Trade.partner)
     if not order then return end
 
-    local queue = Trade.FindOrderItems(order)
-    if #queue == 0 then return end
+    local book = ns.Orders.BookFor(order)
+    local wanted = Trade.WantedFromOrder(order, book)
+    local anyWanted = false
+    for _, q in pairs(wanted) do if q > 0 then anyWanted = true break end end
+    if not anyWanted then return end
 
-    local room = FreeTradeSlots()
-    while #queue > room do table.remove(queue) end
-    if #queue == 0 then return end
-
-    Trade.fillQueue = queue
     local added = 0
-    local noun = ns.Prof.Current().craftNoun
 
-    Trade.fillTicker = C_Timer.NewTicker(0.1, function()
+    -- One per tick, re-scanning bags fresh each time. Adding items in a
+    -- single frame bugs the trade UI, and a stale scan is what caused the
+    -- original "stops after 1 or 2" bug.
+    Trade.fillTicker = C_Timer.NewTicker(0.15, function()
         if not TradeFrame or not TradeFrame:IsShown() then
             Trade.StopFill()
             return
         end
-        local entry = table.remove(Trade.fillQueue, 1)
-        if not entry then
+
+        if FreeTradeSlots() <= 0 then
             Trade.StopFill()
-            if added > 0 then
-                ns.Print(string.format("added %d %s to the trade for order #%d.",
-                    added, added == 1 and noun[1] or noun[2], order.id))
-            end
+            ReportFill(order, added, wanted, book)
             return
         end
-        local _, itemLink, useItem = Container()
-        if useItem and itemLink(entry.bag, entry.slot) == entry.link then
-            useItem(entry.bag, entry.slot)
+
+        local row = Trade.NextFillSlot(wanted, BagSnapshot())
+        if not row then
+            Trade.StopFill()
+            ReportFill(order, added, wanted, book)
+            return
+        end
+
+        local _, useItem = Container()
+        if useItem then
+            useItem(row.bag, row.slot)
             added = added + 1
+
+            local still = wanted[row.itemID] or 0
+            if row.count > still then
+                -- UseContainerItem moves the whole stack; there is no partial
+                -- move. Flagged rather than silently over-delivering.
+                ns.Print(string.format(
+                    "|cffff9900%s: stack of %d moved, only %d was needed for this order.|r",
+                    row.link, row.count, still))
+            end
+            wanted[row.itemID] = still - row.count
         end
     end)
 end

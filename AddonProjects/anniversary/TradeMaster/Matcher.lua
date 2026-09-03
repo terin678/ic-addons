@@ -16,6 +16,11 @@ local STOPWORDS = {
 
 local DEFAULT_MIN_TOKEN_LEN = 7
 
+-- Cut prefixes run shorter than family words ("jagged" is 6, not 7+), and a
+-- prefix hit is only ever surfaced locally (see PrefixNearMiss), never sent
+-- to the customer, so a looser gate costs at most a line in your own chat.
+local PREFIX_MIN_LEN = 6
+
 local WORDNUM = {
     one = 1, two = 2, three = 3, four = 4, five = 5,
     six = 6, seven = 7, eight = 8, nine = 9, ten = 10,
@@ -33,7 +38,7 @@ function Matcher.BuildIndex(book, profile)
     profile = profile or ns.Prof.Current()
     local minTok = profile.minTokenLen or DEFAULT_MIN_TOKEN_LEN
     local index = { byID = {}, names = {}, aliases = {}, loose = {},
-                    bases = {}, baseTokens = {}, profile = profile }
+                    bases = {}, baseTokens = {}, prefixOnly = {}, profile = profile }
     for itemID, e in pairs(book or {}) do
         -- Bind on pickup cannot be delivered, so never invite for one. Leaving
         -- it out of the index also lets NearMiss suggest the items we can
@@ -68,6 +73,16 @@ function Matcher.BuildIndex(book, profile)
                             local tl = index.baseTokens[tok]
                             tl[#tl + 1] = itemID
                         end
+                    end
+
+                    -- The prefix itself ("jagged", "bold"). A shared prefix does
+                    -- NOT make these tiers of one item: Jagged Seaspray Emerald
+                    -- and Jagged Deep Peridot are unrelated gems with the same
+                    -- adjective. Kept apart from bases; see PrefixNearMiss.
+                    if #toks[1] >= PREFIX_MIN_LEN then
+                        index.prefixOnly[toks[1]] = index.prefixOnly[toks[1]] or {}
+                        local pl = index.prefixOnly[toks[1]]
+                        pl[#pl + 1] = itemID
                     end
                 end
             end
@@ -114,6 +129,21 @@ function Matcher.NearMiss(norm, index)
 
     for tok, ids in pairs(index.baseTokens or {}) do
         if Util.HasPhrase(norm, tok) then return tok, ids, false end
+    end
+    return nil
+end
+
+-- Call only when both Match and NearMiss found nothing. A prefix mentioned
+-- with none of its base words ("looking for jagged...") means one of the
+-- items sharing that prefix, but not which. Returns the word and every
+-- itemID sharing it, or nil. Prefix-family professions only.
+function Matcher.PrefixNearMiss(norm, index)
+    local toks = Util.Tokenize(norm)
+    for _, tok in ipairs(toks) do
+        local ids = index.prefixOnly and index.prefixOnly[tok]
+        if ids and #ids > 0 then
+            return tok, ids
+        end
     end
     return nil
 end

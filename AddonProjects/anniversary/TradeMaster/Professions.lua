@@ -43,7 +43,11 @@ local function BuildVocab(spec)
         ["wtb"] = 3, ["want to buy"] = 3, ["buying"] = 2, ["need"] = 2,
         ["have mats"] = 2, ["got mats"] = 2, ["have the mats"] = 2,
         ["will tip"] = 2, ["paying"] = 2, ["pay for"] = 2,
+        -- "LF [item] crafter" named the item but scored no buyer signal and
+        -- was blocked by requireBuyerSignal. (CutMaster 1.1.0)
+        ["crafter"] = 2,
     }
+    for _, p in ipairs(spec.personNouns) do buyer[p] = 2 end
     for _, v in ipairs(verbs) do
         buyer["anyone " .. v] = 3
         buyer["who can " .. v] = 3
@@ -117,7 +121,7 @@ end
 local SPECS = {
     {
         key = "jewelcrafting", name = "Jewelcrafting", abbrevs = list("jc"),
-        personNouns = list("jewelcrafter", "jeweller", "jeweler"),
+        personNouns = list("jewelcrafter", "jeweller", "jeweler", "cutter"),
         craftVerbs = list("cut"), gerunds = { cut = "cutting" },
         craftNoun = list("cut", "cuts"), doneWord = "cut",
         recipeItemPrefix = "Design:", productClasses = { [3] = true },

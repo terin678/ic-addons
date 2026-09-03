@@ -68,6 +68,18 @@ A recipe that needs a **Bind on Pickup reagent** you don't hold (Primal Nether, 
 "not enough ..." whisper instead of an invite. Bags and bank count; the bank is known once
 you have opened it this session. The Book row shows "needs ..." in red for these.
 
+### Fills the trade window
+
+When a customer with an open order opens a trade, TradeMaster adds their finished items
+from your bags one stack per tick, re-scanning the bags each time so nothing is skipped
+after a slot shifts. Whole stacks move (the game has no partial move), so a stack bigger
+than the order is flagged. The trade window holds six items; an order needing more fills
+what fits and tells you what is left for a second trade. Order lookup ignores name case,
+so a manually typed lowercase name still matches the live trade partner.
+
+A whisper naming only a cut prefix ("looking for jagged") that could mean several
+unrelated gems is shown to you locally with the candidates, never answered automatically.
+
 The Book tab shows one book at a time (the **Book:** button cycles through every scanned
 profession). **Sort:** in the bottom-right corner cycles Category (the window's own
 headers), Name, Quality (best first), and Advertised (ticked items first, then quality).
