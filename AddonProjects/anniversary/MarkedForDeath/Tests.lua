@@ -1221,4 +1221,25 @@ T.Case("Search: a learned mob is filtered by the zone it was seen in", function(
     T.Eq(results[2].npcID, 300, "then the BT mob")
 end)
 
+T.Case("Announce: formats icon, intent and owner compactly", function()
+    local line = MFD.Announce.Format({
+        { key = "1:A", icon = 8, intent = "KILL" },
+        { key = "2:B", icon = 5, intent = "SHEEP", owner = "Grimmtusk" },
+    })
+    T.Eq(line, "Skull>Kill | Moon>Sheep Grimmtusk", "compact single line")
+end)
+
+T.Case("Announce: orders by icon so the line reads the same every pull", function()
+    local line = MFD.Announce.Format({
+        { key = "2:B", icon = 5, intent = "SHEEP" },
+        { key = "3:C", icon = 2, intent = "KILL" },
+        { key = "1:A", icon = 8, intent = "KILL" },
+    })
+    T.Eq(line, "Skull>Kill | Circle>Kill | Moon>Sheep", "kill icons lead, in seat order")
+end)
+
+T.Case("Announce: an empty assignment list produces nothing", function()
+    T.Eq(MFD.Announce.Format({}), "", "nothing to say")
+end)
+
 _G.MarkedForDeath = MFD

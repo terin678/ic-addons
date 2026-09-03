@@ -464,6 +464,7 @@ MFD.RegisterInit(function()
                     Marker.locked[key] = icon
                 end
             end
+            MFD.Announce.Post(desired, GetTime())
         elseif event == "PLAYER_ENTERING_WORLD" then
             wipe(Marker.locked)
             wipe(Marker.placed)
@@ -487,5 +488,65 @@ MFD.RegisterInit(function()
         end
     end)
 end)
+
+-- Raid chat announcement of the pack, for the benefit of people not running
+-- the addon. Lives here rather than in the UI file so it stays testable.
+MFD.Announce = MFD.Announce or {}
+local Announce = MFD.Announce
+
+Announce.THROTTLE_SECONDS = 5   -- minimum gap between announcements
+
+-- Display order and names for the eight icons, kill icons first so the line
+-- always opens with what dies first.
+local ICON_NAMES = {
+    [8] = "Skull", [7] = "Cross", [6] = "Square", [2] = "Circle",
+    [5] = "Moon", [1] = "Star", [4] = "Triangle", [3] = "Diamond",
+}
+local ANNOUNCE_ORDER = { 8, 7, 6, 2, 5, 1, 4, 3 }
+
+-- Takes the allocator's assignment list. Returns one compact line ordered by
+-- the display order above, so it reads identically every pull. Pure.
+function Announce.Format(assignments)
+    local byIcon = {}
+    for _, a in ipairs(assignments) do
+        byIcon[a.icon] = a
+    end
+
+    local parts = {}
+    for _, icon in ipairs(ANNOUNCE_ORDER) do
+        local a = byIcon[icon]
+        if a then
+            local label = MFD.Seats.INTENTS[a.intent] and MFD.Seats.INTENTS[a.intent].label or a.intent
+            parts[#parts + 1] = ICON_NAMES[icon] .. ">" .. label .. (a.owner and (" " .. a.owner) or "")
+        end
+    end
+
+    return table.concat(parts, " | ")
+end
+
+-- Posts the current pack to the group once per pull, authority only, throttled
+-- so two quick pulls do not produce two lines.
+function Announce.Post(desired, now)
+    if not MFD.db.settings.isAnnounceEnabled or not MFD.Comms:IsAuthority() or not desired then
+        return
+    end
+
+    if (now - (Announce.lastAt or 0)) <= Announce.THROTTLE_SECONDS then
+        return
+    end
+
+    local line = Announce.Format(desired.list)
+    if line == "" then
+        return
+    end
+
+    local target = (IsInRaid and IsInRaid() and "RAID") or (IsInGroup and IsInGroup() and "PARTY") or nil
+    if not target then
+        return
+    end
+
+    Announce.lastAt = now
+    pcall(SendChatMessage, "[MFD] " .. line, target)
+end
 
 _G.MarkedForDeath = MFD
