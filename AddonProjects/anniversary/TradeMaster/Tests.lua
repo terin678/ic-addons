@@ -1068,8 +1068,12 @@ T.Case("Orders: finding a product by what was typed", function()
     T.Eq(#exact, 1, "exact wins alone")
     T.Eq(exact[1].itemID, 4, "and it is the right one")
 
-    -- Shortest first, so the closest match is the first button offered.
-    T.Eq(ns.Orders.FindInBook(book, "ruby")[1].entry.name, "Bold Ornate Ruby", "shortest first")
+    -- Shortest first, so the closest match is the first button offered. "Bold
+    -- Living Ruby" and "Bold Ornate Ruby" are both 16 characters, and a tie goes
+    -- alphabetically rather than to whatever order pairs() happened to produce.
+    local ruby = ns.Orders.FindInBook(book, "ruby")
+    T.Eq(ruby[1].entry.name, "Bold Living Ruby", "shortest first, ties alphabetical")
+    T.Eq(ruby[#ruby].entry.name, "Delicate Living Ruby", "and the longest goes last")
 end)
 
 T.Case("Orders: correcting what a customer paid", function()
