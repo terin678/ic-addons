@@ -219,7 +219,7 @@ local function SlashCommandHandler(msg)
         print("  /maw recipes - Open the material -> product profit table")
         print("  /maw sources - Show/toggle Auctionator and TSM price feeds")
         print("  /maw retention <days> - Days of price history to keep")
-        print("  /maw ahcut <percent> - Auction house cut used for net values (default 15)")
+        print("  /maw ahcut <percent> - Auction house cut used for net values (default 5)")
         print("  /maw scan - Scan auction house for tracked items (merges into a running scan)")
         print("  /maw scan stop - Cancel the running scan")
         print("  /maw scan status - Show scan state")
@@ -253,7 +253,7 @@ eventFrame:SetScript("OnUpdate", function(self, elapsed) MAW:OnUpdateHandler(sel
 eventFrame:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" and arg1 == addonName then
         MAW:InitializeDB()
-        print(addonName .. " v1.9.0 loaded. Type /maw help for commands.")
+        print(addonName .. " v1.9.1 loaded. Type /maw help for commands.")
 
         -- Create minimap button
         if MalexisAuctionWatcherMinimap then

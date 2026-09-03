@@ -2,7 +2,7 @@
 local addonName = "MalexisAuctionWatcher"
 local MAW = _G.MalexisAuctionWatcher or {}
 
-local DEFAULT_AH_CUT = 0.15  -- neutral auction houses take 15%; faction ones 5%
+local DEFAULT_AH_CUT = 0.05  -- faction auction houses take 5%; neutral ones 15%
 
 -- Auction house cut as a fraction (0.15 = 15%)
 function MAW:GetAHCut()
