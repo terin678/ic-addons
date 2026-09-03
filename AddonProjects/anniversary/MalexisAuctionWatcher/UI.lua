@@ -1033,8 +1033,8 @@ local function BuildHistoryPage(page)
     view.legend = Note(page,
         "Bars: |cff8ca6d9blue|r = your scans, |cffccb366amber|r = Auctionator/TSM, "
         .. "|cff59e659green|r = cheapest, |cfff25959red|r = priciest."
-        .. "\nWhite tick = average. |cffffd94dYellow line|r = today; buckets to its right are "
-        .. "from the previous cycle.", chartWidth)
+        .. "\nWhite tick = average. |cffffd94dYellow lines|r bracket the bucket you are in "
+        .. "now; the ones past it are from the previous cycle.", chartWidth)
     view.legend:SetPoint("TOPLEFT", view.chart, "BOTTOMLEFT", 0, -6)
 
     view.summary = page:CreateFontString(nil, "OVERLAY", "GameFontNormal")
