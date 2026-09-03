@@ -4,54 +4,16 @@ ns.Scanner = ns.Scanner or {}
 local Scanner = ns.Scanner
 
 -- Pure. Folds a fresh scan into the stored book without losing user choices.
+-- The merge itself is LibICTradeSkill's; this adds TradeMaster's defaults.
 function Scanner.MergeBook(oldBook, scanned)
-    oldBook = oldBook or {}
-    local newBook = {}
-    local seen = {}
-    local added = 0
-
-    for _, s in ipairs(scanned) do
-        seen[s.itemID] = true
-        local prev = oldBook[s.itemID]
-        local entry = {
-            itemID = s.itemID,
-            name = s.name,
-            link = s.link,
-            header = s.header,
-            classID = s.classID,
-            subClassID = s.subClassID,
-            quality = s.quality,
-            bindType = s.bindType,
-            numMade = s.numMade,
-            reagents = s.reagents or {},
-            reagentBind = s.reagentBind,
-        }
-        if prev then
-            entry.advertise = prev.advertise
-            entry.match = prev.match
-            entry.aliases = prev.aliases or {}
-            entry.stats = prev.stats
-            if entry.advertise == nil then entry.advertise = true end
-            if entry.match == nil then entry.match = true end
-        else
-            entry.advertise = true
-            entry.match = true
-            entry.aliases = {}
-            added = added + 1
-        end
-        newBook[s.itemID] = entry
+    local book, added = LibStub("LibICTradeSkill-1.0"):MergeBook(oldBook, scanned,
+        { preserve = { "advertise", "match", "aliases", "stats" } })
+    for _, e in pairs(book) do
+        if e.advertise == nil then e.advertise = true end
+        if e.match == nil then e.match = true end
+        e.aliases = e.aliases or {}
     end
-
-    for itemID, prev in pairs(oldBook) do
-        if not seen[itemID] then
-            local kept = {}
-            for k, v in pairs(prev) do kept[k] = v end
-            kept.stale = true
-            newBook[itemID] = kept
-        end
-    end
-
-    return newBook, added
+    return book, added
 end
 
 -- Pure. Auto-scan clears the tradeskill window's filters as a side effect, so
@@ -62,93 +24,7 @@ function Scanner.ShouldAutoScan(bookCount, dirty, scannedAt, now, staleSec)
     return (now - (scannedAt or 0)) > staleSec
 end
 
-local function SaveFilters()
-    return {
-        makeable = TradeSkillFrame and TradeSkillFrame.filterTbl
-            and TradeSkillFrame.filterTbl.hasMaterials or false,
-    }
-end
-
--- The tradeskill list only reports rows passing the window's active filters, so
--- a leftover subclass filter or search term silently yields a partial book.
-local function ClearFilters()
-    if SetTradeSkillSubClassFilter then SetTradeSkillSubClassFilter(0, 1, 1) end
-    if SetTradeSkillInvSlotFilter then SetTradeSkillInvSlotFilter(0, 1, 1) end
-    if TradeSkillOnlyShowMakeable then TradeSkillOnlyShowMakeable(false) end
-    if TradeSkillOnlyShowSkillUps then TradeSkillOnlyShowSkillUps(false) end
-    if SetTradeSkillItemNameFilter then SetTradeSkillItemNameFilter("") end
-    if ExpandTradeSkillSubClass then ExpandTradeSkillSubClass(0) end
-end
-
-local function RestoreFilters(saved)
-    if TradeSkillOnlyShowMakeable and saved and saved.makeable then
-        TradeSkillOnlyShowMakeable(true)
-    end
-end
-
--- Bind type of every reagent that is in the item cache. Missing ones are
--- filled in later by Scanner.MissingBoP.
-local function ReagentBinds(reagents)
-    local out = {}
-    for id in pairs(reagents or {}) do
-        local bind = select(14, GetItemInfo(id))
-        if bind ~= nil then out[id] = bind end
-    end
-    return out
-end
-
-local function ReadReagents(idx)
-    local reagents = {}
-    local n = GetTradeSkillNumReagents and GetTradeSkillNumReagents(idx) or 0
-    for r = 1, n do
-        local link = GetTradeSkillReagentItemLink(idx, r)
-        local _, _, required = GetTradeSkillReagentInfo(idx, r)
-        if link then
-            local id = tonumber(link:match("|Hitem:(%d+)"))
-            if id then reagents[id] = required or 1 end
-        end
-    end
-    return reagents
-end
-
-local function CollectRows()
-    local rows, failed = {}, {}
-    local header = nil
-    local count = GetNumTradeSkills() or 0
-
-    for idx = 1, count do
-        local skillName, skillType = GetTradeSkillInfo(idx)
-        if skillType == "header" then
-            header = skillName
-        else
-            local link = GetTradeSkillItemLink(idx)
-            local itemID = link and tonumber(link:match("|Hitem:(%d+)"))
-            if itemID then
-                local name, _, quality, _, _, _, _, _, _, _, _, classID,
-                      subClassID, bindType = GetItemInfo(link)
-                local numMade = GetTradeSkillNumMade and GetTradeSkillNumMade(idx) or 1
-                local reagents = ReadReagents(idx)
-                rows[#rows + 1] = {
-                    itemID = itemID,
-                    name = name or skillName,
-                    link = link,
-                    header = header or "Other",
-                    classID = classID,
-                    subClassID = subClassID,
-                    quality = quality,
-                    bindType = bindType,
-                    numMade = math.max(1, math.floor(numMade or 1)),
-                    reagents = reagents,
-                    reagentBind = ReagentBinds(reagents),
-                }
-            else
-                failed[#failed + 1] = idx
-            end
-        end
-    end
-
-    return rows, failed
-end
+local Lib = LibStub("LibICTradeSkill-1.0")
 
 -- Scans whatever supported profession window is open into its own book.
 -- The first profession ever scanned becomes the active one.
@@ -170,10 +46,6 @@ function Scanner.Scan(opts)
     end
 
     local pd = ns.Prof.DB(profile.key)
-    local saved = SaveFilters()
-    ClearFilters()
-
-    local rows, failed = CollectRows()
 
     local function commit(finalRows, finalFailed)
         local book, added = Scanner.MergeBook(pd.book, finalRows)
@@ -190,8 +62,6 @@ function Scanner.Scan(opts)
         if ns.Events then ns.Events.RebuildIndex() end
         if ns.Annotators then ns.Annotators.Annotate(profile, book) end
         if ns.Minimap and ns.Minimap.UpdateIcon then ns.Minimap.UpdateIcon() end
-
-        RestoreFilters(saved)
 
         if not opts.silent then
             local n, products, noun = ns.Prof.BookCounts(profile, book)
@@ -219,57 +89,19 @@ function Scanner.Scan(opts)
         return added, #finalRows, #finalFailed
     end
 
-    -- Uncached items return nil links on the first pass. Give them one retry.
-    if #failed > 0 then
-        C_Timer.After(0.5, function()
-            if ns.Prof.OpenWindow() == profile then
-                local retryRows, retryFailed = CollectRows()
-                commit(retryRows, retryFailed)
-            else
-                commit(rows, failed)
-            end
-        end)
-        return 0, #rows, #failed
-    end
-
-    return commit(rows, failed)
+    -- The library clears the window filters, reads, restores them, and retries
+    -- once for items not yet in the cache. The callback is synchronous when
+    -- no retry is needed.
+    local result
+    Lib:ScanOpen(function(rows, failed) result = { commit(rows, failed) } end)
+    if result then return result[1], result[2], result[3] end
+    return 0, 0, 0
 end
 
 --------------------------------------------------------------------------------
 -- Bind on Pickup reagents
 --------------------------------------------------------------------------------
 
--- A Bind on Pickup reagent (Primal Nether, Nether Vortex, ...) can't be handed
--- over by the customer, so a recipe needing one you don't hold can't be done.
--- Returns { { itemID, need, have }, ... } for each such reagent; empty when
--- the recipe is doable. Bags plus bank; bank counts are known once the bank
--- has been opened this session.
-function Scanner.MissingBoP(e)
-    local out = {}
-    if not e or not e.reagents then return out end
-    e.reagentBind = e.reagentBind or {}
-    for id, need in pairs(e.reagents) do
-        local bind = e.reagentBind[id]
-        if bind == nil then
-            bind = select(14, GetItemInfo(id))
-            if bind ~= nil then e.reagentBind[id] = bind end
-        end
-        if bind == 1 then
-            local have = GetItemCount and GetItemCount(id, true) or 0
-            if have < need then out[#out + 1] = { itemID = id, need = need, have = have } end
-        end
-    end
-    table.sort(out, function(a, b) return a.itemID < b.itemID end)
-    return out
-end
-
--- "Primal Nether" or, with counts, "Primal Nether x1 (have 0)".
-function Scanner.DescribeMissing(missing, withCounts)
-    local parts = {}
-    for _, m in ipairs(missing or {}) do
-        local name = GetItemInfo(m.itemID) or ("item " .. m.itemID)
-        parts[#parts + 1] = withCounts
-            and string.format("%s x%d (have %d)", name, m.need, m.have) or name
-    end
-    return table.concat(parts, ", ")
-end
+-- Both live in LibICTradeSkill; kept here so callers read Scanner.*.
+function Scanner.MissingBoP(e) return Lib:MissingBoP(e) end
+function Scanner.DescribeMissing(missing, withCounts) return Lib:DescribeMissing(missing, withCounts) end

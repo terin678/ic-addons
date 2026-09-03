@@ -2020,7 +2020,7 @@ function MAWUI:RenderRecipesTab(scrollChild, yOffset)
             { text = "Alchemy: transmutes", func = function() MAW:AddAlchemyPresets("transmute"); after() end },
             { text = "Alchemy: everything TBC (" .. #MAW.PRESET_ALCHEMY .. ")", func = function() MAW:AddAlchemyPresets(); after() end },
             { text = "Gem cuts...", func = function() if dlg then dlg.ShowGemPicker() end end },
-            { text = "Import from open profession window...", func = function() if dlg then dlg.ShowProfessionImport() end end },
+            { text = "From your recipe book...", func = function() if dlg then dlg.ShowProfessionImport() end end },
             { text = "Track items only", isTitle = true },
             { text = "Flipping guide watchlist (herbs, primals, gems, shards)", func = function() MAW:AddGuideWatchlist(); after() end },
         }

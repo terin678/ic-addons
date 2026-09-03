@@ -62,6 +62,8 @@ makes per craft, item quality, and whether it is Bind on Pickup. Rescanning merg
 advertise/match choices and custom aliases survive. It runs automatically on window open
 when it could learn something (empty book, a skill gained, or the book over 6 hours old).
 `/tm scan` forces one.
+Reading the window is done by the shared `ICLibs` addon (LibICTradeSkill), which must be
+installed alongside TradeMaster; the zip includes it.
 
 A recipe that needs a **Bind on Pickup reagent** you don't hold (Primal Nether, Nether Vortex,
 ...) can't be made for a customer, so it is never barked, and a request for it gets the

@@ -25,6 +25,15 @@ to read the diff, then apply the same change by hand to the TradeMaster module o
 same name (Stats.lua maps to Annotators.lua). Profession-specific strings and rules go
 into `Professions.lua` profiles, not into the modules.
 
+## Shared code: ICLibs
+
+Code two addons need (today: reading a profession window into a book) lives in the
+library addon `AddonProjects/anniversary/ICLibs` as a LibStub library
+(`LibICTradeSkill-1.0`). Addons that use it list `## Dependencies: ICLibs` in their TOC
+and fetch it with `LibStub("LibICTradeSkill-1.0")`. Bump the library's MINOR when its
+API changes. `scripts/package.ps1` bundles required addons into the zip and
+`scripts/deploy.ps1` links them; do not copy library files into an addon's own folder.
+
 ## While editing
 
 - New file: add it to the `.toc` in load order (data and logic before UI).

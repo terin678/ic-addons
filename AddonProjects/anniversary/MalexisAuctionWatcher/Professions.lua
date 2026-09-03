@@ -53,52 +53,22 @@ function MAW:ScanProfessionRecipes(professionName)
     end
 end
 
--- Read every recipe in the open TradeSkill window with exact reagents.
+-- Read every recipe in the open TradeSkill window with exact reagents, through
+-- LibICTradeSkill. Kept for callers that want a one-off read of the open
+-- window; the recipe book dialog uses the scanned books instead (Book.lua).
 -- Returns professionName, { {name, product, productID, numMade, reagents={ {item,id,count} }} }
 function MAW:ReadOpenProfession()
-    if not (TradeSkillFrame and TradeSkillFrame:IsVisible() and GetNumTradeSkills) then
-        return nil, {}
-    end
-    local professionName = GetTradeSkillLine and GetTradeSkillLine() or nil
-    if not professionName and TradeSkillFrame.titleText then
-        professionName = TradeSkillFrame.titleText:GetText()
-    end
-
+    local lib = LibStub and LibStub("LibICTradeSkill-1.0", true)
+    if not lib then return nil, {} end
+    local line = lib:OpenLine()
+    if not line then return nil, {} end
+    local rows = lib:ReadOpen()
     local entries = {}
-    for i = 1, GetNumTradeSkills() do
-        local skillName, skillType = GetTradeSkillInfo(i)
-        if skillName and skillType ~= "header" and skillType ~= "subheader" then
-            local link = GetTradeSkillItemLink(i)
-            local productName = link and GetItemInfo(link) or (link and link:match("%[(.-)%]"))
-            local productID = link and tonumber(link:match("item:(%d+)"))
-            if productName then
-                local minMade = GetTradeSkillNumMade and GetTradeSkillNumMade(i) or 1
-                local reagents = {}
-                local numReagents = GetTradeSkillNumReagents and GetTradeSkillNumReagents(i) or 0
-                for j = 1, numReagents do
-                    local rName, _, rCount = GetTradeSkillReagentInfo(i, j)
-                    local rLink = GetTradeSkillReagentItemLink and GetTradeSkillReagentItemLink(i, j)
-                    local rID = rLink and tonumber(rLink:match("item:(%d+)"))
-                    if not rName and rLink then
-                        rName = rLink:match("%[(.-)%]")
-                    end
-                    if rName and rCount and rCount > 0 then
-                        table.insert(reagents, { item = rName, id = rID, count = rCount })
-                    end
-                end
-                if #reagents > 0 then
-                    table.insert(entries, {
-                        name = skillName,
-                        product = productName,
-                        productID = productID,
-                        numMade = math.max(1, math.floor(minMade or 1)),
-                        reagents = reagents,
-                    })
-                end
-            end
-        end
+    for _, row in ipairs(rows) do
+        local e = self:BookRowToImport(row)
+        if #e.reagents > 0 then entries[#entries + 1] = e end
     end
-    return professionName, entries
+    return line, entries
 end
 
 -- Get cached profession recipes (all professions)

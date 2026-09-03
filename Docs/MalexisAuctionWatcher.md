@@ -136,10 +136,12 @@ The "Presets..." menu offers:
 - Gem cuts: picker for TBC Jewelcrafting. Click a raw gem to add all its cuts, or add a
   whole tier. 123 cuts across 20 raw gems including the Earthstorm and Skyfire meta
   diamonds. Jewelcrafter-only bind-on-pickup gems are excluded.
-- Import from open profession window: lists every recipe in the profession window you have
-  open, with reagents and counts read straight from the client. Add one or all. This is the
-  reliable way to get any profession's recipes in, Alchemy included. Enchanting is not
-  supported since enchants are not items.
+- From your recipe book: every profession window you open is scanned into a per-character
+  book (through the shared ICLibs library, the same reader TradeMaster uses), so this dialog
+  works with the window closed. Pick a book, search, hover a row for the item tooltip and
+  reagents, add one or all shown. Reagents and batch sizes come straight from the client,
+  so this is the reliable way to get any profession's recipes in. "Scan open window"
+  refreshes the book on demand. Enchanting is not supported since enchants are not items.
 - Flipping guide watchlist: tracks the herbs, primals, gems, shards, and old-world
   consumables a TBC flipping guide singles out, without adding recipes.
 

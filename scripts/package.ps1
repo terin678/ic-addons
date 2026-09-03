@@ -23,5 +23,17 @@ New-Item -ItemType Directory -Force $dist | Out-Null
 $zip = Join-Path $dist "$Addon-$version-$Flavor.zip"
 if (Test-Path $zip) { Remove-Item $zip -Force }
 
-Compress-Archive -Path $source -DestinationPath $zip
-Write-Host "Packaged $zip"
+# Required addons from the same flavor (## Dependencies / ## RequiredDeps) ship in the zip,
+# so one archive extracts into a working install.
+$paths = @($source)
+$depLine = $toc | Where-Object { $_ -match '^## (Dependencies|RequiredDeps):\s*(.+)$' } | Select-Object -First 1
+if ($depLine -match '^## (Dependencies|RequiredDeps):\s*(.+)$') {
+    foreach ($dep in ($Matches[2] -split ',')) {
+        $dep = $dep.Trim()
+        $depPath = Join-Path $repoRoot "AddonProjects\$Flavor\$dep"
+        if ($dep -and (Test-Path $depPath)) { $paths += $depPath }
+    }
+}
+
+Compress-Archive -Path $paths -DestinationPath $zip
+Write-Host "Packaged $zip ($($paths.Count) folders)"
