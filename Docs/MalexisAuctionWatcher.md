@@ -23,7 +23,9 @@ click the coin icon on the minimap.
 | Recipes | Material to product conversions with cost, AH net, profit, margin, and how many batches you can make now. |
 | Movers | What to act on right now: cheap materials to buy, profitable recipes you can make, products you hold at a good price. Each row has a Buy, Convert, or List button. |
 
-The window grows taller on the History tab.
+The tabs run along the top as the navigation bar. Under them sits the control row: Scan
+AH, the per-tab scan, Sort, then the tab's option (Add Item or Refresh) and the
+character-specific checkbox on the right. The window is one fixed size on every tab.
 
 ## Adding items
 

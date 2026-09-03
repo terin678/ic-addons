@@ -17,8 +17,11 @@ local ROW_NAME_WIDTH = 220  -- Wider to support long names like "Greater Shadow 
 local CONTROL_BUTTON_SIZE = 18
 local CONTROLS_WIDTH = 65  -- Space for up/down/refresh buttons
 local PADDING = 5
-local CONTROL_SECTION_HEIGHT = 60
 local TAB_HEIGHT = 30
+local CONTROL_ROW_HEIGHT = 34
+local STATUS_HEIGHT = 16
+local WINDOW_WIDTH = 1024   -- fits Recipes with both TSM profit columns, E/X buttons, scrollbar
+local WINDOW_HEIGHT = 700   -- fits the History panel
 local RECIPE_CONTROLS_WIDTH = 26
 -- Recipes tab columns. The two TSM profit columns appear only when the TSM feed is on.
 local function RecipeColumns()
@@ -487,7 +490,7 @@ end
 local function CreateTabButton(parent, text, tabName, x)
     local tab = CreateFrame("Button", nil, parent)
     tab:SetSize(100, TAB_HEIGHT)
-    tab:SetPoint("TOPLEFT", parent, "BOTTOMLEFT", x, 0)
+    tab:SetPoint("TOPLEFT", parent, "TOPLEFT", x, 0)
 
     -- Background
     tab.bg = tab:CreateTexture(nil, "BACKGROUND")
@@ -529,10 +532,7 @@ function MAWUI:CreateUI()
 
     -- Main frame
     mainFrame = CreateFrame("Frame", "MalexisAuctionWatcherFrame", UIParent, "BasicFrameTemplateWithInset")
-    mainFrame:SetSize(800, 400 + CONTROL_SECTION_HEIGHT)  -- Wider to accommodate longer item names and controls
-    mainFrame.defaultHeight = 400 + CONTROL_SECTION_HEIGHT
-    mainFrame.historyHeight = 620 + CONTROL_SECTION_HEIGHT
-    mainFrame.defaultWidth = 800
+    mainFrame:SetSize(WINDOW_WIDTH, WINDOW_HEIGHT)  -- one size for every tab
     mainFrame:SetPoint("CENTER")
     mainFrame:SetMovable(true)
     mainFrame:EnableMouse(true)
@@ -560,17 +560,31 @@ function MAWUI:CreateUI()
     mainFrame.title:SetPoint("CENTER", mainFrame.TitleBg, "CENTER", 5, 0)
     mainFrame.title:SetText(windowTitle)
 
-    -- Control section at top
+    -- Tab bar: the navigation strip along the top of the inset
+    local tabFrame = CreateFrame("Frame", nil, mainFrame)
+    tabFrame:SetPoint("TOPLEFT", mainFrame.InsetBg or mainFrame, "TOPLEFT", 4, -4)
+    tabFrame:SetPoint("TOPRIGHT", mainFrame.InsetBg or mainFrame, "TOPRIGHT", -4, -4)
+    tabFrame:SetHeight(TAB_HEIGHT)
+    mainFrame.tabFrame = tabFrame
+
+    mainFrame.materialTab = CreateTabButton(tabFrame, "Materials", "materials", 4)
+    mainFrame.productTab = CreateTabButton(tabFrame, "Products", "products", 108)
+    mainFrame.storesTab = CreateTabButton(tabFrame, "Stores", "stores", 212)
+    mainFrame.historyTab = CreateTabButton(tabFrame, "History", "history", 316)
+    mainFrame.recipesTab = CreateTabButton(tabFrame, "Recipes", "recipes", 420)
+    mainFrame.moversTab = CreateTabButton(tabFrame, "Movers", "movers", 524)
+
+    -- Control row under the tabs: scans, then sort, then options; checkbox on the right
     local controlFrame = CreateFrame("Frame", nil, mainFrame)
-    controlFrame:SetPoint("TOPLEFT", mainFrame.InsetBg or mainFrame, "TOPLEFT", 4, -4)
-    controlFrame:SetPoint("TOPRIGHT", mainFrame.InsetBg or mainFrame, "TOPRIGHT", -4, -4)
-    controlFrame:SetHeight(CONTROL_SECTION_HEIGHT)
+    controlFrame:SetPoint("TOPLEFT", tabFrame, "BOTTOMLEFT", 0, -4)
+    controlFrame:SetPoint("TOPRIGHT", tabFrame, "BOTTOMRIGHT", 0, -4)
+    controlFrame:SetHeight(CONTROL_ROW_HEIGHT)
     mainFrame.controlFrame = controlFrame
 
     -- Scan button
     local scanBtn = CreateFrame("Button", nil, controlFrame, "UIPanelButtonTemplate")
     scanBtn:SetSize(100, 25)
-    scanBtn:SetPoint("TOPLEFT", controlFrame, "TOPLEFT", 5, -5)
+    scanBtn:SetPoint("LEFT", controlFrame, "LEFT", 5, 0)
     scanBtn:SetText("Scan AH")
     scanBtn:SetScript("OnClick", function()
         local MAW = _G.MalexisAuctionWatcher
@@ -614,23 +628,10 @@ function MAWUI:CreateUI()
     end)
     mainFrame.scanTabBtn = scanTabBtn
 
-    -- Add item button
-    local addBtn = CreateFrame("Button", nil, controlFrame, "UIPanelButtonTemplate")
-    addBtn:SetSize(100, 25)
-    addBtn:SetPoint("LEFT", scanTabBtn, "RIGHT", 5, 0)
-    addBtn:SetText("Add Item")
-    addBtn:SetScript("OnClick", function()
-        local itemType = currentTab == "materials" and "material" or "product"
-        if _G.MalexisAuctionWatcherDialogs then
-            _G.MalexisAuctionWatcherDialogs.ShowAddItemDialog(itemType)
-        end
-    end)
-    mainFrame.addBtn = addBtn
-
-    -- Sort toggle for Materials/Products: by mover position or by your manual order
+    -- Sort toggle for Materials/Products: by mover position or by your manual order (3rd slot)
     local sortBtn = CreateFrame("Button", nil, controlFrame, "UIPanelButtonTemplate")
     sortBtn:SetSize(120, 25)
-    sortBtn:SetPoint("LEFT", addBtn, "RIGHT", 5, 0)
+    sortBtn:SetPoint("LEFT", scanTabBtn, "RIGHT", 5, 0)
     sortBtn:SetText("Sort: Movers")
     sortBtn:SetScript("OnClick", function()
         local s = MalexisAuctionWatcherDB.settings
@@ -647,10 +648,24 @@ function MAWUI:CreateUI()
     sortBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
     mainFrame.sortBtn = sortBtn
 
-    -- Refresh-only button (Stores: counts, Recipes: table). No scan, just recompute.
+    -- Options after sort. The slot after Sort is shared: Add Item on Materials/Products,
+    -- Refresh on Stores/Recipes/Movers. Both anchor to Sort so they never shift.
+    local addBtn = CreateFrame("Button", nil, controlFrame, "UIPanelButtonTemplate")
+    addBtn:SetSize(100, 25)
+    addBtn:SetPoint("LEFT", sortBtn, "RIGHT", 5, 0)
+    addBtn:SetText("Add Item")
+    addBtn:SetScript("OnClick", function()
+        local itemType = currentTab == "materials" and "material" or "product"
+        if _G.MalexisAuctionWatcherDialogs then
+            _G.MalexisAuctionWatcherDialogs.ShowAddItemDialog(itemType)
+        end
+    end)
+    mainFrame.addBtn = addBtn
+
+    -- Refresh-only button (Stores: counts, Recipes/Movers: table). No scan, just recompute.
     local refreshBtn = CreateFrame("Button", nil, controlFrame, "UIPanelButtonTemplate")
     refreshBtn:SetSize(130, 25)
-    refreshBtn:SetPoint("LEFT", scanTabBtn, "RIGHT", 5, 0)
+    refreshBtn:SetPoint("LEFT", sortBtn, "RIGHT", 5, 0)
     refreshBtn:SetText("Refresh Counts")
     refreshBtn:SetScript("OnClick", function()
         MAWUI:RefreshData()
@@ -660,7 +675,7 @@ function MAWUI:CreateUI()
 
     -- Character-specific mode checkbox
     local charCheckbox = CreateFrame("CheckButton", nil, controlFrame, "UICheckButtonTemplate")
-    charCheckbox:SetPoint("TOPRIGHT", controlFrame, "TOPRIGHT", -5, -5)
+    charCheckbox:SetPoint("RIGHT", controlFrame, "RIGHT", -5, 0)
     charCheckbox:SetSize(20, 20)
 
     -- Label for checkbox
@@ -685,9 +700,14 @@ function MAWUI:CreateUI()
 
     mainFrame.charCheckbox = charCheckbox
 
-    -- Last scan timestamp label (below buttons, above tabs)
-    local lastScanLabel = controlFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    lastScanLabel:SetPoint("TOPLEFT", scanBtn, "BOTTOMLEFT", 0, -8)
+    -- Status line under the control row
+    local statusFrame = CreateFrame("Frame", nil, mainFrame)
+    statusFrame:SetPoint("TOPLEFT", controlFrame, "BOTTOMLEFT", 0, 0)
+    statusFrame:SetPoint("TOPRIGHT", controlFrame, "BOTTOMRIGHT", 0, 0)
+    statusFrame:SetHeight(STATUS_HEIGHT)
+    mainFrame.statusFrame = statusFrame
+    local lastScanLabel = statusFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    lastScanLabel:SetPoint("LEFT", statusFrame, "LEFT", 6, 0)
     lastScanLabel:SetTextColor(0.7, 0.7, 0.7)
     lastScanLabel:SetText("Last scan: Never")
     mainFrame.lastScanLabel = lastScanLabel
@@ -729,18 +749,9 @@ function MAWUI:CreateUI()
     -- Store update function for later use
     mainFrame.UpdateLastScanLabel = UpdateLastScanLabel
 
-    -- Tab buttons (positioned relative to control frame)
-    mainFrame.materialTab = CreateTabButton(controlFrame, "Materials", "materials", 4)
-    mainFrame.productTab = CreateTabButton(controlFrame, "Products", "products", 108)
-    mainFrame.storesTab = CreateTabButton(controlFrame, "Stores", "stores", 212)
-    mainFrame.historyTab = CreateTabButton(controlFrame, "History", "history", 316)
-    mainFrame.recipesTab = CreateTabButton(controlFrame, "Recipes", "recipes", 420)
-    mainFrame.moversTab = CreateTabButton(controlFrame, "Movers", "movers", 524)
-
-    -- Scroll frame (below control section and tabs)
     -- Fixed header strip: column headers (and the Recipes toolbar) live here, outside the scroll
     local headerFrame = CreateFrame("Frame", nil, mainFrame)
-    headerFrame:SetPoint("TOPLEFT", controlFrame, "BOTTOMLEFT", 0, -TAB_HEIGHT - 5)
+    headerFrame:SetPoint("TOPLEFT", statusFrame, "BOTTOMLEFT", 0, -2)
     headerFrame:SetPoint("TOPRIGHT", mainFrame.InsetBg or mainFrame, "TOPRIGHT", -24, 0)
     headerFrame:SetHeight(HEADER_HEIGHT)
     mainFrame.headerFrame = headerFrame
@@ -860,34 +871,10 @@ function MAWUI:RefreshData()
         mainFrame.refreshBtn:Hide()
     end
 
-    -- Size the window to the tab: History needs height, Recipes needs width
-    local wantHeight = (currentTab == "history") and mainFrame.historyHeight or mainFrame.defaultHeight
-    local wantWidth = mainFrame.defaultWidth
-    local chrome = 30 + 24 + 16  -- remove button + scrollbar + frame insets
-    if currentTab == "recipes" then
-        local cols = 0
-        for _, c in ipairs(RecipeColumns()) do cols = cols + c.width end
-        wantWidth = math.max(wantWidth, PADDING + RECIPE_CONTROLS_WIDTH + cols + chrome + 24)
-    elseif currentTab == "materials" or currentTab == "products" then
-        wantWidth = math.max(wantWidth, PADDING + CONTROLS_WIDTH + ROW_NAME_WIDTH + CELL_WIDTH * 4 + TsmColumnsWidth() + chrome)
-    elseif currentTab == "stores" then
-        wantWidth = math.max(wantWidth, PADDING + ROW_NAME_WIDTH + 80 * 4 + 100 * 2 + TsmColumnsWidth() + chrome)
-    elseif currentTab == "movers" then
-        wantWidth = math.max(wantWidth, PADDING + 70 + 260 + 90 + 330 + 80 + 24 + 16)
-    end
+    -- One window size for every tab. Docked in the auction house it follows the host instead.
     if mainFrame.docked and mainFrame.dockHost then
-        -- Docked in the auction house: fill the host's height, never narrower than it
         local host = mainFrame.dockHost
-        mainFrame:SetSize(math.max(wantWidth, host:GetWidth()), host:GetHeight())
-    elseif mainFrame:GetHeight() ~= wantHeight or mainFrame:GetWidth() ~= wantWidth then
-        -- Pin the top-left corner so the window grows down and to the right, not around its centre
-        local left, top = mainFrame:GetLeft(), mainFrame:GetTop()
-        mainFrame:SetSize(wantWidth, wantHeight)
-        if left and top then
-            local scale = mainFrame:GetEffectiveScale() / UIParent:GetEffectiveScale()
-            mainFrame:ClearAllPoints()
-            mainFrame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left / scale, top / scale)
-        end
+        mainFrame:SetSize(math.max(WINDOW_WIDTH, host:GetWidth()), host:GetHeight())
     end
 
     -- Update Add Item button visibility (hide on Stores/History tabs)
@@ -1765,11 +1752,8 @@ local function BuildHistoryPanel(parent)
     panel.pullTsm = pullTsm
 
     -- Chart
-    local parentWidth = parent:GetWidth()
-    if not parentWidth or parentWidth < 100 then
-        parentWidth = 740
-    end
-    local chartWidth = math.max(300, parentWidth - PADDING * 2)
+    -- Window width minus scrollbar, insets, and padding; independent of layout timing
+    local chartWidth = WINDOW_WIDTH - 24 - 16 - PADDING * 2
     panel.chart = _G.MalexisAuctionWatcherChart.Create(panel, chartWidth, CHART_HEIGHT)
     panel.chart:SetPoint("TOPLEFT", panel, "TOPLEFT", PADDING, -66)
 
@@ -2302,7 +2286,7 @@ function MAWUI:Undock()
     else
         mainFrame:SetPoint("CENTER")
     end
-    mainFrame:SetSize(mainFrame.defaultWidth, mainFrame.defaultHeight)
+    mainFrame:SetSize(WINDOW_WIDTH, WINDOW_HEIGHT)
 end
 
 function MAWUI:IsDocked()
