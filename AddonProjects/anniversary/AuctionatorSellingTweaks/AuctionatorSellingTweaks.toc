@@ -1,0 +1,8 @@
+## Interface: 20506
+## Title: Auctionator Selling Tweaks
+## Notes: Adds an Expiry column before "You?" in Auctionator's Selling tab price list and narrows "You?"
+## Author: Malexis
+## Version: 1.0.0
+## Dependencies: Auctionator
+
+Core.lua
