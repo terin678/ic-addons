@@ -1924,7 +1924,7 @@ local function AttachRecipeTooltip(cell, calc)
         GameTooltip:AddLine("Materials per batch:", 0.8, 0.8, 0.8)
         for _, m in ipairs(calc.materials) do
             local right = m.unit and (m.count .. " x " .. FormatMoney(m.unit) .. " = " .. FormatMoney(m.cost)) or "no price"
-            local src = m.source and (" (" .. (MAW.SourceLabel and MAW:SourceLabel(m.source) or m.source) .. (m.when and (", " .. m.when) or "") .. ")") or ""
+            local src = m.vendor and " (vendor)" or (m.source and (" (" .. (MAW.SourceLabel and MAW:SourceLabel(m.source) or m.source) .. (m.when and (", " .. m.when) or "") .. ")") or "")
             GameTooltip:AddDoubleLine("  " .. m.item .. src, right, 1, 1, 1, 1, 0.8, 0.5)
         end
         GameTooltip:AddLine(" ")
@@ -1958,41 +1958,34 @@ end
 function MAWUI:RenderRecipesTab(scrollChild, yOffset)
     local MAW = _G.MalexisAuctionWatcher
 
-    -- Toolbar row inside the list: preset + add
+    -- Toolbar row inside the list: presets menu + add
+    if not mainFrame.presetMenu then
+        mainFrame.presetMenu = CreateFrame("Frame", "MalexisAuctionWatcherPresetMenu", UIParent, "UIDropDownMenuTemplate")
+    end
     local presetBtn = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate")
-    presetBtn:SetSize(170, 22)
+    presetBtn:SetSize(120, 22)
     presetBtn:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", PADDING, yOffset)
-    presetBtn:SetText("Add Motes -> Primals")
-    presetBtn:SetScript("OnClick", function()
-        MAW:AddMotePresets()
-        MAWUI:RefreshData()
+    presetBtn:SetText("Presets...")
+    presetBtn:SetScript("OnClick", function(self)
+        local dlg = _G.MalexisAuctionWatcherRecipeDialog
+        local function after() MAWUI:RefreshData() end
+        local menu = {
+            { text = "Add recipes", isTitle = true, notCheckable = true },
+            { text = "Motes -> Primals (7)", notCheckable = true, func = function() MAW:AddMotePresets(); after() end },
+            { text = "Transmute: Primal Might", notCheckable = true, func = function() MAW:AddPrimalMightPreset(); after() end },
+            { text = "Alchemy consumables (7)", notCheckable = true, func = function() MAW:AddAlchemyPresets(); after() end },
+            { text = "Gem cuts...", notCheckable = true, func = function() if dlg then dlg.ShowGemPicker() end end },
+            { text = "Import from open profession window...", notCheckable = true, func = function() if dlg then dlg.ShowProfessionImport() end end },
+            { text = "Track items only", isTitle = true, notCheckable = true },
+            { text = "Flipping guide watchlist (herbs, primals, gems, shards)", notCheckable = true, func = function() MAW:AddGuideWatchlist(); after() end },
+        }
+        EasyMenu(menu, mainFrame.presetMenu, self, 0, 0, "MENU")
     end)
     table.insert(mainFrame.rows, presetBtn)
 
-    local mightBtn = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate")
-    mightBtn:SetSize(140, 22)
-    mightBtn:SetPoint("LEFT", presetBtn, "RIGHT", 6, 0)
-    mightBtn:SetText("Add Primal Might")
-    mightBtn:SetScript("OnClick", function()
-        MAW:AddPrimalMightPreset()
-        MAWUI:RefreshData()
-    end)
-    table.insert(mainFrame.rows, mightBtn)
-
-    local gemBtn = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate")
-    gemBtn:SetSize(130, 22)
-    gemBtn:SetPoint("LEFT", mightBtn, "RIGHT", 6, 0)
-    gemBtn:SetText("Add Gem Cuts")
-    gemBtn:SetScript("OnClick", function()
-        if _G.MalexisAuctionWatcherRecipeDialog then
-            _G.MalexisAuctionWatcherRecipeDialog.ShowGemPicker()
-        end
-    end)
-    table.insert(mainFrame.rows, gemBtn)
-
     local addRecipeBtn = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate")
     addRecipeBtn:SetSize(110, 22)
-    addRecipeBtn:SetPoint("LEFT", gemBtn, "RIGHT", 6, 0)
+    addRecipeBtn:SetPoint("LEFT", presetBtn, "RIGHT", 6, 0)
     addRecipeBtn:SetText("Add Recipe")
     addRecipeBtn:SetScript("OnClick", function()
         if _G.MalexisAuctionWatcherRecipeDialog then

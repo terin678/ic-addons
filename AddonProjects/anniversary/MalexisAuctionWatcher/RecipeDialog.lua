@@ -352,4 +352,126 @@ function MAWRecipeDialog.ShowGemPicker()
     gemFrame:Show()
 end
 
+
+-- ===================== Import from open profession window =====================
+local importFrame = nil
+local IMPORT_ROWS = 14
+
+local function BuildImportDialog()
+    importFrame = CreateFrame("Frame", "MAWProfessionImport", UIParent, "BasicFrameTemplateWithInset")
+    importFrame:SetSize(520, 80 + IMPORT_ROWS * 22 + 60)
+    importFrame:SetPoint("CENTER")
+    importFrame:SetFrameStrata("DIALOG")
+    importFrame:SetMovable(true)
+    importFrame:EnableMouse(true)
+    importFrame:RegisterForDrag("LeftButton")
+    importFrame:SetScript("OnDragStart", importFrame.StartMoving)
+    importFrame:SetScript("OnDragStop", importFrame.StopMovingOrSizing)
+    table.insert(UISpecialFrames, "MAWProfessionImport")
+
+    importFrame.title = importFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    importFrame.title:SetPoint("CENTER", importFrame.TitleBg, "CENTER", 5, 0)
+    importFrame.title:SetText("Import Recipes")
+
+    importFrame.info = importFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    importFrame.info:SetPoint("TOPLEFT", importFrame, "TOPLEFT", 16, -32)
+    importFrame.info:SetWidth(480)
+    importFrame.info:SetJustifyH("LEFT")
+    importFrame.info:SetTextColor(0.7, 0.7, 0.7)
+
+    local scroll = CreateFrame("ScrollFrame", nil, importFrame, "UIPanelScrollFrameTemplate")
+    scroll:SetPoint("TOPLEFT", importFrame, "TOPLEFT", 16, -64)
+    scroll:SetSize(460, IMPORT_ROWS * 22)
+    local child = CreateFrame("Frame", nil, scroll)
+    child:SetSize(440, 1)
+    scroll:SetScrollChild(child)
+    importFrame.child = child
+    importFrame.rows = {}
+
+    local addAll = CreateFrame("Button", nil, importFrame, "UIPanelButtonTemplate")
+    addAll:SetSize(110, 22)
+    addAll:SetPoint("BOTTOMLEFT", importFrame, "BOTTOMLEFT", 16, 14)
+    addAll:SetText("Add All")
+    addAll:SetScript("OnClick", function()
+        local MAW = _G.MalexisAuctionWatcher
+        local added = 0
+        for _, e in ipairs(importFrame.entries or {}) do
+            local ok = MAW:ImportProfessionRecipe(e, importFrame.professionName)
+            if ok then added = added + 1 end
+        end
+        print(string.format("%s: Imported %d recipes from %s", addonName, added, importFrame.professionName or "profession"))
+        MAWRecipeDialog.RefreshImport()
+        if _G.MalexisAuctionWatcherUI then _G.MalexisAuctionWatcherUI:RefreshData() end
+    end)
+
+    local closeBtn = CreateFrame("Button", nil, importFrame, "UIPanelButtonTemplate")
+    closeBtn:SetSize(80, 22)
+    closeBtn:SetPoint("BOTTOMRIGHT", importFrame, "BOTTOMRIGHT", -16, 14)
+    closeBtn:SetText("Close")
+    closeBtn:SetScript("OnClick", function() importFrame:Hide() end)
+end
+
+function MAWRecipeDialog.RefreshImport()
+    local MAW = _G.MalexisAuctionWatcher
+    local professionName, entries = MAW:ReadOpenProfession()
+    importFrame.professionName = professionName
+    importFrame.entries = entries
+
+    local have = {}
+    for _, r in ipairs(MAW:GetRecipes()) do have[r.name] = true end
+
+    if not professionName then
+        importFrame.info:SetText("Open a profession window (Alchemy, Jewelcrafting, ...) first, then reopen this dialog. Enchanting is not supported.")
+    else
+        importFrame.info:SetText(professionName .. ": " .. #entries .. " recipes. Reagents come straight from your recipe book. Vials are vendor priced.")
+    end
+
+    for _, row in ipairs(importFrame.rows) do row:Hide() end
+    local y = 0
+    for i, e in ipairs(entries) do
+        local row = importFrame.rows[i]
+        if not row then
+            row = CreateFrame("Frame", nil, importFrame.child)
+            row:SetSize(440, 22)
+            row.text = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            row.text:SetPoint("LEFT", row, "LEFT", 4, 0)
+            row.text:SetWidth(330)
+            row.text:SetJustifyH("LEFT")
+            row.btn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+            row.btn:SetSize(70, 20)
+            row.btn:SetPoint("RIGHT", row, "RIGHT", -4, 0)
+            importFrame.rows[i] = row
+        end
+        row:ClearAllPoints()
+        row:SetPoint("TOPLEFT", importFrame.child, "TOPLEFT", 0, y)
+        local matText = {}
+        for _, r in ipairs(e.reagents) do table.insert(matText, r.count .. " " .. r.item) end
+        row.text:SetText(e.name .. (e.numMade > 1 and (" x" .. e.numMade) or "") .. "  |cff888888" .. table.concat(matText, ", ") .. "|r")
+        if have[e.name] then
+            row.btn:SetText("Added")
+            row.btn:Disable()
+        else
+            row.btn:SetText("Add")
+            row.btn:Enable()
+            row.btn:SetScript("OnClick", function()
+                local ok, err = MAW:ImportProfessionRecipe(e, professionName)
+                if not ok then print(addonName .. ": " .. (err or "could not add")) end
+                MAWRecipeDialog.RefreshImport()
+                if _G.MalexisAuctionWatcherUI then _G.MalexisAuctionWatcherUI:RefreshData() end
+            end)
+        end
+        row:Show()
+        y = y - 22
+    end
+    importFrame.child:SetHeight(math.max(1, -y))
+end
+
+function MAWRecipeDialog.ShowProfessionImport()
+    if not importFrame then
+        BuildImportDialog()
+    end
+    MAWRecipeDialog.RefreshImport()
+    importFrame:Show()
+end
+
 _G.MalexisAuctionWatcherRecipeDialog = MAWRecipeDialog

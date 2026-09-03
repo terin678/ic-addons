@@ -90,7 +90,7 @@ local function NewestEntryAge(itemData)
     return time() - latest.timestamp
 end
 
-MAW.SOURCE_LABELS = { scan = "Scan", atr = "Auctionator", tsm = "TSM", ext = "External", custom = "Custom bound", tsm14 = "TSM 14d", tsm60 = "TSM 60d" }
+MAW.SOURCE_LABELS = { scan = "Scan", atr = "Auctionator", tsm = "TSM", ext = "External", custom = "Custom bound", tsm14 = "TSM 14d", tsm60 = "TSM 60d", vendor = "Vendor" }
 
 -- TSM price sources pulled per item, in display order. money=false means a rate or count.
 MAW.TSM_KEYS = {

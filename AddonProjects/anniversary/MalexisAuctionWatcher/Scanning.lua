@@ -180,7 +180,9 @@ end
 function MAW:GetRecipeItems(recipe)
     local names = { recipe.product }
     for _, mat in ipairs(recipe.materials or {}) do
-        table.insert(names, mat.item)
+        if not mat.vendor then
+            table.insert(names, mat.item)
+        end
     end
     return names
 end

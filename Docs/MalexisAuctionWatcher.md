@@ -104,11 +104,26 @@ when there are fewer than 3 samples, which is too few to trust.
 Profit per batch = product value after the 5% AH cut minus material cost, using each item's
 latest price. Rows sort by profit. Hover a recipe for the full breakdown with sources.
 
-- "Add Motes -> Primals": seven recipes, 10 motes to 1 primal.
-- "Add Primal Might": the Alchemy transmute, one each of Earth, Water, Air, Fire, Mana.
-- "Add Gem Cuts": picker for TBC Jewelcrafting. Click a raw gem to add all its cuts, or add
-  a whole tier. 109 cuts across 18 raw gems; meta gems excluded.
-- "Add Recipe": custom recipe, drag a product and up to five materials with counts.
+The "Presets..." menu offers:
+
+- Motes -> Primals: seven recipes, 10 motes to 1 primal.
+- Transmute: Primal Might: one each of Primal Earth, Water, Air, Fire, Mana.
+- Alchemy consumables: Haste Potion, Destruction Potion, Super Mana Potion, Super Healing
+  Potion, Elixir of Major Mageblood, Flask of Fortification, Flask of Mighty Restoration.
+  Reagents are built in; the recipe note reminds you to check them against your book.
+- Gem cuts: picker for TBC Jewelcrafting. Click a raw gem to add all its cuts, or add a
+  whole tier. 109 cuts across 18 raw gems; meta gems excluded.
+- Import from open profession window: lists every recipe in the profession window you have
+  open, with reagents and counts read straight from the client. Add one or all. This is the
+  reliable way to get any profession's recipes in, Alchemy included. Enchanting is not
+  supported since enchants are not items.
+- Flipping guide watchlist: tracks the herbs, primals, gems, shards, and old-world
+  consumables a TBC flipping guide singles out, without adding recipes.
+
+"Add Recipe" builds a custom recipe: drag a product and up to five materials with counts.
+
+Vials (Imbued, Crystal, Leaded, Empty) are priced at their vendor cost automatically, are
+not tracked, and do not count toward "Can make".
 
 Everything a recipe uses is tracked automatically. "Can make" counts bags plus bank; it does
 not know about cooldowns or which patterns you have learned.
