@@ -388,6 +388,42 @@ function UI.BuildBook(page)
                 row.label = Label(row, "", "GameFontHighlightSmall")
                 row.label:SetPoint("LEFT", 52, 0)
                 row.label:SetJustifyH("LEFT")
+
+                -- Hover: the item's own tooltip plus what the recipe takes and makes.
+                row:EnableMouse(true)
+                row:SetScript("OnEnter", function(self)
+                    local e = self.entry
+                    if not e then return end
+                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                    if e.link then
+                        GameTooltip:SetHyperlink(e.link)
+                    else
+                        GameTooltip:AddLine(e.name or "?")
+                    end
+                    GameTooltip:AddLine(" ")
+                    GameTooltip:AddLine(string.format("Recipe  |cff888888%s|r", e.header or ""), 1, 0.82, 0)
+                    local any = false
+                    for id, count in pairs(e.reagents or {}) do
+                        local rname, _, _, _, _, _, _, _, _, tex = GetItemInfo(id)
+                        GameTooltip:AddDoubleLine(
+                            (tex and ("|T" .. tex .. ":14|t ") or "") .. (rname or ("item " .. id)),
+                            "x" .. count, 1, 1, 1, 1, 0.82, 0)
+                        any = true
+                    end
+                    if not any then GameTooltip:AddLine("no reagent data; rescan the book", 0.6, 0.6, 0.6) end
+                    if (e.numMade or 1) > 1 then
+                        GameTooltip:AddLine(string.format("makes %d per craft", e.numMade), 0.7, 0.9, 1)
+                    end
+                    GameTooltip:AddLine(string.format("advertise %s   match %s%s",
+                        e.advertise and "|cff44ff44on|r" or "|cffff4444off|r",
+                        e.match and "|cff44ff44on|r" or "|cffff4444off|r",
+                        e.bindType == 1 and "   |cffff8888bind on pickup|r" or ""), 0.6, 0.6, 0.6)
+                    if e.aliases and #e.aliases > 0 then
+                        GameTooltip:AddLine("aliases: " .. table.concat(e.aliases, ", "), 0.6, 0.6, 0.6)
+                    end
+                    GameTooltip:Show()
+                end)
+                row:SetScript("OnLeave", function() GameTooltip:Hide() end)
                 UI.bookRows[i] = row
             end
             row:SetPoint("TOPLEFT", 0, -(i - 1) * ROW_H)
