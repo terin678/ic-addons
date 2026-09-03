@@ -3,7 +3,7 @@ local addonName, ns = ...
 ns.UI = ns.UI or {}
 local UI = ns.UI
 
-local WIDTH, HEIGHT = 720, 560
+local WIDTH, HEIGHT = 720, 572
 local ROW_H = 18
 
 local BACKDROP = {
@@ -84,7 +84,9 @@ function UI.Create()
     UI.title = title
 
     UI.status = Label(f, "", "GameFontDisableSmall")
-    UI.status:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -4)
+    UI.status:SetPoint("TOPLEFT", 12, -36)
+    UI.status:SetPoint("RIGHT", f, "RIGHT", -12, 0)
+    UI.status:SetJustifyH("LEFT")
 
     local close = Button(f, "X", 22, 22)
     close:SetPoint("TOPRIGHT", -8, -8)
@@ -132,12 +134,12 @@ function UI.Create()
     local names = { "Professions", "Book", "Bark", "Orders", "Income", "Filter", "Log", "Invite" }
     for i, name in ipairs(names) do
         local tab = Button(f, name, 84, 20)
-        tab:SetPoint("TOPLEFT", 8 + (i - 1) * 86, -46)
+        tab:SetPoint("TOPLEFT", 8 + (i - 1) * 86, -58)
         tab:SetScript("OnClick", function() UI.SelectTab(i) end)
         UI.tabs[i] = tab
 
         local page = CreateFrame("Frame", nil, f)
-        page:SetPoint("TOPLEFT", 10, -72)
+        page:SetPoint("TOPLEFT", 10, -84)
         page:SetPoint("BOTTOMRIGHT", -10, 10)
         page:Hide()
         UI.pages[i] = page
@@ -193,9 +195,8 @@ function UI.Refresh()
         if UI.enableButton then UI.enableButton.text:SetText("Disable") end
         local n, products, noun = ns.Prof.BookCounts(profile, ns.Book())
         UI.status:SetText(string.format(
-            "%d recipes (%d %s)  |  advertising %d  |  %d open orders  |  bark %s  |  invite %s%s",
+            "%d recipes (%d %s)  |  advertising %d  |  %d open orders%s",
             n, products, noun, #ns.Barker.AdvertisedEntries(), #ns.Orders.OpenList(),
-            onoff(s.bark.enabled), onoff(ns.db.settings.invites ~= false),
             ns.Barker.pending and "  |  |cffffcc00BARK READY|r"
                 or (s.bark.enabled and ("  |  next bark in " .. ns.Barker.SecondsUntilDue() .. "s") or "")))
     end
