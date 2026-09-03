@@ -7,7 +7,7 @@ local COLOR_WORST = { 0.95, 0.35, 0.35 }
 local COLOR_EMPTY = { 0.3, 0.3, 0.3 }
 local COLOR_EXTERNAL = { 0.8, 0.7, 0.4 }
 
-local LEFT_MARGIN = 62
+local LEFT_MARGIN = 78
 local BOTTOM_MARGIN = 18
 local TOP_MARGIN = 8
 local RIGHT_MARGIN = 8
@@ -242,7 +242,7 @@ function ChartMixin:SetData(points, opts)
             table.insert(placedLabelYs, labelY)
 
             line.text:ClearAllPoints()
-            line.text:SetPoint("BOTTOMRIGHT", self.plot, "BOTTOMRIGHT", -2, labelY)
+            line.text:SetPoint("BOTTOMLEFT", self.plot, "BOTTOMLEFT", 3, labelY)
             line.text:SetText((ref.label or "") .. " " .. FormatMoney(ref.value))
             line.tex:Show()
             line.text:Show()

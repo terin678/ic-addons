@@ -1853,10 +1853,10 @@ function MAWUI:RenderHistoryTab(scrollChild, yOffset)
         local tsmRef = db.items[self.historyItem].tsmRef
         if tsmRef and MAW.sources.tsm.available and MAW:IsSourceEnabled("tsm") then
             if tsmRef.market then
-                table.insert(refLines, { value = tsmRef.market, label = "TSM market 14d", color = { 0.95, 0.65, 0.95 } })
+                table.insert(refLines, { value = tsmRef.market, label = "TSM mrkt 14d", color = { 0.95, 0.65, 0.95 } })
             end
             if tsmRef.historical then
-                table.insert(refLines, { value = tsmRef.historical, label = "TSM historical 60d", color = { 0.7, 0.55, 0.95 } })
+                table.insert(refLines, { value = tsmRef.historical, label = "TSM hist 60d", color = { 0.7, 0.55, 0.95 } })
             end
         end
 
