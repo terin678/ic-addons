@@ -1299,4 +1299,37 @@ T.Case("Rules: MergeImport never deletes", function()
     T.Eq(#db.rules.BT, 2, "the rule absent from the import survives")
 end)
 
+T.Case("Data: every bundled mob names a real instance and carries a name", function()
+    local validKeys = {}
+    for _, key in pairs(MFD.Rules.INSTANCE_KEYS) do
+        validKeys[key] = true
+    end
+
+    local count = 0
+    for npcID, entry in pairs(MFD.Data.Mobs) do
+        count = count + 1
+        T.Eq(type(npcID), "number", "npc id " .. tostring(npcID) .. " is a number")
+        T.Eq(type(entry[1]), "string", "npc " .. npcID .. " has a name")
+        if entry[1] == "" then
+            error("npc " .. npcID .. " has an empty name")
+        end
+        if not validKeys[entry[2]] then
+            error("npc " .. npcID .. " names unknown instance '" .. tostring(entry[2]) .. "'")
+        end
+    end
+
+    if count < 50 then
+        error("expected at least the TBC raid bosses, got " .. count)
+    end
+end)
+
+T.Case("Data: bundled mobs are searchable by name and by instance", function()
+    local results = MFD.Search("illidan", "BLACKTEMPLE", MFD.Data.Mobs, {})
+    T.Eq(#results, 1, "one Illidan in BT")
+    T.Eq(results[1].npcID, 22917, "and it is him")
+
+    local wrongZone = MFD.Search("illidan", "KARAZHAN", MFD.Data.Mobs, {})
+    T.Eq(#wrongZone, 0, "not in Karazhan")
+end)
+
 _G.MarkedForDeath = MFD

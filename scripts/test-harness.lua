@@ -18,6 +18,7 @@ _G.MarkedForDeath = { RegisterInit = function() end }
 
 local files = {
     "Helpers.lua",
+    "Data_Mobs.lua",
     "Seats.lua",
     "Rules.lua",
     "Allocator.lua",

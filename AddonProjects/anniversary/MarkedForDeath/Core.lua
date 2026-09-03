@@ -177,6 +177,30 @@ commands.config = {
     end,
 }
 
+commands.coverage = {
+    desc = "compare the mobs you have seen against the bundled database",
+    run = function()
+        local bundled, learned, missing = 0, 0, {}
+        for _ in pairs(MFD.Data.Mobs) do
+            bundled = bundled + 1
+        end
+        for npcID, entry in pairs(MFD.db.learnedMobs) do
+            learned = learned + 1
+            if not MFD.Data.Mobs[npcID] then
+                missing[#missing + 1] = npcID .. " " .. tostring(entry.name)
+            end
+        end
+        table.sort(missing)
+        MFD.Print(string.format("%d bundled, %d learned, %d seen but not bundled", bundled, learned, #missing))
+        for i = 1, math.min(#missing, 20) do
+            MFD.Print("  |cffffcc66" .. missing[i] .. "|r")
+        end
+        if #missing > 20 then
+            MFD.Print("  ... and " .. (#missing - 20) .. " more")
+        end
+    end,
+}
+
 commands.minimap = {
     desc = "show or hide the minimap button",
     run = function()
