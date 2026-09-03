@@ -8,9 +8,6 @@ Inviter.whisperCount = 0
 local WHISPER_WARN_AT = 60
 local WHISPER_DELAY = 1.5
 
--- Keeps a whisper inside the 255 character cap once links are expanded.
-local MAX_ITEMS_PER_WHISPER = 3
-
 -- Pure. Reasons the invite cannot happen regardless of message content.
 function Inviter.BlockReason(playerState, now, groupSize, settings)
     if settings.enabled == false then return "invites disabled" end
@@ -44,33 +41,33 @@ function Inviter.Plan(name, matched, ctx)
     local book = pd and pd.book or ns.Book()
     local profile = key and ns.Prof.ByKey(key) or ns.Prof.Current()
 
-    -- Acknowledge EVERY item they asked for, not just the first.
+    -- Someone who linked the pattern already has its reagent list in front of
+    -- them; handing it back is noise.
+    local withPatterns = not ns.Util.HasCraftLink(ctx and ctx.text)
+    if ctx and ctx.withPatterns ~= nil then withPatterns = ctx.withPatterns end
+
+    local reply = ns.Reply.Compose({
+        book = book,
+        matched = matched,
+        cannotDo = ctx and ctx.cannotDo,
+        whisper = settings.whisper,
+        profile = profile,
+        player = short,
+        base = "invite",
+        withPatterns = withPatterns,
+    })
+
     local have = {}
-    for i = 1, math.min(#(matched or {}), MAX_ITEMS_PER_WHISPER) do
-        local entry = book[matched[i].itemID]
-        if entry then have[#have + 1] = entry.link or entry.name end
-    end
-    local haveText = #have > 0 and table.concat(have, " ") or nil
-
-    local lack = {}
-    for i = 1, math.min(#((ctx and ctx.cannotDo) or {}), MAX_ITEMS_PER_WHISPER) do
-        lack[i] = ctx.cannotDo[i]
-    end
-
-    local template, vars
-    if not haveText then
-        template, vars = settings.whisper.templateNoItem, {}
-    elseif #lack > 0 then
-        template = settings.whisper.partialTemplate
-        vars = { have = haveText, lack = table.concat(lack, " ") }
-    else
-        template, vars = settings.whisper.template, { item = haveText }
+    for _, entry in ipairs(reply.have) do
+        have[#have + 1] = entry.link or entry.name
     end
 
     return {
-        profile = profile, settings = settings, template = template, vars = vars,
-        haveText = haveText, lack = lack,
-        text = Inviter.Render(template, vars, short, profile),
+        profile = profile, settings = settings, template = reply.template,
+        haveText = #have > 0 and table.concat(have, " ") or nil,
+        lack = reply.lack,
+        text = reply.text,
+        reply = reply,
     }
 end
 
@@ -109,28 +106,44 @@ function Inviter.Invite(name, matched, ctx)
         if override and override ~= "" then
             Inviter.SayText(short, override, plan.profile)
         else
-            Inviter.Say(short, plan.template, plan.vars, plan.profile)
+            Inviter.SayComposed(short, plan.text, plan.profile)
         end
     end)
 end
 
 -- Sends a whisper immediately, subject to the short conversational cooldown.
+-- One auto-reply per player per replyCooldownSec, whichever entry point asked.
+local function ReplyDue(name, profile)
+    local pd = ns.db.professions and ns.db.professions[profile.key]
+    local inv = (pd and pd.settings or ns.PS()).invite
+    local now = ns.Now()
+    local state = ns.Players.Get(ns.db, name)
+    if (now - (state.lastReplyAt or 0)) < (inv.whisper.replyCooldownSec or 10) then
+        return false
+    end
+    state.lastReplyAt = now
+    return true
+end
+
 -- profile picks whose templates and cooldown apply; defaults to the active one.
 function Inviter.Say(name, template, vars, profile)
     if not ns.Enabled() then return false end
     if not template or template == "" then return false end
     profile = profile or ns.Prof.Current()
-    local pd = ns.db.professions and ns.db.professions[profile.key]
-    local inv = (pd and pd.settings or ns.PS()).invite
-    local now = ns.Now()
-    local state = ns.Players.Get(ns.db, name)
-    local last = state.lastReplyAt or 0
-    if (now - last) < (inv.whisper.replyCooldownSec or 10) then
-        return false
-    end
-    state.lastReplyAt = now
-
+    if not ReplyDue(name, profile) then return false end
     return Inviter.SayText(name, Inviter.Render(template, vars, name, profile), profile)
+end
+
+-- Text that Reply.Compose already rendered, because it had to render it to
+-- measure it against the whisper cap. Its own entry point rather than a nil-vars
+-- overload of Say: one forgotten argument there would whisper a customer a raw
+-- "{item}".
+function Inviter.SayComposed(name, text, profile)
+    if not ns.Enabled() then return false end
+    if not text or text == "" then return false end
+    profile = profile or ns.Prof.Current()
+    if not ReplyDue(name, profile) then return false end
+    return Inviter.SayText(name, text, profile)
 end
 
 -- Sends text as it stands, with no template and no cooldown: the player has read

@@ -216,6 +216,7 @@ local PROBE = {
     { "GetNumTradeSkills", "reading the list at all" },
     { "GetTradeSkillInfo", "recipe names and how many you can make" },
     { "GetTradeSkillItemLink", "matching a row to an order's item" },
+    { "GetTradeSkillRecipeLink", "handing a customer the pattern with its reagents" },
     { "GetTradeSkillNumMade", "batch size for a recipe not in your book yet" },
     { "ExpandTradeSkillSubClass", "finding a recipe under a collapsed category" },
     { "TradeSkillFrame_SetSelection", "selecting the recipe" },

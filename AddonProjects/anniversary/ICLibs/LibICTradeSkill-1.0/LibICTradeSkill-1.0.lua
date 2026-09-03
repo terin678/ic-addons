@@ -16,7 +16,11 @@ GetTradeSkill* API. Enchanting uses the Craft API and is not covered.
     Lib:DescribeMissing(list, withCounts) -> "Primal Nether x1 (have 0)"
 
 A row:
-    itemID, name (product), link, skillName (the recipe line, e.g. "Transmute:
+    itemID, name (product), link,
+    recipeLink (the |Htrade: link for the craft itself, nil on a client with no
+    GetTradeSkillRecipeLink; hovering it lists the reagents, which is what makes
+    it worth handing to a customer),
+    skillName (the recipe line, e.g. "Transmute:
     Primal Might"), skillType ("optimal"/"medium"/"easy"/"trivial"), header,
     classID, subClassID, quality, bindType, numMade,
     reagents     = { [itemID] = count },
@@ -24,7 +28,7 @@ A row:
     reagentBind  = { [itemID] = bindType } for reagents in the item cache.
 ]]
 
-local MAJOR, MINOR = "LibICTradeSkill-1.0", 1
+local MAJOR, MINOR = "LibICTradeSkill-1.0", 2
 local Lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not Lib then return end
 
@@ -111,11 +115,16 @@ local function CollectRows()
                 local name, _, quality, _, _, _, _, _, _, _, _, classID,
                       subClassID, bindType = GetItemInfo(link)
                 local numMade = GetTradeSkillNumMade and GetTradeSkillNumMade(idx) or 1
+                -- The |Htrade: link for the craft itself. Hovering it lists the
+                -- reagents, which is the whole reason to hand it to a customer.
+                -- Not on every client, so nil is an expected value here.
+                local recipeLink = GetTradeSkillRecipeLink and GetTradeSkillRecipeLink(idx) or nil
                 local reagents, reagentList = ReadReagents(idx)
                 rows[#rows + 1] = {
                     itemID = itemID,
                     name = name or (link:match("%[(.-)%]")) or skillName,
                     link = link,
+                    recipeLink = recipeLink,
                     skillName = skillName,
                     skillType = skillType,
                     header = header or "Other",
