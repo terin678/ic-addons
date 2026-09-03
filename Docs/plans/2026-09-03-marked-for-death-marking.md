@@ -1755,10 +1755,12 @@ Applies the desired icon map to the client, defends icons that get cleared, free
 - Consumes: `MFD.Candidates.set`, `MFD.Candidates.ToList`, `MFD.Candidates.Prune` from Task 5; `MFD.Allocator.Compute` from Task 4; `MFD.Seats.Resolve` from Task 2; `MFD.RegisterInit`, `MFD.Print`, `MFD.Error` from Task 1.
 - Produces:
   - `MFD.Marker.LIMITS` -> `{ maxActions = 4, defenseLimit = 3, defenseWindow = 5, tickInterval = 0.2 }` (counts, counts, seconds, seconds)
-  - `MFD.Marker.ComputeDiff(desired, actual, defense, now, limits) -> { actions, yielded }`
+  - `MFD.Marker.ComputeDiff(desired, actual, placed, defense, now, limits) -> { actions, yielded }`
     - `desired`: `{ [key] = icon }`
     - `actual`: `{ [key] = icon }`, icon absent or 0 when the mob carries none
+    - `placed`: `{ [key] = true }` for keys this client has actually applied an icon to. **Required, and the reason is subtle:** a mob nobody ever marked and a mob whose icon was just wiped both read as 0 in `actual`. Without `placed`, the brake counts every unmarked mob as a defense and the addon gives up on packs it never marked in the first place. A test pins this down.
     - `defense`: `{ [key] = { count, windowStart } }`, mutated in place by this call
+    - A foreign icon (present, not 0, not what we want) is corrected but still counts against the brake, so the addon backs off rather than fighting a human who keeps setting it deliberately.
     - `actions`: array of `{ key, icon, isDefense }`, sorted by key, at most `limits.maxActions` long
     - `yielded`: array of keys the addon has stopped fighting over
   - `MFD.Marker.locked` -> `{ [key] = icon }`
@@ -1898,7 +1900,10 @@ function Marker.ComputeDiff(desired, actual, defense, now, limits)
         local present = actual[key] or 0
 
         if present ~= wanted then
-            local isDefense = present ~= 0 or (defense[key] ~= nil)
+            -- Either we put an icon here and it is gone or changed, or someone
+            -- else has put a different icon on it. Both mean we are contesting
+            -- the mob rather than marking it for the first time.
+            local isDefense = placed[key] == true or present ~= 0
 
             if not isDefense then
                 actions[#actions + 1] = { key = key, icon = wanted, isDefense = false }
@@ -4696,7 +4701,192 @@ git commit -m "Add compiled TBC raid mob database"
 
 ---
 
-### Task 16: Documentation, versioning and the pull request
+### Task 16: Minimap button
+
+Requested after the plan was written. Uses the same vendored-library pattern CutMaster already ships, so the guild has one known-good copy of these libs rather than two.
+
+**Files:**
+- Create: `AddonProjects/anniversary/MarkedForDeath/Libs/LibStub/LibStub.lua`
+- Create: `AddonProjects/anniversary/MarkedForDeath/Libs/CallbackHandler-1.0/CallbackHandler-1.0.lua`
+- Create: `AddonProjects/anniversary/MarkedForDeath/Libs/LibDataBroker-1.1/LibDataBroker-1.1.lua`
+- Create: `AddonProjects/anniversary/MarkedForDeath/Libs/LibDBIcon-1.0/LibDBIcon-1.0.lua`
+- Create: `AddonProjects/anniversary/MarkedForDeath/Minimap.lua`
+- Modify: `MarkedForDeath.toc` (libs first in the file list, `Minimap.lua` last)
+- Modify: `Core.lua` (`settings.minimap` default, `minimap` command)
+
+**Interfaces:**
+- Consumes: `MFD.UI.Config:Toggle()` from Task 11, `MFD.UI.Rules:Toggle()` from Task 12, `MFD.UI.Assignments:Toggle()` from Task 13, `MFD.Comms.authority` / `authorityMode` from Task 8, `MFD.Rules.Active` from Task 7.
+- Produces: `MFD.Minimap.Init()`, `MFD.Minimap:Toggle()`
+
+**Note on globals.** LibStub declares `_G.LibStub`. That breaks the letter of the one-global rule in `CODING_STANDARDS.md`, but vendored libraries are an established exception in this repo (CutMaster ships the identical four). Do not write any other new global.
+
+- [ ] **Step 1: Copy the libraries verbatim from CutMaster**
+
+```bash
+cp -r AddonProjects/anniversary/CutMaster/Libs AddonProjects/anniversary/MarkedForDeath/Libs
+```
+
+Copy rather than re-download, so both addons run the same versions and a future upgrade is one decision instead of two.
+
+- [ ] **Step 2: Write Minimap.lua**
+
+```lua
+-- Minimap button. Uses the same LibDBIcon pattern as CutMaster.
+local MFD = _G.MarkedForDeath or {}
+
+MFD.Minimap = MFD.Minimap or {}
+local M = MFD.Minimap
+
+-- The skull raid target, which is both on-theme and already shipped by the
+-- client, so the addon needs no texture file of its own.
+local ICON = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_8"
+
+function M.Init()
+    local LDB = LibStub and LibStub:GetLibrary("LibDataBroker-1.1", true)
+    local Icon = LibStub and LibStub:GetLibrary("LibDBIcon-1.0", true)
+    if not LDB or not Icon then
+        return
+    end
+
+    local obj = LDB:NewDataObject("MarkedForDeath", {
+        type = "launcher",
+        icon = ICON,
+        OnClick = function(_, button)
+            if button == "RightButton" then
+                MFD.UI.Rules:Toggle()
+            elseif button == "MiddleButton" then
+                MFD.UI.Assignments:Toggle()
+            else
+                MFD.UI.Config:Toggle()
+            end
+        end,
+        OnTooltipShow = function(tt)
+            tt:AddLine("Marked For Death")
+
+            if not MFD.db.settings.isMarkingEnabled then
+                tt:AddLine("|cffff4444MARKING DISABLED|r")
+            end
+
+            local count = 0
+            for _ in pairs(MFD.Rules.Active()) do
+                count = count + 1
+            end
+
+            tt:AddLine(string.format("|cffffffff%d|r active rules in %s",
+                count, tostring(MFD.Rules.currentInstanceKey or "no known raid")))
+
+            local authority = MFD.Comms.authority
+            if authority then
+                tt:AddLine(string.format("marker: |cffffffff%s|r (%s)",
+                    authority, MFD.Comms.authorityMode))
+            else
+                tt:AddLine("|cffff4444nobody can place icons|r")
+            end
+
+            -- Surfacing this on the tooltip matters: nameplates being off is
+            -- the single most common reason marking silently does nothing.
+            local cvarsOk, cvarMessage = MFD.Marker:CheckCvars()
+            if not cvarsOk then
+                tt:AddLine("|cffff4444" .. cvarMessage .. "|r")
+            end
+
+            tt:AddLine(" ")
+            tt:AddLine("|cff888888Left click: seats and settings|r")
+            tt:AddLine("|cff888888Right click: rules and mob search|r")
+            tt:AddLine("|cff888888Middle click: assignment panel|r")
+        end,
+    })
+
+    MFD.db.settings.minimap = MFD.db.settings.minimap or {}
+    Icon:Register("MarkedForDeath", obj, MFD.db.settings.minimap)
+
+    M.obj = obj
+    M.icon = Icon
+end
+
+-- Shows or hides the button and remembers the choice.
+function M:Toggle()
+    if not M.icon then
+        MFD.Error("minimap library not loaded")
+        return
+    end
+
+    MFD.db.settings.minimap.hide = not MFD.db.settings.minimap.hide
+
+    if MFD.db.settings.minimap.hide then
+        M.icon:Hide("MarkedForDeath")
+        MFD.Print("minimap button hidden. /mfd minimap to bring it back.")
+    else
+        M.icon:Show("MarkedForDeath")
+        MFD.Print("minimap button shown")
+    end
+end
+
+MFD.RegisterInit(function()
+    local ok, err = pcall(M.Init)
+    if not ok then
+        MFD.Error("minimap button failed to load: " .. tostring(err))
+    end
+end)
+
+_G.MarkedForDeath = MFD
+```
+
+- [ ] **Step 3: Update the TOC**
+
+Libraries load first, then logic, then UI, then `Minimap.lua`:
+
+```
+Libs\LibStub\LibStub.lua
+Libs\CallbackHandler-1.0\CallbackHandler-1.0.lua
+Libs\LibDataBroker-1.1\LibDataBroker-1.1.lua
+Libs\LibDBIcon-1.0\LibDBIcon-1.0.lua
+
+Helpers.lua
+Core.lua
+...
+Minimap.lua
+```
+
+- [ ] **Step 4: Add the settings default and the command**
+
+In `Core.lua`, add `minimap = { hide = false }` inside the `settings` table of `DB_DEFAULTS`, and:
+
+```lua
+commands.minimap = {
+    desc = "show or hide the minimap button",
+    run = function()
+        MFD.Minimap:Toggle()
+    end,
+}
+```
+
+- [ ] **Step 5: Run the tests**
+
+Run: `powershell -File scripts/run-tests.ps1 -Flavor anniversary -Addon MarkedForDeath`
+
+The count must not drop. `Minimap.lua` is not in the harness list, and the vendored libs are not either.
+
+- [ ] **Step 6: Verify in game**
+
+1. Deploy, `/reload`
+2. A skull button appears on the minimap ring
+3. Hover it: the tooltip names the active rule count, the current marker and mode, and warns in red if enemy nameplates are off
+4. Left click opens the seat editor, right click the rule editor, middle click the assignment panel
+5. Drag it around the ring, `/reload`, and confirm the position persisted
+6. `/mfd minimap` hides it, `/mfd minimap` again brings it back, and the choice survives a `/reload`
+7. BugSack is empty
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add AddonProjects/anniversary/MarkedForDeath
+git commit -m "Add minimap button"
+```
+
+---
+
+### Task 17: Documentation, versioning and the pull request
 
 **Files:**
 - Create: `Docs/MarkedForDeath.md`
