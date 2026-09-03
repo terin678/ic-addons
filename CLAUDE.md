@@ -16,7 +16,10 @@ Guild World of Warcraft addons. Read `CODING_STANDARDS.md` before changing any L
   `git branch --show-current` before committing. If on `main`, create `feature/<topic>`
   or `fix/<topic>` first.
 - Commit on the feature branch and push it. Open a PR with `gh pr create` when the user
-  asks for a merge; the template in `.github/` is the review checklist. Squash-merge.
+  asks for a merge; the template in `.github/` is the review checklist.
+- Merge with a merge commit (`gh pr merge --merge`), never a squash: each commit here is
+  written to stand on its own, and `main` keeps them so a single change can be found and
+  reverted on its own.
 
 ## Rules that matter most
 
