@@ -445,4 +445,91 @@ T.Case("Candidates: ToList is sorted by key so the allocator sees a stable order
     T.Eq(list[1].npcID, 100, "npcID carried through")
 end)
 
+local MARKER_LIMITS = { maxActions = 4, defenseLimit = 3, defenseWindow = 5 }
+
+T.Case("Marker: an unmarked mob produces a fresh apply", function()
+    local out = MFD.Marker.ComputeDiff({ ["100:AAA"] = 8 }, { ["100:AAA"] = 0 }, {}, {}, 100, MARKER_LIMITS)
+    T.Eq(#out.actions, 1, "one action")
+    T.Eq(out.actions[1].icon, 8, "the desired icon")
+    T.Eq(out.actions[1].isDefense, false, "a first placement is not a defense")
+end)
+
+T.Case("Marker: an unplaced mob reading zero never burns the defense budget", function()
+    -- A mob we have not marked reads 0 exactly like one whose icon was cleared.
+    -- Only the placed set separates them, and getting this wrong would make the
+    -- addon give up on packs it had never marked in the first place.
+    local defense = {}
+    for i = 1, 10 do
+        local out = MFD.Marker.ComputeDiff({ ["100:AAA"] = 8 }, { ["100:AAA"] = 0 }, {}, defense, 100 + i, MARKER_LIMITS)
+        T.Eq(#out.actions, 1, "tick " .. i .. " still tries")
+    end
+    T.Eq(defense["100:AAA"], nil, "and nothing was ever counted as a defense")
+end)
+
+T.Case("Marker: a mob already carrying the desired icon produces nothing", function()
+    local out = MFD.Marker.ComputeDiff({ ["100:AAA"] = 8 }, { ["100:AAA"] = 8 }, {}, {}, 100, MARKER_LIMITS)
+    T.Eq(#out.actions, 0, "no work to do")
+end)
+
+T.Case("Marker: an icon we placed that got cleared is re-applied as a defense", function()
+    local defense = {}
+    local placed = { ["100:AAA"] = true }
+    local out = MFD.Marker.ComputeDiff({ ["100:AAA"] = 8 }, { ["100:AAA"] = 0 }, placed, defense, 100, MARKER_LIMITS)
+    T.Eq(out.actions[1].isDefense, true, "counted as a defense")
+    T.Eq(defense["100:AAA"].count, 1, "defense counter incremented")
+end)
+
+T.Case("Marker: defending stops after the limit inside the window", function()
+    local defense = {}
+    local placed = { ["100:AAA"] = true }
+    local desired, actual = { ["100:AAA"] = 8 }, { ["100:AAA"] = 0 }
+
+    for i = 1, 3 do
+        local out = MFD.Marker.ComputeDiff(desired, actual, placed, defense, 100 + i, MARKER_LIMITS)
+        T.Eq(#out.actions, 1, "defense " .. i .. " still acts")
+    end
+
+    local out = MFD.Marker.ComputeDiff(desired, actual, placed, defense, 104, MARKER_LIMITS)
+    T.Eq(#out.actions, 0, "fourth attempt inside the window yields")
+    T.Eq(out.yielded[1], "100:AAA", "and reports which key it gave up on")
+end)
+
+T.Case("Marker: the defense window resets so a later clear is fought again", function()
+    local defense = {}
+    local placed = { ["100:AAA"] = true }
+    local desired, actual = { ["100:AAA"] = 8 }, { ["100:AAA"] = 0 }
+
+    for i = 1, 3 do
+        MFD.Marker.ComputeDiff(desired, actual, placed, defense, 100 + i, MARKER_LIMITS)
+    end
+
+    local out = MFD.Marker.ComputeDiff(desired, actual, placed, defense, 200, MARKER_LIMITS)
+    T.Eq(#out.actions, 1, "a fresh window means we defend again")
+    T.Eq(defense["100:AAA"].count, 1, "counter restarted")
+end)
+
+T.Case("Marker: actions are capped so a big pull does not burst", function()
+    local desired = {}
+    for i = 1, 10 do
+        desired["10" .. i .. ":AAA"] = 1
+    end
+    local out = MFD.Marker.ComputeDiff(desired, {}, {}, {}, 100, MARKER_LIMITS)
+    T.Eq(#out.actions, 4, "capped at maxActions")
+end)
+
+T.Case("Marker: actions come out in a deterministic order", function()
+    local desired = { ["300:CCC"] = 1, ["100:AAA"] = 2, ["200:BBB"] = 3 }
+    local out = MFD.Marker.ComputeDiff(desired, {}, {}, {}, 100, MARKER_LIMITS)
+    T.Eq(out.actions[1].key, "100:AAA", "sorted by key")
+    T.Eq(out.actions[2].key, "200:BBB", "second")
+    T.Eq(out.actions[3].key, "300:CCC", "third")
+end)
+
+T.Case("Marker: someone else's icon is corrected and counts as a defense", function()
+    local defense = {}
+    local out = MFD.Marker.ComputeDiff({ ["100:AAA"] = 8 }, { ["100:AAA"] = 5 }, {}, defense, 100, MARKER_LIMITS)
+    T.Eq(out.actions[1].icon, 8, "corrected to the desired icon")
+    T.Eq(out.actions[1].isDefense, true, "a foreign icon counts as a defense so the brake applies")
+end)
+
 _G.MarkedForDeath = MFD

@@ -12,4 +12,5 @@ Seats.lua
 Rules.lua
 Allocator.lua
 Candidates.lua
+Marker.lua
 Tests.lua

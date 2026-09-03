@@ -108,4 +108,10 @@ function Rules.Reorder(list, index, delta)
     return list
 end
 
+-- Returns the merged rules for the current instance as { [npcID] = rule }.
+-- Task 7 replaces this with the real instance-aware, comms-merged lookup.
+function Rules.Active()
+    return Rules.activeByNpcID or {}
+end
+
 _G.MarkedForDeath = MFD

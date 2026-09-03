@@ -135,6 +135,56 @@ commands.candidates = {
     end,
 }
 
+commands.mark = {
+    desc = "force a full re-mark of the visible pack",
+    run = function()
+        wipe(MFD.Marker.locked)
+        wipe(MFD.Marker.placed)
+        MFD.Print("re-marking")
+    end,
+}
+
+commands.clear = {
+    desc = "clear every icon on visible mobs",
+    run = function()
+        local cleared = 0
+        for _, entry in pairs(MFD.Candidates.set) do
+            if entry.unit then
+                SetRaidTarget(entry.unit, 0)
+                cleared = cleared + 1
+            end
+        end
+        wipe(MFD.Marker.locked)
+        wipe(MFD.Marker.placed)
+        MFD.Print("cleared " .. cleared .. " icons")
+    end,
+}
+
+commands.fixcvars = {
+    desc = "set the nameplate settings marking needs",
+    run = function()
+        SetCVar("nameplateShowEnemies", 1)
+        SetCVar("nameplateMaxDistance", 41)
+        MFD.Print("enemy nameplates on, distance set to 41 yards")
+    end,
+}
+
+-- Temporary hand-testing hook, removed in Task 7 once the rule editor exists.
+commands.testrule = {
+    desc = "temporary: rule the current target as a kill target",
+    run = function()
+        local guid = UnitGUID("target")
+        local npcID = guid and MFD.H.NpcIDFromKey(MFD.H.KeyFromGUID(guid) or "")
+        if not npcID then
+            MFD.Print("no valid creature targeted")
+            return
+        end
+        MFD.Rules.activeByNpcID = MFD.Rules.activeByNpcID or {}
+        MFD.Rules.activeByNpcID[npcID] = { npcID = npcID, intent = "KILL", rank = 10 }
+        MFD.Print("npc " .. npcID .. " will now be marked as a kill target")
+    end,
+}
+
 MFD.commands = commands
 
 SLASH_MARKEDFORDEATH1 = "/mfd"
