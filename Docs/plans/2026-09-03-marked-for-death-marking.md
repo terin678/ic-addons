@@ -695,13 +695,17 @@ T.Case("Seats: the default plan matches the agreed icon bindings", function()
     T.Eq(p[8].intent, "KILL", "skull")
     T.Eq(p[7].intent, "KILL", "cross")
     T.Eq(p[6].intent, "KILL", "square")
-    T.Eq(p[1].intent, "KILL", "star")
-    T.Eq(p[1].ordinal, 4, "star is kill 4")
+    T.Eq(p[2].intent, "KILL", "circle")
+    T.Eq(p[2].ordinal, 4, "circle is kill 4")
     T.Eq(p[5].intent, "SHEEP", "moon")
     T.Eq(p[5].pin, "Grimmtusk", "moon is pinned")
-    T.Eq(p[4].intent, "SHEEP", "triangle")
+    T.Eq(p[5].ordinal, 1, "moon is sheep 1")
+    T.Eq(p[1].intent, "SHEEP", "star")
+    T.Eq(p[1].ordinal, 2, "star is sheep 2")
+    T.Eq(p[4].intent, "BANISH", "triangle")
+    T.Eq(p[4].ordinal, 1, "triangle is banish 1")
     T.Eq(p[3].intent, "BANISH", "diamond")
-    T.Eq(p[2].intent, "BANISH", "circle")
+    T.Eq(p[3].ordinal, 2, "diamond is banish 2")
 end)
 ```
 
@@ -750,11 +754,11 @@ Seats.DEFAULT_PLAN = {
     [SKULL]    = { intent = "KILL",   ordinal = 1 },
     [CROSS]    = { intent = "KILL",   ordinal = 2 },
     [SQUARE]   = { intent = "KILL",   ordinal = 3 },
-    [STAR]     = { intent = "KILL",   ordinal = 4 },
+    [CIRCLE]   = { intent = "KILL",   ordinal = 4 },
     [MOON]     = { intent = "SHEEP",  ordinal = 1, pin = "Grimmtusk" },
-    [TRIANGLE] = { intent = "SHEEP",  ordinal = 2 },
-    [DIAMOND]  = { intent = "BANISH", ordinal = 1 },
-    [CIRCLE]   = { intent = "BANISH", ordinal = 2 },
+    [STAR]     = { intent = "SHEEP",  ordinal = 2 },
+    [TRIANGLE] = { intent = "BANISH", ordinal = 1 },
+    [DIAMOND]  = { intent = "BANISH", ordinal = 2 },
 }
 
 local function isEligible(intent, class)
@@ -3879,7 +3883,7 @@ MFD.UI.Config = MFD.UI.Config or {}
 local Config = MFD.UI.Config
 
 local ROW_HEIGHT = 24     -- pixels
-local ICON_ORDER = { 8, 7, 6, 1, 5, 4, 3, 2 }
+local ICON_ORDER = { 8, 7, 6, 2, 5, 1, 4, 3 }
 
 -- Returns a reusable row from pool, creating it only when the pool is short.
 -- Shared by every list in the addon so no list churns frames on refresh.
@@ -4068,7 +4072,7 @@ Expected: `77 passed, 0 failed, 77 total`. UI files are not loaded by the harnes
 - [ ] **Step 5: Verify in game**
 
 1. Deploy, `/reload`, `/mfd config`
-2. Eight rows appear, one per icon, with the correct icon textures and the default bindings: Skull/Cross/Square/Star as Kill 1 to 4, Moon and Triangle as Sheep 1 and 2, Diamond and Circle as Banish 1 and 2
+2. Eight rows appear, one per icon, with the correct icon textures and the default bindings: Skull/Cross/Square/Circle as Kill 1 to 4, Moon and Star as Sheep 1 and 2, Triangle and Diamond as Banish 1 and 2
 3. Moon shows `Grimmtusk` in its pin box
 4. Solo on a non-mage, Moon's owner column reads "nobody can do this" in red and Skull's reads "always available" in green
 5. Click Change on Circle a few times and confirm the intent cycles and the owner column updates
@@ -4378,10 +4382,10 @@ MFD.Announce.THROTTLE_SECONDS = 5
 -- Display order and names for the eight icons, kill icons first so the line
 -- always opens with what dies first.
 local ICON_NAMES = {
-    [8] = "Skull", [7] = "Cross", [6] = "Square", [1] = "Star",
-    [5] = "Moon", [4] = "Triangle", [3] = "Diamond", [2] = "Circle",
+    [8] = "Skull", [7] = "Cross", [6] = "Square", [2] = "Circle",
+    [5] = "Moon", [1] = "Star", [4] = "Triangle", [3] = "Diamond",
 }
-local ICON_ORDER = { 8, 7, 6, 1, 5, 4, 3, 2 }
+local ICON_ORDER = { 8, 7, 6, 2, 5, 1, 4, 3 }
 
 -- Takes the allocator's assignment list. Returns one compact line for raid
 -- chat, ordered by the display order above so it reads identically every pull.

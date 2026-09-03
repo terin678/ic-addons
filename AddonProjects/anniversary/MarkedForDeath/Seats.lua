@@ -32,11 +32,11 @@ Seats.DEFAULT_PLAN = {
     [SKULL]    = { intent = "KILL",   ordinal = 1 },
     [CROSS]    = { intent = "KILL",   ordinal = 2 },
     [SQUARE]   = { intent = "KILL",   ordinal = 3 },
-    [STAR]     = { intent = "KILL",   ordinal = 4 },
+    [CIRCLE]   = { intent = "KILL",   ordinal = 4 },
     [MOON]     = { intent = "SHEEP",  ordinal = 1, pin = "Grimmtusk" },
-    [TRIANGLE] = { intent = "SHEEP",  ordinal = 2 },
-    [DIAMOND]  = { intent = "BANISH", ordinal = 1 },
-    [CIRCLE]   = { intent = "BANISH", ordinal = 2 },
+    [STAR]     = { intent = "SHEEP",  ordinal = 2 },
+    [TRIANGLE] = { intent = "BANISH", ordinal = 1 },
+    [DIAMOND]  = { intent = "BANISH", ordinal = 2 },
 }
 
 local function isEligible(intent, class)

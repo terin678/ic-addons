@@ -56,7 +56,7 @@ supplies the icon.
 
 The payoff is that a pinned player keeps their icon forever. Grimmtusk is pinned to sheep
 seat one, so Grimmtusk is always Moon. A second mage inherits sheep seat two and is always
-Triangle. Nobody renegotiates, and the assignment does not depend on which mob the raid
+Star. Nobody renegotiates, and the assignment does not depend on which mob the raid
 happens to be looking at.
 
 ### Default seat plan
@@ -66,11 +66,11 @@ happens to be looking at.
 | Skull | 8 | KILL | 1 |
 | Cross | 7 | KILL | 2 |
 | Square | 6 | KILL | 3 |
-| Star | 1 | KILL | 4 |
+| Circle | 2 | KILL | 4 |
 | Moon | 5 | SHEEP | 1 |
-| Triangle | 4 | SHEEP | 2 |
-| Diamond | 3 | BANISH | 1 |
-| Circle | 2 | BANISH | 2 |
+| Star | 1 | SHEEP | 2 |
+| Triangle | 4 | BANISH | 1 |
+| Diamond | 3 | BANISH | 2 |
 
 Sheep seat 1 ships pinned to `Grimmtusk`. Every binding is editable.
 
