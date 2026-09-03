@@ -449,6 +449,52 @@ commands.intents = {
     end,
 }
 
+commands.rules = {
+    desc = "open the rule editor and mob search",
+    run = function()
+        MFD.UI.Rules:Toggle()
+    end,
+}
+
+-- Binding display names. These must be globals; the client reads them by name
+-- from the keybinding UI, which is the documented exception to the one-global
+-- rule in CODING_STANDARDS.md.
+BINDING_HEADER_MARKEDFORDEATH = "Marked For Death"
+BINDING_NAME_MARKEDFORDEATH_ADD = "Add target as a rule"
+BINDING_NAME_MARKEDFORDEATH_REMARK = "Re-mark the visible pack"
+BINDING_NAME_MARKEDFORDEATH_RULES = "Toggle the rule editor"
+BINDING_NAME_MARKEDFORDEATH_ASSIGNMENTS = "Toggle the assignment panel"
+
+MFD.Bindings = {}
+
+-- Opens the rule editor pre-filled with whatever the player is pointing at.
+-- This is the primary way rules get created; search is for planning at a desk.
+function MFD.Bindings.AddTarget()
+    local unit, npcID, name, why = pointedAtCreature()
+    if not unit then
+        MFD.Error(why)
+        return
+    end
+
+    MFD.UI.Rules:OpenFor(npcID, name, unit)
+end
+
+function MFD.Bindings.Remark()
+    commands.mark.run()
+end
+
+function MFD.Bindings.ToggleRules()
+    MFD.UI.Rules:Toggle()
+end
+
+function MFD.Bindings.ToggleAssignments()
+    if MFD.UI.Assignments then
+        MFD.UI.Assignments:Toggle()
+    else
+        MFD.Error("the assignment panel is not in this build yet")
+    end
+end
+
 MFD.commands = commands
 
 SLASH_MARKEDFORDEATH1 = "/mfd"

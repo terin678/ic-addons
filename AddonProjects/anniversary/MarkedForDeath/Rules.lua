@@ -123,6 +123,21 @@ Rules.INSTANCE_KEYS = {
     [580] = "SUNWELL",
 }
 
+-- Display names as GetRealZoneText reports them, so learned mobs (which store
+-- a zone name, not a key) can be filtered by instance in search. Verify these
+-- against the client the same way as the map ids.
+Rules.INSTANCE_ZONE_NAMES = {
+    KARAZHAN      = "Karazhan",
+    GRUUL         = "Gruul's Lair",
+    MAGTHERIDON   = "Magtheridon's Lair",
+    SERPENTSHRINE = "Serpentshrine Cavern",
+    TEMPESTKEEP   = "Tempest Keep",
+    HYJAL         = "Hyjal Summit",
+    BLACKTEMPLE   = "Black Temple",
+    ZULAMAN       = "Zul'Aman",
+    SUNWELL       = "Sunwell Plateau",
+}
+
 -- Takes an instance map id. Returns the key rules are filed under.
 --
 -- TBC raids get stable named keys so rule sets read well and share cleanly

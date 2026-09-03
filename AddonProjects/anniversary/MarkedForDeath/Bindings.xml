@@ -1,0 +1,14 @@
+<Bindings>
+    <Binding name="MARKEDFORDEATH_ADD" header="MARKEDFORDEATH" category="ADDONS">
+        MarkedForDeath.Bindings.AddTarget()
+    </Binding>
+    <Binding name="MARKEDFORDEATH_REMARK" category="ADDONS">
+        MarkedForDeath.Bindings.Remark()
+    </Binding>
+    <Binding name="MARKEDFORDEATH_RULES" category="ADDONS">
+        MarkedForDeath.Bindings.ToggleRules()
+    </Binding>
+    <Binding name="MARKEDFORDEATH_ASSIGNMENTS" category="ADDONS">
+        MarkedForDeath.Bindings.ToggleAssignments()
+    </Binding>
+</Bindings>

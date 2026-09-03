@@ -266,4 +266,407 @@ function Config:Toggle()
     Config:Refresh()
 end
 
+-- Rule editor and mob search. Left pane searches bundled and learned mobs and
+-- adds them as rules; right pane lists the rules active for one instance with
+-- their priority, intent and provenance.
+MFD.UI.Rules = MFD.UI.Rules or {}
+local RulesUI = MFD.UI.Rules
+
+local RESULT_ROWS = 12     -- visible search results
+local RULE_ROWS = 14       -- visible rules
+local RULE_ROW_HEIGHT = 24 -- pixels
+
+local rulesFrame
+local resultRows = {}
+local ruleRows = {}
+local filterKey = nil
+local lastResults = {}
+
+-- Every mutation of the local rule set goes through here. Missing either call
+-- leaves the raid out of sync, which is the single most likely bug in this
+-- window, so there is exactly one place that can forget.
+local function commitRules()
+    MFD.Comms.Republish()
+    MFD.Comms:AdvertiseRules()
+    RulesUI:Refresh()
+end
+
+local function playerName()
+    return UnitName("player")
+end
+
+local function localList(key)
+    MFD.db.rules[key] = MFD.db.rules[key] or {}
+    return MFD.db.rules[key]
+end
+
+local function localIndexOf(list, npcID)
+    for i, rule in ipairs(list) do
+        if rule.npcID == npcID then
+            return i
+        end
+    end
+    return nil
+end
+
+-- Returns the local copy of a rule for editing, copying a merged rule from
+-- another contributor into the local set first so their table is never
+-- aliased. Under the merge rules the local copy then wins if this player is
+-- the Raid Lead, and shows as a divergence otherwise.
+local function ownedRule(key, merged)
+    local list = localList(key)
+    local index = localIndexOf(list, merged.npcID)
+    if index then
+        return list[index], index
+    end
+
+    local copy = MFD.H.DeepCopy(merged)
+    copy.owner = nil
+    copy.rank = MFD.Rules.NextRank(list)
+    list[#list + 1] = copy
+    return copy, #list
+end
+
+local function filterKeys()
+    local keys = { false }
+    local seen = {}
+    for _, key in pairs(MFD.Rules.INSTANCE_KEYS) do
+        if not seen[key] then
+            seen[key] = true
+            keys[#keys + 1] = key
+        end
+    end
+    table.sort(keys, function(a, b)
+        return tostring(a) < tostring(b)
+    end)
+    return keys
+end
+
+local function cycleFilter()
+    local keys = filterKeys()
+    local index = 1
+    for i, key in ipairs(keys) do
+        if (key or nil) == filterKey then
+            index = i
+            break
+        end
+    end
+    local nextKey = keys[(index % #keys) + 1]
+    filterKey = nextKey or nil
+end
+
+local function intentNamesSorted()
+    local names = {}
+    for intent in pairs(MFD.Seats.INTENTS) do
+        names[#names + 1] = intent
+    end
+    table.sort(names)
+    return names
+end
+
+local function nextIntent(current)
+    local names = intentNamesSorted()
+    for i, name in ipairs(names) do
+        if name == current then
+            return names[(i % #names) + 1]
+        end
+    end
+    return names[1]
+end
+
+local function buildResultRow(row)
+    if row.isBuilt then
+        return
+    end
+    row.isBuilt = true
+
+    row.name = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    row.name:SetPoint("LEFT", row, "LEFT", 0, 0)
+    row.name:SetPoint("RIGHT", row, "RIGHT", -50, 0)
+    row.name:SetJustifyH("LEFT")
+
+    row.add = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+    row.add:SetSize(44, 20)
+    row.add:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+    row.add:SetText("Add")
+    row.add:SetScript("OnClick", function()
+        if row.result then
+            RulesUI:OpenFor(row.result.npcID, row.result.name)
+        end
+    end)
+end
+
+local function buildRuleRow(row)
+    if row.isBuilt then
+        return
+    end
+    row.isBuilt = true
+
+    row.rank = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    row.rank:SetPoint("LEFT", row, "LEFT", 0, 0)
+    row.rank:SetWidth(28)
+    row.rank:SetJustifyH("RIGHT")
+
+    row.name = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    row.name:SetPoint("LEFT", row.rank, "RIGHT", 6, 0)
+    row.name:SetWidth(150)
+    row.name:SetJustifyH("LEFT")
+
+    row.intent = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+    row.intent:SetSize(88, 20)
+    row.intent:SetPoint("LEFT", row.name, "RIGHT", 4, 0)
+    row.intent:SetScript("OnClick", function()
+        if not row.rule then
+            return
+        end
+        local rule = ownedRule(row.instanceKey, row.rule)
+        rule.intent = nextIntent(rule.intent)
+        commitRules()
+    end)
+
+    row.up = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+    row.up:SetSize(24, 20)
+    row.up:SetPoint("LEFT", row.intent, "RIGHT", 4, 0)
+    row.up:SetText("^")
+    row.up:SetScript("OnClick", function()
+        if not row.rule then
+            return
+        end
+        local list = localList(row.instanceKey)
+        local _, index = ownedRule(row.instanceKey, row.rule)
+        MFD.Rules.Reorder(list, index, -1)
+        commitRules()
+    end)
+
+    row.down = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+    row.down:SetSize(24, 20)
+    row.down:SetPoint("LEFT", row.up, "RIGHT", 2, 0)
+    row.down:SetText("v")
+    row.down:SetScript("OnClick", function()
+        if not row.rule then
+            return
+        end
+        local list = localList(row.instanceKey)
+        local _, index = ownedRule(row.instanceKey, row.rule)
+        MFD.Rules.Reorder(list, index, 1)
+        commitRules()
+    end)
+
+    row.delete = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+    row.delete:SetSize(24, 20)
+    row.delete:SetPoint("LEFT", row.down, "RIGHT", 6, 0)
+    row.delete:SetText("X")
+    row.delete:SetScript("OnClick", function()
+        if not row.rule then
+            return
+        end
+        local list = localList(row.instanceKey)
+        local index = localIndexOf(list, row.rule.npcID)
+        if index then
+            table.remove(list, index)
+            commitRules()
+        end
+    end)
+end
+
+local function paintResults()
+    local bundled = MFD.Data and MFD.Data.Mobs or {}
+    lastResults = MFD.Search(rulesFrame.search:GetText(), filterKey, bundled, MFD.db.learnedMobs)
+
+    local shown = 0
+    for index, result in ipairs(lastResults) do
+        if index > RESULT_ROWS then
+            break
+        end
+        local row = MFD.UI.AcquireRow(rulesFrame.results, resultRows, index, RULE_ROW_HEIGHT)
+        buildResultRow(row)
+        row.result = result
+        local color = result.source == "learned" and "|cffffcc66" or ""
+        row.name:SetText(color .. result.name .. "|r  |cff666666" .. result.npcID .. "|r")
+        shown = index
+    end
+
+    MFD.UI.ReleaseRows(resultRows, shown + 1)
+
+    if #lastResults == 0 then
+        rulesFrame.resultsNote:SetText("|cff999999no mobs match. Target one and press the add key.|r")
+    elseif #lastResults > RESULT_ROWS then
+        rulesFrame.resultsNote:SetText(string.format("|cff999999showing %d of %d, keep typing|r", RESULT_ROWS, #lastResults))
+    else
+        rulesFrame.resultsNote:SetText("")
+    end
+end
+
+local function paintRules()
+    local key = filterKey or MFD.Rules.currentInstanceKey
+    rulesFrame.ruleHeader:SetText("Rules for " .. tostring(key or "no known zone"))
+
+    local ranked = key and MFD.Rules.Ranked(MFD.Rules.merged[key] or {}) or {}
+    local me = playerName()
+    local hasBadRule = false
+
+    local shown = 0
+    for index, rule in ipairs(ranked) do
+        if index > RULE_ROWS then
+            break
+        end
+        local row = MFD.UI.AcquireRow(rulesFrame.ruleList, ruleRows, index, RULE_ROW_HEIGHT)
+        buildRuleRow(row)
+        row.rule = rule
+        row.instanceKey = key
+
+        local isMine = rule.owner == me or rule.owner == nil
+        local color = isMine and "" or "|cffffcc66"
+        local suffix = isMine and "" or ("  (" .. tostring(rule.owner) .. ")")
+
+        row.rank:SetText(tostring(rule.rank))
+        row.name:SetText(color .. (rule.name or ("npc " .. rule.npcID)) .. suffix .. "|r")
+
+        local label = MFD.Seats.INTENTS[rule.intent] and MFD.Seats.INTENTS[rule.intent].label or rule.intent
+        local learned = MFD.db.learnedMobs[rule.npcID]
+        local canApply = MFD.Seats.CanIntentApply(rule.intent, learned and learned.creatureType)
+        row.intent:SetText((canApply and "" or "|cffff4444") .. label .. "|r")
+        if not canApply then
+            hasBadRule = true
+        end
+
+        -- Merged rules are read only until touched; touching one copies it
+        -- into the local set. The arrows stay enabled for that reason, but
+        -- delete only ever removes a local rule.
+        row.delete:SetEnabled(isMine)
+
+        shown = index
+    end
+
+    MFD.UI.ReleaseRows(ruleRows, shown + 1)
+
+    if hasBadRule and not rulesFrame.hasPlayedBadSound then
+        rulesFrame.hasPlayedBadSound = true
+        MFD.PlayBadMarkSound()
+    elseif not hasBadRule then
+        rulesFrame.hasPlayedBadSound = false
+    end
+end
+
+function RulesUI:Refresh()
+    if not rulesFrame or not rulesFrame:IsShown() then
+        return
+    end
+
+    rulesFrame.filter:SetText(filterKey and filterKey or "this zone")
+    paintResults()
+    paintRules()
+end
+
+-- Shows the editor and makes sure a rule exists for npcID in the current
+-- instance, adding it as a kill rule when absent. The add-target keybind and
+-- the search results both land here. When a unit token is passed, the
+-- creature type check runs against the live unit so the warning is immediate.
+function RulesUI:OpenFor(npcID, name, unit)
+    local key = MFD.Rules.currentInstanceKey
+    if not key then
+        MFD.Error("cannot tell what zone this is yet, try again in a moment")
+        return
+    end
+
+    if not rulesFrame or not rulesFrame:IsShown() then
+        RulesUI:Toggle()
+    end
+
+    filterKey = nil
+
+    local list = localList(key)
+    if not localIndexOf(list, npcID) then
+        list[#list + 1] = {
+            npcID = npcID,
+            name = name,
+            intent = "KILL",
+            rank = MFD.Rules.NextRank(list),
+        }
+        MFD.Print(string.format("%s added as Kill, priority %d in %s. Click its intent to change it.",
+            tostring(name), list[#list].rank, key))
+    end
+
+    commitRules()
+end
+
+local function buildRulesFrame()
+    rulesFrame = CreateFrame("Frame", "MarkedForDeathRulesFrame", UIParent, "BasicFrameTemplateWithInset")
+    rulesFrame:SetSize(720, 440)
+    rulesFrame:SetPoint("CENTER")
+    rulesFrame:SetMovable(true)
+    rulesFrame:EnableMouse(true)
+    rulesFrame:RegisterForDrag("LeftButton")
+    rulesFrame:SetScript("OnDragStart", rulesFrame.StartMoving)
+    rulesFrame:SetScript("OnDragStop", rulesFrame.StopMovingOrSizing)
+    rulesFrame:SetFrameStrata("DIALOG")
+
+    rulesFrame.title = rulesFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    rulesFrame.title:SetPoint("TOP", rulesFrame, "TOP", 0, -6)
+    rulesFrame.title:SetText("Marked For Death: rules")
+
+    -- Left pane: search.
+    rulesFrame.search = CreateFrame("EditBox", nil, rulesFrame, "InputBoxTemplate")
+    rulesFrame.search:SetSize(200, 20)
+    rulesFrame.search:SetPoint("TOPLEFT", rulesFrame, "TOPLEFT", 20, -34)
+    rulesFrame.search:SetAutoFocus(false)
+    rulesFrame.search:SetScript("OnTextChanged", function()
+        paintResults()
+    end)
+    rulesFrame.search:SetScript("OnEscapePressed", function(box)
+        box:ClearFocus()
+    end)
+
+    rulesFrame.filter = CreateFrame("Button", nil, rulesFrame, "UIPanelButtonTemplate")
+    rulesFrame.filter:SetSize(110, 20)
+    rulesFrame.filter:SetPoint("LEFT", rulesFrame.search, "RIGHT", 6, 0)
+    rulesFrame.filter:SetScript("OnClick", function()
+        cycleFilter()
+        RulesUI:Refresh()
+    end)
+
+    rulesFrame.resultsNote = rulesFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    rulesFrame.resultsNote:SetPoint("TOPLEFT", rulesFrame.search, "BOTTOMLEFT", 0, -4)
+    rulesFrame.resultsNote:SetWidth(320)
+    rulesFrame.resultsNote:SetJustifyH("LEFT")
+
+    rulesFrame.results = CreateFrame("Frame", nil, rulesFrame)
+    rulesFrame.results:SetPoint("TOPLEFT", rulesFrame, "TOPLEFT", 6, -76)
+    rulesFrame.results:SetPoint("BOTTOMRIGHT", rulesFrame, "BOTTOMLEFT", 336, 6)
+
+    -- Right pane: rules.
+    rulesFrame.ruleHeader = rulesFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    rulesFrame.ruleHeader:SetPoint("TOPLEFT", rulesFrame, "TOPLEFT", 350, -36)
+
+    rulesFrame.ruleHint = rulesFrame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    rulesFrame.ruleHint:SetPoint("TOPLEFT", rulesFrame.ruleHeader, "BOTTOMLEFT", 0, -2)
+    rulesFrame.ruleHint:SetText("top = highest priority.  amber = merged from another player")
+
+    rulesFrame.ruleList = CreateFrame("Frame", nil, rulesFrame)
+    rulesFrame.ruleList:SetPoint("TOPLEFT", rulesFrame, "TOPLEFT", 342, -76)
+    rulesFrame.ruleList:SetPoint("BOTTOMRIGHT", rulesFrame, "BOTTOMRIGHT", -6, 6)
+
+    rulesFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
+    rulesFrame:SetScript("OnEvent", function()
+        RulesUI:Refresh()
+    end)
+
+    tinsert(UISpecialFrames, "MarkedForDeathRulesFrame")
+end
+
+function RulesUI:Toggle()
+    if not rulesFrame then
+        buildRulesFrame()
+    end
+
+    if rulesFrame:IsShown() then
+        rulesFrame:Hide()
+        return
+    end
+
+    filterKey = nil
+    rulesFrame:Show()
+    RulesUI:Refresh()
+end
+
 _G.MarkedForDeath = MFD

@@ -1166,4 +1166,59 @@ T.Case("Candidates: observing with no unit keeps an existing handle", function()
     T.Eq(set["100:AAA"].seenAt, 501, "sighting still refreshed")
 end)
 
+T.Case("Search: matches on a case-insensitive substring", function()
+    local bundled = { [100] = { "Illidari Nightlord", "BLACKTEMPLE" } }
+    local results = MFD.Search("nightlord", nil, bundled, {})
+    T.Eq(#results, 1, "one hit")
+    T.Eq(results[1].npcID, 100, "the right mob")
+    T.Eq(results[1].source, "bundled", "provenance")
+end)
+
+T.Case("Search: an instance filter excludes other raids", function()
+    local bundled = {
+        [100] = { "Illidari Nightlord", "BLACKTEMPLE" },
+        [200] = { "Illidari Watcher", "HYJAL" },
+    }
+    local results = MFD.Search("illidari", "BLACKTEMPLE", bundled, {})
+    T.Eq(#results, 1, "filtered")
+    T.Eq(results[1].npcID, 100, "the BT one")
+end)
+
+T.Case("Search: learned mobs appear alongside bundled ones", function()
+    local learned = { [300] = { name = "Unlisted Trash", zone = "Sunwell Plateau" } }
+    local results = MFD.Search("unlisted", nil, {}, learned)
+    T.Eq(#results, 1, "found")
+    T.Eq(results[1].source, "learned", "marked as derived so the UI can amber it")
+end)
+
+T.Case("Search: a bundled entry wins over a learned duplicate", function()
+    local bundled = { [100] = { "Illidari Nightlord", "BLACKTEMPLE" } }
+    local learned = { [100] = { name = "Illidari Nightlord", zone = "Black Temple" } }
+    local results = MFD.Search("illidari", nil, bundled, learned)
+    T.Eq(#results, 1, "not listed twice")
+    T.Eq(results[1].source, "bundled", "the curated entry wins")
+end)
+
+T.Case("Search: results are sorted by name for a stable list", function()
+    local bundled = { [1] = { "Zealot", "BT" }, [2] = { "Acolyte", "BT" } }
+    local results = MFD.Search("", nil, bundled, {})
+    T.Eq(results[1].name, "Acolyte", "alphabetical")
+    T.Eq(results[2].name, "Zealot", "second")
+end)
+
+T.Case("Search: a learned mob is filtered by the zone it was seen in", function()
+    -- Learned entries carry a zone name, not an instance key, so the filter
+    -- matches through the instance's display name. A learned mob seen in a
+    -- zone we cannot map is shown rather than hidden: losing it is worse.
+    local learned = {
+        [300] = { name = "Some Trash", zone = "Black Temple" },
+        [400] = { name = "Other Trash", zone = "Hyjal Summit" },
+        [500] = { name = "Odd Trash", zone = "Somewhere Unmapped" },
+    }
+    local results = MFD.Search("trash", "BLACKTEMPLE", {}, learned)
+    T.Eq(#results, 2, "the BT one and the unmappable one")
+    T.Eq(results[1].npcID, 500, "Odd sorts before Some")
+    T.Eq(results[2].npcID, 300, "then the BT mob")
+end)
+
 _G.MarkedForDeath = MFD

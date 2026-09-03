@@ -89,4 +89,57 @@ function H.SortedKeys(t)
     return keys
 end
 
+-- Searches the bundled and learned mob tables. Takes a case-insensitive query,
+-- an optional instance key filter, the bundled table
+-- ({ [npcID] = { name, instanceKey } }) and the learned table
+-- ({ [npcID] = { name, zone } }). Returns an array of { npcID, name, source }
+-- sorted by name. The tables are arguments rather than globals so this stays
+-- pure and testable.
+--
+-- Learned entries carry the zone name they were seen in rather than an
+-- instance key, so the filter matches them through the instance's display
+-- name. A learned mob from a zone that cannot be mapped is shown rather than
+-- hidden, because losing it is worse than one extra row.
+function MFD.Search(query, instanceKey, bundled, learned)
+    local needle = string.lower(query or "")
+    local results, seen = {}, {}
+
+    local zoneNames = MFD.Rules and MFD.Rules.INSTANCE_ZONE_NAMES or {}
+    local targetZone = instanceKey and zoneNames[instanceKey]
+
+    local knownZones = {}
+    for _, zoneName in pairs(zoneNames) do
+        knownZones[zoneName] = true
+    end
+
+    for _, npcID in ipairs(H.SortedKeys(bundled)) do
+        local entry = bundled[npcID]
+        local matchesInstance = not instanceKey or entry[2] == instanceKey
+        if matchesInstance and string.find(string.lower(entry[1]), needle, 1, true) then
+            seen[npcID] = true
+            results[#results + 1] = { npcID = npcID, name = entry[1], source = "bundled" }
+        end
+    end
+
+    for _, npcID in ipairs(H.SortedKeys(learned)) do
+        local entry = learned[npcID]
+        if not seen[npcID] and entry.name and string.find(string.lower(entry.name), needle, 1, true) then
+            local isMappable = entry.zone and knownZones[entry.zone]
+            local matchesInstance = not targetZone or not isMappable or entry.zone == targetZone
+            if matchesInstance then
+                results[#results + 1] = { npcID = npcID, name = entry.name, source = "learned" }
+            end
+        end
+    end
+
+    table.sort(results, function(a, b)
+        if a.name ~= b.name then
+            return a.name < b.name
+        end
+        return a.npcID < b.npcID
+    end)
+
+    return results
+end
+
 _G.MarkedForDeath = MFD
