@@ -394,7 +394,9 @@ function UI.BuildBook(page)
                 row:SetScript("OnEnter", function(self)
                     local e = self.entry
                     if not e then return end
-                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                    -- Anchor to the cursor, not the row: rows are wide and the
+                    -- tooltip would otherwise appear far from where you are pointing.
+                    GameTooltip:SetOwner(self, "ANCHOR_CURSOR")
                     if e.link then
                         GameTooltip:SetHyperlink(e.link)
                     else
