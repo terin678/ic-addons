@@ -630,4 +630,61 @@ T.Case("Diagnose: a backup says who the marker is rather than looking broken", f
     T.Eq(reasons[1], "Grimmtusk is the marker, you are a backup", "expected, not a fault")
 end)
 
+-- Fake UnitGUID: maps a unit token to whatever creature it points at right now.
+local function guidLookup(map)
+    return function(unit) return map[unit] end
+end
+
+local GUID_A = "Creature-0-3299-530-1-100-00000000AA"
+local GUID_B = "Creature-0-3299-530-1-200-00000000BB"
+
+T.Case("Candidates: a nameplate token still pointing at its mob is actionable", function()
+    local set = {}
+    MFD.Candidates.Observe(set, "100:00000000AA", 100, "nameplate1", 500)
+    local units = MFD.Candidates.ActionableUnits(set, guidLookup({ nameplate1 = GUID_A }))
+    T.Eq(units["100:00000000AA"], "nameplate1", "usable")
+end)
+
+-- The bug that shipped. "mouseover" is an alias, not an identity: once the
+-- cursor moves it refers to a different creature, so acting on a stored copy
+-- stamps an icon onto whatever the player happens to be pointing at.
+T.Case("Candidates: a stale mouseover token is never actionable", function()
+    local set = {}
+    MFD.Candidates.Observe(set, "100:00000000AA", 100, "mouseover", 500)
+    local units = MFD.Candidates.ActionableUnits(set, guidLookup({ mouseover = GUID_B }))
+    T.Eq(units["100:00000000AA"], nil, "refuses to act through a token that moved")
+end)
+
+T.Case("Candidates: a mouseover token still on the same mob is actionable", function()
+    local set = {}
+    MFD.Candidates.Observe(set, "100:00000000AA", 100, "mouseover", 500)
+    local units = MFD.Candidates.ActionableUnits(set, guidLookup({ mouseover = GUID_A }))
+    T.Eq(units["100:00000000AA"], "mouseover", "valid right now, so usable")
+end)
+
+T.Case("Candidates: a token resolving to nothing is not actionable", function()
+    local set = {}
+    MFD.Candidates.Observe(set, "100:00000000AA", 100, "target", 500)
+    local units = MFD.Candidates.ActionableUnits(set, guidLookup({}))
+    T.Eq(units["100:00000000AA"], nil, "no unit, no action")
+end)
+
+T.Case("Candidates: an entry known only from a peer sighting has no unit", function()
+    local set = {}
+    MFD.Candidates.Observe(set, "100:00000000AA", 100, nil, 500)
+    local units = MFD.Candidates.ActionableUnits(set, guidLookup({ nameplate1 = GUID_A }))
+    T.Eq(units["100:00000000AA"], nil, "nothing to act through")
+end)
+
+T.Case("Candidates: a recycled nameplate token is not actionable for the old mob", function()
+    -- Nameplate tokens are reused as mobs die and spawn, so they are durable
+    -- but not permanent. The same check covers it.
+    local set = {}
+    MFD.Candidates.Observe(set, "100:00000000AA", 100, "nameplate1", 500)
+    MFD.Candidates.Observe(set, "200:00000000BB", 200, "nameplate2", 500)
+    local units = MFD.Candidates.ActionableUnits(set, guidLookup({ nameplate1 = GUID_B, nameplate2 = GUID_B }))
+    T.Eq(units["100:00000000AA"], nil, "the recycled token no longer means the old mob")
+    T.Eq(units["200:00000000BB"], "nameplate2", "and the live one still works")
+end)
+
 _G.MarkedForDeath = MFD

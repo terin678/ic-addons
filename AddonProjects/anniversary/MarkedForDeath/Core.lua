@@ -165,12 +165,13 @@ commands.mark = {
 commands.clear = {
     desc = "clear every icon on visible mobs",
     run = function()
+        -- Routed through ActionableUnits for the same reason the marker is:
+        -- clearing through a stale token wipes the icon off whatever the
+        -- player is currently pointing at.
         local cleared = 0
-        for _, entry in pairs(MFD.Candidates.set) do
-            if entry.unit then
-                SetRaidTarget(entry.unit, 0)
-                cleared = cleared + 1
-            end
+        for _, unit in pairs(MFD.Candidates.ActionableUnits(MFD.Candidates.set, UnitGUID)) do
+            SetRaidTarget(unit, 0)
+            cleared = cleared + 1
         end
         wipe(MFD.Marker.locked)
         wipe(MFD.Marker.placed)

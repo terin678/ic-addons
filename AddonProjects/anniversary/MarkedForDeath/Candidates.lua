@@ -75,6 +75,31 @@ function Candidates.ToList(set)
     return list
 end
 
+-- Returns { [key] = unitToken } for entries whose stored token STILL refers to
+-- that same mob. guidOf(unit) returns a unit's current GUID.
+--
+-- Unit tokens are aliases, not identities. "mouseover" and "target" point at
+-- whatever the player is currently pointing at, and even nameplate tokens are
+-- recycled as mobs die and spawn. Acting on a stored token without
+-- re-validating it stamps icons onto the wrong creatures, which is precisely
+-- what happened before this existed. Nothing may apply an icon except through
+-- this function.
+function Candidates.ActionableUnits(set, guidOf)
+    local units = {}
+
+    for _, key in ipairs(MFD.H.SortedKeys(set)) do
+        local entry = set[key]
+        if entry.unit then
+            local guid = guidOf(entry.unit)
+            if guid and MFD.H.KeyFromGUID(guid) == key then
+                units[key] = entry.unit
+            end
+        end
+    end
+
+    return units
+end
+
 -- Reads a unit token and records it if it is a live hostile creature. Returns
 -- the key it recorded, or nil. Touches the client, so it is never called at
 -- file scope.

@@ -10,6 +10,7 @@ local Marker = MFD.Marker
 
 local SetRaidTarget = SetRaidTarget
 local GetRaidTargetIndex = GetRaidTargetIndex
+local UnitGUID = UnitGUID
 local UnitIsGroupLeader = UnitIsGroupLeader
 local UnitIsGroupAssistant = UnitIsGroupAssistant
 local IsInRaid = IsInRaid
@@ -213,13 +214,14 @@ end
 -- Returns { [key] = icon } for the units the client can currently read, plus
 -- a { [key] = unitToken } map for applying icons.
 local function readActual()
-    local actual, units = {}, {}
+    -- Every token is re-validated against the mob it is supposed to refer to.
+    -- Reading or writing an icon through a stale alias touches whatever the
+    -- player is pointing at instead of the intended mob.
+    local units = MFD.Candidates.ActionableUnits(MFD.Candidates.set, UnitGUID)
+    local actual = {}
 
-    for key, entry in pairs(MFD.Candidates.set) do
-        if entry.unit then
-            units[key] = entry.unit
-            actual[key] = GetRaidTargetIndex(entry.unit) or 0
-        end
+    for key, unit in pairs(units) do
+        actual[key] = GetRaidTargetIndex(unit) or 0
     end
 
     return actual, units
