@@ -411,6 +411,44 @@ MAW.GEM_TIERS = {
     epic     = { [32227]=true, [32228]=true, [32229]=true, [32231]=true, [32249]=true, [32230]=true },
 }
 
+-- Repair data saved by builds before 1.12.1, whose epic raw gem IDs were wrong and whose
+-- "Glowing Nightseye" epic cut pointed at Nightseye. Fixes tracked item IDs by name and
+-- the material of any gem-cut recipe whose product is in the preset. Idempotent.
+function MAW:RepairGemPresetData()
+    local fixedItems, fixedRecipes = 0, 0
+    local rawByName, cutByName = {}, {}
+    for _, g in ipairs(self.PRESET_TBC_GEMS) do
+        rawByName[g.raw.name] = g.raw.id
+        cutByName[g.cut.name] = g
+    end
+    for _, db in ipairs({ MalexisAuctionWatcherDB, MalexisAuctionWatcherCharDB }) do
+        if db and db.items then
+            for name, data in pairs(db.items) do
+                local rightID = rawByName[name] or (cutByName[name] and cutByName[name].cut.id)
+                if rightID and data.itemID ~= rightID then
+                    data.itemID = rightID
+                    fixedItems = fixedItems + 1
+                end
+            end
+            for _, recipe in ipairs(db.recipes or {}) do
+                local g = cutByName[recipe.product]
+                if g and recipe.materials and #recipe.materials == 1 and recipe.materials[1].item ~= g.raw.name then
+                    recipe.materials[1].item = g.raw.name
+                    recipe.color = g.color
+                    recipe.skill = recipe.skill or g.skill
+                    if db.items and not db.items[g.raw.name] then
+                        self:AddItemByID(g.raw.name, g.raw.id, "material")
+                    end
+                    fixedRecipes = fixedRecipes + 1
+                end
+            end
+        end
+    end
+    if fixedItems > 0 or fixedRecipes > 0 then
+        print(string.format("%s: Repaired gem preset data (%d item IDs, %d recipe materials)", addonName, fixedItems, fixedRecipes))
+    end
+end
+
 -- Distinct raw gems in the preset, in a stable order
 function MAW:GetPresetRawGems()
     local seen, list = {}, {}
