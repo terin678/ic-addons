@@ -21,6 +21,7 @@ click the coin icon on the minimap.
 | Stores | How many of each item you hold in bags, bank, and on the AH, and what it is worth. |
 | History | Chart of one item over time: 30 or 90 days, by weekday, by day of month, by hour. Highlights the cheapest and priciest bucket. |
 | Recipes | Material to product conversions with cost, AH net, profit, margin, and how many batches you can make now. |
+| Movers | What to act on right now: cheap materials to buy, profitable recipes you can make, products you hold at a good price. Each row has a Buy, Convert, or List button. |
 
 The window grows taller on the History tab.
 
@@ -150,6 +151,29 @@ holds up against the longer averages. The button is disabled when TSM is not loa
 
 ```
 /maw recipes
+```
+
+## Movers
+
+Three lists, each built from the data on the other tabs:
+
+- **Buy**: materials whose Today price is at or below 25% of the way from their low to
+  their high. The Buy button opens the auction house Browse tab with an exact search for
+  the item. It never buys on its own; you pick the listing.
+- **Convert**: recipes with at least 10% margin and materials for at least one batch in
+  bags plus bank. The Convert button casts the recipe, or uses the item for mote combines.
+  One click makes one batch. The game only lets an addon cast from a real click, and only
+  out of combat, so the button is disabled while fighting.
+- **List**: products whose Today price is at or above 75% of their range and that you hold.
+  The List button switches to the Auctions tab, puts your first bag stack in the sell
+  slot, and fills start and buyout from today's price undercut by 1 copper per unit. You
+  set the duration and press Create Auction.
+
+Hover a name for the same tooltips as the other tabs. Buy and List need the auction house
+open. "Refresh Table" recomputes without scanning.
+
+```
+/maw movers
 ```
 
 ## Other commands

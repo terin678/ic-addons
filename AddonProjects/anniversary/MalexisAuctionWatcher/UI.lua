@@ -729,6 +729,7 @@ function MAWUI:CreateUI()
     mainFrame.storesTab = CreateTabButton(controlFrame, "Stores", "stores", 212)
     mainFrame.historyTab = CreateTabButton(controlFrame, "History", "history", 316)
     mainFrame.recipesTab = CreateTabButton(controlFrame, "Recipes", "recipes", 420)
+    mainFrame.moversTab = CreateTabButton(controlFrame, "Movers", "movers", 524)
 
     -- Scroll frame (below control section and tabs)
     local scrollFrame = CreateFrame("ScrollFrame", nil, mainFrame, "UIPanelScrollFrameTemplate")
@@ -780,6 +781,7 @@ function MAWUI:UpdateTabHighlights()
     mainFrame.storesTab.bg:SetColorTexture(0.2, 0.2, 0.2, 0.8)
     mainFrame.historyTab.bg:SetColorTexture(0.2, 0.2, 0.2, 0.8)
     mainFrame.recipesTab.bg:SetColorTexture(0.2, 0.2, 0.2, 0.8)
+    mainFrame.moversTab.bg:SetColorTexture(0.2, 0.2, 0.2, 0.8)
 
     -- Highlight active tab
     if currentTab == "materials" then
@@ -792,6 +794,8 @@ function MAWUI:UpdateTabHighlights()
         mainFrame.historyTab.bg:SetColorTexture(0.4, 0.6, 0.4, 0.9)
     elseif currentTab == "recipes" then
         mainFrame.recipesTab.bg:SetColorTexture(0.4, 0.6, 0.4, 0.9)
+    elseif currentTab == "movers" then
+        mainFrame.moversTab.bg:SetColorTexture(0.4, 0.6, 0.4, 0.9)
     end
 end
 
@@ -823,13 +827,13 @@ function MAWUI:RefreshData()
     -- Per-tab control bar labels
     local scanLabels = {
         materials = "Scan Materials", products = "Scan Products", stores = "Scan All",
-        recipes = "Scan Recipes", history = "Scan Item",
+        recipes = "Scan Recipes", history = "Scan Item", movers = "Scan All",
     }
     mainFrame.scanTabBtn:SetText(scanLabels[currentTab] or "Scan Tab")
     if currentTab == "stores" then
         mainFrame.refreshBtn:SetText("Refresh Counts")
         mainFrame.refreshBtn:Show()
-    elseif currentTab == "recipes" then
+    elseif currentTab == "recipes" or currentTab == "movers" then
         mainFrame.refreshBtn:SetText("Refresh Table")
         mainFrame.refreshBtn:Show()
     else
@@ -848,6 +852,8 @@ function MAWUI:RefreshData()
         wantWidth = math.max(wantWidth, PADDING + CONTROLS_WIDTH + ROW_NAME_WIDTH + CELL_WIDTH * 4 + TsmColumnsWidth() + chrome)
     elseif currentTab == "stores" then
         wantWidth = math.max(wantWidth, PADDING + ROW_NAME_WIDTH + 80 * 4 + 100 * 2 + TsmColumnsWidth() + chrome)
+    elseif currentTab == "movers" then
+        wantWidth = math.max(wantWidth, PADDING + 70 + 260 + 90 + 330 + 80 + 24 + 16)
     end
     if mainFrame.docked and mainFrame.dockHost then
         -- Docked in the auction house: fill the host's height, never narrower than it
@@ -876,6 +882,10 @@ function MAWUI:RefreshData()
     elseif currentTab == "recipes" then
         mainFrame.addBtn:Hide()
         self:RenderRecipesTab(scrollChild, yOffset)
+        return
+    elseif currentTab == "movers" then
+        mainFrame.addBtn:Hide()
+        self:RenderMoversTab(scrollChild, yOffset)
         return
     else
         mainFrame.addBtn:Show()
@@ -2247,6 +2257,165 @@ end
 
 function MAWUI:IsDocked()
     return mainFrame ~= nil and mainFrame.docked == true
+end
+
+-- ===================== Movers tab =====================
+
+local MOVER_WIDTHS = { 70, 260, 90, 330, 80 }  -- badge, name, price, reason, action
+
+local function UseKeyDown()
+    if GetCVarBool then
+        local ok, v = pcall(GetCVarBool, "ActionButtonUseKeyDown")
+        if ok and v ~= nil then return v end
+    end
+    return false
+end
+
+local function MoverSectionHeader(scrollChild, yOffset, text, color, width)
+    local header = CreateCell(scrollChild, text, color, width, CELL_HEIGHT)
+    header:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", PADDING, yOffset)
+    header.label:SetTextColor(1, 1, 0.6)
+    table.insert(mainFrame.rows, header)
+    return yOffset - CELL_HEIGHT
+end
+
+local function MoverRow(scrollChild, yOffset, entry)
+    local MAW = _G.MalexisAuctionWatcher
+    local x = PADDING
+    local badgeText = ({ buy = "BUY", convert = "CONVERT", sell = "LIST" })[entry.kind]
+    local badgeColor = ({ buy = { r = 0.2, g = 0.5, b = 0.2 }, convert = { r = 0.5, g = 0.4, b = 0.1 }, sell = { r = 0.5, g = 0.2, b = 0.2 } })[entry.kind]
+
+    local badge = CreateCell(scrollChild, badgeText, badgeColor, MOVER_WIDTHS[1], CELL_HEIGHT)
+    badge:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", x, yOffset)
+    table.insert(mainFrame.rows, badge)
+    x = x + MOVER_WIDTHS[1]
+
+    local nameCell = CreateCell(scrollChild, entry.name, { r = 0.15, g = 0.15, b = 0.15 }, MOVER_WIDTHS[2], CELL_HEIGHT)
+    nameCell:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", x, yOffset)
+    nameCell.label:SetJustifyH("LEFT")
+    nameCell.label:SetPoint("LEFT", nameCell, "LEFT", 5, 0)
+    table.insert(mainFrame.rows, nameCell)
+    if entry.kind == "convert" then
+        AttachRecipeTooltip(nameCell, entry.calc)
+    else
+        local db = MAW:GetActiveDB()
+        AttachSourceTooltip(nameCell, entry.name, db.items[entry.name])
+    end
+    x = x + MOVER_WIDTHS[2]
+
+    local priceText
+    if entry.kind == "convert" then
+        priceText = FormatMoney(entry.profit)
+    else
+        priceText = FormatMoney(entry.price)
+    end
+    local priceCell = CreateCell(scrollChild, priceText, { r = 0.1, g = 0.1, b = 0.1 }, MOVER_WIDTHS[3], CELL_HEIGHT)
+    priceCell:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", x, yOffset)
+    table.insert(mainFrame.rows, priceCell)
+    x = x + MOVER_WIDTHS[3]
+
+    local reasonCell = CreateCell(scrollChild, entry.reason, { r = 0.1, g = 0.1, b = 0.1 }, MOVER_WIDTHS[4], CELL_HEIGHT)
+    reasonCell:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", x, yOffset)
+    reasonCell.label:SetJustifyH("LEFT")
+    reasonCell.label:SetPoint("LEFT", reasonCell, "LEFT", 5, 0)
+    reasonCell.label:SetTextColor(0.8, 0.8, 0.8)
+    table.insert(mainFrame.rows, reasonCell)
+    x = x + MOVER_WIDTHS[4]
+
+    -- Action button
+    local btn
+    if entry.kind == "convert" then
+        -- Secure button so the click can cast a spell or use an item
+        btn = CreateFrame("Button", nil, scrollChild, "SecureActionButtonTemplate, UIPanelButtonTemplate")
+        btn:SetSize(MOVER_WIDTHS[5] - 6, CELL_HEIGHT)
+        btn:SetText("Convert")
+        if InCombatLockdown() then
+            btn:Disable()
+        else
+            local attrType, attrValue = MAW:MoverConvertAction(entry.recipe)
+            btn:SetAttribute("type", attrType)
+            btn:SetAttribute(attrType, attrValue)
+            btn:RegisterForClicks(UseKeyDown() and "AnyDown" or "AnyUp")
+        end
+        btn:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            local attrType, attrValue = MAW:MoverConvertAction(entry.recipe)
+            GameTooltip:AddLine(attrType == "item" and ("Use " .. attrValue .. " (combines 10)") or ("Cast " .. attrValue))
+            GameTooltip:AddLine("One click makes one batch. Needs the recipe known and mats in bags.", 0.7, 0.7, 0.7)
+            GameTooltip:Show()
+        end)
+        btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    else
+        btn = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate")
+        btn:SetSize(MOVER_WIDTHS[5] - 6, CELL_HEIGHT)
+        if entry.kind == "buy" then
+            btn:SetText("Buy")
+            btn:SetScript("OnClick", function() MAW:MoverBuy(entry.name) end)
+            btn:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:AddLine("Search the auction house for " .. entry.name)
+                GameTooltip:AddLine("Opens Browse with an exact search. You choose what to buy.", 0.7, 0.7, 0.7)
+                GameTooltip:Show()
+            end)
+        else
+            btn:SetText("List")
+            btn:SetScript("OnClick", function() MAW:MoverList(entry.name, entry.itemID, entry.price) end)
+            btn:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:AddLine("Put " .. entry.name .. " in the sell slot")
+                GameTooltip:AddLine("Fills start and buyout from today's price, undercut by 1c per unit. You press Create Auction.", 0.7, 0.7, 0.7)
+                GameTooltip:Show()
+            end)
+        end
+        btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    end
+    btn:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", x + 3, yOffset)
+    table.insert(mainFrame.rows, btn)
+
+    return yOffset - CELL_HEIGHT
+end
+
+function MAWUI:RenderMoversTab(scrollChild, yOffset)
+    local MAW = _G.MalexisAuctionWatcher
+    local movers = MAW:GetMovers()
+    local totalWidth = 0
+    for _, w in ipairs(MOVER_WIDTHS) do totalWidth = totalWidth + w end
+
+    local hint = CreateCell(scrollChild,
+        string.format("Buy: materials at or below %d%% of their range.  Convert: recipes above %d%% margin with mats on hand.  List: products at or above %d%% of range that you hold.",
+            MAW:MoverSetting("moverBuyPct") * 100, MAW:MoverSetting("moverMinMargin"), MAW:MoverSetting("moverSellPct") * 100),
+        { r = 0.1, g = 0.1, b = 0.15 }, totalWidth, CELL_HEIGHT)
+    hint:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", PADDING, yOffset)
+    hint.label:SetTextColor(0.6, 0.6, 0.6)
+    hint.label:SetJustifyH("LEFT")
+    hint.label:SetPoint("LEFT", hint, "LEFT", 5, 0)
+    table.insert(mainFrame.rows, hint)
+    yOffset = yOffset - CELL_HEIGHT - 6
+
+    local sections = {
+        { key = "buy", title = "BUY  -  cheap materials", color = { r = 0.2, g = 0.35, b = 0.2 } },
+        { key = "convert", title = "CONVERT  -  profitable recipes you can make now", color = { r = 0.35, g = 0.3, b = 0.15 } },
+        { key = "sell", title = "LIST  -  products at a good price that you hold", color = { r = 0.35, g = 0.2, b = 0.2 } },
+    }
+    for _, sec in ipairs(sections) do
+        yOffset = MoverSectionHeader(scrollChild, yOffset, sec.title, sec.color, totalWidth)
+        local list = movers[sec.key]
+        if #list == 0 then
+            local empty = CreateCell(scrollChild, "Nothing right now", { r = 0.1, g = 0.1, b = 0.1 }, totalWidth, CELL_HEIGHT)
+            empty:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", PADDING, yOffset)
+            empty.label:SetTextColor(0.5, 0.5, 0.5)
+            table.insert(mainFrame.rows, empty)
+            yOffset = yOffset - CELL_HEIGHT
+        else
+            for _, entry in ipairs(list) do
+                yOffset = MoverRow(scrollChild, yOffset, entry)
+            end
+        end
+        yOffset = yOffset - 8
+    end
+
+    scrollChild:SetHeight(math.abs(yOffset) + PADDING)
+    self:UpdateTabHighlights()
 end
 
 -- Open the window on a given tab

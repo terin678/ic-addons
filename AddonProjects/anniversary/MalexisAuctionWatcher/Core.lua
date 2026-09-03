@@ -168,6 +168,10 @@ local function SlashCommandHandler(msg)
         else
             print(addonName .. ": UI module not loaded")
         end
+    elseif command == "movers" then
+        if MalexisAuctionWatcherUI then
+            MalexisAuctionWatcherUI:ShowTab("movers")
+        end
     elseif command == "recipes" then
         if MalexisAuctionWatcherUI then
             MalexisAuctionWatcherUI:ShowTab("recipes")
@@ -217,6 +221,7 @@ local function SlashCommandHandler(msg)
         print("  /maw minimap - Show/hide the minimap button")
         print("  /maw history [item name] - Open the price history chart")
         print("  /maw recipes - Open the material -> product profit table")
+        print("  /maw movers - What to buy, convert, and list right now")
         print("  /maw sources - Show/toggle Auctionator and TSM price feeds")
         print("  /maw retention <days> - Days of price history to keep")
         print("  /maw ahcut <percent> - Auction house cut used for net values (default 5)")
@@ -253,7 +258,7 @@ eventFrame:SetScript("OnUpdate", function(self, elapsed) MAW:OnUpdateHandler(sel
 eventFrame:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" and arg1 == addonName then
         MAW:InitializeDB()
-        print(addonName .. " v1.9.1 loaded. Type /maw help for commands.")
+        print(addonName .. " v1.10.0 loaded. Type /maw help for commands.")
 
         -- Create minimap button
         if MalexisAuctionWatcherMinimap then

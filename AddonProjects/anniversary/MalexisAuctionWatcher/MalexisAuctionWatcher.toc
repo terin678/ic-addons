@@ -2,7 +2,7 @@
 ## Title: Malexis Auction Watcher
 ## Notes: Tracks auction house prices for user-defined items with timestamps
 ## Author: Malexis
-## Version: 1.9.1
+## Version: 1.10.0
 ## SavedVariables: MalexisAuctionWatcherDB
 ## SavedVariablesPerCharacter: MalexisAuctionWatcherCharDB
 ## OptionalDeps: Auctionator, TradeSkillMaster
@@ -12,6 +12,7 @@ Database.lua
 History.lua
 Sources.lua
 Recipes.lua
+Movers.lua
 Items.lua
 Inventory.lua
 Professions.lua
