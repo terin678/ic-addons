@@ -1731,7 +1731,7 @@ local function BuildHistoryPanel(parent)
     panel.legend:SetPoint("TOPLEFT", panel.chart, "BOTTOMLEFT", 0, -4)
     panel.legend:SetJustifyH("LEFT")
     panel.legend:SetWidth(chartWidth)
-    panel.legend:SetText("Bars: |cff8ca6d9blue|r = your scans, |cffccb366amber|r = Auctionator/TSM, |cff59e659green|r = cheapest, |cfff25959red|r = priciest. White tick = average. Hover a bar for details.")
+    panel.legend:SetText("Bars: |cff8ca6d9blue|r = your scans, |cffccb366amber|r = Auctionator/TSM, |cff59e659green|r = cheapest, |cfff25959red|r = priciest. White tick = average. |cffffd94dYellow line|r = today; buckets to its right are from the previous cycle.")
     panel.legend:SetTextColor(0.6, 0.6, 0.6)
 
     -- Summary lines
@@ -1813,9 +1813,22 @@ function MAWUI:RenderHistoryTab(scrollChild, yOffset)
             end
         end
 
+        -- Where "now" falls in cyclic views, so the wrap from last period to this one is visible
+        local nowT = date("*t")
+        local markerIndex, markerLabel
+        if modeDef.mode == "monthday" then
+            markerIndex, markerLabel = nowT.day, "Today (" .. nowT.day .. ")"
+        elseif modeDef.mode == "weekday" then
+            markerIndex, markerLabel = nowT.wday, "Today"
+        elseif modeDef.mode == "hour" then
+            markerIndex, markerLabel = nowT.hour + 1, "Now"
+        end
+
         panel.chart:SetData(analysis.points, {
             highlight = highlight,
             refLines = refLines,
+            markerIndex = markerIndex,
+            markerLabel = markerLabel,
             maxLabels = modeDef.maxLabels,
             tooltipTitle = function(p)
                 if modeDef.mode == "hour" then

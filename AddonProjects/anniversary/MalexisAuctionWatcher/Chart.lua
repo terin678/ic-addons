@@ -248,6 +248,26 @@ function ChartMixin:SetData(points, opts)
         self.refLines[i].text:Hide()
     end
 
+    -- Today marker: a line on the right edge of the current bucket, where the cycle wraps
+    if opts.markerIndex and opts.markerIndex >= 1 and opts.markerIndex <= count then
+        local x = opts.markerIndex * slotW
+        self.marker:ClearAllPoints()
+        self.marker:SetPoint("BOTTOMLEFT", self.plot, "BOTTOMLEFT", x - 1, 0)
+        self.marker:SetHeight(plotH)
+        self.marker:Show()
+        self.markerText:ClearAllPoints()
+        if opts.markerIndex > count / 2 then
+            self.markerText:SetPoint("TOPRIGHT", self.plot, "BOTTOMLEFT", x - 3, plotH - 2)
+        else
+            self.markerText:SetPoint("TOPLEFT", self.plot, "BOTTOMLEFT", x + 3, plotH - 2)
+        end
+        self.markerText:SetText(opts.markerLabel or "Today")
+        self.markerText:Show()
+    else
+        self.marker:Hide()
+        self.markerText:Hide()
+    end
+
     self.emptyText:SetShown(not hasData)
 end
 
@@ -276,6 +296,15 @@ function MAWChart.Create(parent, width, height)
     end
 
     frame.refLines = {}
+
+    -- Vertical "Today" marker for cyclic views (day of month, weekday, hour)
+    frame.marker = frame.plot:CreateTexture(nil, "OVERLAY")
+    frame.marker:SetWidth(2)
+    frame.marker:SetColorTexture(1, 0.85, 0.3, 0.9)
+    frame.marker:Hide()
+    frame.markerText = frame.plot:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    frame.markerText:SetTextColor(1, 0.85, 0.3)
+    frame.markerText:Hide()
 
     frame.emptyText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     frame.emptyText:SetPoint("CENTER")
