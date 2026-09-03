@@ -85,13 +85,17 @@ function MAW:GetMovers()
         if today and low and high and high > low then
             local pos = (today - low) / (high - low)
             local itemType = itemData.itemType or "material"
-            local typeTag = (itemType == "product") and "product" or "material"
+            local typeTag = (itemType == "product") and "prod" or "mat"
+            local H = _G.MalexisAuctionWatcherHelpers
+            local fm = function(c) return H and H.FormatMoney(c) or self:FormatMoney(c) end
+            local pct = math.floor(pos * 100 + 0.5)
+            if pct == 0 then pct = 0 end  -- avoid "-0"
             -- Cheap is a buy whatever the type: materials to craft with, products to stock up on
             if pos <= buyPct then
                 table.insert(out.buy, {
                     kind = "buy", name = itemName, itemID = itemData.itemID, price = today,
                     low = low, high = high, pos = pos, source = source, when = when, itemType = itemType,
-                    reason = string.format("%s at %.0f%% of range (low %s, high %s)", typeTag, pos * 100, self:FormatMoney(low), self:FormatMoney(high)),
+                    reason = string.format("%s @ %d%% {%s - %s}", typeTag, pct, fm(low), fm(high)),
                 })
             end
             -- Expensive and in hand is a listing whatever the type: spare mats sell too
@@ -101,7 +105,7 @@ function MAW:GetMovers()
                     table.insert(out.sell, {
                         kind = "sell", name = itemName, itemID = itemData.itemID, price = today,
                         low = low, high = high, pos = pos, owned = owned, source = source, when = when, itemType = itemType,
-                        reason = string.format("%s at %.0f%% of range, you hold %d", typeTag, pos * 100, owned),
+                        reason = string.format("%s @ %d%% {%s - %s}, hold %d", typeTag, pct, fm(low), fm(high), owned),
                     })
                 end
             end
@@ -115,7 +119,7 @@ function MAW:GetMovers()
             table.insert(out.convert, {
                 kind = "convert", name = recipe.name, recipe = recipe, calc = calc,
                 margin = calc.margin, profit = calc.profit, canMake = calc.canMake,
-                reason = string.format("%.0f%% margin, %s per batch, can make %d", calc.margin, self:FormatMoney(calc.profit), calc.canMake),
+                reason = string.format("%.0f%% margin, %s/batch, x%d", calc.margin, _G.MalexisAuctionWatcherHelpers.FormatMoney(calc.profit), calc.canMake),
             })
         end
     end

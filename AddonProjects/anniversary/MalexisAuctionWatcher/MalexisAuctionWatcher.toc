@@ -2,7 +2,7 @@
 ## Title: Malexis Auction Watcher
 ## Notes: Tracks auction house prices for user-defined items with timestamps
 ## Author: Malexis
-## Version: 1.10.4
+## Version: 1.10.5
 ## SavedVariables: MalexisAuctionWatcherDB
 ## SavedVariablesPerCharacter: MalexisAuctionWatcherCharDB
 ## OptionalDeps: Auctionator, TradeSkillMaster
