@@ -375,7 +375,19 @@ function UI.BuildBook(page)
         UI.RefreshBook()
     end)
 
-    local scroll, content = ScrollList(page, -28, 0)
+    -- Column labels for the two checkboxes; the boxes alone read as nothing.
+    local function ColLabel(text, x, w)
+        local l = Label(page, text, "GameFontDisableSmall")
+        l:SetPoint("TOPLEFT", x, -30)
+        if w then l:SetWidth(w) end
+        l:SetJustifyH(w and "CENTER" or "LEFT")
+        return l
+    end
+    ColLabel("Bark", -6, 30)
+    ColLabel("Invite", 20, 30)
+    ColLabel("Recipe", 52)
+
+    local scroll, content = ScrollList(page, -46, 0)
     UI.bookContent = content
     UI.bookRows = {}
 
@@ -515,7 +527,7 @@ function UI.BuildBook(page)
         content:SetSize(560, math.max(1, #list * ROW_H))
     end
 
-    local legend = Label(page, "|cff888888left box = advertise, right box = match for invites|r",
+    local legend = Label(page, "|cff888888Bark = include in barks.  Invite = invite whoever asks for it.|r",
         "GameFontDisableSmall")
     legend:SetPoint("BOTTOMLEFT", 0, -2)
 end
