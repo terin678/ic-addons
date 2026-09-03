@@ -15,6 +15,16 @@ description: Work on a World of Warcraft addon in this repo - edit Lua under Add
    `ReparsePoint` attribute for a junction. If not linked, run
    `scripts/deploy.ps1 -Flavor <flavor> -Addon <Addon>`.
 
+## TradeMaster and CutMaster
+
+TradeMaster (`AddonProjects/anniversary/TradeMaster`) is a fork of a collaborator's
+CutMaster (`AddonProjects/anniversary/CutMaster`) generalised to any profession. Never
+edit CutMaster; it belongs to the collaborator. To port an upstream CutMaster change:
+`git log --oneline -- AddonProjects/anniversary/CutMaster` to find it, `git show <sha>`
+to read the diff, then apply the same change by hand to the TradeMaster module of the
+same name (Stats.lua maps to Annotators.lua). Profession-specific strings and rules go
+into `Professions.lua` profiles, not into the modules.
+
 ## While editing
 
 - New file: add it to the `.toc` in load order (data and logic before UI).

@@ -1,0 +1,4 @@
+# Only binary handling here; text/eol rules for .lua/.toc/.md come from the
+# repo root .gitattributes and should not be overridden per-addon.
+*.tga binary
+*.blp binary

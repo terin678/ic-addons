@@ -57,6 +57,7 @@ request. Development happens on branches:
 | anniversary | [MalexisAuctionWatcher](AddonProjects/anniversary/MalexisAuctionWatcher) | Price tracking, history charts, recipe profit, Auctionator/TSM feeds. Guide: [Docs/MalexisAuctionWatcher.md](Docs/MalexisAuctionWatcher.md) |
 | anniversary | [CutMaster](AddonProjects/anniversary/CutMaster) | Jewelcrafting book scanning, trade chat/whisper customer detection, order tracking, income. Guide: [Docs/CutMaster.md](Docs/CutMaster.md) |
 | anniversary | [AuctionatorSellingTweaks](AddonProjects/anniversary/AuctionatorSellingTweaks) | Expiry column before "You?" in Auctionator's Selling price list. Guide: [Docs/AuctionatorSellingTweaks.md](Docs/AuctionatorSellingTweaks.md) |
+| anniversary | [TradeMaster](AddonProjects/anniversary/TradeMaster) | Crafting business assistant for any profession, generalised from CutMaster. Guide: [Docs/TradeMaster.md](Docs/TradeMaster.md) |
 
 ## Client paths on the maintainer's machine
 
