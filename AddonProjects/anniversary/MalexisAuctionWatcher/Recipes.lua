@@ -291,124 +291,140 @@ function MAW:CompareRecipeBases(recipe)
 end
 
 
--- Built-in preset: TBC Jewelcrafting, 1 raw gem -> 1 cut gem.
--- Generated from AtlasLoot's TBC crafting data; item IDs verified against its source table.
+-- Built-in preset: TBC Jewelcrafting, 1 raw gem -> 1 cut gem, including meta diamonds.
+-- Generated from Wowhead's TBC Classic spell data; item names from Questie's item database.
+-- Jewelcrafter-only bind-on-pickup gems are excluded.
 MAW.PRESET_TBC_GEMS = {
-    { color = "Red", cut = { name = "Teardrop Crimson Spinel", id = 32195 }, raw = { name = "Crimson Spinel", id = 32227 }, skill = 375 },
-    { color = "Red", cut = { name = "Teardrop Living Ruby", id = 24029 }, raw = { name = "Living Ruby", id = 23436 }, skill = 350 },
     { color = "Red", cut = { name = "Teardrop Blood Garnet", id = 23094 }, raw = { name = "Blood Garnet", id = 23077 }, skill = 300 },
-    { color = "Red", cut = { name = "Runed Crimson Spinel", id = 32196 }, raw = { name = "Crimson Spinel", id = 32227 }, skill = 375 },
-    { color = "Red", cut = { name = "Runed Living Ruby", id = 24030 }, raw = { name = "Living Ruby", id = 23436 }, skill = 350 },
-    { color = "Red", cut = { name = "Runed Blood Garnet", id = 23096 }, raw = { name = "Blood Garnet", id = 23077 }, skill = 315 },
-    { color = "Red", cut = { name = "Bright Crimson Spinel", id = 32197 }, raw = { name = "Crimson Spinel", id = 32227 }, skill = 375 },
-    { color = "Red", cut = { name = "Bright Living Ruby", id = 24031 }, raw = { name = "Living Ruby", id = 23436 }, skill = 350 },
-    { color = "Red", cut = { name = "Bright Blood Garnet", id = 28595 }, raw = { name = "Blood Garnet", id = 23077 }, skill = 305 },
-    { color = "Red", cut = { name = "Delicate Crimson Spinel", id = 32194 }, raw = { name = "Crimson Spinel", id = 32227 }, skill = 375 },
-    { color = "Red", cut = { name = "Delicate Living Ruby", id = 24028 }, raw = { name = "Living Ruby", id = 23436 }, skill = 350 },
-    { color = "Red", cut = { name = "Delicate Blood Garnet", id = 23097 }, raw = { name = "Blood Garnet", id = 23077 }, skill = 325 },
-    { color = "Red", cut = { name = "Bold Crimson Spinel", id = 32193 }, raw = { name = "Crimson Spinel", id = 32227 }, skill = 375 },
-    { color = "Red", cut = { name = "Bold Living Ruby", id = 24027 }, raw = { name = "Living Ruby", id = 23436 }, skill = 350 },
     { color = "Red", cut = { name = "Bold Blood Garnet", id = 23095 }, raw = { name = "Blood Garnet", id = 23077 }, skill = 305 },
-    { color = "Red", cut = { name = "Subtle Crimson Spinel", id = 32198 }, raw = { name = "Crimson Spinel", id = 32227 }, skill = 375 },
-    { color = "Red", cut = { name = "Subtle Living Ruby", id = 24032 }, raw = { name = "Living Ruby", id = 23436 }, skill = 350 },
-    { color = "Red", cut = { name = "Flashing Crimson Spinel", id = 32199 }, raw = { name = "Crimson Spinel", id = 32227 }, skill = 375 },
-    { color = "Red", cut = { name = "Flashing Living Ruby", id = 24036 }, raw = { name = "Living Ruby", id = 23436 }, skill = 350 },
-    { color = "Yellow", cut = { name = "Smooth Lionseye", id = 32205 }, raw = { name = "Lionseye", id = 32229 }, skill = 375 },
-    { color = "Yellow", cut = { name = "Smooth Dawnstone", id = 24048 }, raw = { name = "Dawnstone", id = 23440 }, skill = 350 },
-    { color = "Yellow", cut = { name = "Smooth Golden Draenite", id = 28290 }, raw = { name = "Golden Draenite", id = 23112 }, skill = 325 },
-    { color = "Yellow", cut = { name = "Gleaming Lionseye", id = 32207 }, raw = { name = "Lionseye", id = 32229 }, skill = 375 },
-    { color = "Yellow", cut = { name = "Gleaming Dawnstone", id = 24050 }, raw = { name = "Dawnstone", id = 23440 }, skill = 350 },
-    { color = "Yellow", cut = { name = "Gleaming Golden Draenite", id = 23114 }, raw = { name = "Golden Draenite", id = 23112 }, skill = 305 },
-    { color = "Yellow", cut = { name = "Thick Lionseye", id = 32208 }, raw = { name = "Lionseye", id = 32229 }, skill = 375 },
-    { color = "Yellow", cut = { name = "Thick Dawnstone", id = 24052 }, raw = { name = "Dawnstone", id = 23440 }, skill = 350 },
-    { color = "Yellow", cut = { name = "Thick Golden Draenite", id = 23115 }, raw = { name = "Golden Draenite", id = 23112 }, skill = 315 },
-    { color = "Yellow", cut = { name = "Rigid Lionseye", id = 32206 }, raw = { name = "Lionseye", id = 32229 }, skill = 375 },
-    { color = "Yellow", cut = { name = "Rigid Dawnstone", id = 24051 }, raw = { name = "Dawnstone", id = 23440 }, skill = 350 },
-    { color = "Yellow", cut = { name = "Rigid Golden Draenite", id = 23116 }, raw = { name = "Golden Draenite", id = 23112 }, skill = 325 },
-    { color = "Yellow", cut = { name = "Great Lionseye", id = 32210 }, raw = { name = "Lionseye", id = 32229 }, skill = 375 },
-    { color = "Yellow", cut = { name = "Great Dawnstone", id = 31861 }, raw = { name = "Dawnstone", id = 23440 }, skill = 350 },
-    { color = "Yellow", cut = { name = "Great Golden Draenite", id = 31860 }, raw = { name = "Golden Draenite", id = 23112 }, skill = 325 },
-    { color = "Yellow", cut = { name = "Brilliant Lionseye", id = 32204 }, raw = { name = "Lionseye", id = 32229 }, skill = 375 },
-    { color = "Yellow", cut = { name = "Brilliant Dawnstone", id = 24047 }, raw = { name = "Dawnstone", id = 23440 }, skill = 350 },
-    { color = "Yellow", cut = { name = "Brilliant Golden Draenite", id = 23113 }, raw = { name = "Golden Draenite", id = 23112 }, skill = 300 },
-    { color = "Yellow", cut = { name = "Quick Lionseye", id = 35761 }, raw = { name = "Lionseye", id = 32229 }, skill = 375 },
-    { color = "Yellow", cut = { name = "Quick Dawnstone", id = 35315 }, raw = { name = "Dawnstone", id = 23440 }, skill = 350 },
-    { color = "Yellow", cut = { name = "Mystic Lionseye", id = 32209 }, raw = { name = "Lionseye", id = 32229 }, skill = 375 },
-    { color = "Yellow", cut = { name = "Mystic Dawnstone", id = 24053 }, raw = { name = "Dawnstone", id = 23440 }, skill = 350 },
-    { color = "Blue", cut = { name = "Solid Empyrean Sapphire", id = 32200 }, raw = { name = "Empyrean Sapphire", id = 32228 }, skill = 375 },
-    { color = "Blue", cut = { name = "Solid Star of Elune", id = 24033 }, raw = { name = "Star of Elune", id = 23438 }, skill = 350 },
-    { color = "Blue", cut = { name = "Solid Azure Moonstone", id = 23118 }, raw = { name = "Azure Moonstone", id = 23117 }, skill = 300 },
-    { color = "Blue", cut = { name = "Stormy Empyrean Sapphire", id = 32203 }, raw = { name = "Empyrean Sapphire", id = 32228 }, skill = 375 },
-    { color = "Blue", cut = { name = "Stormy Star of Elune", id = 24039 }, raw = { name = "Star of Elune", id = 23438 }, skill = 350 },
-    { color = "Blue", cut = { name = "Stormy Azure Moonstone", id = 23120 }, raw = { name = "Azure Moonstone", id = 23117 }, skill = 315 },
-    { color = "Blue", cut = { name = "Sparkling Empyrean Sapphire", id = 32201 }, raw = { name = "Empyrean Sapphire", id = 32228 }, skill = 375 },
-    { color = "Blue", cut = { name = "Sparkling Star of Elune", id = 24035 }, raw = { name = "Star of Elune", id = 23438 }, skill = 350 },
-    { color = "Blue", cut = { name = "Sparkling Azure Moonstone", id = 23119 }, raw = { name = "Azure Moonstone", id = 23117 }, skill = 305 },
-    { color = "Blue", cut = { name = "Lustrous Empyrean Sapphire", id = 32202 }, raw = { name = "Empyrean Sapphire", id = 32228 }, skill = 375 },
-    { color = "Blue", cut = { name = "Lustrous Star of Elune", id = 24037 }, raw = { name = "Star of Elune", id = 23438 }, skill = 350 },
-    { color = "Blue", cut = { name = "Lustrous Azure Moonstone", id = 23121 }, raw = { name = "Azure Moonstone", id = 23117 }, skill = 325 },
-    { color = "Orange", cut = { name = "Wicked Pyrestone", id = 32222 }, raw = { name = "Pyrestone", id = 32231 }, skill = 375 },
-    { color = "Orange", cut = { name = "Wicked Noble Topaz", id = 31868 }, raw = { name = "Noble Topaz", id = 23439 }, skill = 350 },
-    { color = "Orange", cut = { name = "Wicked Flame Spessarite", id = 31869 }, raw = { name = "Flame Spessarite", id = 21929 }, skill = 325 },
-    { color = "Orange", cut = { name = "Veiled Pyrestone", id = 32221 }, raw = { name = "Pyrestone", id = 32231 }, skill = 375 },
-    { color = "Orange", cut = { name = "Veiled Noble Topaz", id = 31867 }, raw = { name = "Noble Topaz", id = 23439 }, skill = 350 },
-    { color = "Orange", cut = { name = "Veiled Flame Spessarite", id = 31866 }, raw = { name = "Flame Spessarite", id = 21929 }, skill = 325 },
-    { color = "Orange", cut = { name = "Potent Pyrestone", id = 32218 }, raw = { name = "Pyrestone", id = 32231 }, skill = 375 },
-    { color = "Orange", cut = { name = "Potent Noble Topaz", id = 24059 }, raw = { name = "Noble Topaz", id = 23439 }, skill = 350 },
-    { color = "Orange", cut = { name = "Potent Flame Spessarite", id = 23101 }, raw = { name = "Flame Spessarite", id = 21929 }, skill = 325 },
-    { color = "Orange", cut = { name = "Reckless Pyrestone", id = 35760 }, raw = { name = "Pyrestone", id = 32231 }, skill = 375 },
-    { color = "Orange", cut = { name = "Reckless Noble Topaz", id = 35316 }, raw = { name = "Noble Topaz", id = 23439 }, skill = 350 },
-    { color = "Orange", cut = { name = "Luminous Pyrestone", id = 32219 }, raw = { name = "Pyrestone", id = 32231 }, skill = 375 },
-    { color = "Orange", cut = { name = "Luminous Noble Topaz", id = 24060 }, raw = { name = "Noble Topaz", id = 23439 }, skill = 350 },
-    { color = "Orange", cut = { name = "Luminous Flame Spessarite", id = 23099 }, raw = { name = "Flame Spessarite", id = 21929 }, skill = 305 },
-    { color = "Orange", cut = { name = "Inscribed Pyrestone", id = 32217 }, raw = { name = "Pyrestone", id = 32231 }, skill = 375 },
-    { color = "Orange", cut = { name = "Inscribed Noble Topaz", id = 24058 }, raw = { name = "Noble Topaz", id = 23439 }, skill = 350 },
+    { color = "Red", cut = { name = "Runed Blood Garnet", id = 23096 }, raw = { name = "Blood Garnet", id = 23077 }, skill = 315 },
+    { color = "Red", cut = { name = "Delicate Blood Garnet", id = 23097 }, raw = { name = "Blood Garnet", id = 23077 }, skill = 325 },
     { color = "Orange", cut = { name = "Inscribed Flame Spessarite", id = 23098 }, raw = { name = "Flame Spessarite", id = 21929 }, skill = 300 },
-    { color = "Orange", cut = { name = "Glinting Pyrestone", id = 32220 }, raw = { name = "Pyrestone", id = 32231 }, skill = 375 },
-    { color = "Orange", cut = { name = "Glinting Noble Topaz", id = 24061 }, raw = { name = "Noble Topaz", id = 23439 }, skill = 350 },
+    { color = "Orange", cut = { name = "Luminous Flame Spessarite", id = 23099 }, raw = { name = "Flame Spessarite", id = 21929 }, skill = 305 },
     { color = "Orange", cut = { name = "Glinting Flame Spessarite", id = 23100 }, raw = { name = "Flame Spessarite", id = 21929 }, skill = 315 },
-    { color = "Green", cut = { name = "Enduring Seaspray Emerald", id = 32223 }, raw = { name = "Seaspray Emerald", id = 32249 }, skill = 375 },
-    { color = "Green", cut = { name = "Enduring Talasite", id = 24062 }, raw = { name = "Talasite", id = 23437 }, skill = 350 },
-    { color = "Green", cut = { name = "Enduring Deep Peridot", id = 23105 }, raw = { name = "Deep Peridot", id = 23079 }, skill = 315 },
-    { color = "Green", cut = { name = "Radiant Seaspray Emerald", id = 32224 }, raw = { name = "Seaspray Emerald", id = 32249 }, skill = 375 },
-    { color = "Green", cut = { name = "Radiant Talasite", id = 24066 }, raw = { name = "Talasite", id = 23437 }, skill = 350 },
+    { color = "Orange", cut = { name = "Potent Flame Spessarite", id = 23101 }, raw = { name = "Flame Spessarite", id = 21929 }, skill = 325 },
     { color = "Green", cut = { name = "Radiant Deep Peridot", id = 23103 }, raw = { name = "Deep Peridot", id = 23079 }, skill = 300 },
-    { color = "Green", cut = { name = "Steady Seaspray Emerald", id = 35758 }, raw = { name = "Seaspray Emerald", id = 32249 }, skill = 375 },
-    { color = "Green", cut = { name = "Steady Talasite", id = 33782 }, raw = { name = "Talasite", id = 23437 }, skill = 350 },
-    { color = "Green", cut = { name = "Jagged Seaspray Emerald", id = 32226 }, raw = { name = "Seaspray Emerald", id = 32249 }, skill = 375 },
-    { color = "Green", cut = { name = "Jagged Talasite", id = 24067 }, raw = { name = "Talasite", id = 23437 }, skill = 350 },
     { color = "Green", cut = { name = "Jagged Deep Peridot", id = 23104 }, raw = { name = "Deep Peridot", id = 23079 }, skill = 305 },
-    { color = "Green", cut = { name = "Dazzling Seaspray Emerald", id = 32225 }, raw = { name = "Seaspray Emerald", id = 32249 }, skill = 375 },
-    { color = "Green", cut = { name = "Dazzling Talasite", id = 24065 }, raw = { name = "Talasite", id = 23437 }, skill = 350 },
+    { color = "Green", cut = { name = "Enduring Deep Peridot", id = 23105 }, raw = { name = "Deep Peridot", id = 23079 }, skill = 315 },
     { color = "Green", cut = { name = "Dazzling Deep Peridot", id = 23106 }, raw = { name = "Deep Peridot", id = 23079 }, skill = 325 },
-    { color = "Green", cut = { name = "Forceful Seaspray Emerald", id = 35759 }, raw = { name = "Seaspray Emerald", id = 32249 }, skill = 375 },
-    { color = "Green", cut = { name = "Forceful Talasite", id = 35318 }, raw = { name = "Talasite", id = 23437 }, skill = 350 },
-    { color = "Purple", cut = { name = "Shifting Shadowsong Amethyst", id = 32212 }, raw = { name = "Shadowsong Amethyst", id = 32230 }, skill = 375 },
-    { color = "Purple", cut = { name = "Shifting Nightseye", id = 24055 }, raw = { name = "Nightseye", id = 23441 }, skill = 350 },
-    { color = "Purple", cut = { name = "Shifting Shadow Draenite", id = 23110 }, raw = { name = "Shadow Draenite", id = 23107 }, skill = 315 },
-    { color = "Purple", cut = { name = "Sovereign Shadowsong Amethyst", id = 32211 }, raw = { name = "Shadowsong Amethyst", id = 32230 }, skill = 375 },
-    { color = "Purple", cut = { name = "Sovereign Nightseye", id = 24054 }, raw = { name = "Nightseye", id = 23441 }, skill = 350 },
-    { color = "Purple", cut = { name = "Sovereign Shadow Draenite", id = 23111 }, raw = { name = "Shadow Draenite", id = 23107 }, skill = 325 },
-    { color = "Purple", cut = { name = "Balanced Shadowsong Amethyst", id = 32213 }, raw = { name = "Shadowsong Amethyst", id = 32230 }, skill = 375 },
-    { color = "Purple", cut = { name = "Balanced Nightseye", id = 31863 }, raw = { name = "Nightseye", id = 23441 }, skill = 350 },
-    { color = "Purple", cut = { name = "Balanced Shadow Draenite", id = 31862 }, raw = { name = "Shadow Draenite", id = 23107 }, skill = 325 },
-    { color = "Purple", cut = { name = "Infused Shadowsong Amethyst", id = 32214 }, raw = { name = "Shadowsong Amethyst", id = 32230 }, skill = 375 },
-    { color = "Purple", cut = { name = "Infused Nightseye", id = 31865 }, raw = { name = "Nightseye", id = 23441 }, skill = 350 },
-    { color = "Purple", cut = { name = "Infused Shadow Draenite", id = 31864 }, raw = { name = "Shadow Draenite", id = 23107 }, skill = 325 },
-    { color = "Purple", cut = { name = "Glowing Shadowsong Amethyst", id = 32215 }, raw = { name = "Shadowsong Amethyst", id = 32230 }, skill = 375 },
-    { color = "Purple", cut = { name = "Glowing Nightseye", id = 24056 }, raw = { name = "Nightseye", id = 23441 }, skill = 350 },
     { color = "Purple", cut = { name = "Glowing Shadow Draenite", id = 23108 }, raw = { name = "Shadow Draenite", id = 23107 }, skill = 300 },
-    { color = "Purple", cut = { name = "Royal Shadowsong Amethyst", id = 32216 }, raw = { name = "Shadowsong Amethyst", id = 32230 }, skill = 375 },
-    { color = "Purple", cut = { name = "Royal Nightseye", id = 24057 }, raw = { name = "Nightseye", id = 23441 }, skill = 350 },
     { color = "Purple", cut = { name = "Royal Shadow Draenite", id = 23109 }, raw = { name = "Shadow Draenite", id = 23107 }, skill = 305 },
-    { color = "Purple", cut = { name = "Purified Shadowsong Amethyst", id = 37503 }, raw = { name = "Shadowsong Amethyst", id = 32230 }, skill = 375 },
+    { color = "Purple", cut = { name = "Shifting Shadow Draenite", id = 23110 }, raw = { name = "Shadow Draenite", id = 23107 }, skill = 315 },
+    { color = "Purple", cut = { name = "Sovereign Shadow Draenite", id = 23111 }, raw = { name = "Shadow Draenite", id = 23107 }, skill = 325 },
+    { color = "Yellow", cut = { name = "Brilliant Golden Draenite", id = 23113 }, raw = { name = "Golden Draenite", id = 23112 }, skill = 300 },
+    { color = "Yellow", cut = { name = "Gleaming Golden Draenite", id = 23114 }, raw = { name = "Golden Draenite", id = 23112 }, skill = 305 },
+    { color = "Yellow", cut = { name = "Thick Golden Draenite", id = 23115 }, raw = { name = "Golden Draenite", id = 23112 }, skill = 315 },
+    { color = "Yellow", cut = { name = "Rigid Golden Draenite", id = 23116 }, raw = { name = "Golden Draenite", id = 23112 }, skill = 325 },
+    { color = "Blue", cut = { name = "Solid Azure Moonstone", id = 23118 }, raw = { name = "Azure Moonstone", id = 23117 }, skill = 300 },
+    { color = "Blue", cut = { name = "Sparkling Azure Moonstone", id = 23119 }, raw = { name = "Azure Moonstone", id = 23117 }, skill = 305 },
+    { color = "Blue", cut = { name = "Stormy Azure Moonstone", id = 23120 }, raw = { name = "Azure Moonstone", id = 23117 }, skill = 315 },
+    { color = "Blue", cut = { name = "Lustrous Azure Moonstone", id = 23121 }, raw = { name = "Azure Moonstone", id = 23117 }, skill = 325 },
+    { color = "Red", cut = { name = "Bold Living Ruby", id = 24027 }, raw = { name = "Living Ruby", id = 23436 }, skill = 350 },
+    { color = "Red", cut = { name = "Delicate Living Ruby", id = 24028 }, raw = { name = "Living Ruby", id = 23436 }, skill = 350 },
+    { color = "Red", cut = { name = "Teardrop Living Ruby", id = 24029 }, raw = { name = "Living Ruby", id = 23436 }, skill = 350 },
+    { color = "Red", cut = { name = "Runed Living Ruby", id = 24030 }, raw = { name = "Living Ruby", id = 23436 }, skill = 350 },
+    { color = "Red", cut = { name = "Bright Living Ruby", id = 24031 }, raw = { name = "Living Ruby", id = 23436 }, skill = 350 },
+    { color = "Red", cut = { name = "Subtle Living Ruby", id = 24032 }, raw = { name = "Living Ruby", id = 23436 }, skill = 350 },
+    { color = "Red", cut = { name = "Flashing Living Ruby", id = 24036 }, raw = { name = "Living Ruby", id = 23436 }, skill = 350 },
+    { color = "Blue", cut = { name = "Solid Star of Elune", id = 24033 }, raw = { name = "Star of Elune", id = 23438 }, skill = 350 },
+    { color = "Blue", cut = { name = "Lustrous Star of Elune", id = 24037 }, raw = { name = "Star of Elune", id = 23438 }, skill = 350 },
+    { color = "Blue", cut = { name = "Stormy Star of Elune", id = 24039 }, raw = { name = "Star of Elune", id = 23438 }, skill = 350 },
+    { color = "Yellow", cut = { name = "Brilliant Dawnstone", id = 24047 }, raw = { name = "Dawnstone", id = 23440 }, skill = 350 },
+    { color = "Yellow", cut = { name = "Smooth Dawnstone", id = 24048 }, raw = { name = "Dawnstone", id = 23440 }, skill = 350 },
+    { color = "Yellow", cut = { name = "Rigid Dawnstone", id = 24051 }, raw = { name = "Dawnstone", id = 23440 }, skill = 350 },
+    { color = "Yellow", cut = { name = "Gleaming Dawnstone", id = 24050 }, raw = { name = "Dawnstone", id = 23440 }, skill = 350 },
+    { color = "Yellow", cut = { name = "Thick Dawnstone", id = 24052 }, raw = { name = "Dawnstone", id = 23440 }, skill = 350 },
+    { color = "Yellow", cut = { name = "Mystic Dawnstone", id = 24053 }, raw = { name = "Dawnstone", id = 23440 }, skill = 350 },
+    { color = "Purple", cut = { name = "Sovereign Nightseye", id = 24054 }, raw = { name = "Nightseye", id = 23441 }, skill = 350 },
+    { color = "Purple", cut = { name = "Shifting Nightseye", id = 24055 }, raw = { name = "Nightseye", id = 23441 }, skill = 350 },
+    { color = "Purple", cut = { name = "Glowing Nightseye", id = 24056 }, raw = { name = "Nightseye", id = 23441 }, skill = 350 },
+    { color = "Purple", cut = { name = "Royal Nightseye", id = 24057 }, raw = { name = "Nightseye", id = 23441 }, skill = 350 },
+    { color = "Orange", cut = { name = "Inscribed Noble Topaz", id = 24058 }, raw = { name = "Noble Topaz", id = 23439 }, skill = 350 },
+    { color = "Orange", cut = { name = "Potent Noble Topaz", id = 24059 }, raw = { name = "Noble Topaz", id = 23439 }, skill = 350 },
+    { color = "Orange", cut = { name = "Luminous Noble Topaz", id = 24060 }, raw = { name = "Noble Topaz", id = 23439 }, skill = 350 },
+    { color = "Orange", cut = { name = "Glinting Noble Topaz", id = 24061 }, raw = { name = "Noble Topaz", id = 23439 }, skill = 350 },
+    { color = "Green", cut = { name = "Enduring Talasite", id = 24062 }, raw = { name = "Talasite", id = 23437 }, skill = 350 },
+    { color = "Green", cut = { name = "Radiant Talasite", id = 24066 }, raw = { name = "Talasite", id = 23437 }, skill = 350 },
+    { color = "Green", cut = { name = "Dazzling Talasite", id = 24065 }, raw = { name = "Talasite", id = 23437 }, skill = 350 },
+    { color = "Green", cut = { name = "Jagged Talasite", id = 24067 }, raw = { name = "Talasite", id = 23437 }, skill = 350 },
+    { color = "Blue", cut = { name = "Sparkling Star of Elune", id = 24035 }, raw = { name = "Star of Elune", id = 23438 }, skill = 350 },
+    { color = "Meta", cut = { name = "Powerful Earthstorm Diamond", id = 25896 }, raw = { name = "Earthstorm Diamond", id = 25867 } },
+    { color = "Meta", cut = { name = "Bracing Earthstorm Diamond", id = 25897 }, raw = { name = "Earthstorm Diamond", id = 25867 } },
+    { color = "Meta", cut = { name = "Tenacious Earthstorm Diamond", id = 25898 }, raw = { name = "Earthstorm Diamond", id = 25867 } },
+    { color = "Meta", cut = { name = "Brutal Earthstorm Diamond", id = 25899 }, raw = { name = "Earthstorm Diamond", id = 25867 } },
+    { color = "Meta", cut = { name = "Insightful Earthstorm Diamond", id = 25901 }, raw = { name = "Earthstorm Diamond", id = 25867 } },
+    { color = "Meta", cut = { name = "Destructive Skyfire Diamond", id = 25890 }, raw = { name = "Skyfire Diamond", id = 25868 } },
+    { color = "Meta", cut = { name = "Mystical Skyfire Diamond", id = 25893 }, raw = { name = "Skyfire Diamond", id = 25868 } },
+    { color = "Meta", cut = { name = "Swift Skyfire Diamond", id = 25894 }, raw = { name = "Skyfire Diamond", id = 25868 } },
+    { color = "Meta", cut = { name = "Enigmatic Skyfire Diamond", id = 25895 }, raw = { name = "Skyfire Diamond", id = 25868 } },
+    { color = "Yellow", cut = { name = "Smooth Golden Draenite", id = 28290 }, raw = { name = "Golden Draenite", id = 23112 }, skill = 325 },
+    { color = "Red", cut = { name = "Bright Blood Garnet", id = 28595 }, raw = { name = "Blood Garnet", id = 23077 }, skill = 305 },
+    { color = "Yellow", cut = { name = "Great Golden Draenite", id = 31860 }, raw = { name = "Golden Draenite", id = 23112 }, skill = 325 },
+    { color = "Yellow", cut = { name = "Great Dawnstone", id = 31861 }, raw = { name = "Dawnstone", id = 23440 }, skill = 350 },
+    { color = "Purple", cut = { name = "Balanced Shadow Draenite", id = 31862 }, raw = { name = "Shadow Draenite", id = 23107 }, skill = 325 },
+    { color = "Purple", cut = { name = "Infused Shadow Draenite", id = 31864 }, raw = { name = "Shadow Draenite", id = 23107 }, skill = 325 },
+    { color = "Purple", cut = { name = "Infused Nightseye", id = 31865 }, raw = { name = "Nightseye", id = 23441 }, skill = 350 },
+    { color = "Purple", cut = { name = "Balanced Nightseye", id = 31863 }, raw = { name = "Nightseye", id = 23441 }, skill = 350 },
+    { color = "Orange", cut = { name = "Veiled Flame Spessarite", id = 31866 }, raw = { name = "Flame Spessarite", id = 21929 }, skill = 325 },
+    { color = "Orange", cut = { name = "Wicked Flame Spessarite", id = 31869 }, raw = { name = "Flame Spessarite", id = 21929 }, skill = 325 },
+    { color = "Orange", cut = { name = "Veiled Noble Topaz", id = 31867 }, raw = { name = "Noble Topaz", id = 23439 }, skill = 350 },
+    { color = "Orange", cut = { name = "Wicked Noble Topaz", id = 31868 }, raw = { name = "Noble Topaz", id = 23439 }, skill = 350 },
+    { color = "Red", cut = { name = "Bold Crimson Spinel", id = 32193 }, raw = { name = "Crimson Spinel", id = 32227 }, skill = 375 },
+    { color = "Red", cut = { name = "Delicate Crimson Spinel", id = 32194 }, raw = { name = "Crimson Spinel", id = 32227 }, skill = 375 },
+    { color = "Red", cut = { name = "Teardrop Crimson Spinel", id = 32195 }, raw = { name = "Crimson Spinel", id = 32227 }, skill = 375 },
+    { color = "Red", cut = { name = "Runed Crimson Spinel", id = 32196 }, raw = { name = "Crimson Spinel", id = 32227 }, skill = 375 },
+    { color = "Red", cut = { name = "Bright Crimson Spinel", id = 32197 }, raw = { name = "Crimson Spinel", id = 32227 }, skill = 375 },
+    { color = "Red", cut = { name = "Subtle Crimson Spinel", id = 32198 }, raw = { name = "Crimson Spinel", id = 32227 }, skill = 375 },
+    { color = "Red", cut = { name = "Flashing Crimson Spinel", id = 32199 }, raw = { name = "Crimson Spinel", id = 32227 }, skill = 375 },
+    { color = "Blue", cut = { name = "Solid Empyrean Sapphire", id = 32200 }, raw = { name = "Empyrean Sapphire", id = 32228 }, skill = 375 },
+    { color = "Blue", cut = { name = "Sparkling Empyrean Sapphire", id = 32201 }, raw = { name = "Empyrean Sapphire", id = 32228 }, skill = 375 },
+    { color = "Blue", cut = { name = "Lustrous Empyrean Sapphire", id = 32202 }, raw = { name = "Empyrean Sapphire", id = 32228 }, skill = 375 },
+    { color = "Blue", cut = { name = "Stormy Empyrean Sapphire", id = 32203 }, raw = { name = "Empyrean Sapphire", id = 32228 }, skill = 375 },
+    { color = "Yellow", cut = { name = "Brilliant Lionseye", id = 32204 }, raw = { name = "Lionseye", id = 32229 }, skill = 375 },
+    { color = "Yellow", cut = { name = "Smooth Lionseye", id = 32205 }, raw = { name = "Lionseye", id = 32229 }, skill = 375 },
+    { color = "Yellow", cut = { name = "Rigid Lionseye", id = 32206 }, raw = { name = "Lionseye", id = 32229 }, skill = 375 },
+    { color = "Yellow", cut = { name = "Gleaming Lionseye", id = 32207 }, raw = { name = "Lionseye", id = 32229 }, skill = 375 },
+    { color = "Yellow", cut = { name = "Thick Lionseye", id = 32208 }, raw = { name = "Lionseye", id = 32229 }, skill = 375 },
+    { color = "Yellow", cut = { name = "Mystic Lionseye", id = 32209 }, raw = { name = "Lionseye", id = 32229 }, skill = 375 },
+    { color = "Yellow", cut = { name = "Great Lionseye", id = 32210 }, raw = { name = "Lionseye", id = 32229 }, skill = 375 },
+    { color = "Purple", cut = { name = "Sovereign Shadowsong Amethyst", id = 32211 }, raw = { name = "Shadowsong Amethyst", id = 32230 }, skill = 375 },
+    { color = "Purple", cut = { name = "Shifting Shadowsong Amethyst", id = 32212 }, raw = { name = "Shadowsong Amethyst", id = 32230 }, skill = 375 },
+    { color = "Purple", cut = { name = "Balanced Shadowsong Amethyst", id = 32213 }, raw = { name = "Shadowsong Amethyst", id = 32230 }, skill = 375 },
+    { color = "Purple", cut = { name = "Infused Shadowsong Amethyst", id = 32214 }, raw = { name = "Shadowsong Amethyst", id = 32230 }, skill = 375 },
+    { color = "Purple", cut = { name = "Glowing Shadowsong Amethyst", id = 32215 }, raw = { name = "Shadowsong Amethyst", id = 32230 }, skill = 375 },
+    { color = "Purple", cut = { name = "Royal Shadowsong Amethyst", id = 32216 }, raw = { name = "Shadowsong Amethyst", id = 32230 }, skill = 375 },
+    { color = "Orange", cut = { name = "Inscribed Pyrestone", id = 32217 }, raw = { name = "Pyrestone", id = 32231 }, skill = 375 },
+    { color = "Orange", cut = { name = "Potent Pyrestone", id = 32218 }, raw = { name = "Pyrestone", id = 32231 }, skill = 375 },
+    { color = "Orange", cut = { name = "Luminous Pyrestone", id = 32219 }, raw = { name = "Pyrestone", id = 32231 }, skill = 375 },
+    { color = "Orange", cut = { name = "Glinting Pyrestone", id = 32220 }, raw = { name = "Pyrestone", id = 32231 }, skill = 375 },
+    { color = "Orange", cut = { name = "Veiled Pyrestone", id = 32221 }, raw = { name = "Pyrestone", id = 32231 }, skill = 375 },
+    { color = "Orange", cut = { name = "Wicked Pyrestone", id = 32222 }, raw = { name = "Pyrestone", id = 32231 }, skill = 375 },
+    { color = "Green", cut = { name = "Enduring Seaspray Emerald", id = 32223 }, raw = { name = "Seaspray Emerald", id = 32249 }, skill = 375 },
+    { color = "Green", cut = { name = "Radiant Seaspray Emerald", id = 32224 }, raw = { name = "Seaspray Emerald", id = 32249 }, skill = 375 },
+    { color = "Green", cut = { name = "Dazzling Seaspray Emerald", id = 32225 }, raw = { name = "Seaspray Emerald", id = 32249 }, skill = 375 },
+    { color = "Green", cut = { name = "Jagged Seaspray Emerald", id = 32226 }, raw = { name = "Seaspray Emerald", id = 32249 }, skill = 375 },
+    { color = "Meta", cut = { name = "Relentless Earthstorm Diamond", id = 32409 }, raw = { name = "Earthstorm Diamond", id = 25867 } },
+    { color = "Meta", cut = { name = "Thundering Skyfire Diamond", id = 32410 }, raw = { name = "Skyfire Diamond", id = 25868 } },
+    { color = "Green", cut = { name = "Steady Talasite", id = 33782 }, raw = { name = "Talasite", id = 23437 }, skill = 350 },
+    { color = "Meta", cut = { name = "Chaotic Skyfire Diamond", id = 34220 }, raw = { name = "Skyfire Diamond", id = 25868 } },
+    { color = "Yellow", cut = { name = "Quick Dawnstone", id = 35315 }, raw = { name = "Dawnstone", id = 23440 }, skill = 350 },
+    { color = "Orange", cut = { name = "Reckless Noble Topaz", id = 35316 }, raw = { name = "Noble Topaz", id = 23439 }, skill = 350 },
+    { color = "Green", cut = { name = "Forceful Talasite", id = 35318 }, raw = { name = "Talasite", id = 23437 }, skill = 350 },
+    { color = "Meta", cut = { name = "Eternal Earthstorm Diamond", id = 35501 }, raw = { name = "Earthstorm Diamond", id = 25867 } },
+    { color = "Meta", cut = { name = "Ember Skyfire Diamond", id = 35503 }, raw = { name = "Skyfire Diamond", id = 25868 } },
     { color = "Purple", cut = { name = "Regal Nightseye", id = 35707 }, raw = { name = "Nightseye", id = 23441 }, skill = 350 },
+    { color = "Green", cut = { name = "Forceful Seaspray Emerald", id = 35759 }, raw = { name = "Seaspray Emerald", id = 32249 }, skill = 375 },
+    { color = "Green", cut = { name = "Steady Seaspray Emerald", id = 35758 }, raw = { name = "Seaspray Emerald", id = 32249 }, skill = 375 },
+    { color = "Orange", cut = { name = "Reckless Pyrestone", id = 35760 }, raw = { name = "Pyrestone", id = 32231 }, skill = 375 },
+    { color = "Yellow", cut = { name = "Quick Lionseye", id = 35761 }, raw = { name = "Lionseye", id = 32229 }, skill = 375 },
+    { color = "Purple", cut = { name = "Purified Shadowsong Amethyst", id = 37503 }, raw = { name = "Shadowsong Amethyst", id = 32230 }, skill = 375 },
 }
 
 MAW.GEM_TIERS = {
-    uncommon = { [23077]=true, [23079]=true, [21929]=true, [23112]=true, [23117]=true, [23107]=true },
+    uncommon = { [21929]=true, [23077]=true, [23079]=true, [23107]=true, [23112]=true, [23117]=true },
     rare     = { [23436]=true, [23437]=true, [23438]=true, [23439]=true, [23440]=true, [23441]=true },
-    epic     = { [32227]=true, [32228]=true, [32229]=true, [32231]=true, [32249]=true, [32230]=true },
+    epic     = { [32227]=true, [32228]=true, [32229]=true, [32230]=true, [32231]=true, [32249]=true },
+    meta     = { [25867]=true, [25868]=true },
 }
 
 -- Repair data saved by builds before 1.12.1, whose epic raw gem IDs were wrong and whose
@@ -456,12 +472,14 @@ function MAW:GetPresetRawGems()
         if not seen[g.raw.id] then
             seen[g.raw.id] = true
             local tier = "uncommon"
-            if self.GEM_TIERS.rare[g.raw.id] then tier = "rare" elseif self.GEM_TIERS.epic[g.raw.id] then tier = "epic" end
+            for t, set in pairs(self.GEM_TIERS) do
+                if set[g.raw.id] then tier = t end
+            end
             table.insert(list, { name = g.raw.name, id = g.raw.id, tier = tier })
         end
     end
     table.sort(list, function(a, b)
-        local order = { uncommon = 1, rare = 2, epic = 3 }
+        local order = { uncommon = 1, rare = 2, epic = 3, meta = 4 }
         if order[a.tier] ~= order[b.tier] then return order[a.tier] < order[b.tier] end
         return a.name < b.name
     end)
@@ -521,52 +539,167 @@ function MAW:VendorMatByName(name)
 end
 
 -- ---------------------------------------------------------------------------
--- Built-in preset: TBC Alchemy consumables the raid market moves quickly.
--- Only recipes whose reagents are certain are listed. Imbued Vial is vendor priced.
+-- Built-in preset: every TBC Alchemy recipe with a tradeable product (potions, elixirs,
+-- flasks, transmutes). Generated from Wowhead's TBC Classic spell data; item names from
+-- Questie's item database. Vials carry a vendor price. Alchemist stones, cauldrons and
+-- Primal Might (its own preset) are excluded.
 -- ---------------------------------------------------------------------------
-local VIAL = { name = "Imbued Vial", id = 18256, count = 1, vendor = 2000 }
 MAW.PRESET_ALCHEMY = {
-    { product = { name = "Haste Potion", id = 22838 }, skill = 360, mats = {
-        { name = "Netherbloom", id = 22791, count = 1 }, { name = "Terocone", id = 22789, count = 1 }, VIAL } },
-    { product = { name = "Destruction Potion", id = 22839 }, skill = 350, mats = {
-        { name = "Nightmare Vine", id = 22792, count = 1 }, { name = "Terocone", id = 22789, count = 1 }, VIAL } },
-    { product = { name = "Super Mana Potion", id = 22832 }, skill = 340, mats = {
-        { name = "Dreaming Glory", id = 22786, count = 2 }, { name = "Felweed", id = 22785, count = 1 }, VIAL } },
-    { product = { name = "Super Healing Potion", id = 22829 }, skill = 325, mats = {
-        { name = "Netherbloom", id = 22791, count = 2 }, { name = "Felweed", id = 22785, count = 1 }, VIAL } },
-    { product = { name = "Elixir of Major Mageblood", id = 22840 }, skill = 355, mats = {
-        { name = "Ancient Lichen", id = 22790, count = 1 }, { name = "Netherbloom", id = 22791, count = 1 }, VIAL } },
-    { product = { name = "Flask of Fortification", id = 22851 }, skill = 375, mats = {
-        { name = "Ancient Lichen", id = 22790, count = 7 }, { name = "Mana Thistle", id = 22793, count = 3 },
-        { name = "Fel Lotus", id = 22794, count = 1 }, VIAL } },
-    { product = { name = "Flask of Mighty Restoration", id = 22853 }, skill = 375, mats = {
-        { name = "Dreaming Glory", id = 22786, count = 7 }, { name = "Mana Thistle", id = 22793, count = 3 },
-        { name = "Fel Lotus", id = 22794, count = 1 }, VIAL } },
+    { name = "Elixir of Camouflage", product = { name = "Elixir of Camouflage", id = 22823 }, made = 1, kind = "craft", mats = {
+        { name = "Ragveil", id = 22787, count = 1 }, { name = "Felweed", id = 22785, count = 1 }, { name = "Imbued Vial", id = 18256, count = 1, vendor = 2000 } } },
+    { name = "Elixir of Major Strength", product = { name = "Elixir of Major Strength", id = 22824 }, made = 1, kind = "craft", mats = {
+        { name = "Mountain Silversage", id = 13465, count = 1 }, { name = "Felweed", id = 22785, count = 1 }, { name = "Imbued Vial", id = 18256, count = 1, vendor = 2000 } } },
+    { name = "Elixir of Healing Power", product = { name = "Elixir of Healing Power", id = 22825 }, made = 1, kind = "craft", mats = {
+        { name = "Golden Sansam", id = 13464, count = 1 }, { name = "Dreaming Glory", id = 22786, count = 1 }, { name = "Imbued Vial", id = 18256, count = 1, vendor = 2000 } } },
+    { name = "Sneaking Potion", product = { name = "Sneaking Potion", id = 22826 }, made = 1, kind = "craft", mats = {
+        { name = "Ragveil", id = 22787, count = 2 }, { name = "Felweed", id = 22785, count = 1 }, { name = "Imbued Vial", id = 18256, count = 1, vendor = 2000 } } },
+    { name = "Elixir of Major Frost Power", product = { name = "Elixir of Major Frost Power", id = 22827 }, made = 1, kind = "craft", mats = {
+        { name = "Mote of Water", id = 22578, count = 2 }, { name = "Ancient Lichen", id = 22790, count = 1 }, { name = "Imbued Vial", id = 18256, count = 1, vendor = 2000 } } },
+    { name = "Insane Strength Potion", product = { name = "Insane Strength Potion", id = 22828 }, made = 1, kind = "craft", mats = {
+        { name = "Terocone", id = 22789, count = 3 }, { name = "Imbued Vial", id = 18256, count = 1, vendor = 2000 } } },
+    { name = "Super Healing Potion", product = { name = "Super Healing Potion", id = 22829 }, made = 1, kind = "craft", mats = {
+        { name = "Netherbloom", id = 22791, count = 2 }, { name = "Felweed", id = 22785, count = 1 }, { name = "Imbued Vial", id = 18256, count = 1, vendor = 2000 } } },
+    { name = "Elixir of the Searching Eye", product = { name = "Elixir of the Searching Eye", id = 22830 }, made = 1, kind = "craft", mats = {
+        { name = "Ragveil", id = 22787, count = 2 }, { name = "Terocone", id = 22789, count = 1 }, { name = "Imbued Vial", id = 18256, count = 1, vendor = 2000 } } },
+    { name = "Elixir of Major Agility", product = { name = "Elixir of Major Agility", id = 22831 }, made = 1, kind = "craft", mats = {
+        { name = "Terocone", id = 22789, count = 1 }, { name = "Felweed", id = 22785, count = 2 }, { name = "Imbued Vial", id = 18256, count = 1, vendor = 2000 } } },
+    { name = "Shrouding Potion", product = { name = "Shrouding Potion", id = 22871 }, made = 1, kind = "craft", mats = {
+        { name = "Ragveil", id = 22787, count = 3 }, { name = "Netherbloom", id = 22791, count = 1 }, { name = "Imbued Vial", id = 18256, count = 1, vendor = 2000 } } },
+    { name = "Super Mana Potion", product = { name = "Super Mana Potion", id = 22832 }, made = 1, kind = "craft", mats = {
+        { name = "Dreaming Glory", id = 22786, count = 2 }, { name = "Felweed", id = 22785, count = 1 }, { name = "Imbued Vial", id = 18256, count = 1, vendor = 2000 } } },
+    { name = "Elixir of Major Firepower", product = { name = "Elixir of Major Firepower", id = 22833 }, made = 1, kind = "craft", mats = {
+        { name = "Mote of Fire", id = 22574, count = 2 }, { name = "Ancient Lichen", id = 22790, count = 1 }, { name = "Imbued Vial", id = 18256, count = 1, vendor = 2000 } } },
+    { name = "Elixir of Major Defense", product = { name = "Elixir of Major Defense", id = 22834 }, made = 1, kind = "craft", mats = {
+        { name = "Ancient Lichen", id = 22790, count = 3 }, { name = "Terocone", id = 22789, count = 1 }, { name = "Imbued Vial", id = 18256, count = 1, vendor = 2000 } } },
+    { name = "Elixir of Major Shadow Power", product = { name = "Elixir of Major Shadow Power", id = 22835 }, made = 1, kind = "craft", mats = {
+        { name = "Ancient Lichen", id = 22790, count = 1 }, { name = "Nightmare Vine", id = 22792, count = 1 }, { name = "Imbued Vial", id = 18256, count = 1, vendor = 2000 } } },
+    { name = "Major Dreamless Sleep Potion", product = { name = "Major Dreamless Sleep Potion", id = 22836 }, made = 1, kind = "craft", mats = {
+        { name = "Dreaming Glory", id = 22786, count = 1 }, { name = "Nightmare Vine", id = 22792, count = 1 }, { name = "Imbued Vial", id = 18256, count = 1, vendor = 2000 } } },
+    { name = "Heroic Potion", product = { name = "Heroic Potion", id = 22837 }, made = 1, kind = "craft", mats = {
+        { name = "Terocone", id = 22789, count = 2 }, { name = "Ancient Lichen", id = 22790, count = 1 }, { name = "Imbued Vial", id = 18256, count = 1, vendor = 2000 } } },
+    { name = "Haste Potion", product = { name = "Haste Potion", id = 22838 }, made = 1, kind = "craft", mats = {
+        { name = "Terocone", id = 22789, count = 2 }, { name = "Netherbloom", id = 22791, count = 1 }, { name = "Imbued Vial", id = 18256, count = 1, vendor = 2000 } } },
+    { name = "Destruction Potion", product = { name = "Destruction Potion", id = 22839 }, made = 1, kind = "craft", mats = {
+        { name = "Nightmare Vine", id = 22792, count = 2 }, { name = "Netherbloom", id = 22791, count = 1 }, { name = "Imbued Vial", id = 18256, count = 1, vendor = 2000 } } },
+    { name = "Transmute: Primal Air to Fire", product = { name = "Primal Fire", id = 21884 }, made = 1, kind = "transmute", mats = {
+        { name = "Primal Air", id = 22451, count = 1 } } },
+    { name = "Transmute: Primal Earth to Water", product = { name = "Primal Water", id = 21885 }, made = 1, kind = "transmute", mats = {
+        { name = "Primal Earth", id = 22452, count = 1 } } },
+    { name = "Transmute: Primal Fire to Earth", product = { name = "Primal Earth", id = 22452 }, made = 1, kind = "transmute", mats = {
+        { name = "Primal Fire", id = 21884, count = 1 } } },
+    { name = "Transmute: Primal Water to Air", product = { name = "Primal Air", id = 22451 }, made = 1, kind = "transmute", mats = {
+        { name = "Primal Water", id = 21885, count = 1 } } },
+    { name = "Elixir of Major Mageblood", product = { name = "Elixir of Major Mageblood", id = 22840 }, made = 1, kind = "craft", mats = {
+        { name = "Ancient Lichen", id = 22790, count = 1 }, { name = "Netherbloom", id = 22791, count = 1 }, { name = "Imbued Vial", id = 18256, count = 1, vendor = 2000 } } },
+    { name = "Major Fire Protection Potion", product = { name = "Major Fire Protection Potion", id = 22841 }, made = 5, kind = "craft", mats = {
+        { name = "Primal Fire", id = 21884, count = 1 }, { name = "Mana Thistle", id = 22793, count = 3 }, { name = "Imbued Vial", id = 18256, count = 5, vendor = 2000 } } },
+    { name = "Major Frost Protection Potion", product = { name = "Major Frost Protection Potion", id = 22842 }, made = 5, kind = "craft", mats = {
+        { name = "Primal Water", id = 21885, count = 1 }, { name = "Mana Thistle", id = 22793, count = 3 }, { name = "Imbued Vial", id = 18256, count = 5, vendor = 2000 } } },
+    { name = "Major Nature Protection Potion", product = { name = "Major Nature Protection Potion", id = 22844 }, made = 5, kind = "craft", mats = {
+        { name = "Primal Life", id = 21886, count = 1 }, { name = "Mana Thistle", id = 22793, count = 3 }, { name = "Imbued Vial", id = 18256, count = 5, vendor = 2000 } } },
+    { name = "Major Arcane Protection Potion", product = { name = "Major Arcane Protection Potion", id = 22845 }, made = 5, kind = "craft", mats = {
+        { name = "Primal Mana", id = 22457, count = 1 }, { name = "Mana Thistle", id = 22793, count = 3 }, { name = "Imbued Vial", id = 18256, count = 5, vendor = 2000 } } },
+    { name = "Major Shadow Protection Potion", product = { name = "Major Shadow Protection Potion", id = 22846 }, made = 5, kind = "craft", mats = {
+        { name = "Primal Shadow", id = 22456, count = 1 }, { name = "Mana Thistle", id = 22793, count = 3 }, { name = "Imbued Vial", id = 18256, count = 5, vendor = 2000 } } },
+    { name = "Major Holy Protection Potion", product = { name = "Major Holy Protection Potion", id = 22847 }, made = 5, kind = "craft", mats = {
+        { name = "Primal Life", id = 21886, count = 1 }, { name = "Mana Thistle", id = 22793, count = 3 }, { name = "Imbued Vial", id = 18256, count = 5, vendor = 2000 } } },
+    { name = "Elixir of Empowerment", product = { name = "Elixir of Empowerment", id = 22848 }, made = 1, kind = "craft", mats = {
+        { name = "Netherbloom", id = 22791, count = 1 }, { name = "Mana Thistle", id = 22793, count = 1 }, { name = "Imbued Vial", id = 18256, count = 1, vendor = 2000 } } },
+    { name = "Ironshield Potion", product = { name = "Ironshield Potion", id = 22849 }, made = 1, kind = "craft", mats = {
+        { name = "Ancient Lichen", id = 22790, count = 2 }, { name = "Mote of Earth", id = 22573, count = 3 }, { name = "Imbued Vial", id = 18256, count = 1, vendor = 2000 } } },
+    { name = "Transmute: Primal Shadow to Water", product = { name = "Primal Water", id = 21885 }, made = 1, kind = "transmute", mats = {
+        { name = "Primal Shadow", id = 22456, count = 1 } } },
+    { name = "Transmute: Primal Water to Shadow", product = { name = "Primal Shadow", id = 22456 }, made = 1, kind = "transmute", mats = {
+        { name = "Primal Water", id = 21885, count = 1 } } },
+    { name = "Transmute: Primal Mana to Fire", product = { name = "Primal Fire", id = 21884 }, made = 1, kind = "transmute", mats = {
+        { name = "Primal Mana", id = 22457, count = 1 } } },
+    { name = "Transmute: Primal Fire to Mana", product = { name = "Primal Mana", id = 22457 }, made = 1, kind = "transmute", mats = {
+        { name = "Primal Fire", id = 21884, count = 1 } } },
+    { name = "Transmute: Primal Life to Earth", product = { name = "Primal Earth", id = 22452 }, made = 1, kind = "transmute", mats = {
+        { name = "Primal Life", id = 21886, count = 1 } } },
+    { name = "Transmute: Primal Earth to Life", product = { name = "Primal Life", id = 21886 }, made = 1, kind = "transmute", mats = {
+        { name = "Primal Earth", id = 22452, count = 1 } } },
+    { name = "Super Rejuvenation Potion", product = { name = "Super Rejuvenation Potion", id = 22850 }, made = 1, kind = "craft", mats = {
+        { name = "Mana Thistle", id = 22793, count = 2 }, { name = "Dreaming Glory", id = 22786, count = 1 }, { name = "Netherbloom", id = 22791, count = 1 }, { name = "Imbued Vial", id = 18256, count = 1, vendor = 2000 } } },
+    { name = "Flask of Fortification", product = { name = "Flask of Fortification", id = 22851 }, made = 1, kind = "craft", mats = {
+        { name = "Fel Lotus", id = 22794, count = 1 }, { name = "Mana Thistle", id = 22793, count = 3 }, { name = "Ancient Lichen", id = 22790, count = 7 }, { name = "Imbued Vial", id = 18256, count = 1, vendor = 2000 } } },
+    { name = "Flask of Mighty Restoration", product = { name = "Flask of Mighty Restoration", id = 22853 }, made = 1, kind = "craft", mats = {
+        { name = "Fel Lotus", id = 22794, count = 1 }, { name = "Mana Thistle", id = 22793, count = 3 }, { name = "Dreaming Glory", id = 22786, count = 7 }, { name = "Imbued Vial", id = 18256, count = 1, vendor = 2000 } } },
+    { name = "Flask of Relentless Assault", product = { name = "Flask of Relentless Assault", id = 22854 }, made = 1, kind = "craft", mats = {
+        { name = "Fel Lotus", id = 22794, count = 1 }, { name = "Mana Thistle", id = 22793, count = 3 }, { name = "Terocone", id = 22789, count = 7 }, { name = "Imbued Vial", id = 18256, count = 1, vendor = 2000 } } },
+    { name = "Flask of Blinding Light", product = { name = "Flask of Blinding Light", id = 22861 }, made = 1, kind = "craft", mats = {
+        { name = "Fel Lotus", id = 22794, count = 1 }, { name = "Mana Thistle", id = 22793, count = 3 }, { name = "Netherbloom", id = 22791, count = 7 }, { name = "Imbued Vial", id = 18256, count = 1, vendor = 2000 } } },
+    { name = "Flask of Pure Death", product = { name = "Flask of Pure Death", id = 22866 }, made = 1, kind = "craft", mats = {
+        { name = "Fel Lotus", id = 22794, count = 1 }, { name = "Mana Thistle", id = 22793, count = 3 }, { name = "Nightmare Vine", id = 22792, count = 7 }, { name = "Imbued Vial", id = 18256, count = 1, vendor = 2000 } } },
+    { name = "Transmute: Earthstorm Diamond", product = { name = "Earthstorm Diamond", id = 25867 }, made = 1, kind = "transmute", mats = {
+        { name = "Deep Peridot", id = 23079, count = 3 }, { name = "Shadow Draenite", id = 23107, count = 3 }, { name = "Golden Draenite", id = 23112, count = 3 }, { name = "Primal Earth", id = 22452, count = 2 }, { name = "Primal Water", id = 21885, count = 2 } } },
+    { name = "Transmute: Skyfire Diamond", product = { name = "Skyfire Diamond", id = 25868 }, made = 1, kind = "transmute", mats = {
+        { name = "Blood Garnet", id = 23077, count = 3 }, { name = "Flame Spessarite", id = 21929, count = 3 }, { name = "Azure Moonstone", id = 23117, count = 3 }, { name = "Primal Fire", id = 21884, count = 2 }, { name = "Primal Air", id = 22451, count = 2 } } },
+    { name = "Volatile Healing Potion", product = { name = "Volatile Healing Potion", id = 28100 }, made = 1, kind = "craft", mats = {
+        { name = "Golden Sansam", id = 13464, count = 1 }, { name = "Felweed", id = 22785, count = 1 }, { name = "Imbued Vial", id = 18256, count = 1, vendor = 2000 } } },
+    { name = "Unstable Mana Potion", product = { name = "Unstable Mana Potion", id = 28101 }, made = 1, kind = "craft", mats = {
+        { name = "Ragveil", id = 22787, count = 2 }, { name = "Felweed", id = 22785, count = 1 }, { name = "Imbued Vial", id = 18256, count = 1, vendor = 2000 } } },
+    { name = "Onslaught Elixir", product = { name = "Onslaught Elixir", id = 28102 }, made = 1, kind = "craft", mats = {
+        { name = "Mountain Silversage", id = 13465, count = 1 }, { name = "Felweed", id = 22785, count = 1 }, { name = "Imbued Vial", id = 18256, count = 1, vendor = 2000 } } },
+    { name = "Adept's Elixir", product = { name = "Adept's Elixir", id = 28103 }, made = 1, kind = "craft", mats = {
+        { name = "Dreamfoil", id = 13463, count = 1 }, { name = "Felweed", id = 22785, count = 1 }, { name = "Imbued Vial", id = 18256, count = 1, vendor = 2000 } } },
+    { name = "Elixir of Mastery", product = { name = "Elixir of Mastery", id = 28104 }, made = 1, kind = "craft", mats = {
+        { name = "Terocone", id = 22789, count = 3 }, { name = "Felweed", id = 22785, count = 1 }, { name = "Imbued Vial", id = 18256, count = 1, vendor = 2000 } } },
+    { name = "Fel Strength Elixir", product = { name = "Fel Strength Elixir", id = 31679 }, made = 1, kind = "craft", mats = {
+        { name = "Terocone", id = 22789, count = 1 }, { name = "Nightmare Vine", id = 22792, count = 2 }, { name = "Imbued Vial", id = 18256, count = 1, vendor = 2000 } } },
+    { name = "Fel Mana Potion", product = { name = "Fel Mana Potion", id = 31677 }, made = 1, kind = "craft", mats = {
+        { name = "Mana Thistle", id = 22793, count = 1 }, { name = "Nightmare Vine", id = 22792, count = 2 }, { name = "Imbued Vial", id = 18256, count = 1, vendor = 2000 } } },
+    { name = "Fel Regeneration Potion", product = { name = "Fel Regeneration Potion", id = 31676 }, made = 1, kind = "craft", mats = {
+        { name = "Felweed", id = 22785, count = 2 }, { name = "Nightmare Vine", id = 22792, count = 3 }, { name = "Imbued Vial", id = 18256, count = 1, vendor = 2000 } } },
+    { name = "Elixir of Major Fortitude", product = { name = "Elixir of Major Fortitude", id = 32062 }, made = 1, kind = "craft", mats = {
+        { name = "Ragveil", id = 22787, count = 2 }, { name = "Felweed", id = 22785, count = 1 }, { name = "Imbued Vial", id = 18256, count = 1, vendor = 2000 } } },
+    { name = "Earthen Elixir", product = { name = "Earthen Elixir", id = 32063 }, made = 1, kind = "craft", mats = {
+        { name = "Dreaming Glory", id = 22786, count = 1 }, { name = "Ragveil", id = 22787, count = 2 }, { name = "Imbued Vial", id = 18256, count = 1, vendor = 2000 } } },
+    { name = "Elixir of Draenic Wisdom", product = { name = "Elixir of Draenic Wisdom", id = 32067 }, made = 1, kind = "craft", mats = {
+        { name = "Felweed", id = 22785, count = 1 }, { name = "Terocone", id = 22789, count = 1 }, { name = "Imbued Vial", id = 18256, count = 1, vendor = 2000 } } },
+    { name = "Elixir of Ironskin", product = { name = "Elixir of Ironskin", id = 32068 }, made = 1, kind = "craft", mats = {
+        { name = "Ancient Lichen", id = 22790, count = 1 }, { name = "Ragveil", id = 22787, count = 1 }, { name = "Imbued Vial", id = 18256, count = 1, vendor = 2000 } } },
+    { name = "Flask of Chromatic Wonder", product = { name = "Flask of Chromatic Wonder", id = 33208 }, made = 1, kind = "craft", mats = {
+        { name = "Dreaming Glory", id = 22786, count = 7 }, { name = "Netherbloom", id = 22791, count = 3 }, { name = "Fel Lotus", id = 22794, count = 1 }, { name = "Imbued Vial", id = 18256, count = 1, vendor = 2000 } } },
+    { name = "Mad Alchemist's Potion", product = { name = "Mad Alchemist's Potion", id = 34440 }, made = 1, kind = "craft", mats = {
+        { name = "Crystal Vial", id = 8925, count = 1, vendor = 2000 }, { name = "Ragveil", id = 22787, count = 2 } } },
 }
 
-function MAW:AddAlchemyPresets()
+-- Category of an Alchemy preset entry: "potion", "elixir", "flask", "transmute", "other"
+function MAW:AlchemyCategory(r)
+    if r.kind == "transmute" then return "transmute" end
+    local n = r.product.name
+    if n:find("Flask") then return "flask" end
+    if n:find("Elixir") then return "elixir" end
+    if n:find("Potion") then return "potion" end
+    return "other"
+end
+
+-- Add Alchemy preset recipes. filter = nil for all, or a category from AlchemyCategory.
+function MAW:AddAlchemyPresets(filter)
     local added, tracked = 0, 0
     for _, r in ipairs(self.PRESET_ALCHEMY) do
-        local mats = {}
-        for _, m in ipairs(r.mats) do
-            if m.vendor then
-                table.insert(mats, { item = m.name, count = m.count, vendor = m.vendor })
-            else
-                if self:AddItemByID(m.name, m.id, "material") then tracked = tracked + 1 end
-                table.insert(mats, { item = m.name, count = m.count })
+        if not filter or self:AlchemyCategory(r) == filter then
+            local mats = {}
+            for _, m in ipairs(r.mats) do
+                if m.vendor then
+                    table.insert(mats, { item = m.name, count = m.count, vendor = m.vendor })
+                else
+                    if self:AddItemByID(m.name, m.id, "material") then tracked = tracked + 1 end
+                    table.insert(mats, { item = m.name, count = m.count })
+                end
             end
+            if self:AddItemByID(r.product.name, r.product.id, "product") then tracked = tracked + 1 end
+            local ok = self:AddRecipe({
+                name = r.name,
+                product = r.product.name,
+                productCount = r.made or 1,
+                materials = mats,
+                profession = "Alchemy",
+                note = (r.kind == "transmute") and "Transmute: shares the daily transmute cooldown" or nil,
+            })
+            if ok then added = added + 1 end
         end
-        if self:AddItemByID(r.product.name, r.product.id, "product") then tracked = tracked + 1 end
-        local ok = self:AddRecipe({
-            name = r.product.name,
-            product = r.product.name,
-            productCount = 1,
-            materials = mats,
-            skill = r.skill,
-            profession = "Alchemy",
-            note = "Preset reagents; check against your recipe book",
-        })
-        if ok then added = added + 1 end
     end
     print(string.format("%s: Added %d Alchemy recipes and started tracking %d items", addonName, added, tracked))
     return added
