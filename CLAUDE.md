@@ -30,6 +30,16 @@ Guild World of Warcraft addons. Read `CODING_STANDARDS.md` before changing any L
 
 ## Verifying changes
 
-There is no Lua interpreter on the maintainer's machine and no test suite. Verification is
-in game: deploy, `/reload`, run the commands, check BugSack. State plainly in the summary
-that in-game checks were not run when that is the case.
+Verification is in game: deploy, `/reload`, run the commands, check BugSack. State plainly
+in the summary that in-game checks were not run when that is the case.
+
+Some addons also have a headless test suite. LuaJIT 2.1 (Lua 5.1 semantics, matching the
+client) is installed on the maintainer's machine, and `scripts/run-tests.ps1 -Flavor
+<flavor> -Addon <Addon>` runs an addon's pure modules outside the game. A shell opened
+before the install will not have `luajit` on PATH; the script falls back to the
+`LOCALAPPDATA` install path.
+
+Only modules that call no WoW API at file scope can be tested this way. Caching a global
+into a local at file scope is fine; calling one is not. Anything that creates a frame or
+reads client state does it in an init function registered from the addon's `Core.lua`.
+Headless tests never replace in-game verification, they just catch logic errors first.
