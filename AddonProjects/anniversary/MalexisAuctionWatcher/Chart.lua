@@ -225,8 +225,9 @@ function ChartMixin:SetData(points, opts)
 
         if ref.value and ref.value > 0 then
             local y = math.max(0, math.min(plotH, YFor(ref.value)))
+            -- Span the full chart width, through the y-axis margin, so the line reads as a level
             line.tex:ClearAllPoints()
-            line.tex:SetPoint("BOTTOMLEFT", self.plot, "BOTTOMLEFT", 0, y)
+            line.tex:SetPoint("BOTTOMLEFT", self, "BOTTOMLEFT", 2, BOTTOM_MARGIN + y)
             line.tex:SetPoint("BOTTOMRIGHT", self.plot, "BOTTOMRIGHT", 0, y)
 
             -- Highest line: label above. Others: label below, stepping down if it collides.
