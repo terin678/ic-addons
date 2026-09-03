@@ -243,7 +243,7 @@ function ChartMixin:SetData(points, opts)
             table.insert(placedLabelYs, labelY)
 
             line.text:ClearAllPoints()
-            line.text:SetPoint("BOTTOMLEFT", self.plot, "BOTTOMLEFT", 3, labelY)
+            line.text:SetPoint("BOTTOMLEFT", self, "BOTTOMLEFT", 4, BOTTOM_MARGIN + labelY)
             line.text:SetText((ref.label or "") .. " " .. FormatMoney(ref.value))
             line.tex:Show()
             line.text:Show()
