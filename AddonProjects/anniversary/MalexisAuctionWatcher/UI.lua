@@ -1972,27 +1972,41 @@ function MAWUI:RenderRecipesTab(scrollChild, yOffset)
     local MAW = _G.MalexisAuctionWatcher
 
     -- Toolbar row inside the list: presets menu + add
+    -- Dropdown menu built with UIDropDownMenu_Initialize (EasyMenu is not on every client build)
+    local function PresetMenuItems()
+        local dlg = _G.MalexisAuctionWatcherRecipeDialog
+        local function after() MAWUI:RefreshData() end
+        return {
+            { text = "Add recipes", isTitle = true },
+            { text = "Motes -> Primals (7)", func = function() MAW:AddMotePresets(); after() end },
+            { text = "Transmute: Primal Might", func = function() MAW:AddPrimalMightPreset(); after() end },
+            { text = "Alchemy consumables (7)", func = function() MAW:AddAlchemyPresets(); after() end },
+            { text = "Gem cuts...", func = function() if dlg then dlg.ShowGemPicker() end end },
+            { text = "Import from open profession window...", func = function() if dlg then dlg.ShowProfessionImport() end end },
+            { text = "Track items only", isTitle = true },
+            { text = "Flipping guide watchlist (herbs, primals, gems, shards)", func = function() MAW:AddGuideWatchlist(); after() end },
+        }
+    end
     if not mainFrame.presetMenu then
         mainFrame.presetMenu = CreateFrame("Frame", "MalexisAuctionWatcherPresetMenu", UIParent, "UIDropDownMenuTemplate")
+        UIDropDownMenu_Initialize(mainFrame.presetMenu, function(_, level)
+            for _, item in ipairs(PresetMenuItems()) do
+                local info = UIDropDownMenu_CreateInfo()
+                info.text = item.text
+                info.isTitle = item.isTitle
+                info.notCheckable = true
+                info.disabled = item.isTitle
+                info.func = item.func
+                UIDropDownMenu_AddButton(info, level)
+            end
+        end, "MENU")
     end
     local presetBtn = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate")
     presetBtn:SetSize(120, 22)
     presetBtn:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", PADDING, yOffset)
     presetBtn:SetText("Presets...")
     presetBtn:SetScript("OnClick", function(self)
-        local dlg = _G.MalexisAuctionWatcherRecipeDialog
-        local function after() MAWUI:RefreshData() end
-        local menu = {
-            { text = "Add recipes", isTitle = true, notCheckable = true },
-            { text = "Motes -> Primals (7)", notCheckable = true, func = function() MAW:AddMotePresets(); after() end },
-            { text = "Transmute: Primal Might", notCheckable = true, func = function() MAW:AddPrimalMightPreset(); after() end },
-            { text = "Alchemy consumables (7)", notCheckable = true, func = function() MAW:AddAlchemyPresets(); after() end },
-            { text = "Gem cuts...", notCheckable = true, func = function() if dlg then dlg.ShowGemPicker() end end },
-            { text = "Import from open profession window...", notCheckable = true, func = function() if dlg then dlg.ShowProfessionImport() end end },
-            { text = "Track items only", isTitle = true, notCheckable = true },
-            { text = "Flipping guide watchlist (herbs, primals, gems, shards)", notCheckable = true, func = function() MAW:AddGuideWatchlist(); after() end },
-        }
-        EasyMenu(menu, mainFrame.presetMenu, self, 0, 0, "MENU")
+        ToggleDropDownMenu(1, nil, mainFrame.presetMenu, self, 0, 0)
     end)
     table.insert(mainFrame.rows, presetBtn)
 
