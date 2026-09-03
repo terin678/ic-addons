@@ -1178,3 +1178,43 @@ T.Case("Requests: everything in brackets is a specific", function()
     local two = "LF JC [Bold Living Ruby] and [Runed Living Ruby]"
     T.Eq(#ns.Util.BracketNames(two), 2, "one per name, not one big blob")
 end)
+
+T.Case("Log: the All view is every message, newest first", function()
+    -- The log holds what the addon decided; capture holds everything it read,
+    -- including the lines dropped for matching nothing. "All" has to be both, or
+    -- it is only the decisions and says so on the tin that it is not.
+    local log = {
+        { at = 50, player = "A", msg = "third", verdict = "invite", profession = "leatherworking" },
+        { at = 30, player = "B", msg = "first", verdict = "vetoed", profession = "alchemy" },
+    }
+    local capture = {
+        { at = 60, player = "C", msg = "newest", verdict = "lowscore" },
+        { at = 50, player = "A", msg = "third", verdict = "invite" },
+        { at = 40, player = "D", msg = "second", verdict = "lowscore" },
+    }
+
+    local all = ns.Log.Window(log, capture)
+    T.Eq(#all, 4, "the one in both lists appears once")
+    T.Eq(all[1].msg, "newest", "newest first")
+    T.Eq(all[2].msg, "third", "then the shared one")
+    T.Eq(all[2].profession, "leatherworking", "as the log's copy, which knows the profession")
+    T.Eq(all[3].msg, "second", "then capture's own")
+    T.Eq(all[4].msg, "first", "then the oldest")
+
+    T.Eq(#ns.Log.Window(log, capture, 2), 2, "the window caps the walk")
+    T.Eq(#ns.Log.Window(log, nil), 2, "capture may be off entirely")
+    T.Eq(#ns.Log.Window(nil, nil), 0, "or there may be nothing at all")
+
+    local one, hidden = ns.Log.Filter(all, 100, "invite")
+    T.Eq(#one, 1, "filtered to one verdict")
+    T.Eq(hidden, 3, "and it says how many it held back")
+
+    local prof = ns.Log.Filter(all, 100, nil, "alchemy")
+    T.Eq(#prof, 1, "filtered to one profession")
+    T.Eq(prof[1].msg, "first", "and it is the alchemy one")
+    T.Eq(#ns.Log.Filter(all, 100, "lowscore", "alchemy"), 0, "both filters apply at once")
+
+    local capped, held = ns.Log.Filter(all, 2)
+    T.Eq(#capped, 2, "n caps the rows")
+    T.Eq(held, 0, "rows past n are not filtered out, just not shown")
+end)

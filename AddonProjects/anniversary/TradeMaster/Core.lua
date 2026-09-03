@@ -2,7 +2,7 @@ local addonName, ns = ...
 
 ns.Util = ns.Util or {}
 
-local VERSION = "1.8.4"
+local VERSION = "1.8.5"
 
 -- Output goes straight into a chat frame rather than through the chat event
 -- system, so it has no message type and the chat settings UI cannot route it.
@@ -102,7 +102,8 @@ ns.Defaults = {
         },
         enabled = true,
         annotate = true,
-        captureAll = false,
+        captureAll = true,
+        log = { verdict = "all", mine = false },
         outputFrame = 1,
         minimap = { hide = false },
         tracker = { shown = false, autoShow = true, point = nil },

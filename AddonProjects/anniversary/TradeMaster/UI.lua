@@ -772,18 +772,26 @@ function UI.BuildLog(page)
     end)
     bar:Left(clear)
 
+    -- Saved, not session state: a filter kept on a Lua table resets on reload,
+    -- and a list that comes back holding different rows than you left it reads
+    -- as lost data rather than as a filter.
+    local function LogView()
+        local s = ns.db.settings
+        s.log = s.log or { verdict = "all", mine = false }
+        return s.log
+    end
+
     local FILTERS = {
-        { key = nil, label = "All" },
+        { key = "all", label = "All" },
         { key = "invite", label = "Invited" },
         { key = "vetoed", label = "Vetoed" },
         { key = "lowscore", label = "Low" },
     }
-    UI.logFilter = nil
     UI.logFilterButtons = {}
     for i, f in ipairs(FILTERS) do
-        local b = Button(bar, f.label, 62, 22)
+        local b = Button(bar, f.label, 54, 22)
         b:SetScript("OnClick", function()
-            UI.logFilter = f.key
+            LogView().verdict = f.key
             UI.RefreshLog()
         end)
         b.filterKey = f.key
@@ -791,8 +799,42 @@ function UI.BuildLog(page)
         UI.logFilterButtons[i] = b
     end
 
-    local hint = Label(bar, "|cff888888hover a row for the full message and its signals|r",
-        "GameFontDisableSmall")
+    -- Invites cover every book the character can craft for, so the log mixes
+    -- professions. This narrows it to the one you are working out of.
+    local mine = Button(bar, "Mine", 54, 22)
+    mine:SetScript("OnClick", function()
+        local v = LogView()
+        v.mine = not v.mine or nil
+        UI.RefreshLog()
+    end)
+    ICUI:Tooltip(mine, function()
+        GameTooltip:AddLine("Mine", 1, 1, 1)
+        GameTooltip:AddLine("Only the active profession"
+            .. (ns.db.activeProfession and (", " .. ns.db.activeProfession) or "") .. ".",
+            0.8, 0.8, 0.8, true)
+    end)
+    bar:Left(mine)
+
+    -- Whether "All" can mean all: lines that matched no item are only kept while
+    -- this is on, and they are most of Trade chat.
+    local capture = Button(bar, "Capture", 66, 22)
+    capture:SetScript("OnClick", function()
+        local s = ns.db.settings
+        s.captureAll = not s.captureAll
+        ns.Print(s.captureAll
+            and "recording every Trade message, matched or not."
+            or "recording decisions only.")
+        UI.RefreshLog()
+    end)
+    ICUI:Tooltip(capture, function()
+        GameTooltip:AddLine("Capture", 1, 1, 1)
+        GameTooltip:AddLine("Record every Trade line the addon reads, including the ones "
+            .. "that match no item and are otherwise dropped. Off, \"All\" shows only the "
+            .. "messages it decided something about.", 0.8, 0.8, 0.8, true)
+    end)
+    bar:Left(capture)
+
+    local hint = Label(bar, "", "GameFontDisableSmall")
     hint:SetPoint("RIGHT", bar, "RIGHT", 0, 0)
 
     local function Tooltip(row, e)
@@ -844,12 +886,27 @@ function UI.BuildLog(page)
     UI.logTable = t
 
     function UI.RefreshLog()
+        local v = LogView()
         for _, b in ipairs(UI.logFilterButtons) do
-            b:SetActive(b.filterKey == UI.logFilter)
+            b:SetActive(b.filterKey == v.verdict)
         end
+        mine:SetActive(v.mine and true or false)
+        capture:SetActive(ns.db.settings.captureAll and true or false)
 
         local now = ns.Now()
-        local entries = ns.Log.Recent(100, UI.logFilter)
+        local seen = ns.Log.Window(ns.db.log, ns.db.capture)
+        local entries, hidden = ns.Log.Filter(seen, 100,
+            v.verdict ~= "all" and v.verdict or nil,
+            v.mine and ns.db.activeProfession or nil)
+
+        -- Say what is being held back. A filtered list that just looks short is
+        -- the thing that reads as data loss.
+        local parts = { string.format("%d of %d", #entries, #seen) }
+        if hidden > 0 then parts[#parts + 1] = string.format("%d filtered", hidden) end
+        if not ns.db.settings.captureAll then
+            parts[#parts + 1] = "|cffff4444capture off|r|cff888888"
+        end
+        hint:SetText("|cff888888" .. table.concat(parts, "  \194\183  ") .. "|r")
         t:Render(entries, function(row, e)
             local color = ns.Log.VERDICT_COLOR[e.verdict] or "|cffffffff"
             t:Set(row, "age", UI.Age(now - (e.at or now)))

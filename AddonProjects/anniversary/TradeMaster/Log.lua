@@ -70,6 +70,63 @@ function Log.Add(player, msg, matched, result, now, book)
     })
 end
 
+-- How far back any one view reads. Capture holds 1500 lines and the panel shows
+-- 100 of them: reading the whole pile on every click buys nothing you can see.
+local WINDOW = 300
+Log.WINDOW = WINDOW
+
+-- Pure. The last `window` messages the addon looked at, newest first: the
+-- decisions it recorded, plus the raw capture of lines dropped for matching
+-- nothing. That second half is what makes an "All" view honest -- without it the
+-- log shows only what the addon acted on, which is not the same as everything it
+-- saw.
+--
+-- Both lists are kept newest-first, so this walks them together and stops as
+-- soon as the window is full: no sort, and no reading past what is shown. A
+-- message in both is returned once, as the log's copy, which is the one carrying
+-- the matches and the profession.
+function Log.Window(log, capture, window)
+    window = window or WINDOW
+    log, capture = log or {}, capture or {}
+    local out, seen = {}, {}
+    local i, j = 1, 1
+    while #out < window do
+        local a, b = log[i], capture[j]
+        local e
+        if a and b then
+            if (a.at or 0) >= (b.at or 0) then e = a; i = i + 1 else e = b; j = j + 1 end
+        elseif a then
+            e = a; i = i + 1
+        elseif b then
+            e = b; j = j + 1
+        else
+            break
+        end
+        local key = string.format("%s|%s|%s", e.player or "", e.at or 0, e.msg or "")
+        if not seen[key] then
+            seen[key] = true
+            out[#out + 1] = e
+        end
+    end
+    return out
+end
+
+-- Pure. verdict and profession are each optional. Returns at most n entries and
+-- the number the filters held back, so a filtered list can say why it is short
+-- rather than looking like the log was lost.
+function Log.Filter(entries, n, verdict, profession)
+    local out, hidden = {}, 0
+    for _, e in ipairs(entries or {}) do
+        if (not verdict or e.verdict == verdict)
+            and (not profession or e.profession == profession) then
+            if #out < n then out[#out + 1] = e end
+        else
+            hidden = hidden + 1
+        end
+    end
+    return out, hidden
+end
+
 -- Newest first. verdict filters to one of invite/vetoed/lowscore when given.
 function Log.Recent(n, verdict)
     local out = {}
