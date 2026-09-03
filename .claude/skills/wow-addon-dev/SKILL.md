@@ -42,6 +42,11 @@ API changes. `scripts/package.ps1` bundles required addons into the zip and
 - New optional dependency call: guard the global and the function, `pcall` internals.
 - New command: add it to the `help` output and to `Docs/<Addon>.md`.
 - New saved field: default it in the `InitializeDB` path and migrate old data in place.
+- New or edited window: follow "Window layout" in `CODING_STANDARDS.md`. Lists get a header
+  row outside the scroll child, fixed single-line rows, a toolbar above the headers, no
+  controls over the scroll area, and the page must fit (TradeMaster pages are 700x478) or
+  scroll. Build them with `LibStub("LibICUI-1.0")` through the addon's wrapper.
+- After editing any UI file, run the `wow-ui-reviewer` agent on it before packaging.
 - Do not use the Bash heredoc trick for multi-line Lua edits from Claude Code on this
   machine; it fails on some content. Write a small Python script to a scratch file with the
   Write tool and run it, or use the Edit tool.

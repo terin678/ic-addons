@@ -2,8 +2,9 @@
 ## Title: IC Libs
 ## Notes: Shared libraries for the ic-addons guild addons. Required by MalexisAuctionWatcher and TradeMaster.
 ## Author: Malexis
-## Version: 1.0.0
+## Version: 1.1.0
 ## X-Category: Library
 
 LibStub\LibStub.lua
 LibICTradeSkill-1.0\LibICTradeSkill-1.0.lua
+LibICUI-1.0\LibICUI-1.0.lua

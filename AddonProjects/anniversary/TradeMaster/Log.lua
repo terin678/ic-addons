@@ -5,11 +5,13 @@ local Log = ns.Log
 
 local MAX_ENTRIES = 100
 
+-- Shared with the UI so a verdict keeps one colour everywhere.
 local VERDICT_COLOR = {
     invite = "|cff44ff44",
     vetoed = "|cffff4444",
     lowscore = "|cffffcc00",
 }
+Log.VERDICT_COLOR = VERDICT_COLOR
 
 function Log.Push(log, entry)
     table.insert(log, 1, entry)
@@ -68,10 +70,13 @@ function Log.Add(player, msg, matched, result, now, book)
     })
 end
 
-function Log.Recent(n)
+-- Newest first. verdict filters to one of invite/vetoed/lowscore when given.
+function Log.Recent(n, verdict)
     local out = {}
-    for i = 1, math.min(n, #ns.db.log) do
-        out[i] = ns.db.log[i]
+    for i = 1, #ns.db.log do
+        if #out >= n then break end
+        local e = ns.db.log[i]
+        if not verdict or e.verdict == verdict then out[#out + 1] = e end
     end
     return out
 end
@@ -84,14 +89,31 @@ function Log.Describe(entry)
         entry.reason or "?", entry.msg or "")
 end
 
+-- Pure. The signals that fired, sellers then buyers, each heaviest first and ties
+-- broken by name. A pairs() walk shuffled between refreshes and made a row's own
+-- text change height under the reader.
+function Log.SortedHits(entry)
+    local out = {}
+    for k, v in pairs(entry.sellerHits or {}) do
+        out[#out + 1] = { sign = "-", name = k, weight = v, seller = true }
+    end
+    for k, v in pairs(entry.buyerHits or {}) do
+        out[#out + 1] = { sign = "+", name = k, weight = v }
+    end
+    table.sort(out, function(a, b)
+        if (a.seller or false) ~= (b.seller or false) then return a.seller or false end
+        if a.weight ~= b.weight then return a.weight > b.weight end
+        return a.name < b.name
+    end)
+    return out
+end
+
 -- Which named signals fired, for the "why did it decide that" case.
 function Log.DescribeHits(entry)
     local parts = {}
-    for k, v in pairs(entry.sellerHits or {}) do
-        parts[#parts + 1] = string.format("|cffff8888-%s %d|r", k, v)
-    end
-    for k, v in pairs(entry.buyerHits or {}) do
-        parts[#parts + 1] = string.format("|cff88ff88+%s %d|r", k, v)
+    for _, h in ipairs(Log.SortedHits(entry)) do
+        parts[#parts + 1] = string.format("%s%s%s %d|r",
+            h.seller and "|cffff8888" or "|cff88ff88", h.sign, h.name, h.weight)
     end
     if #parts == 0 then return "  (no signals)" end
     return "  " .. table.concat(parts, ", ")

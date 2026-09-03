@@ -759,3 +759,123 @@ T.Case("Classifier scores LF item crafter as a buyer signal", function()
     local r2 = classify("LF " .. RUBY_LINK .. " cutter")
     T.Eq(r2.verdict, "invite", "cutter verdict")
 end)
+
+--------------------------------------------------------------------------------
+-- Market saturation
+--------------------------------------------------------------------------------
+
+local PROFILES = ns.Professions.Profiles
+
+local function marketDB()
+    return { market = { samples = {}, prunedAt = 0 } }
+end
+
+local function classifyLine(text, over)
+    over = over or {}
+    local norm = ns.Util.Normalize(text)
+    local result = over.skipClassifier and nil or classify(text, over)
+    return ns.Market.ClassifyLine(result, norm, PROFILES, over.hasItemMatch or false)
+end
+
+T.Case("Market: a competitor bark counts for the profession it names", function()
+    -- Jewelcrafting is active, so the classifier calls this "no item match" and
+    -- never logs it. It is still a leatherworker advertising against us.
+    local kind, keys = classifyLine("LW LFW all patterns pst")
+    T.Eq(kind, "seller", "kind")
+    T.Eq(#keys, 1, "one profession")
+    T.Eq(keys[1], "leatherworking", "attributed to leatherworking")
+end)
+
+T.Case("Market: a veto phrase that names its own craft needs no tag", function()
+    local kind, keys = classifyLine("will cut any gems, mats and tip")
+    T.Eq(kind, "seller", "kind")
+    T.Eq(keys[1], "jewelcrafting", "jewelcrafting")
+end)
+
+T.Case("Market: a bare sale with no profession named is ignored", function()
+    local kind = classifyLine("WTS Primal Might 50g each")
+    T.Eq(kind, nil, "not counted")
+end)
+
+T.Case("Market: a profession request counts as a buyer", function()
+    local kind, keys = classifyLine("any leatherworker online?")
+    T.Eq(kind, "buyer", "kind")
+    T.Eq(keys[1], "leatherworking", "leatherworking")
+end)
+
+T.Case("Market: one line can name two professions", function()
+    local kind, keys = classifyLine("jc lfw and lw lfw, full books")
+    T.Eq(kind, "seller", "kind")
+    T.Eq(#keys, 2, "both counted")
+    T.Eq(keys[1], "jewelcrafting", "sorted first")
+    T.Eq(keys[2], "leatherworking", "sorted second")
+end)
+
+T.Case("Market: advertising wins over asking on the same line", function()
+    local kind = classifyLine("jc lfw, need mats, will tip")
+    T.Eq(kind, "seller", "a crafter advertising is competition")
+end)
+
+T.Case("Market: Counts separates people from posts and honours the window", function()
+    local db = marketDB()
+    local now = 100000
+    ns.Market.Record(db, now - 10, "seller", "leatherworking", "Bob", "lw lfw")
+    ns.Market.Record(db, now - 20, "seller", "leatherworking", "Bob", "lw lfw")
+    ns.Market.Record(db, now - 30, "seller", "leatherworking", "Bob", "lw lfw")
+    ns.Market.Record(db, now - 40, "buyer", "leatherworking", "Ann", "lf lw")
+    ns.Market.Record(db, now - 7200, "seller", "leatherworking", "Cid", "lw lfw")
+
+    local s, b, sp, bp = ns.Market.Counts(db, now, "leatherworking", 3600)
+    T.Eq(s, 1, "one distinct seller in the hour")
+    T.Eq(sp, 3, "three seller posts")
+    T.Eq(b, 1, "one buyer")
+    T.Eq(bp, 1, "one buyer post")
+
+    local sday = ns.Market.Counts(db, now, "leatherworking", 86400)
+    T.Eq(sday, 2, "the older seller is inside the day window")
+
+    local other = ns.Market.Counts(db, now, "jewelcrafting", 3600)
+    T.Eq(other, 0, "another profession is unaffected")
+end)
+
+T.Case("Market: Prune drops old samples and caps the ring", function()
+    local db = marketDB()
+    local now = 200000
+    ns.Market.Record(db, now - 90000, "seller", "alchemy", "Old", "x")
+    for i = 1, 5 do
+        ns.Market.Record(db, now - i, "buyer", "alchemy", "P" .. i, "x")
+    end
+    ns.Market.Prune(db, now)
+    T.Eq(#db.market.samples, 5, "the day-old sample is gone")
+    T.Eq(db.market.samples[1].who, "P5", "oldest kept is the earliest recent one")
+end)
+
+T.Case("Market: Label thresholds", function()
+    T.Eq(ns.Market.Label(0, 0), "quiet", "empty")
+    T.Eq(ns.Market.Label(1, 5), "quiet", "one seller is never crowded")
+    T.Eq(ns.Market.Label(2, 2), "balanced", "even")
+    T.Eq(ns.Market.Label(3, 1), "crowded", "three sellers to one buyer")
+    T.Eq(ns.Market.Label(4, 3), "balanced", "demand keeps up")
+    T.Eq(ns.Market.Label(6, 3), "crowded", "twice the sellers")
+end)
+
+T.Case("Market: SuggestInterval steps, rounds and clamps", function()
+    T.Eq(ns.Market.SuggestInterval(180, 3, 1), 300, "crowded backs off")
+    T.Eq(ns.Market.SuggestInterval(180, 0, 3), 120, "quiet with demand leans in")
+    T.Eq(ns.Market.SuggestInterval(180, 2, 2), 180, "balanced leaves it alone")
+    T.Eq(ns.Market.SuggestInterval(560, 5, 0), 600, "clamped to the slider maximum")
+    T.Eq(ns.Market.SuggestInterval(40, 0, 4), 30, "clamped to the slider minimum")
+    T.Eq(ns.Market.SuggestInterval(185, 2, 2), 180, "rounded to 30s")
+end)
+
+T.Case("Market: Observe records one sample per named profession", function()
+    local db = marketDB()
+    local savedDB = ns.db
+    ns.db = db
+    local now = 300000
+    ns.Market.Observe(db, now, "Bob", "jc lfw and lw lfw", ns.Util.Normalize("jc lfw and lw lfw"), nil, false)
+    T.Eq(#db.market.samples, 2, "one per profession")
+    T.Eq(ns.Market.Counts(db, now, "jewelcrafting", 3600), 1, "jewelcrafting seller")
+    T.Eq(ns.Market.Counts(db, now, "leatherworking", 3600), 1, "leatherworking seller")
+    ns.db = savedDB
+end)

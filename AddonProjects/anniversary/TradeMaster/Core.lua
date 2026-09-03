@@ -2,7 +2,7 @@ local addonName, ns = ...
 
 ns.Util = ns.Util or {}
 
-local VERSION = "1.4.0"
+local VERSION = "1.5.0"
 
 -- Output goes straight into a chat frame rather than through the chat event
 -- system, so it has no message type and the chat settings UI cannot route it.
@@ -82,6 +82,7 @@ ns.Defaults = {
     players = {},
     log = {},
     capture = {},
+    market = { samples = {}, prunedAt = 0 },
     orders = {},
     nextOrderID = 1,
     ledger = { entries = {}, allTimeCopper = 0, allTimeUnits = 0 },
@@ -215,6 +216,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
         if not ns.Enabled() then
             ns.Print("|cffff9900currently disabled.|r /tm enable to switch back on.")
         end
+        if ns.Market then ns.Market.Prune(ns.db, ns.Now()) end
         if ns.Minimap and ns.Minimap.Init then ns.Minimap.Init() end
         if ns.db.settings.tracker.shown then
             C_Timer.After(1, function() ns.Tracker.Show() end)
@@ -372,6 +374,21 @@ local function HandleSlash(input)
             .. ", whisper invites " .. onoff(ps.invite.fromWhisper)
             .. ", barking " .. (ps.bark.enabled and ("|cff44ff44on|r every " .. ps.bark.intervalSec .. "s") or "|cffff4444off|r")
             .. ", trade fill " .. onoff(ns.db.settings.orders.autoFillTrade))
+    elseif cmd == "market" then
+        local now = ns.Now()
+        ns.Print(ns.Market.Summary(ns.db, now, profile.key ~= "generic" and profile.key or nil,
+            ps.bark.intervalSec))
+        for _, key in ipairs(ns.Professions.Order) do
+            local s15 = { ns.Market.Counts(ns.db, now, key, 900) }
+            local h1 = { ns.Market.Counts(ns.db, now, key, 3600) }
+            local day = { ns.Market.Counts(ns.db, now, key, 86400) }
+            if day[1] > 0 or day[2] > 0 then
+                local label = ns.Market.Label(h1[1], h1[2])
+                ns.Print(string.format("  %-16s 15m %dS/%dB   1h %dS/%dB   today %dS/%dB   %s%s|r",
+                    ns.Prof.ByKey(key).name, s15[1], s15[2], h1[1], h1[2], day[1], day[2],
+                    ns.Market.LabelColor(label), label))
+            end
+        end
     elseif cmd == "stats" or cmd == "annotate" then
         ns.Annotators.Toggle()
     elseif cmd == "tracker" then
@@ -519,7 +536,7 @@ local function HandleSlash(input)
         ns.Print("  /tm send, /tm preview, /tm adv epic|rare|all|none|+text|-text,")
         ns.Print("  /tm invite, /tm log, /tm debug, /tm capture, /tm clearcapture,")
         ns.Print("  /tm orders, /tm order add|done|cancel|reopen, /tm tracker, /tm income,")
-        ns.Print("  /tm annotate, /tm clearflags, /tm out [n], /tm status, /tm test,")
+        ns.Print("  /tm market, /tm annotate, /tm clearflags, /tm out [n], /tm status, /tm test,")
         ns.Print("  /tm disable, /tm enable")
     end
 end

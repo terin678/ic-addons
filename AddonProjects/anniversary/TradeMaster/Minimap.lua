@@ -39,6 +39,10 @@ function M.Init()
             tt:AddLine(string.format("|cffffffff%d|r recipes, |cffffffff%d|r %s, |cffffffff%d|r advertised",
                 n, products, noun, #ns.Barker.AdvertisedEntries()))
             tt:AddLine(string.format("|cffffffff%d|r open orders", #ns.Orders.OpenList()))
+            local key = ns.db.activeProfession
+            if key then
+                tt:AddLine(ns.Market.Summary(ns.db, ns.Now(), key, s.bark.intervalSec))
+            end
             tt:AddLine(string.format("barking %s   invites %s",
                 s.bark.enabled and "|cff44ff44on|r" or "|cffff4444off|r",
                 ns.InvitesOn() and "|cff44ff44on|r" or "|cffff4444off|r"))

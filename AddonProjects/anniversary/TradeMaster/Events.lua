@@ -231,6 +231,13 @@ function Events.Process(text, author, source, opts)
     result.source = source
     result.profession = profile.key
 
+    -- Market saturation counts every Trade line, including the ones the log
+    -- drops for matching no item: a competitor's bark for another profession
+    -- is exactly that case.
+    if not opts.dryRun and source == "trade" and ns.Market then
+        ns.Market.Observe(ns.db, now, short, text, norm, result, #matched > 0)
+    end
+
     if ns.db.settings.captureAll and not opts.dryRun then
         ns.Log.Capture(short, text, result, now)
     end

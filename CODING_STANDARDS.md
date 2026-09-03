@@ -65,6 +65,29 @@ AddonName/
 - Colors: green for good/cheap, red for bad/expensive, amber for external or derived
   values, grey for missing. Use the same meaning across the whole addon.
 
+## Window layout
+
+- Every list has a column header row, in a frame **above** the ScrollFrame, never inside the
+  scroll child, so headers stay put while rows scroll.
+- List rows are fixed height and single line. Cells use `SetWordWrap(false)` (plus
+  `SetMaxLines(1)` where it exists) and truncate; the full text goes in a hover tooltip or a
+  detail panel. Never let a row's text decide the row's height, and never measure wrapped
+  text to lay out a list.
+- Toolbars (add, search, sort, filters, bulk actions) sit in a row above the headers.
+  Nothing is anchored over the scroll area: no bottom-anchored control sharing space with a
+  list. Legends go in the toolbar or a header tooltip.
+- A page never overflows its frame. Add up the vertical offsets when you edit a form; if the
+  total exceeds the page height, put the form in a ScrollFrame.
+- Prose above a list has explicit line breaks and a known line count, so the list's top
+  offset is predictable.
+- Timestamps in lists show relative age (12s, 5m, 3h, 2d). The exact time goes in the tooltip.
+- A button that toggles something shows the current state in its label or colour, and the
+  page refreshes after the click.
+- Colours follow the User-facing text section: green good or on, red bad or off or vetoed,
+  amber pending or derived, grey missing or finished. One meaning per colour per addon.
+- Build lists with the shared widget library `LibICUI-1.0` (ICLibs) through the addon's own
+  thin wrapper, not with hand-placed FontStrings per tab.
+
 ## Versioning and release
 
 - Semantic-ish: bump patch for fixes, minor for features, major for saved-variable

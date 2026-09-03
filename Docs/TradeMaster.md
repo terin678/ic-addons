@@ -55,6 +55,33 @@ invite. TradeMaster prints a warning at login if CutMaster is also loaded.
 
 ## What it does
 
+### Reads the market
+
+Every line in Trade chat is counted as either a **seller** (a crafter advertising: "LW LFW",
+"JC lfw, full book", "will cut anything") or a **buyer** (someone asking for a profession or
+an item). Attribution is by the professions the line names, so a leatherworker's bark counts
+for Leatherworking even while Jewelcrafting is your active profession. Only the Trade channel
+is read, and nothing is counted while TradeMaster is disabled.
+
+The **Market** tab shows distinct sellers and buyers per profession over the last 15 minutes,
+hour and day, with a label:
+
+| Label | When |
+| --- | --- |
+| quiet | at most one seller |
+| crowded | three or more sellers, and at least twice as many sellers as buyers |
+| balanced | anything else |
+
+Alongside it sits a **suggested** bark interval: longer when the channel is crowded, shorter
+when there is demand and nobody answering it. It is advice. Barking always uses the interval
+you set on the Bark tab, and nothing changes it for you. The same one-line summary appears in
+the window's status bar, the minimap tooltip, beside the Bark tab's interval slider, and from
+`/tm market`.
+
+Counting keeps a day of samples, capped at 2000, in your saved variables. Distinct players
+are counted, not posts, so one crafter reposting every three minutes does not read as a
+crowded market.
+
 ### Knows your recipes
 
 Scanning reads every recipe in the open profession window with its reagents, how many it
@@ -172,6 +199,7 @@ For Jewelcrafting, gem names in the profession window are replaced with what the
 | `/tm annotate` | Toggle annotations in the profession window |
 | `/tm bark <seconds>` / `/tm send` / `/tm preview` | Reminder interval, send now, preview |
 | `/tm invite` | Toggle invites for every scanned profession |
+| `/tm market` | Seller and buyer counts per profession, and the suggested bark interval |
 | `/tm log` / `/tm clearflags` | Recent decisions; clear competitor flags |
 | `/tm orders` / `/tm order add\|done\|cancel\|reopen <id>` | Manage orders |
 | `/tm tracker` / `/tm income` | Tracker window; earnings summary |

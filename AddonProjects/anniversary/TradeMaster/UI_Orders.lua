@@ -15,15 +15,16 @@ local STATUS_COLOR = {
 
 local MAX_SPLIT_ROWS = 5
 local MAX_UNMATCHED_ROWS = 4
-local ROW_BASE_H = 40
+local DETAIL_H = 156
 
 --------------------------------------------------------------------------------
 -- Orders
 --------------------------------------------------------------------------------
 
 function UI.BuildOrders(page)
-    local nameBox = UI.EditBox(page, 160, 22)
-    nameBox:SetPoint("TOPLEFT", 0, 0)
+    local bar = UI.Toolbar(page, { top = 0 })
+
+    local nameBox = UI.EditBox(bar, 160, 22)
 
     local function addOrder()
         local who = ns.Util.Trim(nameBox:GetText() or "")
@@ -42,234 +43,298 @@ function UI.BuildOrders(page)
         nameBox:ClearFocus()
         UI.RefreshOrders()
     end
-
     nameBox:SetScript("OnEnterPressed", addOrder)
+    bar:Left(nameBox)
 
-    local add = UI.Button(page, "Add Order", 84, 22)
-    add:SetPoint("LEFT", nameBox, "RIGHT", 6, 0)
+    local add = UI.Button(bar, "Add Order", 84, 22)
     add:SetScript("OnClick", addOrder)
+    bar:Left(add)
 
-    local showDone = CreateFrame("CheckButton", nil, page, "UICheckButtonTemplate")
-    showDone:SetSize(22, 22)
-    showDone:SetPoint("TOPLEFT", 268, 0)
-    local doneLbl = UI.Label(page, "show finished")
-    doneLbl:SetPoint("LEFT", showDone, "RIGHT", 2, 0)
-    showDone:SetScript("OnClick", function(self)
-        UI.showDoneOrders = self:GetChecked() and true or false
+    local showDone = UI.Button(bar, "Finished: hidden", 120, 22)
+    showDone:SetScript("OnClick", function()
+        UI.showDoneOrders = not UI.showDoneOrders
         UI.RefreshOrders()
     end)
+    bar:Left(showDone)
 
-    local track = UI.Button(page, "Tracker", 76, 22)
-    track:SetPoint("TOPRIGHT", -90, 0)
-    track:SetScript("OnClick", function() ns.Tracker.Toggle() end)
-
-    local prune = UI.Button(page, "Prune Old", 84, 22)
-    prune:SetPoint("TOPRIGHT", 0, 0)
+    local prune = UI.Button(bar, "Prune Old", 84, 22)
     prune:SetScript("OnClick", function()
         local before = #ns.db.orders
         ns.Orders.Prune(ns.Now(), ns.db.settings.orders.keepDoneDays)
         ns.Print(string.format("pruned %d finished orders.", before - #ns.db.orders))
         UI.RefreshOrders()
     end)
+    bar:Right(prune)
 
-    local scroll, content = UI.ScrollList(page, -28, 0)
-    UI.orderRows = {}
+    local track = UI.Button(bar, "Tracker", 76, 22)
+    track:SetScript("OnClick", function() ns.Tracker.Toggle() end)
+    bar:Right(track)
 
-    local function BuildRow(index)
-        local row = CreateFrame("Frame", nil, content, BackdropTemplateMixin and "BackdropTemplate")
-        row:SetSize(650, ROW_BASE_H)
-        UI.Skin(row, 0.10, 0.10, 0.13, 0.9)
+    --------------------------------------------------------------------------
+    -- Detail panel. Anything that would make a row grow lives down here, so
+    -- the list itself stays one fixed-height line per order.
+    --------------------------------------------------------------------------
 
-        row.head = UI.Label(row, "", "GameFontNormalSmall")
-        row.head:SetPoint("TOPLEFT", 6, -5)
-        row.head:SetJustifyH("LEFT")
+    local detail = CreateFrame("Frame", nil, page, BackdropTemplateMixin and "BackdropTemplate")
+    detail:SetPoint("BOTTOMLEFT", 0, 0)
+    detail:SetPoint("BOTTOMRIGHT", 0, 0)
+    detail:SetHeight(DETAIL_H)
+    UI.Skin(detail, 0.10, 0.14, 0.19, 0.95)
 
-        row.items = UI.Label(row, "", "GameFontHighlightSmall")
-        row.items:SetPoint("TOPLEFT", 6, -21)
-        row.items:SetWidth(440)
-        row.items:SetJustifyH("LEFT")
+    local detailHead = UI.Label(detail, "", "GameFontNormalSmall")
+    detailHead:SetPoint("TOPLEFT", 8, -6)
+    detailHead:SetWidth(660)
+    detailHead:SetJustifyH("LEFT")
+    detailHead:SetWordWrap(false)
 
-        row.done = UI.Button(row, "Done", 56, 20)
-        row.done:SetPoint("TOPRIGHT", -6, -6)
-        row.cancel = UI.Button(row, "Cancel", 56, 20)
-        row.cancel:SetPoint("RIGHT", row.done, "LEFT", -4, 0)
-        row.ask = UI.Button(row, "Ask", 44, 20)
-        row.ask:SetPoint("RIGHT", row.cancel, "LEFT", -4, 0)
+    local dScroll, dContent = UI.ScrollList(detail, -24, 6)
+    dScroll:SetPoint("TOPLEFT", 8, -24)
+    dScroll:SetPoint("BOTTOMRIGHT", -26, 6)
 
-        -- Split resolution, shown only when mats fitted more than one item.
-        row.splits = {}
-        for i = 1, MAX_SPLIT_ROWS do
-            local sr = CreateFrame("Frame", nil, row)
-            sr:SetSize(420, 18)
-            sr.label = UI.Label(sr, "", "GameFontHighlightSmall")
-            sr.label:SetPoint("LEFT", 0, 0)
-            sr.label:SetWidth(300)
-            sr.label:SetJustifyH("LEFT")
-            sr.minus = UI.Button(sr, "-", 20, 16)
-            sr.minus:SetPoint("LEFT", 306, 0)
-            sr.count = UI.Label(sr, "", "GameFontNormalSmall")
-            sr.count:SetPoint("LEFT", 332, 0)
-            sr.plus = UI.Button(sr, "+", 20, 16)
-            sr.plus:SetPoint("LEFT", 350, 0)
-            sr:Hide()
-            row.splits[i] = sr
+    local detailRows = {}
+    local function DetailRow(i)
+        local r = detailRows[i]
+        if r then return r end
+        r = CreateFrame("Frame", nil, dContent)
+        r:SetSize(620, 18)
+        r.label = UI.Label(r, "", "GameFontHighlightSmall")
+        r.label:SetPoint("LEFT", 0, 0)
+        r.label:SetWidth(300)
+        r.label:SetJustifyH("LEFT")
+        r.label:SetWordWrap(false)
+        r.minus = UI.Button(r, "-", 20, 16)
+        r.minus:SetPoint("LEFT", 306, 0)
+        r.count = UI.Label(r, "", "GameFontNormalSmall")
+        r.count:SetPoint("LEFT", 332, 0)
+        r.plus = UI.Button(r, "+", 20, 16)
+        r.plus:SetPoint("LEFT", 350, 0)
+        r.action = UI.Button(r, "", 100, 16)
+        r.action:SetPoint("LEFT", 378, 0)
+        r.picks = {}
+        for b = 1, 3 do
+            local btn = UI.Button(r, "", 84, 16)
+            btn:SetPoint("LEFT", 378 + (b - 1) * 88, 0)
+            btn:Hide()
+            r.picks[b] = btn
         end
-        row.confirm = UI.Button(row, "Confirm split", 100, 20)
-        row.confirm:Hide()
-
-        -- Unmatched mats: a reagent that could be any of several products.
-        row.unmatched = {}
-        for i = 1, MAX_UNMATCHED_ROWS do
-            local ur = CreateFrame("Frame", nil, row)
-            ur:SetSize(620, 18)
-            ur.label = UI.Label(ur, "", "GameFontHighlightSmall")
-            ur.label:SetPoint("LEFT", 0, 0)
-            ur.label:SetWidth(360)
-            ur.label:SetJustifyH("LEFT")
-            ur.buttons = {}
-            for b = 1, 3 do
-                local btn = UI.Button(ur, "", 80, 16)
-                btn:SetPoint("LEFT", 366 + (b - 1) * 84, 0)
-                btn:Hide()
-                ur.buttons[b] = btn
-            end
-            ur:Hide()
-            row.unmatched[i] = ur
-        end
-
-        UI.orderRows[index] = row
-        return row
+        detailRows[i] = r
+        return r
     end
 
+    local function RenderDetail(o)
+        for _, r in ipairs(detailRows) do r:Hide() end
+        if not o then
+            detailHead:SetText("|cff888888select an order to see its items|r")
+            dContent:SetSize(620, 1)
+            return
+        end
+
+        local book = ns.Orders.BookFor(o)
+        local profName = o.profession and ns.Prof.ByKey(o.profession)
+            and ns.Prof.ByKey(o.profession).name or ""
+        detailHead:SetText(string.format("|cffffffff#%d  %s|r  |cff888888%s|r%s",
+            o.id, o.player, profName,
+            o.needsSplit and "   |cffff9900mats fit more than one item: set the split below|r" or ""))
+
+        local used, y = 0, 0
+
+        for _, it in ipairs(o.items) do
+            used = used + 1
+            local r = DetailRow(used)
+            local e = book[it.itemID]
+            r.label:SetText(e and (e.link or e.name) or tostring(it.itemID))
+            r.count:SetText(string.format("%d%s", it.qty or 0, it.qtySource == "mats" and "" or "?"))
+            r.minus:SetScript("OnClick", function()
+                it.qty = math.max(0, (it.qty or 0) - 1)
+                it.qtySource = "manual"
+                r.count:SetText(tostring(it.qty))
+                UI.RefreshOrders()
+            end)
+            r.plus:SetScript("OnClick", function()
+                it.qty = (it.qty or 0) + 1
+                it.qtySource = "manual"
+                r.count:SetText(tostring(it.qty))
+                UI.RefreshOrders()
+            end)
+            r.minus:Show()
+            r.plus:Show()
+            r.count:Show()
+            for _, b in ipairs(r.picks) do b:Hide() end
+            r.action:Hide()
+            r:ClearAllPoints()
+            r:SetPoint("TOPLEFT", 0, -y)
+            r:Show()
+            y = y + 18
+        end
+
+        if o.needsSplit then
+            used = used + 1
+            local r = DetailRow(used)
+            r.label:SetText("|cffff9900quantities above are a guess|r")
+            r.minus:Hide(); r.plus:Hide(); r.count:SetText("")
+            for _, b in ipairs(r.picks) do b:Hide() end
+            r.action.text:SetText("Confirm split")
+            r.action:SetScript("OnClick", function()
+                for _, it in ipairs(o.items) do
+                    if it.qtySource == "ambiguous" then it.qtySource = "manual" end
+                end
+                o.needsSplit = false
+                UI.RefreshOrders()
+            end)
+            r.action:Show()
+            r:ClearAllPoints()
+            r:SetPoint("TOPLEFT", 0, -y)
+            r:Show()
+            y = y + 20
+        end
+
+        -- Mats that could be for several products: the user picks one.
+        local un = 0
+        for rawID, info in pairs(o.unmatchedMats or {}) do
+            if un >= MAX_UNMATCHED_ROWS then break end
+            un = un + 1
+            used = used + 1
+            local r = DetailRow(used)
+            local rawName = GetItemInfo(rawID) or ("item " .. rawID)
+            r.label:SetText(string.format("|cffff9900%d x %s|r could be any of %d. Pick:",
+                info.count, rawName, #info.options))
+            r.minus:Hide(); r.plus:Hide(); r.count:SetText(""); r.action:Hide()
+            for b, btn in ipairs(r.picks) do
+                local productID = info.options[b]
+                if productID then
+                    local e = book[productID]
+                    btn.text:SetText(e and e.name or tostring(productID))
+                    btn:SetScript("OnClick", function()
+                        local per = e and e.reagents and e.reagents[rawID] or 1
+                        o.items[#o.items + 1] = {
+                            itemID = productID,
+                            qty = math.floor(info.count / per) * ((e and e.numMade) or 1),
+                            qtySource = "mats", unrequested = true,
+                        }
+                        o.unmatchedMats[rawID] = nil
+                        UI.RefreshOrders()
+                    end)
+                    btn:Show()
+                else
+                    btn:Hide()
+                end
+            end
+            r:ClearAllPoints()
+            r:SetPoint("TOPLEFT", 0, -y)
+            r:Show()
+            y = y + 18
+        end
+
+        if used == 0 then
+            local r = DetailRow(1)
+            r.label:SetText("|cff888888nothing on this order yet; trade them the mats|r")
+            r.minus:Hide(); r.plus:Hide(); r.count:SetText(""); r.action:Hide()
+            for _, b in ipairs(r.picks) do b:Hide() end
+            r:ClearAllPoints()
+            r:SetPoint("TOPLEFT", 0, 0)
+            r:Show()
+            y = 18
+        end
+
+        dContent:SetSize(620, math.max(1, y))
+    end
+
+    --------------------------------------------------------------------------
+    -- The list
+    --------------------------------------------------------------------------
+
+    local t = UI.Table(page, {
+        top = -28,
+        bottom = DETAIL_H + 6,
+        columns = {
+            { key = "id", label = "#", width = 32, justify = "RIGHT" },
+            { key = "player", label = "Player", width = 100 },
+            { key = "status", label = "Status", width = 88 },
+            { key = "prof", label = "Prof", width = 66 },
+            { key = "items", label = "Items", width = "flex" },
+            { key = "paid", label = "Paid", width = 84, justify = "RIGHT" },
+        },
+        buttons = {
+            { key = "ask", label = "Ask", width = 40 },
+            { key = "cancel", label = "Cancel", width = 52 },
+            { key = "done", label = "Done", width = 48 },
+        },
+        onClick = function(row, o)
+            UI.selectedOrderID = o.id
+            t:SetSelected(o)
+            RenderDetail(o)
+        end,
+        onEnter = function(row, o)
+            GameTooltip:SetOwner(row, "ANCHOR_CURSOR")
+            GameTooltip:AddLine(string.format("#%d  %s", o.id, o.player), 1, 1, 1)
+            GameTooltip:AddLine(ns.Orders.Summarise(o), 1, 1, 1, true)
+            if o.requestText and o.requestText ~= "" then
+                GameTooltip:AddLine(" ")
+                GameTooltip:AddLine("\"" .. o.requestText .. "\"", 0.7, 0.7, 0.7, true)
+            end
+            GameTooltip:AddLine(" ")
+            GameTooltip:AddLine("click to open it below", 0.6, 0.6, 0.6)
+            GameTooltip:Show()
+        end,
+    })
+    UI.orderTable = t
+
     function UI.RefreshOrders()
+        showDone.text:SetText(UI.showDoneOrders and "Finished: shown" or "Finished: hidden")
+
         local list = {}
         for _, o in ipairs(ns.db.orders) do
             local finished = (o.status == "done" or o.status == "cancelled")
             if UI.showDoneOrders or not finished then list[#list + 1] = o end
         end
 
-        for _, row in ipairs(UI.orderRows) do row:Hide() end
+        -- Keep the selection if it is still listed, else take whatever needs
+        -- attention first so the panel is never pointing at nothing.
+        local selected
+        for _, o in ipairs(list) do
+            if o.id == UI.selectedOrderID then selected = o end
+        end
+        if not selected then
+            for _, o in ipairs(list) do
+                if o.needsSplit or next(o.unmatchedMats or {}) then selected = o break end
+            end
+            selected = selected or list[1]
+            UI.selectedOrderID = selected and selected.id or nil
+        end
+        t.selected = selected
 
-        local y = 0
-        for i, o in ipairs(list) do
-            local row = UI.orderRows[i] or BuildRow(i)
-            local book = ns.Orders.BookFor(o)
-            local profName = o.profession and ns.Prof.ByKey(o.profession) and ns.Prof.ByKey(o.profession).name or nil
-
+        t:Render(list, function(row, o)
             local color = STATUS_COLOR[o.status] or "|cffffffff"
-            row.head:SetText(string.format("|cffffffff#%d|r  %s  %s%s|r%s%s%s",
-                o.id, o.player, color, o.status,
-                profName and ("  |cff888888" .. profName .. "|r") or "",
-                (o.copperIn or 0) > 0 and ("   " .. ns.Ledger.Money(o.copperIn)) or "",
-                o.needsSplit and "   |cffff9900needs split|r" or ""))
-            row.items:SetText(ns.Orders.Summarise(o))
+            local flag = (o.needsSplit and " |cffff9900split|r")
+                or (next(o.unmatchedMats or {}) and " |cffff9900pick|r") or ""
+            local profName = o.profession and ns.Prof.ByKey(o.profession)
+                and ns.Prof.ByKey(o.profession).name or ""
 
-            row.done:SetScript("OnClick", function()
+            t:Set(row, "id", tostring(o.id))
+            t:Set(row, "player", o.player)
+            t:Set(row, "status", color .. o.status .. "|r" .. flag)
+            t:Set(row, "prof", "|cff888888" .. profName .. "|r")
+            t:Set(row, "items", ns.Orders.Summarise(o))
+            t:Set(row, "paid", (o.copperIn or 0) > 0 and ns.Ledger.Money(o.copperIn) or "")
+
+            row.buttons.done:SetScript("OnClick", function()
                 ns.Orders.SetStatus(o, "done", ns.Now())
                 UI.RefreshOrders()
             end)
-            row.cancel:SetScript("OnClick", function()
+            row.buttons.cancel:SetScript("OnClick", function()
                 ns.Orders.SetStatus(o, "cancelled", ns.Now())
                 UI.RefreshOrders()
             end)
-            row.ask:SetScript("OnClick", function()
+            row.buttons.ask:SetScript("OnClick", function()
                 -- The order's own profession answers, not the active one.
                 local pd = o.profession and ns.db.professions and ns.db.professions[o.profession]
                 local inv = (pd and pd.settings or ns.PS()).invite
                 ns.Inviter.Say(o.player, inv.whisper.templateNoItem, {},
                     o.profession and ns.Prof.ByKey(o.profession) or nil)
             end)
+        end)
 
-            local height = ROW_BASE_H
-            local extraY = -38
-            for _, sr in ipairs(row.splits) do sr:Hide() end
-            for _, ur in ipairs(row.unmatched) do ur:Hide() end
-
-            local shown = 0
-            if o.needsSplit then
-                for _, it in ipairs(o.items) do
-                    if it.qtySource == "ambiguous" and shown < MAX_SPLIT_ROWS then
-                        shown = shown + 1
-                        local sr = row.splits[shown]
-                        local e = book[it.itemID]
-                        sr:ClearAllPoints()
-                        sr:SetPoint("TOPLEFT", 16, extraY)
-                        sr.label:SetText(e and (e.link or e.name) or tostring(it.itemID))
-                        sr.count:SetText(tostring(it.qty or 0))
-                        sr.minus:SetScript("OnClick", function()
-                            it.qty = math.max(0, (it.qty or 0) - 1)
-                            sr.count:SetText(tostring(it.qty))
-                        end)
-                        sr.plus:SetScript("OnClick", function()
-                            it.qty = (it.qty or 0) + 1
-                            sr.count:SetText(tostring(it.qty))
-                        end)
-                        sr:Show()
-                        extraY = extraY - 18
-                    end
-                end
-            end
-
-            if shown > 0 then
-                row.confirm:ClearAllPoints()
-                row.confirm:SetPoint("TOPLEFT", 16, extraY - 2)
-                row.confirm:SetScript("OnClick", function()
-                    for _, it in ipairs(o.items) do
-                        if it.qtySource == "ambiguous" then it.qtySource = "manual" end
-                    end
-                    o.needsSplit = false
-                    UI.RefreshOrders()
-                end)
-                row.confirm:Show()
-                extraY = extraY - 24
-            else
-                row.confirm:Hide()
-            end
-
-            -- Mats that could be for several products: the user picks one.
-            local un = 0
-            for rawID, info in pairs(o.unmatchedMats or {}) do
-                if un >= MAX_UNMATCHED_ROWS then break end
-                un = un + 1
-                local ur = row.unmatched[un]
-                ur:ClearAllPoints()
-                ur:SetPoint("TOPLEFT", 16, extraY)
-                local rawName = GetItemInfo(rawID) or ("item " .. rawID)
-                ur.label:SetText(string.format("|cffff9900%d x %s|r could be any of %d. Pick:",
-                    info.count, rawName, #info.options))
-                for b, btn in ipairs(ur.buttons) do
-                    local productID = info.options[b]
-                    if productID then
-                        local e = book[productID]
-                        btn.text:SetText(e and e.name or tostring(productID))
-                        btn:SetScript("OnClick", function()
-                            local per = e and e.reagents and e.reagents[rawID] or 1
-                            o.items[#o.items + 1] = {
-                                itemID = productID,
-                                qty = math.floor(info.count / per) * ((e and e.numMade) or 1),
-                                qtySource = "mats", unrequested = true,
-                            }
-                            o.unmatchedMats[rawID] = nil
-                            UI.RefreshOrders()
-                        end)
-                        btn:Show()
-                    else
-                        btn:Hide()
-                    end
-                end
-                ur:Show()
-                extraY = extraY - 18
-            end
-
-            height = ROW_BASE_H + (-extraY - 38)
-            row:SetHeight(height)
-            row:ClearAllPoints()
-            row:SetPoint("TOPLEFT", 0, -y)
-            row:Show()
-            y = y + height + 4
-        end
-
-        content:SetSize(650, math.max(1, y))
+        RenderDetail(selected)
     end
 end
 
@@ -278,29 +343,54 @@ end
 --------------------------------------------------------------------------------
 
 function UI.BuildIncome(page)
-    local totals = UI.Label(page, "", "GameFontHighlight")
-    totals:SetPoint("TOPLEFT", 0, 0)
-    totals:SetWidth(660)
-    totals:SetJustifyH("LEFT")
-    totals:SetSpacing(5)
+    local totals = UI.Table(page, {
+        top = 0,
+        height = 4 * 18,
+        width = 674,
+        columns = {
+            { key = "period", label = "Period", width = 110 },
+            { key = "gold", label = "Gold", width = 150, justify = "RIGHT" },
+            { key = "units", label = "Items", width = 90, justify = "RIGHT" },
+            { key = "note", label = "", width = "flex" },
+        },
+    })
 
     local custHead = UI.Label(page, "Top customers", "GameFontNormal")
-    custHead:SetPoint("TOPLEFT", 0, -100)
+    custHead:SetPoint("TOPLEFT", 0, -104)
 
-    local customers = UI.Label(page, "", "GameFontHighlightSmall")
-    customers:SetPoint("TOPLEFT", 0, -120)
-    customers:SetWidth(320)
-    customers:SetJustifyH("LEFT")
-    customers:SetSpacing(4)
+    local customers = UI.Table(page, {
+        top = -122, bottom = 22, left = 0, width = 330,
+        columns = {
+            { key = "rank", label = "#", width = 26, justify = "RIGHT" },
+            { key = "name", label = "Customer", width = "flex" },
+            { key = "gold", label = "Gold", width = 100, justify = "RIGHT" },
+            { key = "orders", label = "Orders", width = 50, justify = "RIGHT" },
+        },
+    })
 
     local recentHead = UI.Label(page, "Recent payments", "GameFontNormal")
-    recentHead:SetPoint("TOPLEFT", 350, -100)
+    recentHead:SetPoint("TOPLEFT", 344, -104)
 
-    local recent = UI.Label(page, "", "GameFontHighlightSmall")
-    recent:SetPoint("TOPLEFT", 350, -120)
-    recent:SetWidth(320)
-    recent:SetJustifyH("LEFT")
-    recent:SetSpacing(4)
+    local recent = UI.Table(page, {
+        top = -122, bottom = 22, left = 344, width = 330,
+        columns = {
+            { key = "age", label = "Age", width = 40, justify = "RIGHT" },
+            { key = "player", label = "Player", width = "flex" },
+            { key = "gold", label = "Gold", width = 100, justify = "RIGHT" },
+        },
+        onEnter = function(row, e)
+            GameTooltip:SetOwner(row, "ANCHOR_CURSOR")
+            GameTooltip:AddLine(e.player or "?", 1, 1, 1)
+            GameTooltip:AddLine(date("%Y-%m-%d %H:%M", e.at or 0), 0.7, 0.7, 0.7)
+            if e.orderID then
+                GameTooltip:AddDoubleLine("order", "#" .. e.orderID, 0.7, 0.7, 0.7, 1, 1, 1)
+            end
+            if e.profession then
+                GameTooltip:AddDoubleLine("profession", e.profession, 0.7, 0.7, 0.7, 1, 1, 1)
+            end
+            GameTooltip:Show()
+        end,
+    })
 
     local note = UI.Label(page,
         "|cff888888Income is gross across all professions. Mat costs are not deducted.|r",
@@ -312,33 +402,37 @@ function UI.BuildIncome(page)
         local now = ns.Now()
         local noun = ns.Prof.Current().craftNoun
         local dayCopper, dayUnits = ns.Ledger.SumSince(L.entries, now - 86400)
-        local weekCopper = ns.Ledger.SumSince(L.entries, now - 604800)
+        local weekCopper, weekUnits = ns.Ledger.SumSince(L.entries, now - 604800)
         local allUnits = ns.Ledger.AllTimeUnits()
         local avg = allUnits > 0 and math.floor((L.allTimeCopper or 0) / allUnits) or 0
 
-        totals:SetText(string.format(
-            "All time:  %s   over %d %s\nLast 24h:  %s   over %d %s\nLast 7d:   %s\nPer %s:   %s",
-            ns.Ledger.Money(L.allTimeCopper or 0), allUnits, noun[2],
-            ns.Ledger.Money(dayCopper), dayUnits, noun[2],
-            ns.Ledger.Money(weekCopper),
-            noun[1], ns.Ledger.Money(avg)))
+        totals:Render({
+            { period = "All time", copper = L.allTimeCopper or 0, units = allUnits },
+            { period = "Last 24 hours", copper = dayCopper, units = dayUnits },
+            { period = "Last 7 days", copper = weekCopper, units = weekUnits },
+            { period = "Per " .. noun[1], copper = avg, units = nil,
+              note = "|cff888888average across " .. allUnits .. " " .. noun[2] .. "|r" },
+        }, function(row, r)
+            totals:Set(row, "period", r.period)
+            totals:Set(row, "gold", ns.Ledger.Money(r.copper))
+            totals:Set(row, "units", r.units and tostring(r.units) or "")
+            totals:Set(row, "note", r.note or "")
+        end)
 
-        local top = ns.Ledger.TopCustomers(10)
-        if #top == 0 then
-            customers:SetText("|cff888888nobody has paid you yet.|r")
-        else
-            local lines = {}
-            for _, c in ipairs(top) do
-                lines[#lines + 1] = string.format("%s  %s  |cff888888(%d)|r", c.name, ns.Ledger.Money(c.copper), c.orders)
-            end
-            customers:SetText(table.concat(lines, "\n"))
-        end
+        local top = ns.Ledger.TopCustomers(25)
+        customers:Render(top, function(row, c, i)
+            customers:Set(row, "rank", tostring(i))
+            customers:Set(row, "name", c.name)
+            customers:Set(row, "gold", ns.Ledger.Money(c.copper))
+            customers:Set(row, "orders", tostring(c.orders))
+        end)
 
-        local lines = {}
-        for i = 1, math.min(12, #(L.entries or {})) do
-            local e = L.entries[i]
-            lines[#lines + 1] = string.format("%s  %s", e.player, ns.Ledger.Money(e.copper))
-        end
-        recent:SetText(#lines > 0 and table.concat(lines, "\n") or "|cff888888no payments recorded yet.|r")
+        local list = {}
+        for i = 1, math.min(50, #(L.entries or {})) do list[i] = L.entries[i] end
+        recent:Render(list, function(row, e)
+            recent:Set(row, "age", UI.Age(now - (e.at or now)))
+            recent:Set(row, "player", e.player or "?")
+            recent:Set(row, "gold", ns.Ledger.Money(e.copper or 0))
+        end)
     end
 end
