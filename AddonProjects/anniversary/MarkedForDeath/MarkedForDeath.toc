@@ -6,6 +6,11 @@
 ## SavedVariables: MarkedForDeathDB
 ## SavedVariablesPerCharacter: MarkedForDeathCharDB
 
+Libs\LibStub\LibStub.lua
+Libs\CallbackHandler-1.0\CallbackHandler-1.0.lua
+Libs\LibDataBroker-1.1\LibDataBroker-1.1.lua
+Libs\LibDBIcon-1.0\LibDBIcon-1.0.lua
+
 Helpers.lua
 Core.lua
 Seats.lua
@@ -17,3 +22,4 @@ Comms.lua
 Tests.lua
 UI_Config.lua
 UI_Assignments.lua
+Minimap.lua

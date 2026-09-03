@@ -44,6 +44,7 @@ local DB_DEFAULTS = {
         isAnnounceEnabled = true,
         isCvarWarnEnabled = true,
         isWarningSoundEnabled = true,
+        minimap = { hide = false },
     },
     lastTestRun = {},
 }
@@ -173,6 +174,13 @@ commands.config = {
     desc = "open the seat editor: which icon means which job, and who is pinned to it",
     run = function()
         MFD.UI.Config:Toggle()
+    end,
+}
+
+commands.minimap = {
+    desc = "show or hide the minimap button",
+    run = function()
+        MFD.Minimap:Toggle()
     end,
 }
 
