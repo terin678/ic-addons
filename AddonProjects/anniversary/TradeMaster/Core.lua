@@ -2,7 +2,7 @@ local addonName, ns = ...
 
 ns.Util = ns.Util or {}
 
-local VERSION = "1.0.0"
+local VERSION = "1.1.0"
 
 -- Output goes straight into a chat frame rather than through the chat event
 -- system, so it has no message type and the chat settings UI cannot route it.
@@ -79,6 +79,7 @@ ns.Defaults = {
         minimap = { hide = false },
         tracker = { shown = false, autoShow = true, point = nil },
         debug = false,
+        bookSort = "category",
     },
 }
 

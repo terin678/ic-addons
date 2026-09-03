@@ -59,6 +59,13 @@ advertise/match choices and custom aliases survive. It runs automatically on win
 when it could learn something (empty book, a skill gained, or the book over 6 hours old).
 `/tm scan` forces one.
 
+The Book tab shows one book at a time (the **Book:** button cycles through every scanned
+profession). **Sort:** in the bottom-right corner cycles Category (the window's own
+headers), Name, Quality (best first), and Advertised (ticked items first, then quality).
+Hovering a row shows the item tooltip, the reagents it takes, how many it makes, and its
+advertise/match state. Bind on Pickup recipes are not listed: they cannot be traded, and
+TradeMaster never barks, matches, or trades them.
+
 ### Finds customers
 
 Watches Trade chat, whispers, and party chat for the active profession. Matches an item

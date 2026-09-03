@@ -333,6 +333,27 @@ function UI.BuildBook(page)
         UI.RefreshBook()
     end)
 
+    -- Sort order for the list. Every key is something the scan already stores,
+    -- so no extra data source is needed. Persisted across sessions.
+    local SORTS = {
+        { key = "category",   label = "Category" },
+        { key = "name",       label = "Name" },
+        { key = "quality",    label = "Quality" },
+        { key = "advertised", label = "Advertised" },
+    }
+    local function SortMode()
+        local cur = ns.db.settings and ns.db.settings.bookSort or "category"
+        for i, s in ipairs(SORTS) do if s.key == cur then return i, s end end
+        return 1, SORTS[1]
+    end
+    local sortBtn = Button(page, "Sort: Category", 120, 22)
+    sortBtn:SetPoint("BOTTOMRIGHT", 0, -2)
+    sortBtn:SetScript("OnClick", function()
+        local idx = SortMode()
+        ns.db.settings.bookSort = SORTS[(idx % #SORTS) + 1].key
+        UI.RefreshBook()
+    end)
+
     local scroll, content = ScrollList(page, -28, 0)
     UI.bookContent = content
     UI.bookRows = {}
@@ -358,18 +379,34 @@ function UI.BuildBook(page)
 
         local list = {}
         for _, e in pairs(book) do
-            if not e.stale then
+            -- Bind on Pickup items can't be traded, so they are not listed.
+            if not e.stale and e.bindType ~= 1 then
                 if not UI.bookSearch or UI.bookSearch == ""
                     or (e.name or ""):lower():find(UI.bookSearch, 1, true) then
                     list[#list + 1] = e
                 end
             end
         end
+        local _, mode = SortMode()
+        sortBtn.text:SetText("Sort: " .. mode.label)
+        local function byName(a, b) return (a.name or "") < (b.name or "") end
+        local function byQuality(a, b)
+            local qa, qb = a.quality or 0, b.quality or 0
+            if qa ~= qb then return qa > qb end
+            return byName(a, b)
+        end
         table.sort(list, function(a, b)
+            if mode.key == "name" then return byName(a, b) end
+            if mode.key == "quality" then return byQuality(a, b) end
+            if mode.key == "advertised" then
+                local aa, ab = a.advertise and 1 or 0, b.advertise and 1 or 0
+                if aa ~= ab then return aa > ab end
+                return byQuality(a, b)
+            end
             if (a.header or "") ~= (b.header or "") then
                 return (a.header or "") < (b.header or "")
             end
-            return (a.name or "") < (b.name or "")
+            return byName(a, b)
         end)
 
         for _, row in ipairs(UI.bookRows) do row:Hide() end
@@ -416,10 +453,9 @@ function UI.BuildBook(page)
                     if (e.numMade or 1) > 1 then
                         GameTooltip:AddLine(string.format("makes %d per craft", e.numMade), 0.7, 0.9, 1)
                     end
-                    GameTooltip:AddLine(string.format("advertise %s   match %s%s",
+                    GameTooltip:AddLine(string.format("advertise %s   match %s",
                         e.advertise and "|cff44ff44on|r" or "|cffff4444off|r",
-                        e.match and "|cff44ff44on|r" or "|cffff4444off|r",
-                        e.bindType == 1 and "   |cffff8888bind on pickup|r" or ""), 0.6, 0.6, 0.6)
+                        e.match and "|cff44ff44on|r" or "|cffff4444off|r"), 0.6, 0.6, 0.6)
                     if e.aliases and #e.aliases > 0 then
                         GameTooltip:AddLine("aliases: " .. table.concat(e.aliases, ", "), 0.6, 0.6, 0.6)
                     end

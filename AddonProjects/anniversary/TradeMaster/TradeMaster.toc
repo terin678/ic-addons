@@ -2,7 +2,7 @@
 ## Title: TradeMaster
 ## Notes: Crafting business assistant for any profession: book scanning, customer detection, trade chat barking, order tracking and income. Generalised from CutMaster.
 ## Author: Malexis, Dezedin
-## Version: 1.0.0
+## Version: 1.1.0
 ## IconTexture: Interface\AddOns\TradeMaster\TradeMaster.tga
 ## SavedVariablesPerCharacter: TradeMasterDB
 ## OptionalDeps: CutMaster
