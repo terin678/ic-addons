@@ -171,7 +171,10 @@ function Events.Process(text, author, source, opts)
     local namedUnknownItem = false
     if #matched == 0 then
         for _, id in ipairs(ns.Util.ExtractItemIDs(text)) do
-            if not AnyBookHas(id) and IsProductItem(profile, id) then
+            -- Any link no book knows counts, whatever it turns out to be. The
+            -- class is unreadable for an item this client has never cached, and
+            -- "we could not identify it" is not a reason to ask what they want.
+            if not AnyBookHas(id) then
                 namedUnknownItem = true
                 break
             end
@@ -385,7 +388,15 @@ function Events.Process(text, author, source, opts)
     end
 
     if willInvite and not opts.dryRun then
-        ns.Inviter.Invite(short, craftable, { cannotDo = cannotDo, profession = profile.key })
+        local ctx = { cannotDo = cannotDo, profession = profile.key }
+        if ns.Confirm.Required(ps.invite.confirm, #craftable > 0) then
+            ns.Confirm.Ask({
+                player = short, source = source, text = text,
+                matched = craftable, cannotDo = cannotDo, profession = profile.key,
+            })
+        else
+            ns.Inviter.Invite(short, craftable, ctx)
+        end
     end
 
     return result

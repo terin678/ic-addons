@@ -310,6 +310,9 @@ function Prof.DefaultSettings(profile)
         },
         invite = {
             enabled = true, maxParty = 5, playerCooldownSec = 600, fromWhisper = true,
+            -- "unsure" shows the message first when we cannot name what they
+            -- asked for; "never" trusts the templates, "always" reviews everything.
+            confirm = "unsure",
             whisper = {
                 enabled = true, autoReply = true, autoSuggest = false, answerQuestions = true,
                 template = t.template, templateNoItem = t.templateNoItem,

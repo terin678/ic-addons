@@ -1093,3 +1093,30 @@ T.Case("Money: the coin API is never handed something it refuses", function()
     T.Eq(type(ns.Ledger.Money("nonsense")), "string", "not even a number")
     T.Eq(ns.Ledger.Money(-12345):sub(1, 1), "-", "and the sign survives")
 end)
+
+--------------------------------------------------------------------------------
+-- Reviewing a reply before it goes out
+--------------------------------------------------------------------------------
+
+T.Case("Confirm: when a message needs a look first", function()
+    T.Eq(ns.Confirm.Required("never", false), false, "never asks")
+    T.Eq(ns.Confirm.Required("never", true), false, "never asks, named or not")
+    T.Eq(ns.Confirm.Required("always", true), true, "always asks")
+    T.Eq(ns.Confirm.Required("unsure", true), false, "we can name it, so send it")
+    T.Eq(ns.Confirm.Required("unsure", false), true, "we cannot, so show me")
+    T.Eq(ns.Confirm.Required(nil, false), true, "an unset setting reviews the unsure ones")
+end)
+
+T.Case("Confirm: a request goes stale rather than arriving late", function()
+    local now = 1000
+    local queue = {
+        { player = "Old", at = now - 400 },
+        { player = "Recent", at = now - 10 },
+        { player = "Older", at = now - 181 },
+    }
+    local fresh = ns.Confirm.Fresh(queue, now, 180)
+    T.Eq(#fresh, 1, "only the recent one")
+    T.Eq(fresh[1].player, "Recent", "and it is the right one")
+    T.Eq(#ns.Confirm.Fresh({}, now, 180), 0, "an empty queue")
+    T.Eq(#ns.Confirm.Fresh(nil, now, 180), 0, "no queue at all")
+end)

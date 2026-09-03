@@ -32,8 +32,10 @@ local function DoInvite(name)
     end
 end
 
-function Inviter.Invite(name, matched, ctx)
-    if not ns.Enabled() then return end
+-- What this request would get: which book answers, which template, and the text
+-- once it is filled in. Nothing is sent and nothing is recorded, so the
+-- confirmation window can show the message before anyone commits to it.
+function Inviter.Plan(name, matched, ctx)
     local short = name:gsub("%-.*", "")
     -- ctx.profession names the book that matched; older callers get the active one.
     local key = ctx and ctx.profession
@@ -41,14 +43,6 @@ function Inviter.Invite(name, matched, ctx)
     local settings = (pd and pd.settings or ns.PS()).invite
     local book = pd and pd.book or ns.Book()
     local profile = key and ns.Prof.ByKey(key) or ns.Prof.Current()
-    local now = ns.Now()
-
-    DoInvite(short)
-
-    local state = ns.Players.Get(ns.db, short)
-    state.lastInviteAt = now
-
-    if PlaySound and SOUNDKIT then PlaySound(SOUNDKIT.MAP_PING) end
 
     -- Acknowledge EVERY item they asked for, not just the first.
     local have = {}
@@ -63,20 +57,9 @@ function Inviter.Invite(name, matched, ctx)
         lack[i] = ctx.cannotDo[i]
     end
 
-    ns.Print(string.format("invited %s for %s%s%s", short, haveText or ("a " .. profile.craftNoun[1]),
-        (key and key ~= ns.db.activeProfession) and ("  |cff888888" .. profile.name .. "|r") or "",
-        #lack > 0 and ("  |cffff9900cannot do: " .. table.concat(lack, " ") .. "|r") or ""))
-
-    if not settings.whisper.enabled then return end
-
-    local last = state.lastWhisperAt or 0
-    if (now - last) < settings.whisper.cooldownSec then return end
-    state.lastWhisperAt = now
-
     local template, vars
     if not haveText then
         template, vars = settings.whisper.templateNoItem, {}
-        state.awaitingItem = now
     elseif #lack > 0 then
         template = settings.whisper.partialTemplate
         vars = { have = haveText, lack = table.concat(lack, " ") }
@@ -84,8 +67,50 @@ function Inviter.Invite(name, matched, ctx)
         template, vars = settings.whisper.template, { item = haveText }
     end
 
+    return {
+        profile = profile, settings = settings, template = template, vars = vars,
+        haveText = haveText, lack = lack,
+        text = Inviter.Render(template, vars, short, profile),
+    }
+end
+
+-- ctx.whisperText overrides the template, which is how an edited message from the
+-- confirmation window gets sent.
+function Inviter.Invite(name, matched, ctx)
+    if not ns.Enabled() then return end
+    local short = name:gsub("%-.*", "")
+    local plan = Inviter.Plan(short, matched, ctx)
+    local key = ctx and ctx.profession
+    local now = ns.Now()
+
+    DoInvite(short)
+
+    local state = ns.Players.Get(ns.db, short)
+    state.lastInviteAt = now
+
+    if PlaySound and SOUNDKIT then PlaySound(SOUNDKIT.MAP_PING) end
+
+    ns.Print(string.format("invited %s for %s%s%s", short,
+        plan.haveText or ("a " .. plan.profile.craftNoun[1]),
+        (key and key ~= ns.db.activeProfession) and ("  |cff888888" .. plan.profile.name .. "|r") or "",
+        #plan.lack > 0 and ("  |cffff9900cannot do: " .. table.concat(plan.lack, " ") .. "|r") or ""))
+
+    if not plan.settings.whisper.enabled then return end
+
+    local last = state.lastWhisperAt or 0
+    if (now - last) < plan.settings.whisper.cooldownSec then return end
+    state.lastWhisperAt = now
+
+    -- With nothing named, their next line is the answer to our question.
+    if not plan.haveText then state.awaitingItem = now end
+
+    local override = ctx and ctx.whisperText
     C_Timer.After(WHISPER_DELAY, function()
-        Inviter.Say(short, template, vars, profile)
+        if override and override ~= "" then
+            Inviter.SayText(short, override, plan.profile)
+        else
+            Inviter.Say(short, plan.template, plan.vars, plan.profile)
+        end
     end)
 end
 
@@ -105,7 +130,15 @@ function Inviter.Say(name, template, vars, profile)
     end
     state.lastReplyAt = now
 
-    local text = Inviter.Render(template, vars, name, profile)
+    return Inviter.SayText(name, Inviter.Render(template, vars, name, profile), profile)
+end
+
+-- Sends text as it stands, with no template and no cooldown: the player has read
+-- this one and pressed the button, which is a decision the addon should not
+-- second-guess.
+function Inviter.SayText(name, text, profile)
+    if not ns.Enabled() then return false end
+    if not text or text == "" then return false end
     SendChatMessage(text, "WHISPER", nil, name)
     Inviter.whisperCount = Inviter.whisperCount + 1
     if Inviter.whisperCount == WHISPER_WARN_AT then

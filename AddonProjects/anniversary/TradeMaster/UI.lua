@@ -46,8 +46,9 @@ local function EditBox(parent, w, h)
     return ICUI:EditBox(parent, w, h, { style = STYLE })
 end
 
--- Shared with UI_Orders.lua, UI_Market.lua and Tracker.lua.
+-- Shared with UI_Orders.lua, UI_Market.lua, Tracker.lua and Confirm.lua.
 UI.Skin, UI.Button, UI.Label, UI.EditBox = Skin, Button, Label, EditBox
+UI.Style = STYLE
 
 function UI.Age(seconds) return ICUI:Age(seconds) end
 
@@ -909,6 +910,31 @@ function UI.BuildInvite(page)
         UI.inviteChecks[i] = { cb = cb, get = r[2] }
     end
 
+    -- How much of this the addon does on its own. The middle setting is the one
+    -- that stops it answering "what do you need?" to someone who already said.
+    local CONFIRM_MODES = {
+        { key = "never", label = "never",
+          hint = "invite and whisper straight away" },
+        { key = "unsure", label = "when unsure",
+          hint = "show me the message when I cannot name what they asked for" },
+        { key = "always", label = "always",
+          hint = "show me every message before it goes out" },
+    }
+    local confirmBtn = Button(page, "Review: ?", 150, 22)
+    confirmBtn:SetPoint("TOPLEFT", 0, -104)
+    confirmBtn:SetScript("OnClick", function()
+        local inv = ns.PS().invite
+        local at = 1
+        for i, m in ipairs(CONFIRM_MODES) do
+            if m.key == (inv.confirm or "unsure") then at = i end
+        end
+        inv.confirm = CONFIRM_MODES[(at % #CONFIRM_MODES) + 1].key
+        UI.Refresh()
+    end)
+    local confirmLbl = Label(page, "", "GameFontDisableSmall")
+    confirmLbl:SetPoint("LEFT", confirmBtn, "RIGHT", 8, 0)
+    confirmLbl:SetWordWrap(false)
+
     local partyLabel = Label(page, "Stop inviting at party size")
     partyLabel:SetPoint("TOPLEFT", 4, -132)
 
@@ -980,6 +1006,15 @@ function UI.BuildInvite(page)
 
     function UI.RefreshInvite()
         toggle:SetText("Invites: " .. UI.State(ns.db.settings.invites ~= false))
+
+        local mode = ns.PS().invite.confirm or "unsure"
+        for _, m in ipairs(CONFIRM_MODES) do
+            if m.key == mode then
+                confirmBtn:SetText("Review: " .. m.label)
+                confirmBtn:SetActive(m.key ~= "never")
+                confirmLbl:SetText("|cff888888" .. m.hint .. "|r")
+            end
+        end
         for _, c in ipairs(UI.inviteChecks) do c.cb:SetChecked(c.get() and true or false) end
         slider:SetValue(ns.PS().invite.maxParty)
         _G[slider:GetName() .. "Text"]:SetText("Max party: " .. ns.PS().invite.maxParty)

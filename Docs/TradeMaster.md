@@ -178,6 +178,25 @@ which drops finished orders older than `keepDoneDays` (30 by default).
 The **Tracker** (`/tm tracker`, or middle-click the minimap icon) is a slim window you can
 leave on screen: open orders, a tick box per item, ticking the last one closes the order.
 
+### Shows you the message first
+
+When someone asks for your profession without naming anything you can make, the reply would
+be "what item do you need?" — which reads badly to someone who just told you. So that case
+waits: a small window shows their line, the message you would send (editable), and whether
+anything they named is in your book. **Invite and send** does both, **Whisper only** skips
+the invite, **Skip** does nothing, and **Never invite** flags them.
+
+The **Review** button on the Invite tab sets when this happens: `never` sends straight away
+as before, `when unsure` (the default) reviews only the messages where nothing they asked
+for could be named, and `always` reviews everything. Requests older than three minutes are
+dropped rather than answered late, and anything queued behind the one on screen is counted
+in its header.
+
+A line that names an item no book knows is not treated as a bare profession request at all,
+so it gets no invite and no whisper. The item's type cannot be read for something this
+client has never seen, and failing to identify what they linked is not a reason to ask what
+they want.
+
 ### Sets up the craft
 
 Open a profession window with an order waiting and TradeMaster selects the next thing that
