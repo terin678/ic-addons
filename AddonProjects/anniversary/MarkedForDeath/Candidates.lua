@@ -131,8 +131,12 @@ function Candidates.ObserveUnit(unit, now)
 
     -- Learn the mob the first time it is seen, so anything the bundled
     -- database missed becomes searchable rather than being unreachable forever.
+    -- The creature type is recorded here because it is only readable while the
+    -- unit is in front of us, and it is what lets a rule warn that its crowd
+    -- control cannot land on this mob.
     if MFD.db and not MFD.db.learnedMobs[npcID] then
-        MFD.Learned.Record(MFD.db, npcID, UnitName(unit), GetRealZoneText(), time())
+        MFD.Learned.Record(MFD.db, npcID, UnitName(unit), GetRealZoneText(), time(),
+            UnitCreatureType and UnitCreatureType(unit) or nil)
     end
 
     return key
@@ -143,12 +147,17 @@ MFD.Learned = MFD.Learned or {}
 -- Records a sighting so the mob becomes searchable even when the bundled
 -- database missed it. Mutates db.learnedMobs and nothing else.
 -- Incomplete observations are dropped rather than stored half-formed.
-function MFD.Learned.Record(db, npcID, name, zone, now)
+function MFD.Learned.Record(db, npcID, name, zone, now, creatureType)
     if type(npcID) ~= "number" or type(name) ~= "string" or name == "" then
         return
     end
 
-    db.learnedMobs[npcID] = { name = name, zone = zone, seenAt = now }
+    db.learnedMobs[npcID] = {
+        name = name,
+        zone = zone,
+        seenAt = now,
+        creatureType = creatureType,
+    }
 end
 
 local frame

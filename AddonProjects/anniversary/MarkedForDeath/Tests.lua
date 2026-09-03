@@ -751,4 +751,60 @@ T.Case("Learned: a nameless or idless observation is ignored", function()
     T.Eq(next(db.learnedMobs), nil, "nothing stored half-formed")
 end)
 
+T.Case("CreatureType: banish only lands on demons and elementals", function()
+    T.Eq(MFD.Seats.CanIntentApply("BANISH", "Demon"), true, "demon")
+    T.Eq(MFD.Seats.CanIntentApply("BANISH", "Elemental"), true, "elemental")
+    T.Eq(MFD.Seats.CanIntentApply("BANISH", "Humanoid"), false, "humanoid cannot be banished")
+end)
+
+T.Case("CreatureType: the rejection explains itself", function()
+    local _, reason = MFD.Seats.CanIntentApply("BANISH", "Humanoid")
+    T.Eq(reason, "Banish does not work on Humanoid targets", "usable in a warning")
+end)
+
+T.Case("CreatureType: shackle is undead only, sap is humanoid only on TBC", function()
+    T.Eq(MFD.Seats.CanIntentApply("SHACKLE", "Undead"), true, "shackle undead")
+    T.Eq(MFD.Seats.CanIntentApply("SHACKLE", "Humanoid"), false, "not humanoids")
+    T.Eq(MFD.Seats.CanIntentApply("SAP", "Humanoid"), true, "sap humanoid")
+    T.Eq(MFD.Seats.CanIntentApply("SAP", "Beast"), false, "beasts only became sappable after TBC")
+end)
+
+T.Case("CreatureType: sheep covers humanoids, beasts and critters", function()
+    T.Eq(MFD.Seats.CanIntentApply("SHEEP", "Humanoid"), true, "humanoid")
+    T.Eq(MFD.Seats.CanIntentApply("SHEEP", "Beast"), true, "beast")
+    T.Eq(MFD.Seats.CanIntentApply("SHEEP", "Undead"), false, "not undead")
+end)
+
+T.Case("CreatureType: unrestricted intents accept anything", function()
+    T.Eq(MFD.Seats.CanIntentApply("KILL", "Humanoid"), true, "kill")
+    T.Eq(MFD.Seats.CanIntentApply("TRAP", "Demon"), true, "trap is not type restricted")
+    T.Eq(MFD.Seats.CanIntentApply("IGNORE", "Undead"), true, "ignore")
+end)
+
+-- Fail open, deliberately. UnitCreatureType returns a localised string, so on a
+-- non-English client nothing would match and a strict check would warn about
+-- every single rule. A check that cries wolf gets ignored.
+T.Case("CreatureType: an unknown or missing type never warns", function()
+    T.Eq(MFD.Seats.CanIntentApply("BANISH", nil), true, "not seen yet")
+    T.Eq(MFD.Seats.CanIntentApply("BANISH", "Humanoide"), true, "localised string we do not recognise")
+    T.Eq(MFD.Seats.CanIntentApply("BANISH", ""), true, "empty")
+end)
+
+T.Case("CreatureType: an unknown intent never warns", function()
+    T.Eq(MFD.Seats.CanIntentApply("NONSENSE", "Humanoid"), true, "no opinion")
+end)
+
+T.Case("Learned: the creature type is recorded alongside the name", function()
+    local db = { learnedMobs = {} }
+    MFD.Learned.Record(db, 22880, "Shadowmoon Champion", "Black Temple", 1000, "Humanoid")
+    T.Eq(db.learnedMobs[22880].creatureType, "Humanoid", "stored for later rule checks")
+end)
+
+T.Case("Learned: a missing creature type is still recorded, just without the type", function()
+    local db = { learnedMobs = {} }
+    MFD.Learned.Record(db, 22880, "Shadowmoon Champion", "Black Temple", 1000, nil)
+    T.Eq(db.learnedMobs[22880].name, "Shadowmoon Champion", "the mob is still learned")
+    T.Eq(db.learnedMobs[22880].creatureType, nil, "type simply absent")
+end)
+
 _G.MarkedForDeath = MFD

@@ -260,6 +260,14 @@ commands.add = {
             return
         end
 
+        -- Advisory only. The rule is still added: the player may know something
+        -- this table does not, and a wrong table must not block real work.
+        local creatureType = UnitCreatureType and UnitCreatureType(unit) or nil
+        local canApply, why = MFD.Seats.CanIntentApply(intent, creatureType)
+        if not canApply then
+            MFD.Print("|cffff4444" .. why .. ". Adding it anyway.|r")
+        end
+
         MFD.db.rules[instanceKey] = MFD.db.rules[instanceKey] or {}
         local list = MFD.db.rules[instanceKey]
 
@@ -302,6 +310,14 @@ commands.list = {
                 mine and "" or "|cffffcc66",
                 rule.rank, rule.name or "?", label, rule.npcID,
                 mine and "" or (" from " .. tostring(rule.owner))))
+
+            -- Surfaced here as well as at /mfd add, because a rule can become
+            -- wrong later: rebinding a seat changes which intent a mob gets.
+            local learned = MFD.db.learnedMobs[rule.npcID]
+            local canApply, why = MFD.Seats.CanIntentApply(rule.intent, learned and learned.creatureType)
+            if not canApply then
+                MFD.Print("     |cffff4444" .. why .. "|r")
+            end
         end
     end,
 }

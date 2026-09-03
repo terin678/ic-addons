@@ -39,6 +39,59 @@ Seats.DEFAULT_PLAN = {
     [DIAMOND]  = { intent = "BANISH", ordinal = 2 },
 }
 
+-- Creature types this client can report, in English. Used only to tell an
+-- unrecognised string apart from a recognised one, so that a localised client
+-- fails open instead of warning about every rule.
+local KNOWN_CREATURE_TYPES = {
+    Humanoid = true, Demon = true, Elemental = true, Beast = true,
+    Undead = true, Giant = true, Dragonkin = true, Mechanical = true,
+    Critter = true, Totem = true, ["Gas Cloud"] = true, ["Not specified"] = true,
+}
+
+-- Which creature types each crowd control actually works on, as of TBC 2.5.
+-- An intent absent from this table has no type restriction.
+--
+-- Only restrictions that are certain on this expansion are listed. Sap is
+-- humanoid-only here because beasts, dragonkin and demons did not become
+-- sappable until after TBC, and getting that wrong in the permissive direction
+-- costs nothing while getting it wrong in the strict direction cries wolf.
+local INTENT_CREATURE_TYPES = {
+    SHEEP       = { Humanoid = true, Beast = true, Critter = true },
+    BANISH      = { Demon = true, Elemental = true },
+    ENSLAVE     = { Demon = true },
+    SEDUCE      = { Humanoid = true },
+    SAP         = { Humanoid = true },
+    SHACKLE     = { Undead = true },
+    MINDCONTROL = { Humanoid = true },
+    HIBERNATE   = { Beast = true, Dragonkin = true },
+    REPENTANCE  = { Humanoid = true },
+}
+
+-- Returns whether an intent can actually be used on a creature of this type,
+-- and a reason when it cannot. Pure.
+--
+-- Fails open on purpose: an unknown intent, a missing type, or a type string
+-- this build does not recognise all return true. The check is advisory, so a
+-- false negative costs nothing and a false positive would train the player to
+-- ignore it.
+function Seats.CanIntentApply(intent, creatureType)
+    local allowed = INTENT_CREATURE_TYPES[intent]
+    if not allowed then
+        return true
+    end
+
+    if type(creatureType) ~= "string" or not KNOWN_CREATURE_TYPES[creatureType] then
+        return true
+    end
+
+    if allowed[creatureType] then
+        return true
+    end
+
+    local label = Seats.INTENTS[intent] and Seats.INTENTS[intent].label or intent
+    return false, label .. " does not work on " .. creatureType .. " targets"
+end
+
 -- Seeds the default plan into db.seatPlan when the player has none. Mutates db.
 --
 -- An empty seat plan is not a neutral starting state: the allocator finds no
