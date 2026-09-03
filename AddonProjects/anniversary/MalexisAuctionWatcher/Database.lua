@@ -134,6 +134,9 @@ function MAW:InitializeDB()
     if self.MigrateHistory then
         self:MigrateHistory()
     end
+    if self.RepairGemPresetData then
+        self:RepairGemPresetData()
+    end
 end
 
 -- Toggle character-specific mode

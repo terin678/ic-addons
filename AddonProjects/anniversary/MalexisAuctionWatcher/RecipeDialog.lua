@@ -327,7 +327,7 @@ local function BuildGemPicker()
     local raws = MAW:GetPresetRawGems()
 
     gemFrame = CreateFrame("Frame", "MAWGemPicker", UIParent, "BasicFrameTemplateWithInset")
-    gemFrame:SetSize(560, 300)
+    gemFrame:SetSize(740, 300)
     gemFrame:SetPoint("CENTER")
     gemFrame:SetFrameStrata("DIALOG")
     gemFrame:SetMovable(true)
@@ -343,15 +343,15 @@ local function BuildGemPicker()
 
     local info = gemFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     info:SetPoint("TOPLEFT", gemFrame, "TOPLEFT", 16, -32)
-    info:SetWidth(520)
+    info:SetWidth(700)
     info:SetJustifyH("LEFT")
     info:SetTextColor(0.7, 0.7, 0.7)
     info:SetText("Click a raw gem to add every cut made from it (1 raw -> 1 cut). Each column is a tier; the buttons at the bottom add a whole tier.")
 
-    local tiers = { "uncommon", "rare", "epic" }
-    local tierTitles = { uncommon = "Uncommon", rare = "Rare", epic = "Epic" }
-    local colX = { uncommon = 16, rare = 196, epic = 376 }
-    local rowY = { uncommon = 0, rare = 0, epic = 0 }
+    local tiers = { "uncommon", "rare", "epic", "meta" }
+    local tierTitles = { uncommon = "Uncommon", rare = "Rare", epic = "Epic", meta = "Meta" }
+    local colX = { uncommon = 16, rare = 196, epic = 376, meta = 556 }
+    local rowY = { uncommon = 0, rare = 0, epic = 0, meta = 0 }
 
     for _, tier in ipairs(tiers) do
         local header = gemFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")

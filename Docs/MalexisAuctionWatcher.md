@@ -128,11 +128,14 @@ The "Presets..." menu offers:
 
 - Motes -> Primals: seven recipes, 10 motes to 1 primal.
 - Transmute: Primal Might: one each of Primal Earth, Water, Air, Fire, Mana.
-- Alchemy consumables: Haste Potion, Destruction Potion, Super Mana Potion, Super Healing
-  Potion, Elixir of Major Mageblood, Flask of Fortification, Flask of Mighty Restoration.
-  Reagents are built in; the recipe note reminds you to check them against your book.
+- Alchemy: every TBC recipe with a tradeable product, by category (potions, elixirs,
+  flasks, transmutes) or all at once. Reagents and batch sizes come from Wowhead's TBC
+  Classic data and item names from Questie's database, so counts such as 2 Terocone for a
+  Haste Potion or 5 vials for a batch of 5 Major Protection Potions are exact. Transmutes
+  carry a note about the shared daily cooldown.
 - Gem cuts: picker for TBC Jewelcrafting. Click a raw gem to add all its cuts, or add a
-  whole tier. 109 cuts across 18 raw gems; meta gems excluded.
+  whole tier. 123 cuts across 20 raw gems including the Earthstorm and Skyfire meta
+  diamonds. Jewelcrafter-only bind-on-pickup gems are excluded.
 - Import from open profession window: lists every recipe in the profession window you have
   open, with reagents and counts read straight from the client. Add one or all. This is the
   reliable way to get any profession's recipes in, Alchemy included. Enchanting is not

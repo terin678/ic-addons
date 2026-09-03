@@ -1959,8 +1959,11 @@ local function AttachRecipeTooltip(cell, calc)
     cell:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:AddLine(calc.recipe.name)
-        if calc.recipe.skill then
-            GameTooltip:AddLine((calc.recipe.profession or "Jewelcrafting") .. " " .. calc.recipe.skill .. (calc.recipe.color and (" - " .. calc.recipe.color) or ""), 0.7, 0.7, 0.9)
+        if calc.recipe.skill or calc.recipe.profession or calc.recipe.color then
+            local line = (calc.recipe.profession or "Jewelcrafting")
+            if calc.recipe.skill then line = line .. " " .. calc.recipe.skill end
+            if calc.recipe.color then line = line .. " - " .. calc.recipe.color end
+            GameTooltip:AddLine(line, 0.7, 0.7, 0.9)
         end
         if calc.recipe.note then
             GameTooltip:AddLine(calc.recipe.note, 0.9, 0.8, 0.5)
@@ -2011,7 +2014,11 @@ function MAWUI:RenderRecipesTab(scrollChild, yOffset)
             { text = "Add recipes", isTitle = true },
             { text = "Motes -> Primals (7)", func = function() MAW:AddMotePresets(); after() end },
             { text = "Transmute: Primal Might", func = function() MAW:AddPrimalMightPreset(); after() end },
-            { text = "Alchemy consumables (7)", func = function() MAW:AddAlchemyPresets(); after() end },
+            { text = "Alchemy: potions", func = function() MAW:AddAlchemyPresets("potion"); after() end },
+            { text = "Alchemy: elixirs", func = function() MAW:AddAlchemyPresets("elixir"); after() end },
+            { text = "Alchemy: flasks", func = function() MAW:AddAlchemyPresets("flask"); after() end },
+            { text = "Alchemy: transmutes", func = function() MAW:AddAlchemyPresets("transmute"); after() end },
+            { text = "Alchemy: everything TBC (" .. #MAW.PRESET_ALCHEMY .. ")", func = function() MAW:AddAlchemyPresets(); after() end },
             { text = "Gem cuts...", func = function() if dlg then dlg.ShowGemPicker() end end },
             { text = "Import from open profession window...", func = function() if dlg then dlg.ShowProfessionImport() end end },
             { text = "Track items only", isTitle = true },
