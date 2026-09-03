@@ -1,0 +1,165 @@
+local addonName, ns = ...
+
+ns.Inviter = ns.Inviter or {}
+local Inviter = ns.Inviter
+
+Inviter.whisperCount = 0
+
+local WHISPER_WARN_AT = 60
+local WHISPER_DELAY = 1.5
+
+-- Keeps a whisper inside the 255 character cap once links are expanded.
+local MAX_ITEMS_PER_WHISPER = 3
+
+-- Pure. Reasons the invite cannot happen regardless of message content.
+function Inviter.BlockReason(playerState, now, groupSize, settings)
+    if settings.enabled == false then return "invites disabled" end
+    if groupSize >= settings.maxParty then return "group full" end
+    if playerState and playerState.lastInviteAt
+        and (now - playerState.lastInviteAt) < settings.playerCooldownSec then
+        return "cooldown"
+    end
+    return nil
+end
+
+local function DoInvite(name)
+    if C_PartyInfo and C_PartyInfo.InviteUnit then
+        C_PartyInfo.InviteUnit(name)
+    elseif InviteUnit then
+        InviteUnit(name)
+    else
+        ns.Print("|cffff4444no invite API available on this client.|r")
+    end
+end
+
+-- What this request would get: which book answers, which template, and the text
+-- once it is filled in. Nothing is sent and nothing is recorded, so the
+-- confirmation window can show the message before anyone commits to it.
+function Inviter.Plan(name, matched, ctx)
+    local short = name:gsub("%-.*", "")
+    -- ctx.profession names the book that matched; older callers get the active one.
+    local key = ctx and ctx.profession
+    local pd = key and ns.Prof.DB(key)
+    local settings = (pd and pd.settings or ns.PS()).invite
+    local book = pd and pd.book or ns.Book()
+    local profile = key and ns.Prof.ByKey(key) or ns.Prof.Current()
+
+    -- Acknowledge EVERY item they asked for, not just the first.
+    local have = {}
+    for i = 1, math.min(#(matched or {}), MAX_ITEMS_PER_WHISPER) do
+        local entry = book[matched[i].itemID]
+        if entry then have[#have + 1] = entry.link or entry.name end
+    end
+    local haveText = #have > 0 and table.concat(have, " ") or nil
+
+    local lack = {}
+    for i = 1, math.min(#((ctx and ctx.cannotDo) or {}), MAX_ITEMS_PER_WHISPER) do
+        lack[i] = ctx.cannotDo[i]
+    end
+
+    local template, vars
+    if not haveText then
+        template, vars = settings.whisper.templateNoItem, {}
+    elseif #lack > 0 then
+        template = settings.whisper.partialTemplate
+        vars = { have = haveText, lack = table.concat(lack, " ") }
+    else
+        template, vars = settings.whisper.template, { item = haveText }
+    end
+
+    return {
+        profile = profile, settings = settings, template = template, vars = vars,
+        haveText = haveText, lack = lack,
+        text = Inviter.Render(template, vars, short, profile),
+    }
+end
+
+-- ctx.whisperText overrides the template, which is how an edited message from the
+-- confirmation window gets sent.
+function Inviter.Invite(name, matched, ctx)
+    if not ns.Enabled() then return end
+    local short = name:gsub("%-.*", "")
+    local plan = Inviter.Plan(short, matched, ctx)
+    local key = ctx and ctx.profession
+    local now = ns.Now()
+
+    DoInvite(short)
+
+    local state = ns.Players.Get(ns.db, short)
+    state.lastInviteAt = now
+
+    if PlaySound and SOUNDKIT then PlaySound(SOUNDKIT.MAP_PING) end
+
+    ns.Print(string.format("invited %s for %s%s%s", short,
+        plan.haveText or ("a " .. plan.profile.craftNoun[1]),
+        (key and key ~= ns.db.activeProfession) and ("  |cff888888" .. plan.profile.name .. "|r") or "",
+        #plan.lack > 0 and ("  |cffff9900cannot do: " .. table.concat(plan.lack, " ") .. "|r") or ""))
+
+    if not plan.settings.whisper.enabled then return end
+
+    local last = state.lastWhisperAt or 0
+    if (now - last) < plan.settings.whisper.cooldownSec then return end
+    state.lastWhisperAt = now
+
+    -- With nothing named, their next line is the answer to our question.
+    if not plan.haveText then state.awaitingItem = now end
+
+    local override = ctx and ctx.whisperText
+    C_Timer.After(WHISPER_DELAY, function()
+        if override and override ~= "" then
+            Inviter.SayText(short, override, plan.profile)
+        else
+            Inviter.Say(short, plan.template, plan.vars, plan.profile)
+        end
+    end)
+end
+
+-- Sends a whisper immediately, subject to the short conversational cooldown.
+-- profile picks whose templates and cooldown apply; defaults to the active one.
+function Inviter.Say(name, template, vars, profile)
+    if not ns.Enabled() then return false end
+    if not template or template == "" then return false end
+    profile = profile or ns.Prof.Current()
+    local pd = ns.db.professions and ns.db.professions[profile.key]
+    local inv = (pd and pd.settings or ns.PS()).invite
+    local now = ns.Now()
+    local state = ns.Players.Get(ns.db, name)
+    local last = state.lastReplyAt or 0
+    if (now - last) < (inv.whisper.replyCooldownSec or 10) then
+        return false
+    end
+    state.lastReplyAt = now
+
+    return Inviter.SayText(name, Inviter.Render(template, vars, name, profile), profile)
+end
+
+-- Sends text as it stands, with no template and no cooldown: the player has read
+-- this one and pressed the button, which is a decision the addon should not
+-- second-guess.
+function Inviter.SayText(name, text, profile)
+    if not ns.Enabled() then return false end
+    if not text or text == "" then return false end
+    SendChatMessage(text, "WHISPER", nil, name)
+    Inviter.whisperCount = Inviter.whisperCount + 1
+    if Inviter.whisperCount == WHISPER_WARN_AT then
+        ns.Print("|cffff9900" .. WHISPER_WARN_AT ..
+            " whispers sent this session. Watch the game whisper throttle.|r")
+    end
+    return true
+end
+
+-- Pure. Placeholder substitution: named vars, {player}, then leftovers. The
+-- legacy {gem}/{gems} tokens are honoured too.
+function Inviter.Render(template, vars, name, profile)
+    local text = template
+    for k, v in pairs(vars or {}) do
+        text = text:gsub("{" .. k .. "}", function() return v end)
+        if k == "item" then text = text:gsub("{gem}", function() return v end) end
+        if k == "items" then text = text:gsub("{gems}", function() return v end) end
+    end
+    text = text:gsub("{player}", name or "")
+    local noun = "your " .. ((profile and profile.craftNoun[1]) or "item")
+    text = text:gsub("{item}", noun):gsub("{gem}", noun)
+    text = text:gsub("{items}", ""):gsub("{gems}", "")
+    return text
+end

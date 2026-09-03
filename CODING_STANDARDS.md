@@ -65,6 +65,39 @@ AddonName/
 - Colors: green for good/cheap, red for bad/expensive, amber for external or derived
   values, grey for missing. Use the same meaning across the whole addon.
 
+## Window layout
+
+- Every list has a column header row, in a frame **above** the ScrollFrame, never inside the
+  scroll child, so headers stay put while rows scroll. A compact always-on HUD panel may use
+  section rows instead, as long as its rows are still fixed height and single line.
+- List rows are fixed height and single line. Cells use `SetWordWrap(false)` (plus
+  `SetMaxLines(1)` where it exists) and truncate; the full text goes in a hover tooltip or a
+  detail panel. Never let a row's text decide the row's height, and never measure wrapped
+  text to lay out a list.
+- Toolbars (add, search, sort, filters, bulk actions) sit in a row above the headers.
+  Nothing is anchored over the scroll area: no bottom-anchored control sharing space with a
+  list. Legends go in the toolbar or a header tooltip. A footer strip below a list is
+  allowed only for things that belong at the end of it (a drop target, a totals line) and
+  only when the list reserves its full height, so the two can never share a pixel.
+- A page never overflows its frame. Add up the vertical offsets when you edit a form; if the
+  total exceeds the page height, put the form in a ScrollFrame.
+- Prose above a list has explicit line breaks and a known line count, so the list's top
+  offset is predictable.
+- Timestamps in lists show relative age (12s, 5m, 3h, 2d). The exact time goes in the tooltip.
+- A button that toggles something shows the current state in its label or colour, and the
+  page refreshes after the click.
+- A toggle that changes which rows a list shows is saved state, not session state. Kept on a
+  Lua table it resets on reload, and a list that comes back empty reads as lost data rather
+  than as a filter. Say how many rows are being held back, too.
+- Colours follow the User-facing text section: green good or on, red bad or off or vetoed,
+  amber pending or derived, grey missing or finished. One meaning per colour per addon.
+- Build lists with the shared widget library `LibICUI-1.0` (ICLibs) through the addon's own
+  thin wrapper, not with hand-placed FontStrings per tab.
+- Windows, tabs, buttons, edit boxes and check buttons come from the same library, so the
+  guild palette is what you get by default. Do not hand-roll a button or paint one with
+  literal colour values; an addon that wants the Blizzard look sets `theme = false` on its
+  registered style instead.
+
 ## Versioning and release
 
 - Semantic-ish: bump patch for fixes, minor for features, major for saved-variable

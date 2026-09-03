@@ -11,6 +11,8 @@
 - [ ] No new globals
 - [ ] `## Version:` in the `.toc` and the load message in `Core.lua` bumped together
 - [ ] `Docs/<Addon>.md` and `AddonProjects/<flavor>/README.md` updated
+- [ ] UI changes follow "Window layout" in `CODING_STANDARDS.md` (headers outside the scroll,
+      single-line rows, no controls over the list, page fits); `wow-ui-reviewer` run on them
 
 ## In-game steps run
 

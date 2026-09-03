@@ -2,6 +2,27 @@
 local addonName = "MalexisAuctionWatcher"
 local MAWDialogs = {}
 
+-- Dialogs wear the same palette as the main window. The style is registered by name in
+-- UI.lua, which loads later, so it is looked up when a dialog is actually built.
+local ICUI = LibStub("LibICUI-1.0")
+local STYLE_NAME = "MalexisAuctionWatcher"
+
+-- UI.lua's DIM, repeated here because it is a file-local there: the grey for prose
+-- and labels that are context rather than data. One name per file, so the dialogs
+-- and the main window cannot drift a shade apart again.
+local DIM = { r = 0.68, g = 0.70, b = 0.74 }
+
+local function Button(parent, text, w, h, opts)
+    opts = opts or {}
+    opts.style = STYLE_NAME
+    return ICUI:Button(parent, text, w, h, opts)
+end
+
+local function Window(name, w, h, title)
+    return ICUI:Window(name, { style = STYLE_NAME, width = w, height = h, title = title,
+        status = false, strata = "DIALOG" })
+end
+
 -- Helper function to get all cached recipes organized by profession
 local function GetCachedRecipes()
     if not _G.MalexisAuctionWatcher then
@@ -88,19 +109,8 @@ function MAWDialogs.ShowAddItemDialog(itemType)
     end
 
     -- Create frame (made taller to accommodate recipe list)
-    addItemFrame = CreateFrame("Frame", "MAWAddItemFrame", UIParent, "BasicFrameTemplateWithInset")
-    addItemFrame:SetSize(500, 450)
-    addItemFrame:SetPoint("CENTER")
-    addItemFrame:SetFrameStrata("DIALOG")
-    addItemFrame:SetMovable(true)
-    addItemFrame:EnableMouse(true)
-    addItemFrame:RegisterForDrag("LeftButton")
-    addItemFrame:SetScript("OnDragStart", addItemFrame.StartMoving)
-    addItemFrame:SetScript("OnDragStop", addItemFrame.StopMovingOrSizing)
-
-    addItemFrame.title = addItemFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    addItemFrame.title:SetPoint("CENTER", addItemFrame.TitleBg, "CENTER", 5, 0)
-    addItemFrame.title:SetText("Add " .. (itemType == "product" and "Product" or "Material"))
+    addItemFrame = Window("MAWAddItemFrame", 500, 450,
+        "Add " .. (itemType == "product" and "Product" or "Material"))
 
     local yOffset = -35
 
@@ -173,7 +183,7 @@ function MAWDialogs.ShowAddItemDialog(itemType)
     local instructionText = addItemFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     instructionText:SetPoint("TOP", itemSlot, "BOTTOM", 0, -5)
     instructionText:SetText("Drag item here or enter name below")
-    instructionText:SetTextColor(0.7, 0.7, 0.7)
+    instructionText:SetTextColor(DIM.r, DIM.g, DIM.b)
 
     yOffset = yOffset - 75
 
@@ -207,80 +217,53 @@ function MAWDialogs.ShowAddItemDialog(itemType)
 
         yOffset = yOffset - 20
 
-        -- Create scroll frame for recipes
-        local scrollFrame = CreateFrame("ScrollFrame", nil, addItemFrame, "UIPanelScrollFrameTemplate")
-        scrollFrame:SetPoint("TOP", addItemFrame, "TOP", 0, yOffset)
-        scrollFrame:SetSize(440, 120)
+        -- One list with a header that stays put, professions as section rows.
+        -- pairs() has no order, so the professions are sorted before rendering.
+        local profNames = {}
+        for professionName in pairs(recipes) do profNames[#profNames + 1] = professionName end
+        table.sort(profNames)
 
-        local scrollChild = CreateFrame("Frame", nil, scrollFrame)
-        scrollChild:SetSize(420, 1)
-        scrollFrame:SetScrollChild(scrollChild)
-
-        -- Create recipe buttons organized by profession
-        local recipeYOffset = 0
-        for professionName, recipeList in pairs(recipes) do
-            -- Profession header
-            local profHeader = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            profHeader:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 5, recipeYOffset)
-            profHeader:SetText(professionName .. ":")
-            profHeader:SetTextColor(1, 1, 0.5)
-            profHeader:SetJustifyH("LEFT")
-            recipeYOffset = recipeYOffset - 15
-
-            -- Recipe buttons for this profession
-            for _, recipeName in ipairs(recipeList) do
-                local btn = CreateFrame("Button", nil, scrollChild)
-                btn:SetSize(420, 18)
-                btn:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 0, recipeYOffset)
-
-                -- Button background
-                btn.bg = btn:CreateTexture(nil, "BACKGROUND")
-                btn.bg:SetAllPoints()
-                btn.bg:SetColorTexture(0.1, 0.1, 0.1, 0.5)
-
-                -- Button text
-                btn.text = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-                btn.text:SetPoint("LEFT", btn, "LEFT", 15, 0)
-                btn.text:SetText(recipeName)
-                btn.text:SetJustifyH("LEFT")
-
-                -- Highlight on hover
-                btn:SetScript("OnEnter", function(self)
-                    self.bg:SetColorTexture(0.3, 0.3, 0.4, 0.8)
-                end)
-                btn:SetScript("OnLeave", function(self)
-                    self.bg:SetColorTexture(0.1, 0.1, 0.1, 0.5)
-                end)
-
-                -- Click to select recipe
-                btn:SetScript("OnClick", function()
-                    itemSlot.itemName = recipeName
-                    nameInput:SetText(recipeName)
-                    -- Try to get item info for icon
-                    local itemInfo = {GetItemInfo(recipeName)}
-                    if itemInfo[1] then
-                        local itemTexture = itemInfo[10]
-                        if itemTexture then
-                            itemSlot.icon:SetTexture(itemTexture)
-                            itemSlot.icon:Show()
-                        end
-                    end
-                end)
-
-                recipeYOffset = recipeYOffset - 18
+        local list = {}
+        for _, professionName in ipairs(profNames) do
+            list[#list + 1] = { section = professionName }
+            for _, recipeName in ipairs(recipes[professionName]) do
+                list[#list + 1] = { name = recipeName }
             end
-
-            recipeYOffset = recipeYOffset - 5  -- Extra spacing between professions
         end
 
-        scrollChild:SetHeight(math.abs(recipeYOffset))
+        local t = ICUI:Table(addItemFrame, {
+            style = STYLE_NAME,
+            -- Six whole 18px rows: a height that is not a multiple of rowHeight
+            -- leaves the last row sliced off halfway down.
+            top = yOffset, left = 30, width = 440, height = 108, rowHeight = 18,
+            columns = { { key = "name", label = "Known recipe", width = "flex" } },
+            onClick = function(_, item)
+                if not item.name then return end
+                itemSlot.itemName = item.name
+                nameInput:SetText(item.name)
+                -- The tenth return of GetItemInfo is the icon.
+                local _, _, _, _, _, _, _, _, _, texture = GetItemInfo(item.name)
+                if texture then
+                    itemSlot.icon:SetTexture(texture)
+                    itemSlot.icon:Show()
+                end
+            end,
+        })
+        t:Render(list, function(row, item)
+            if item.section then
+                t:Span(row, item.section, ICUI.Brand.gold)
+            else
+                t:Set(row, "name", item.name)
+            end
+        end)
+
         yOffset = yOffset - 130
     else
         -- No profession recipes cached
         local noProfLabel = addItemFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         noProfLabel:SetPoint("TOP", addItemFrame, "TOP", 0, yOffset)
         noProfLabel:SetText("(Open a profession window to cache recipes)")
-        noProfLabel:SetTextColor(0.6, 0.6, 0.6)
+        noProfLabel:SetTextColor(DIM.r, DIM.g, DIM.b)
 
         yOffset = yOffset - 25
     end
@@ -371,7 +354,7 @@ function MAWDialogs.ShowAddItemDialog(itemType)
     highCopperSuffix:SetText("c")
 
     -- Add button
-    local addBtn = CreateFrame("Button", nil, addItemFrame, "UIPanelButtonTemplate")
+    local addBtn = Button(addItemFrame)
     addBtn:SetSize(80, 22)
     addBtn:SetPoint("BOTTOMLEFT", addItemFrame, "BOTTOMLEFT", 15, 15)
     addBtn:SetText("Add")
@@ -425,7 +408,7 @@ function MAWDialogs.ShowAddItemDialog(itemType)
     end)
 
     -- Cancel button
-    local cancelBtn = CreateFrame("Button", nil, addItemFrame, "UIPanelButtonTemplate")
+    local cancelBtn = Button(addItemFrame)
     cancelBtn:SetSize(80, 22)
     cancelBtn:SetPoint("LEFT", addBtn, "RIGHT", 5, 0)
     cancelBtn:SetText("Cancel")
@@ -445,19 +428,7 @@ function MAWDialogs.ShowPriceInputDialog(itemName, priceType)
     end
 
     -- Create frame
-    priceInputFrame = CreateFrame("Frame", "MAWPriceInputFrame", UIParent, "BasicFrameTemplateWithInset")
-    priceInputFrame:SetSize(280, 140)
-    priceInputFrame:SetPoint("CENTER")
-    priceInputFrame:SetFrameStrata("DIALOG")
-    priceInputFrame:SetMovable(true)
-    priceInputFrame:EnableMouse(true)
-    priceInputFrame:RegisterForDrag("LeftButton")
-    priceInputFrame:SetScript("OnDragStart", priceInputFrame.StartMoving)
-    priceInputFrame:SetScript("OnDragStop", priceInputFrame.StopMovingOrSizing)
-
-    priceInputFrame.title = priceInputFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    priceInputFrame.title:SetPoint("CENTER", priceInputFrame.TitleBg, "CENTER", 5, 0)
-    priceInputFrame.title:SetText("Set " .. priceType .. " Price")
+    priceInputFrame = Window("MAWPriceInputFrame", 280, 140, "Set " .. priceType .. " Price")
 
     local yOffset = -35
 
@@ -509,7 +480,7 @@ function MAWDialogs.ShowPriceInputDialog(itemName, priceType)
     yOffset = yOffset - 35
 
     -- Set button
-    local setBtn = CreateFrame("Button", nil, priceInputFrame, "UIPanelButtonTemplate")
+    local setBtn = Button(priceInputFrame)
     setBtn:SetSize(80, 22)
     setBtn:SetPoint("BOTTOMLEFT", priceInputFrame, "BOTTOMLEFT", 15, 15)
     setBtn:SetText("Set")
@@ -523,10 +494,16 @@ function MAWDialogs.ShowPriceInputDialog(itemName, priceType)
         if totalCopper > 0 then
             local MAW = _G.MalexisAuctionWatcher
             local db = MAW:GetActiveDB()
+            local item = db.items and db.items[itemName]
+            if not item then
+                print("Malexis Auction Watcher: no longer tracking " .. itemName)
+                priceInputFrame:Hide()
+                return
+            end
             if priceType == "LOW" then
-                db.items[itemName].customLow = totalCopper
+                item.customLow = totalCopper
             else
-                db.items[itemName].customHigh = totalCopper
+                item.customHigh = totalCopper
             end
             if _G.MalexisAuctionWatcherUI then
                 _G.MalexisAuctionWatcherUI:RefreshData()
@@ -538,17 +515,20 @@ function MAWDialogs.ShowPriceInputDialog(itemName, priceType)
     end)
 
     -- Clear button
-    local clearBtn = CreateFrame("Button", nil, priceInputFrame, "UIPanelButtonTemplate")
+    local clearBtn = Button(priceInputFrame)
     clearBtn:SetSize(80, 22)
     clearBtn:SetPoint("LEFT", setBtn, "RIGHT", 5, 0)
     clearBtn:SetText("Clear")
     clearBtn:SetScript("OnClick", function()
         local MAW = _G.MalexisAuctionWatcher
         local db = MAW:GetActiveDB()
-        if priceType == "LOW" then
-            db.items[itemName].customLow = nil
-        else
-            db.items[itemName].customHigh = nil
+        local item = db.items and db.items[itemName]
+        if item then
+            if priceType == "LOW" then
+                item.customLow = nil
+            else
+                item.customHigh = nil
+            end
         end
         if _G.MalexisAuctionWatcherUI then
             _G.MalexisAuctionWatcherUI:RefreshData()
@@ -557,7 +537,7 @@ function MAWDialogs.ShowPriceInputDialog(itemName, priceType)
     end)
 
     -- Cancel button
-    local cancelBtn = CreateFrame("Button", nil, priceInputFrame, "UIPanelButtonTemplate")
+    local cancelBtn = Button(priceInputFrame)
     cancelBtn:SetSize(80, 22)
     cancelBtn:SetPoint("LEFT", clearBtn, "RIGHT", 5, 0)
     cancelBtn:SetText("Cancel")
@@ -568,11 +548,12 @@ function MAWDialogs.ShowPriceInputDialog(itemName, priceType)
     -- Pre-fill with current value if exists
     local MAW = _G.MalexisAuctionWatcher
     local db = MAW:GetActiveDB()
+    local item = db.items and db.items[itemName] or {}
     local currentValue = nil
-    if priceType == "LOW" and db.items[itemName].customLow then
-        currentValue = db.items[itemName].customLow
-    elseif priceType == "HIGH" and db.items[itemName].customHigh then
-        currentValue = db.items[itemName].customHigh
+    if priceType == "LOW" and item.customLow then
+        currentValue = item.customLow
+    elseif priceType == "HIGH" and item.customHigh then
+        currentValue = item.customHigh
     elseif MAW.GetPriceBounds then
         -- No custom value: start from the bound in effect (TSM-derived or scan-derived)
         local low, high = MAW:GetPriceBounds(itemName)
@@ -598,20 +579,7 @@ function MAWDialogs.ShowCopyDataDialog()
     if not MAW then return end
 
     -- Create frame
-    local copyFrame = CreateFrame("Frame", "MAWCopyDataDialog", UIParent, "BasicFrameTemplateWithInset")
-    copyFrame:SetSize(400, 180)
-    copyFrame:SetPoint("CENTER")
-    copyFrame:SetFrameStrata("DIALOG")
-    copyFrame:EnableMouse(true)
-    copyFrame:SetMovable(true)
-    copyFrame:RegisterForDrag("LeftButton")
-    copyFrame:SetScript("OnDragStart", copyFrame.StartMoving)
-    copyFrame:SetScript("OnDragStop", copyFrame.StopMovingOrSizing)
-
-    copyFrame.title = copyFrame:CreateFontString(nil, "OVERLAY")
-    copyFrame.title:SetFontObject("GameFontHighlight")
-    copyFrame.title:SetPoint("CENTER", copyFrame.TitleBg, "CENTER", 5, 0)
-    copyFrame.title:SetText("Copy Account Data?")
+    local copyFrame = Window("MAWCopyDataDialog", 400, 180, "Copy Account Data?")
 
     -- Message text
     local accountItemCount = MAW:CountItems(MalexisAuctionWatcherDB.items or {})
@@ -625,11 +593,11 @@ function MAWDialogs.ShowCopyDataDialog()
     infoText:SetPoint("TOP", messageText, "BOTTOM", 0, -10)
     infoText:SetWidth(360)
     infoText:SetJustifyH("CENTER")
-    infoText:SetTextColor(0.7, 0.7, 0.7)
+    infoText:SetTextColor(DIM.r, DIM.g, DIM.b)
     infoText:SetText("(Your account-wide data will remain unchanged)")
 
     -- Copy button
-    local copyBtn = CreateFrame("Button", nil, copyFrame, "UIPanelButtonTemplate")
+    local copyBtn = Button(copyFrame)
     copyBtn:SetSize(120, 25)
     copyBtn:SetPoint("BOTTOM", copyFrame, "BOTTOM", -65, 15)
     copyBtn:SetText("Copy Data")
@@ -643,7 +611,7 @@ function MAWDialogs.ShowCopyDataDialog()
     end)
 
     -- Start Fresh button
-    local freshBtn = CreateFrame("Button", nil, copyFrame, "UIPanelButtonTemplate")
+    local freshBtn = Button(copyFrame)
     freshBtn:SetSize(120, 25)
     freshBtn:SetPoint("BOTTOM", copyFrame, "BOTTOM", 65, 15)
     freshBtn:SetText("Start Fresh")

@@ -258,7 +258,7 @@ eventFrame:SetScript("OnUpdate", function(self, elapsed) MAW:OnUpdateHandler(sel
 eventFrame:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" and arg1 == addonName then
         MAW:InitializeDB()
-        print(addonName .. " v1.13.0 loaded. Type /maw help for commands.")
+        print(addonName .. " v1.14.0 loaded. Type /maw help for commands.")
 
         -- Create minimap button
         if MalexisAuctionWatcherMinimap then
@@ -323,6 +323,9 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
             if professionName then
                 MAW:ScanProfessionRecipes(professionName)
             end
+            -- The full book (reagents, counts, quality) through ICLibs, kept
+            -- per character so recipes can be added without the window open.
+            if MAW.ScanOpenBook then MAW:ScanOpenBook({ silent = true }) end
         end)
     elseif event == "CRAFT_SHOW" then
         -- Scan craft recipes when enchanting window opens

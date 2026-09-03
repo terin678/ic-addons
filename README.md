@@ -46,7 +46,10 @@ request. Development happens on branches:
 - `feature/<topic>` for new work, `fix/<topic>` for bug fixes. One addon or concern per branch.
 - Commit early and often on the branch; push it so others can see it.
 - When it is ready, open a PR (`gh pr create` fills in the template), run the in-game
-  checklist, then squash-merge. Delete the branch after merging.
+  checklist, then merge with a merge commit (`gh pr merge --merge`). Delete the branch
+  after merging. Commits are written to be read one at a time, so `main` keeps them:
+  a squash turns a branch's worth of separate, revertable changes into one entry that
+  says less than any of them did.
 - Long-running addon work stays on its feature branch between releases, for example
   `feature/auction-watcher`; rebase it on `main` after each merge.
 
@@ -57,6 +60,8 @@ request. Development happens on branches:
 | anniversary | [MalexisAuctionWatcher](AddonProjects/anniversary/MalexisAuctionWatcher) | Price tracking, history charts, recipe profit, Auctionator/TSM feeds. Guide: [Docs/MalexisAuctionWatcher.md](Docs/MalexisAuctionWatcher.md) |
 | anniversary | [CutMaster](AddonProjects/anniversary/CutMaster) | Jewelcrafting book scanning, trade chat/whisper customer detection, order tracking, income. Guide: [Docs/CutMaster.md](Docs/CutMaster.md) |
 | anniversary | [AuctionatorSellingTweaks](AddonProjects/anniversary/AuctionatorSellingTweaks) | Expiry column before "You?" in Auctionator's Selling price list. Guide: [Docs/AuctionatorSellingTweaks.md](Docs/AuctionatorSellingTweaks.md) |
+| anniversary | [TradeMaster](AddonProjects/anniversary/TradeMaster) | Crafting business assistant for any profession, generalised from CutMaster. Guide: [Docs/TradeMaster.md](Docs/TradeMaster.md) |
+| anniversary | [ICLibs](AddonProjects/anniversary/ICLibs) | Shared libraries (LibStub, LibICTradeSkill) required by MalexisAuctionWatcher and TradeMaster. Guide: [Docs/ICLibs.md](Docs/ICLibs.md) |
 
 ## Client paths on the maintainer's machine
 

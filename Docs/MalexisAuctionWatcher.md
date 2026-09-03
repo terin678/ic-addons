@@ -16,16 +16,22 @@ click the coin icon on the minimap.
 
 | Tab | What it shows |
 | --- | --- |
-| Materials | Items you buy. Today, low, average, high per unit. Green is cheap, red is expensive. |
+| Materials | Items you buy. Today, low, average, high per unit. Green is cheap, amber is mid-range, red is expensive; cyan is under your low bound and magenta is over your high one. |
 | Products | Items you sell. Same columns, colors inverted so high is green. |
 | Stores | How many of each item you hold in bags, bank, and on the AH, and what it is worth. |
 | History | Chart of one item over time: 30 or 90 days, by weekday, by day of month, by hour. Highlights the cheapest and priciest bucket. |
 | Recipes | Material to product conversions with cost, AH net, profit, margin, and how many batches you can make now. |
 | Movers | What to act on right now: cheap materials to buy, profitable recipes you can make, products you hold at a good price. Each row has a Buy, Convert, or List button. |
 
-The tabs run along the top as the navigation bar. Under them sits the control row: Scan
-AH, the per-tab scan, Sort, then the tab's option (Add Item or Refresh) and the
-character-specific checkbox on the right. The window is one fixed size on every tab.
+The tabs run along the top as the navigation bar; the live one is gold. Under them sits
+the control row: Scan AH, the per-tab scan, Sort, then the tab's option (Add Item or
+Refresh) and the character-specific checkbox on the right. The window is one fixed size on
+every tab, and how long ago you last scanned reads in the header beside the guild mark.
+
+Every list is built from the shared widget library (see [ICLibs](ICLibs.md)): the column
+headers stay put while the rows scroll, a row is one line that truncates rather than
+wrapping, and the full text is in the hover tooltip. Rows are reused as you refresh
+instead of being rebuilt, so a long list no longer grows the frame count every scan.
 
 ## Adding items
 
@@ -136,10 +142,12 @@ The "Presets..." menu offers:
 - Gem cuts: picker for TBC Jewelcrafting. Click a raw gem to add all its cuts, or add a
   whole tier. 123 cuts across 20 raw gems including the Earthstorm and Skyfire meta
   diamonds. Jewelcrafter-only bind-on-pickup gems are excluded.
-- Import from open profession window: lists every recipe in the profession window you have
-  open, with reagents and counts read straight from the client. Add one or all. This is the
-  reliable way to get any profession's recipes in, Alchemy included. Enchanting is not
-  supported since enchants are not items.
+- From your recipe book: every profession window you open is scanned into a per-character
+  book (through the shared ICLibs library, the same reader TradeMaster uses), so this dialog
+  works with the window closed. Pick a book, search, hover a row for the item tooltip and
+  reagents, add one or all shown. Reagents and batch sizes come straight from the client,
+  so this is the reliable way to get any profession's recipes in. "Scan open window"
+  refreshes the book on demand. Enchanting is not supported since enchants are not items.
 - Flipping guide watchlist: tracks the herbs, primals, gems, shards, and old-world
   consumables a TBC flipping guide singles out, without adding recipes.
 

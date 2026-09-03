@@ -257,23 +257,42 @@ function ChartMixin:SetData(points, opts)
         self.refLines[i].text:Hide()
     end
 
-    -- Today marker: a line on the right edge of the current bucket, where the cycle wraps
+    -- Today marker. One line on the wrap edge left it ambiguous which of the two
+    -- buckets either side of it was the current one, so the bucket is bracketed:
+    -- a line down each edge with a faint band between them. The band sits on
+    -- BORDER, under the bars, so it tints the slot without dimming the data.
     if opts.markerIndex and opts.markerIndex >= 1 and opts.markerIndex <= count then
-        local x = opts.markerIndex * slotW
+        local right = opts.markerIndex * slotW
+        local left = math.max(0, right - slotW)
+
         self.marker:ClearAllPoints()
-        self.marker:SetPoint("BOTTOMLEFT", self.plot, "BOTTOMLEFT", x - 1, 0)
+        self.marker:SetPoint("BOTTOMLEFT", self.plot, "BOTTOMLEFT", right - 1, 0)
         self.marker:SetHeight(plotH)
         self.marker:Show()
+
+        self.markerStart:ClearAllPoints()
+        self.markerStart:SetPoint("BOTTOMLEFT", self.plot, "BOTTOMLEFT", left, 0)
+        self.markerStart:SetHeight(plotH)
+        self.markerStart:Show()
+
+        self.markerBand:ClearAllPoints()
+        self.markerBand:SetPoint("BOTTOMLEFT", self.plot, "BOTTOMLEFT", left, 0)
+        self.markerBand:SetSize(math.max(1, right - left), plotH)
+        self.markerBand:Show()
+
         self.markerText:ClearAllPoints()
+        -- The label goes outside the bracket, on whichever side has room.
         if opts.markerIndex > count / 2 then
-            self.markerText:SetPoint("TOPRIGHT", self.plot, "BOTTOMLEFT", x - 3, plotH - 2)
+            self.markerText:SetPoint("TOPRIGHT", self.plot, "BOTTOMLEFT", left - 3, plotH - 2)
         else
-            self.markerText:SetPoint("TOPLEFT", self.plot, "BOTTOMLEFT", x + 3, plotH - 2)
+            self.markerText:SetPoint("TOPLEFT", self.plot, "BOTTOMLEFT", right + 3, plotH - 2)
         end
         self.markerText:SetText(opts.markerLabel or "Today")
         self.markerText:Show()
     else
         self.marker:Hide()
+        self.markerStart:Hide()
+        self.markerBand:Hide()
         self.markerText:Hide()
     end
 
@@ -306,11 +325,19 @@ function MAWChart.Create(parent, width, height)
 
     frame.refLines = {}
 
-    -- Vertical "Today" marker for cyclic views (day of month, weekday, hour)
+    -- Vertical "Today" marker for cyclic views (day of month, weekday, hour).
+    -- Two lines and a band, so the current bucket is the one between them.
     frame.marker = frame.plot:CreateTexture(nil, "OVERLAY")
     frame.marker:SetWidth(2)
     frame.marker:SetColorTexture(1, 0.85, 0.3, 0.9)
     frame.marker:Hide()
+    frame.markerStart = frame.plot:CreateTexture(nil, "OVERLAY")
+    frame.markerStart:SetWidth(2)
+    frame.markerStart:SetColorTexture(1, 0.85, 0.3, 0.9)
+    frame.markerStart:Hide()
+    frame.markerBand = frame.plot:CreateTexture(nil, "BORDER")
+    frame.markerBand:SetColorTexture(1, 0.85, 0.3, 0.10)
+    frame.markerBand:Hide()
     frame.markerText = frame.plot:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     frame.markerText:SetTextColor(1, 0.85, 0.3)
     frame.markerText:Hide()

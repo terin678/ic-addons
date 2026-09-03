@@ -1,0 +1,8 @@
+<Bindings>
+    <Binding name="TRADEMASTER_BARK" header="TRADEMASTER" description="Send the next TradeMaster bark to Trade chat">
+        TradeMaster_BarkNow()
+    </Binding>
+    <Binding name="TRADEMASTER_TOGGLE" description="Open or close the TradeMaster window">
+        TradeMaster_Toggle()
+    </Binding>
+</Bindings>
