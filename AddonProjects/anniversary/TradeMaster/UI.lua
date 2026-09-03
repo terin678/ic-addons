@@ -916,7 +916,7 @@ function UI.BuildInvite(page)
         { key = "never", label = "never",
           hint = "invite and whisper straight away" },
         { key = "unsure", label = "when unsure",
-          hint = "show me the message when I cannot name what they asked for" },
+          hint = "only when they named something I could not place" },
         { key = "always", label = "always",
           hint = "show me every message before it goes out" },
     }

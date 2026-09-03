@@ -17,12 +17,77 @@ name is still answered at once: the wait is for the cases we are unsure about.
 local WIDTH, HEIGHT = 460, 210
 local EXPIRY_SEC = 180
 
+-- Ordinary words that ask for nothing in particular. Whatever survives these and
+-- the vocabulary below is the specific thing the customer wanted.
+local STOP = {}
+for _, w in ipairs({
+    "a", "an", "the", "any", "anyone", "someone", "somebody", "some", "im", "i",
+    "me", "my", "we", "you", "your", "is", "are", "there", "here", "now", "still",
+    "online", "on", "up", "around", "about", "available", "free", "please", "plz",
+    "pls", "ty", "thanks", "thx", "cheers", "hi", "hello", "hey", "yo", "pst",
+    "whisper", "msg", "message", "to", "for", "with", "and", "or", "of", "in",
+    "at", "got", "have", "has", "need", "needs", "needed", "want", "wants",
+    "wanted", "looking", "look", "lf", "lfw", "wtb", "help", "please", "who",
+    "can", "could", "would", "will", "do", "does", "make", "makes", "making",
+    "craft", "crafts", "crafting", "one", "1", "pay", "paying", "tip", "tips",
+    "tipping", "gold", "g", "work", "job",
+}) do STOP[w] = true end
+
+-- Pure. What is left of a line once the profession's own words, the phrases that
+-- only mean "I am buying", and ordinary filler are taken out.
+--
+-- Empty means they asked for the profession and nothing else, which is the one
+-- shape where "what do you need?" is the right thing to say. Anything left over is
+-- a specific we failed to place, and answering that with the same question is what
+-- makes it embarrassing.
+function Confirm.Leftover(norm, phrases, stop)
+    stop = stop or STOP
+    local text = " " .. (norm or "") .. " "
+    for _, p in ipairs(phrases or {}) do
+        if p and p ~= "" then
+            local pattern = " " .. ns.Util.EscapePattern(p) .. " "
+            -- Repeat: one pass misses a phrase said twice, because the gsub
+            -- consumes the space between them.
+            local changed = true
+            while changed do
+                local next_, n = text:gsub(pattern, " ")
+                text, changed = next_, n > 0
+            end
+        end
+    end
+
+    local out = {}
+    for _, tok in ipairs(ns.Util.Tokenize(text)) do
+        if not stop[tok] then out[#out + 1] = tok end
+    end
+    return table.concat(out, " ")
+end
+
+-- Every phrase that carries no specific: the profession by any of its names, the
+-- configured profession requests, and the buyer vocabulary.
+function Confirm.Phrases(profile, filter)
+    local out = {}
+    for _, t in ipairs(ns.Market and ns.Market.Tags(profile) or {}) do out[#out + 1] = t end
+    for _, p in ipairs((filter and filter.professionWords) or {}) do out[#out + 1] = p:lower() end
+    for phrase in pairs((filter and filter.buyerWords) or {}) do out[#out + 1] = phrase:lower() end
+    for _, v in ipairs((filter and filter.craftVerbs) or {}) do out[#out + 1] = v:lower() end
+    -- Longest first, so "leather worker" goes before "leather".
+    table.sort(out, function(a, b) return #a > #b end)
+    return out
+end
+
+-- Pure. Did we understand the request? Either we can name something they asked
+-- for, or they named nothing at all and a plain "what do you need?" answers them.
+function Confirm.Understood(craftableCount, leftover)
+    return (craftableCount or 0) > 0 or leftover == ""
+end
+
 -- Pure. "never" trusts the templates, "always" reviews everything, and the
--- default reviews only what we could not name.
-function Confirm.Required(setting, namedSomething)
+-- default reviews only the lines we did not understand.
+function Confirm.Required(setting, understood)
     if setting == "never" then return false end
     if setting == "always" then return true end
-    return not namedSomething
+    return not understood
 end
 
 -- Pure. Requests waiting behind the one on screen, oldest first, dropping any
@@ -110,9 +175,13 @@ function Confirm.Next()
         waiting > 0 and string.format("   |cff888888%d more waiting|r", waiting) or ""))
     f.said:SetText("\"" .. (r.text or "") .. "\"")
     f.box:SetText(r.plan.text or "")
-    f.note:SetText(r.plan.haveText
-        and ("|cff888888you can make " .. r.plan.haveText .. "|r")
-        or "|cffff9900nothing they named is in your book|r")
+    if r.plan.haveText then
+        f.note:SetText("|cff888888you can make " .. r.plan.haveText .. "|r")
+    elseif r.leftover and r.leftover ~= "" then
+        f.note:SetText("|cffff9900could not place:|r " .. r.leftover)
+    else
+        f.note:SetText("|cffff9900nothing they named is in your book|r")
+    end
 
     local function finish()
         table.remove(Confirm.queue, 1)

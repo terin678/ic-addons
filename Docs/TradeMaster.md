@@ -180,17 +180,21 @@ leave on screen: open orders, a tick box per item, ticking the last one closes t
 
 ### Shows you the message first
 
-When someone asks for your profession without naming anything you can make, the reply would
-be "what item do you need?" — which reads badly to someone who just told you. So that case
-waits: a small window shows their line, the message you would send (editable), and whether
-anything they named is in your book. **Invite and send** does both, **Whisper only** skips
-the invite, **Skip** does nothing, and **Never invite** flags them.
+"LF JC" on its own is answered at once: an invite and "what do you need?" is exactly right
+when they named nothing. The problem is the line that names something we could not place —
+answering *that* with the same question says nobody was listening.
 
-The **Review** button on the Invite tab sets when this happens: `never` sends straight away
-as before, `when unsure` (the default) reviews only the messages where nothing they asked
-for could be named, and `always` reviews everything. Requests older than three minutes are
-dropped rather than answered late, and anything queued behind the one on screen is counted
-in its header.
+So the line is stripped of the profession's own words, the phrases that only mean "I am
+buying", and ordinary filler. If nothing is left, it was a bare request and it is answered
+immediately. If anything survives, a small window shows their line, what could not be
+placed, and the message you would send with the text editable. **Invite and send** does
+both, **Whisper only** skips the invite, **Skip** does nothing, and **Never invite** flags
+them.
+
+The **Review** button on the Invite tab sets when this happens: `never` sends straight away,
+`when unsure` (the default) is the behaviour above, and `always` reviews every message.
+Requests older than three minutes are dropped rather than answered late, and anything queued
+behind the one on screen is counted in its header.
 
 A line that names an item no book knows is not treated as a bare profession request at all,
 so it gets no invite and no whisper. The item's type cannot be read for something this

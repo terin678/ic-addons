@@ -389,9 +389,15 @@ function Events.Process(text, author, source, opts)
 
     if willInvite and not opts.dryRun then
         local ctx = { cannotDo = cannotDo, profession = profile.key }
-        if ns.Confirm.Required(ps.invite.confirm, #craftable > 0) then
+        -- "LF LW" on its own is answered at once: asking what they need is exactly
+        -- right when they named nothing. A line carrying a specific we could not
+        -- place gets read by a person first, because asking the same question
+        -- there says we were not listening.
+        local leftover = ns.Confirm.Leftover(norm, ns.Confirm.Phrases(profile, ps.filter))
+        local understood = ns.Confirm.Understood(#craftable, leftover)
+        if ns.Confirm.Required(ps.invite.confirm, understood) then
             ns.Confirm.Ask({
-                player = short, source = source, text = text,
+                player = short, source = source, text = text, leftover = leftover,
                 matched = craftable, cannotDo = cannotDo, profession = profile.key,
             })
         else

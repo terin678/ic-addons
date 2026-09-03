@@ -1100,11 +1100,41 @@ end)
 
 T.Case("Confirm: when a message needs a look first", function()
     T.Eq(ns.Confirm.Required("never", false), false, "never asks")
-    T.Eq(ns.Confirm.Required("never", true), false, "never asks, named or not")
+    T.Eq(ns.Confirm.Required("never", true), false, "never asks, understood or not")
     T.Eq(ns.Confirm.Required("always", true), true, "always asks")
-    T.Eq(ns.Confirm.Required("unsure", true), false, "we can name it, so send it")
-    T.Eq(ns.Confirm.Required("unsure", false), true, "we cannot, so show me")
-    T.Eq(ns.Confirm.Required(nil, false), true, "an unset setting reviews the unsure ones")
+    T.Eq(ns.Confirm.Required("unsure", true), false, "understood, so send it")
+    T.Eq(ns.Confirm.Required("unsure", false), true, "not understood, so show me")
+    T.Eq(ns.Confirm.Required(nil, false), true, "an unset setting reviews the rest")
+end)
+
+T.Case("Confirm: a bare profession request is answered at once", function()
+    local profile = ns.Prof.ByKey("jewelcrafting")
+    -- The profile's own defaults, so the test does not depend on which
+    -- profession happens to be active.
+    local phrases = ns.Confirm.Phrases(profile, ns.Prof.DefaultSettings(profile).filter)
+    local function leftover(text)
+        return ns.Confirm.Leftover(ns.Util.Normalize(text), phrases)
+    end
+
+    T.Eq(leftover("LF JC"), "", "the whole line is the request")
+    T.Eq(leftover("any jc online?"), "", "and the polite version")
+    T.Eq(leftover("anyone can cut for me please"), "", "no specific in there either")
+    T.Eq(ns.Confirm.Understood(0, leftover("LF JC")), true, "so answer it")
+end)
+
+T.Case("Confirm: a specific we could not place waits for a person", function()
+    local profile = ns.Prof.ByKey("jewelcrafting")
+    -- The profile's own defaults, so the test does not depend on which
+    -- profession happens to be active.
+    local phrases = ns.Confirm.Phrases(profile, ns.Prof.DefaultSettings(profile).filter)
+    local function leftover(text)
+        return ns.Confirm.Leftover(ns.Util.Normalize(text), phrases)
+    end
+
+    T.Eq(leftover("LF JC shadow armor kit") ~= "", true, "they named something")
+    T.Eq(ns.Confirm.Understood(0, leftover("LF JC shadow armor kit")), false, "so ask me")
+    -- Matching it is what makes it answerable, whatever else is on the line.
+    T.Eq(ns.Confirm.Understood(1, leftover("LF JC shadow armor kit")), true, "matched wins")
 end)
 
 T.Case("Confirm: a request goes stale rather than arriving late", function()
