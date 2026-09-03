@@ -194,6 +194,13 @@ function ChartMixin:SetData(points, opts)
     local refs = opts.refLines or {}
     local LABEL_H = 12
     local placedLabelYs = {}
+    -- The highest line gets its label above; every other line's label goes below its line
+    local topValue
+    for _, ref in ipairs(refs) do
+        if ref.value and ref.value > 0 and (not topValue or ref.value > topValue) then
+            topValue = ref.value
+        end
+    end
     local function LabelCollides(y)
         for _, other in ipairs(placedLabelYs) do
             if math.abs(other - y) < LABEL_H then
@@ -222,10 +229,11 @@ function ChartMixin:SetData(points, opts)
             line.tex:SetPoint("BOTTOMLEFT", self.plot, "BOTTOMLEFT", 0, y)
             line.tex:SetPoint("BOTTOMRIGHT", self.plot, "BOTTOMRIGHT", 0, y)
 
-            -- Label sits just above its line; if that overlaps another label,
-            -- try just below, then keep stepping down until it is clear.
-            local labelY = y + 1
-            if LabelCollides(labelY) or labelY + LABEL_H > plotH then
+            -- Highest line: label above. Others: label below, stepping down if it collides.
+            local labelY
+            if ref.value == topValue and y + 1 + LABEL_H <= plotH and not LabelCollides(y + 1) then
+                labelY = y + 1
+            else
                 labelY = y - LABEL_H
                 while LabelCollides(labelY) and labelY > 0 do
                     labelY = labelY - LABEL_H
