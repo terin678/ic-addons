@@ -149,6 +149,42 @@ commands.candidates = {
     end,
 }
 
+commands.lead = {
+    desc = "designate the Raid Lead, or clear it with no name",
+    run = function(rest)
+        MFD.Comms:SetLead(rest ~= "" and rest or nil)
+    end,
+}
+
+commands.status = {
+    desc = "show the marker, the peers and the rule counts",
+    run = function()
+        MFD.Print("marker: " .. tostring(MFD.Comms.authority or "|cffff4444nobody|r")
+            .. " (" .. MFD.Comms.authorityMode .. ")")
+
+        if MFD.Comms.authorityReason ~= "" then
+            MFD.Print("  |cffff4444" .. MFD.Comms.authorityReason .. "|r")
+        end
+
+        local designated = MFD.db.designatedLead.name
+        MFD.Print("designated lead: " .. (designated ~= "" and designated or "|cff999999none|r"))
+
+        local canMark, why = MFD.Marker:CanMark()
+        MFD.Print("you can place icons: " .. tostring(canMark)
+            .. (why ~= "" and " (" .. why .. ")" or ""))
+
+        local names = MFD.Comms:PeerNames()
+        MFD.Print(#names .. " addon users: " .. table.concat(names, ", "))
+
+        local count = 0
+        for _ in pairs(MFD.Rules.Active()) do
+            count = count + 1
+        end
+        MFD.Print("active rules: " .. count .. " in "
+            .. tostring(MFD.Rules.currentInstanceKey or "no known zone"))
+    end,
+}
+
 commands.debug = {
     desc = "explain why marking is or is not happening right now",
     run = function()

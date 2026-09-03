@@ -13,4 +13,5 @@ Rules.lua
 Allocator.lua
 Candidates.lua
 Marker.lua
+Comms.lua
 Tests.lua

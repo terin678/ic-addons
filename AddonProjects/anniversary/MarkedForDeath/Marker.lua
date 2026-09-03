@@ -172,9 +172,6 @@ function Marker:CheckCvars()
     return true, ""
 end
 
--- Temporary until Comms lands in Task 8.
-MFD.Comms = MFD.Comms or { IsAuthority = function() return true end }
-
 local defense = {}
 local accumulator = 0
 local hasReportedTickError = false

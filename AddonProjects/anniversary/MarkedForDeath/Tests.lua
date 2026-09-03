@@ -807,4 +807,123 @@ T.Case("Learned: a missing creature type is still recorded, just without the typ
     T.Eq(db.learnedMobs[22880].creatureType, nil, "type simply absent")
 end)
 
+local function peer(name, opts)
+    opts = opts or {}
+    return {
+        name = name,
+        canMark = opts.canMark ~= false,
+        isLeader = opts.isLeader or false,
+        isAssist = opts.isAssist or false,
+        lastSeen = opts.lastSeen or 100,
+        version = opts.version or "0.1.0",
+    }
+end
+
+T.Case("Comms: encode and decode round-trip", function()
+    local encoded = MFD.Comms.Encode("A", { "22890:AAA", 5, "SHEEP", "Grimmtusk" })
+    local msgType, fields = MFD.Comms.Decode(encoded)
+    T.Eq(msgType, "A", "type")
+    T.Eq(fields[1], "22890:AAA", "key")
+    T.Eq(fields[2], "5", "icon arrives as a string")
+    T.Eq(fields[4], "Grimmtusk", "owner")
+end)
+
+T.Case("Comms: decoding rubbish is safe", function()
+    T.Eq(MFD.Comms.Decode(""), nil, "empty string")
+    T.Eq(MFD.Comms.Decode(nil), nil, "nil")
+    T.Eq(MFD.Comms.Decode(12345), nil, "not a string")
+end)
+
+T.Case("Comms: the queue drains high priority first", function()
+    local queue = {
+        { msgType = "RD", body = "rules" },
+        { msgType = "B", body = "beat" },
+        { msgType = "S", body = "sighting" },
+    }
+    local sent = MFD.Comms.Drain(queue, 3)
+    T.Eq(sent[1].msgType, "B", "heartbeat first")
+    T.Eq(sent[2].msgType, "S", "sightings next")
+    T.Eq(sent[3].msgType, "RD", "bulk rule data last")
+end)
+
+T.Case("Comms: the queue respects the per-tick budget", function()
+    local queue = {}
+    for i = 1, 20 do
+        queue[i] = { msgType = "S", body = "s" .. i }
+    end
+    local sent = MFD.Comms.Drain(queue, 8)
+    T.Eq(#sent, 8, "only the budget goes out")
+    T.Eq(#queue, 12, "the rest stays queued")
+end)
+
+T.Case("Comms: equal priority keeps insertion order", function()
+    local queue = {
+        { msgType = "S", body = "first" },
+        { msgType = "S", body = "second" },
+    }
+    local sent = MFD.Comms.Drain(queue, 2)
+    T.Eq(sent[1].body, "first", "observed order preserved")
+    T.Eq(sent[2].body, "second", "second")
+end)
+
+T.Case("Comms: a valid designation beats the election", function()
+    local name, mode = MFD.Comms.ResolveAuthority(
+        { peer("Dillon", { isAssist = true }), peer("Grimmtusk", { isLeader = true }) },
+        { name = "Dillon", setAt = 50 }, 100)
+    T.Eq(name, "Dillon", "the designated lead wins over the raid leader")
+    T.Eq(mode, "designated", "and says so")
+end)
+
+T.Case("Comms: an absent designated lead falls back to the election", function()
+    local name, mode, reason = MFD.Comms.ResolveAuthority(
+        { peer("Grimmtusk", { isLeader = true }) },
+        { name = "Dillon", setAt = 50 }, 100)
+    T.Eq(name, "Grimmtusk", "elected instead")
+    T.Eq(mode, "elected", "mode reports the fallback")
+    T.Eq(reason, "designated lead Dillon is not in the group", "and says why")
+end)
+
+T.Case("Comms: a designated lead without assist falls back", function()
+    local name, _, reason = MFD.Comms.ResolveAuthority(
+        { peer("Dillon", { canMark = false }), peer("Grimmtusk", { isLeader = true }) },
+        { name = "Dillon", setAt = 50 }, 100)
+    T.Eq(name, "Grimmtusk", "elected instead")
+    T.Eq(reason, "designated lead Dillon cannot place icons", "names the real problem")
+end)
+
+T.Case("Comms: the election prefers leader, then assist, then name", function()
+    T.Eq(MFD.Comms.ResolveAuthority(
+        { peer("Zed", { isAssist = true }), peer("Alfred"), peer("Mira", { isLeader = true }) },
+        { name = "", setAt = 0 }, 100), "Mira", "raid leader outranks assist")
+
+    T.Eq(MFD.Comms.ResolveAuthority(
+        { peer("Zed", { isAssist = true }), peer("Alfred") },
+        { name = "", setAt = 0 }, 100), "Zed", "assist outranks nobody")
+
+    T.Eq(MFD.Comms.ResolveAuthority(
+        { peer("Zed"), peer("Alfred") },
+        { name = "", setAt = 0 }, 100), "Alfred", "tie broken by name ascending")
+end)
+
+T.Case("Comms: peers that have gone silent are ignored", function()
+    local name = MFD.Comms.ResolveAuthority(
+        { peer("Mira", { isLeader = true, lastSeen = 10 }), peer("Alfred", { lastSeen = 99 }) },
+        { name = "", setAt = 0 }, 100)
+    T.Eq(name, "Alfred", "a disconnected raid leader cannot hold the authority hostage")
+end)
+
+T.Case("Comms: nobody eligible means no authority, with a reason", function()
+    local name, mode, reason = MFD.Comms.ResolveAuthority({}, { name = "", setAt = 0 }, 100)
+    T.Eq(name, nil, "no authority")
+    T.Eq(mode, "none", "and it says so")
+    T.Eq(reason, "nobody in the group can place icons", "rather than failing silently")
+end)
+
+T.Case("Comms: resolution does not depend on peer ordering", function()
+    local a, b = peer("Zed", { isAssist = true }), peer("Alfred", { isAssist = true })
+    T.Eq(MFD.Comms.ResolveAuthority({ a, b }, { name = "", setAt = 0 }, 100),
+         MFD.Comms.ResolveAuthority({ b, a }, { name = "", setAt = 0 }, 100),
+         "same answer either way, so every client agrees")
+end)
+
 _G.MarkedForDeath = MFD
