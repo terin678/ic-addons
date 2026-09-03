@@ -867,7 +867,7 @@ function MAWUI:RefreshData()
     if currentTab == "recipes" then
         local cols = 0
         for _, c in ipairs(RecipeColumns()) do cols = cols + c.width end
-        wantWidth = math.max(wantWidth, PADDING + RECIPE_CONTROLS_WIDTH + cols + chrome)
+        wantWidth = math.max(wantWidth, PADDING + RECIPE_CONTROLS_WIDTH + cols + chrome + 24)
     elseif currentTab == "materials" or currentTab == "products" then
         wantWidth = math.max(wantWidth, PADDING + CONTROLS_WIDTH + ROW_NAME_WIDTH + CELL_WIDTH * 4 + TsmColumnsWidth() + chrome)
     elseif currentTab == "stores" then
@@ -2216,9 +2216,27 @@ function MAWUI:RenderRecipesTab(scrollChild, yOffset)
             x = x + col.width
         end
 
+        local editBtn = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate")
+        editBtn:SetSize(20, 20)
+        editBtn:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", x + 5, yOffset - 2)
+        editBtn:SetText("E")
+        editBtn:SetNormalFontObject("GameFontNormalSmall")
+        editBtn:SetScript("OnClick", function()
+            if _G.MalexisAuctionWatcherRecipeDialog then
+                _G.MalexisAuctionWatcherRecipeDialog.ShowEdit(calc.recipe)
+            end
+        end)
+        editBtn:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:AddLine("Edit recipe")
+            GameTooltip:Show()
+        end)
+        editBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        table.insert(mainFrame.rows, editBtn)
+
         local removeBtn = CreateFrame("Button", nil, scrollChild, "UIPanelButtonTemplate")
         removeBtn:SetSize(20, 20)
-        removeBtn:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", x + 5, yOffset - 2)
+        removeBtn:SetPoint("LEFT", editBtn, "RIGHT", 3, 0)
         removeBtn:SetText("X")
         removeBtn:SetNormalFontObject("GameFontNormalSmall")
         removeBtn:SetScript("OnClick", function()

@@ -165,6 +165,7 @@ local function Build()
     addBtn:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 16, 14)
     addBtn:SetText("Add Recipe")
     addBtn:SetScript("OnClick", function() MAWRecipeDialog.Submit() end)
+    frame.addBtn = addBtn
 
     local cancelBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
     cancelBtn:SetSize(80, 22)
@@ -205,31 +206,59 @@ function MAWRecipeDialog.Submit()
         return
     end
     for _, mat in ipairs(materials) do
-        if not EnsureTracked(mat.item, mat.id, "material") then
+        local vendor = (mat.id and MAW.VENDOR_MATS[mat.id]) or MAW:VendorMatByName(mat.item)
+        if vendor then
+            mat.vendor = vendor.price
+        elseif not EnsureTracked(mat.item, mat.id, "material") then
             frame.status:SetText("Could not find item '" .. mat.item .. "'. Drag it from your bags instead.")
             return
         end
         mat.id = nil
     end
 
-    local ok, err = MAW:AddRecipe({
-        name = productName,
-        product = productName,
-        productCount = productCount,
-        materials = materials,
-    })
-    if not ok then
-        frame.status:SetText(err or "Could not add recipe.")
-        return
+    local editing = frame.editing
+    if editing then
+        -- Keep the recipe's identity and notes; rename only if the name was just the old product
+        local newName = editing.name
+        if editing.name == editing.product and productName ~= editing.product then
+            newName = productName
+        end
+        local ok, err = MAW:UpdateRecipe(editing.name, {
+            name = newName,
+            product = productName,
+            productCount = productCount,
+            materials = materials,
+            skill = editing.skill,
+            profession = editing.profession,
+            color = editing.color,
+            note = editing.note,
+        })
+        if not ok then
+            frame.status:SetText(err or "Could not save recipe.")
+            return
+        end
+        print(addonName .. ": Updated recipe " .. newName)
+    else
+        local ok, err = MAW:AddRecipe({
+            name = productName,
+            product = productName,
+            productCount = productCount,
+            materials = materials,
+        })
+        if not ok then
+            frame.status:SetText(err or "Could not add recipe.")
+            return
+        end
+        print(addonName .. ": Added recipe for " .. productName)
     end
-    print(addonName .. ": Added recipe for " .. productName)
+    frame.editing = nil
     frame:Hide()
 end
 
-function MAWRecipeDialog.Show()
-    if not frame then
-        Build()
-    end
+local function ResetDialog()
+    frame.editing = nil
+    frame.title:SetText("Add Recipe")
+    frame.addBtn:SetText("Add Recipe")
     frame.product:Reset()
     frame.productCount:SetText("1")
     for _, row in ipairs(frame.materials) do
@@ -237,8 +266,56 @@ function MAWRecipeDialog.Show()
         row.count:SetText("")
     end
     frame.status:SetText("")
+end
+
+function MAWRecipeDialog.Show()
+    if not frame then
+        Build()
+    end
+    ResetDialog()
     frame:Show()
     frame.product.input:SetFocus()
+end
+
+-- Open the dialog pre-filled with an existing recipe; saving replaces it in place
+function MAWRecipeDialog.ShowEdit(recipe)
+    if not frame then
+        Build()
+    end
+    ResetDialog()
+    frame.editing = recipe
+    frame.title:SetText("Edit Recipe")
+    frame.addBtn:SetText("Save")
+
+    local MAW = _G.MalexisAuctionWatcher
+    local db = MAW:GetActiveDB()
+    local function Fill(picker, name)
+        picker.itemName = name
+        local data = db.items[name]
+        picker.itemID = data and data.itemID or nil
+        picker.input:SetText(name)
+        local _, _, _, _, _, _, _, _, _, tex = GetItemInfo(picker.itemID or name)
+        if tex then
+            picker.slot.icon:SetTexture(tex)
+            picker.slot.icon:Show()
+        end
+    end
+
+    Fill(frame.product, recipe.product)
+    frame.productCount:SetText(tostring(recipe.productCount or 1))
+    for i, mat in ipairs(recipe.materials or {}) do
+        local row = frame.materials[i]
+        if row then
+            Fill(row.picker, mat.item)
+            row.count:SetText(tostring(mat.count))
+        end
+    end
+    if #(recipe.materials or {}) > #frame.materials then
+        frame.status:SetText("This recipe has more materials than the dialog can show; extra ones will be dropped on save.")
+    elseif recipe.note then
+        frame.status:SetText(recipe.note)
+    end
+    frame:Show()
 end
 
 

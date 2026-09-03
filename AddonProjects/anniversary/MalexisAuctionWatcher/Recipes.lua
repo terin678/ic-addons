@@ -129,6 +129,29 @@ function MAW:AddRecipe(recipe)
     return true
 end
 
+-- Replace an existing recipe (matched by name) with new contents, keeping its position
+function MAW:UpdateRecipe(oldName, recipe)
+    local recipes = self:GetRecipes()
+    for i, r in ipairs(recipes) do
+        if r.name == oldName then
+            recipe.name = recipe.name or oldName
+            recipe.productCount = recipe.productCount or 1
+            -- A rename must not collide with another recipe
+            if recipe.name ~= oldName then
+                for _, other in ipairs(recipes) do
+                    if other.name == recipe.name then
+                        return false, "a recipe named " .. recipe.name .. " already exists"
+                    end
+                end
+            end
+            recipes[i] = recipe
+            self:FireCallbacks("onItemAdded")
+            return true
+        end
+    end
+    return false, "recipe not found: " .. tostring(oldName)
+end
+
 function MAW:RemoveRecipe(name)
     local recipes = self:GetRecipes()
     for i, r in ipairs(recipes) do

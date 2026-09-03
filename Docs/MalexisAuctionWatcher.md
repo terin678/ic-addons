@@ -139,6 +139,9 @@ The "Presets..." menu offers:
   consumables a TBC flipping guide singles out, without adding recipes.
 
 "Add Recipe" builds a custom recipe: drag a product and up to five materials with counts.
+The E button on a row opens the same dialog pre-filled so you can change the product,
+batch size, or materials; Save replaces the recipe in place and keeps its name and notes.
+Typing a vial name as a material prices it at vendor cost automatically.
 
 Vials (Imbued, Crystal, Leaded, Empty) are priced at their vendor cost automatically, are
 not tracked, and do not count toward "Can make".
