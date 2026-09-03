@@ -974,4 +974,98 @@ T.Case("Candidates: a nameplate token replaces a transient one", function()
     T.Eq(set["100:AAA"].unit, "nameplate1", "upgraded to the durable handle")
 end)
 
+T.Case("Rules: serialise and deserialise round-trip", function()
+    local original = {
+        BLACKTEMPLE = {
+            { npcID = 22890, name = "Illidari Nightlord", intent = "SHEEP", rank = 10, fallback = "KILL", maxCount = 2 },
+            { npcID = 22861, name = "Illidari Fearbringer", intent = "KILL", rank = 20 },
+        },
+    }
+    local restored = MFD.Rules.Deserialize(MFD.Rules.Serialize(original))
+    T.Eq(restored.BLACKTEMPLE[1].npcID, 22890, "npcID")
+    T.Eq(restored.BLACKTEMPLE[1].name, "Illidari Nightlord", "name with a space")
+    T.Eq(restored.BLACKTEMPLE[1].intent, "SHEEP", "intent")
+    T.Eq(restored.BLACKTEMPLE[1].rank, 10, "rank comes back as a number")
+    T.Eq(restored.BLACKTEMPLE[1].fallback, "KILL", "fallback")
+    T.Eq(restored.BLACKTEMPLE[1].maxCount, 2, "maxCount")
+    T.Eq(restored.BLACKTEMPLE[2].fallback, nil, "an absent optional stays absent")
+end)
+
+T.Case("Rules: deserialising rubbish returns nil and a reason", function()
+    local restored, err = MFD.Rules.Deserialize("not a rule set")
+    T.Eq(restored, nil, "no table")
+    T.Eq(type(err), "string", "and an explanation")
+end)
+
+T.Case("Rules: an unknown intent is rejected rather than imported blind", function()
+    local restored, err = MFD.Rules.Deserialize("BT;1;EXPLODE;10;;;Thing")
+    T.Eq(restored, nil, "refused")
+    T.Eq(err, "line 1 has unknown intent 'EXPLODE'", "and says which line")
+end)
+
+T.Case("Rules: the hash is stable and change sensitive", function()
+    local a = { BT = { { npcID = 1, intent = "KILL", rank = 10 } } }
+    local b = { BT = { { npcID = 1, intent = "KILL", rank = 10 } } }
+    local c = { BT = { { npcID = 1, intent = "SHEEP", rank = 10 } } }
+    T.Eq(MFD.Rules.Hash(a), MFD.Rules.Hash(b), "same content, same hash")
+    if MFD.Rules.Hash(a) == MFD.Rules.Hash(c) then
+        error("changing an intent must change the hash")
+    end
+end)
+
+T.Case("Rules: BumpVersion only advances when content actually changed", function()
+    local db = { rules = { BT = { { npcID = 1, intent = "KILL", rank = 10 } } }, rulesVersion = { counter = 0, hash = "" } }
+    MFD.Rules.BumpVersion(db)
+    T.Eq(db.rulesVersion.counter, 1, "first bump")
+    MFD.Rules.BumpVersion(db)
+    T.Eq(db.rulesVersion.counter, 1, "unchanged rules do not bump, so peers skip the transfer")
+    db.rules.BT[1].intent = "SHEEP"
+    MFD.Rules.BumpVersion(db)
+    T.Eq(db.rulesVersion.counter, 2, "a real change bumps")
+end)
+
+T.Case("Comms: chunking splits and preserves the payload", function()
+    local payload = string.rep("x", 450)
+    local chunks = MFD.Comms.Chunk(payload, 200)
+    T.Eq(#chunks, 3, "three chunks")
+    T.Eq(#chunks[1], 200, "full first chunk")
+    T.Eq(#chunks[3], 50, "remainder in the last")
+    T.Eq(table.concat(chunks), payload, "concatenation restores it")
+end)
+
+T.Case("Comms: a short or empty payload is a single chunk", function()
+    T.Eq(#MFD.Comms.Chunk("short", 200), 1, "one chunk")
+    T.Eq(#MFD.Comms.Chunk("", 200), 1, "even empty, so a receiver always sees a terminator")
+end)
+
+T.Case("Comms: reassembly returns the payload only when complete", function()
+    local state = {}
+    T.Eq(MFD.Comms.Reassemble(state, "Zed", 1, 2, "hello "), nil, "incomplete")
+    T.Eq(MFD.Comms.Reassemble(state, "Zed", 2, 2, "world"), "hello world", "complete")
+    T.Eq(state.Zed, nil, "state cleaned up after completion")
+end)
+
+T.Case("Comms: chunks arriving out of order still reassemble correctly", function()
+    local state = {}
+    MFD.Comms.Reassemble(state, "Zed", 2, 2, "world")
+    T.Eq(MFD.Comms.Reassemble(state, "Zed", 1, 2, "hello "), "hello world", "order restored by index")
+end)
+
+T.Case("Comms: two senders reassemble independently", function()
+    local state = {}
+    MFD.Comms.Reassemble(state, "Zed", 1, 2, "A")
+    MFD.Comms.Reassemble(state, "Mira", 1, 2, "B")
+    T.Eq(MFD.Comms.Reassemble(state, "Zed", 2, 2, "1"), "A1", "Zed's payload")
+    T.Eq(MFD.Comms.Reassemble(state, "Mira", 2, 2, "2"), "B2", "Mira's payload")
+end)
+
+T.Case("Comms: an abandoned transfer times out instead of hanging", function()
+    local state = {}
+    MFD.Comms.Reassemble(state, "Zed", 1, 3, "partial")
+    state.Zed.startedAt = 100
+    local abandoned = MFD.Comms.SweepTransfers(state, 200, 20)
+    T.Eq(abandoned[1], "Zed", "reported")
+    T.Eq(state.Zed, nil, "and dropped so a retry can start clean")
+end)
+
 _G.MarkedForDeath = MFD

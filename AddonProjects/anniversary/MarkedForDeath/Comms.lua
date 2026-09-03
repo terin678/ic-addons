@@ -313,6 +313,8 @@ local function onMessage(prefix, body, _, sender)
                 .. ((fields[1] ~= "" and fields[1]) or "nobody")
                 .. " by " .. tostring(fields[2]))
         end
+    else
+        Comms:HandleRuleMessage(msgType, fields, sender)
     end
 end
 
@@ -343,6 +345,8 @@ MFD.RegisterInit(function()
         else
             Comms:RecomputeAuthority()
             announceSelf()
+            Comms.Republish()
+            Comms:AdvertiseRules()
         end
     end)
 
@@ -356,6 +360,7 @@ MFD.RegisterInit(function()
         heartbeatAccumulator = heartbeatAccumulator + elapsed
         if heartbeatAccumulator >= Comms.HEARTBEAT_SECONDS then
             heartbeatAccumulator = 0
+            Comms:SweepStalledTransfers()
             Comms:RecomputeAuthority()
             if Comms:IsAuthority() then
                 Comms:Send("B", { MFD.VERSION })
@@ -365,5 +370,212 @@ MFD.RegisterInit(function()
 
     Comms:RecomputeAuthority()
 end)
+
+-- Bytes per chunk. Addon messages cap at 255 including the prefix and the
+-- envelope fields, so this leaves comfortable headroom.
+Comms.CHUNK_BYTES = 200
+Comms.TRANSFER_TIMEOUT_SECONDS = 20
+
+-- Splits payload into chunks of at most size bytes. Returns an array with at
+-- least one entry, even for an empty payload, so a receiver always sees a
+-- terminating chunk.
+function Comms.Chunk(payload, size)
+    local chunks = {}
+    local position = 1
+
+    repeat
+        chunks[#chunks + 1] = string.sub(payload, position, position + size - 1)
+        position = position + size
+    until position > #payload
+
+    return chunks
+end
+
+-- Accumulates a chunked transfer. Returns the complete payload once the last
+-- chunk arrives, otherwise nil. Mutates state, keyed by sender, and clears the
+-- sender's entry on completion.
+--
+-- Caller contract: when this function creates an entry it stamps startedAt as
+-- 0, because it has no clock and must stay pure. The client wiring pre-creates
+-- the entry with a real startedAt before the first call; SweepTransfers would
+-- otherwise abandon the transfer immediately.
+function Comms.Reassemble(state, sender, index, total, chunk)
+    local entry = state[sender]
+
+    if not entry or entry.total ~= total then
+        entry = { total = total, parts = {}, received = 0, startedAt = 0 }
+        state[sender] = entry
+    end
+
+    if not entry.parts[index] then
+        entry.parts[index] = chunk
+        entry.received = entry.received + 1
+    end
+
+    if entry.received < total then
+        return nil
+    end
+
+    state[sender] = nil
+    return table.concat(entry.parts)
+end
+
+-- Drops transfers that stalled. Returns the senders whose transfers were
+-- abandoned so the caller can report it, because a silent stall is exactly the
+-- kind of failure the repo standards forbid.
+function Comms.SweepTransfers(state, now, timeout)
+    local abandoned = {}
+
+    for _, sender in ipairs(MFD.H.SortedKeys(state)) do
+        local entry = state[sender]
+        if (entry.startedAt + timeout) < now then
+            abandoned[#abandoned + 1] = sender
+            state[sender] = nil
+        end
+    end
+
+    return abandoned
+end
+
+local transfers = {}
+local contributions = {}
+local peerVersions = {}
+local haveVersions = {}
+local ruledDigest = {}
+
+-- Rebuilds the merged rule set from every contribution we hold, always
+-- including our own, and (if we are the authority) publishes the digest of
+-- ruled npc ids so backups know which mobs are worth reporting.
+--
+-- Never writes to saved variables. Merged rules are session state.
+function Comms.Republish()
+    contributions[playerName()] = MFD.db.rules
+
+    local list = {}
+    for owner, rules in pairs(contributions) do
+        list[#list + 1] = { owner = owner, rules = rules }
+    end
+
+    MFD.Rules.SetContributions(list, MFD.db.designatedLead.name)
+
+    if not Comms:IsAuthority() then
+        return
+    end
+
+    local ids = {}
+    for _, instanceKey in ipairs(MFD.H.SortedKeys(MFD.Rules.merged)) do
+        for npcID in pairs(MFD.Rules.merged[instanceKey]) do
+            ids[#ids + 1] = npcID
+        end
+    end
+
+    table.sort(ids)
+    for _, chunkText in ipairs(Comms.Chunk(table.concat(ids, ","), Comms.CHUNK_BYTES)) do
+        Comms:Send("RG", { chunkText })
+    end
+end
+
+-- Advertises our rule version. Bumps first, so a local edit is always
+-- reflected in what peers hear about.
+function Comms:AdvertiseRules()
+    MFD.Rules.BumpVersion(MFD.db)
+    Comms:Send("RV", { MFD.db.rulesVersion.counter .. ":" .. MFD.db.rulesVersion.hash })
+end
+
+-- Broadcasts our own rules, chunked. Broadcast rather than whispered so every
+-- client accumulates the same contributions and computes the same merge.
+local function sendRules()
+    local payload = MFD.Rules.Serialize(MFD.db.rules)
+    local chunks = Comms.Chunk(payload, Comms.CHUNK_BYTES)
+
+    for i, chunkText in ipairs(chunks) do
+        Comms:Send("RD", { i, #chunks, chunkText })
+    end
+end
+
+function Comms:IsRuled(npcID)
+    return ruledDigest[npcID] == true
+end
+
+-- Handles the rule sync message types. Returns true when it consumed the
+-- message. Split out of onMessage so the dispatch there stays readable.
+function Comms:HandleRuleMessage(msgType, fields, sender)
+    if msgType == "RV" then
+        peerVersions[sender] = fields[1]
+        -- Only the authority requests, so a raid of twenty five does not
+        -- produce twenty five requests per version change.
+        if Comms:IsAuthority() and haveVersions[sender] ~= fields[1] then
+            Comms:Send("RQ", { sender })
+        end
+        return true
+    end
+
+    if msgType == "RQ" then
+        if fields[1] == playerName() then
+            sendRules()
+        end
+        return true
+    end
+
+    if msgType == "RD" then
+        local index, total = tonumber(fields[1]), tonumber(fields[2])
+        if not index or not total then
+            return true
+        end
+
+        if not transfers[sender] then
+            transfers[sender] = { total = total, parts = {}, received = 0, startedAt = GetTime() }
+        end
+
+        local payload = Comms.Reassemble(transfers, sender, index, total, fields[3] or "")
+        if payload then
+            local parsed, err = MFD.Rules.Deserialize(payload)
+            if not parsed then
+                MFD.Error("could not read rules from " .. sender .. ": " .. tostring(err))
+                return true
+            end
+            contributions[sender] = parsed
+            haveVersions[sender] = peerVersions[sender]
+            Comms.Republish()
+            MFD.Print("merged rules from " .. sender)
+        end
+        return true
+    end
+
+    if msgType == "RG" then
+        wipe(ruledDigest)
+        for id in string.gmatch(fields[1] or "", "(%d+)") do
+            ruledDigest[tonumber(id)] = true
+        end
+        return true
+    end
+
+    return false
+end
+
+-- Returns { [owner] = rule count } for every contributor other than us, for
+-- /mfd status.
+function Comms:ContributionCounts()
+    local counts = {}
+    for owner, rules in pairs(contributions) do
+        if owner ~= playerName() then
+            local total = 0
+            for _, list in pairs(rules) do
+                total = total + #list
+            end
+            counts[owner] = total
+        end
+    end
+    return counts
+end
+
+-- Called from the heartbeat so a stalled transfer is reported and retried
+-- rather than hanging forever.
+function Comms:SweepStalledTransfers()
+    for _, sender in ipairs(Comms.SweepTransfers(transfers, GetTime(), Comms.TRANSFER_TIMEOUT_SECONDS)) do
+        MFD.Error("rule transfer from " .. sender .. " timed out, will retry on their next update")
+        haveVersions[sender] = nil
+    end
+end
 
 _G.MarkedForDeath = MFD

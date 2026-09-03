@@ -167,4 +167,104 @@ function Rules.Active()
     return Rules.merged[key] or EMPTY
 end
 
+-- Wire and export format. One rule per line:
+--   instanceKey;npcID;intent;rank;fallback;maxCount;name
+-- Fields are positional, name goes last because it is the only one that may
+-- contain spaces. Empty means absent. A hand-rolled format is used rather than
+-- a serialisation library because rule sets are small enough that compression
+-- is not worth a dependency.
+local FIELD = ";"
+local LINE = "\n"
+
+-- Takes { [instanceKey] = array of rule }. Returns a string. Iteration goes
+-- through sorted keys so the same rules always serialise identically, which is
+-- what makes the hash usable for version gating.
+function Rules.Serialize(rulesByInstance)
+    local lines = {}
+
+    for _, instanceKey in ipairs(MFD.H.SortedKeys(rulesByInstance)) do
+        for _, rule in ipairs(rulesByInstance[instanceKey]) do
+            local safeName = string.gsub(rule.name or "", "[" .. FIELD .. LINE .. "]", " ")
+            lines[#lines + 1] = table.concat({
+                instanceKey,
+                rule.npcID,
+                rule.intent,
+                rule.rank,
+                rule.fallback or "",
+                rule.maxCount or "",
+                safeName,
+            }, FIELD)
+        end
+    end
+
+    return table.concat(lines, LINE)
+end
+
+-- Takes a serialised string. Returns { [instanceKey] = array of rule }, or nil
+-- and a reason. A malformed line aborts the whole parse rather than silently
+-- importing a partial rule set.
+function Rules.Deserialize(str)
+    if type(str) ~= "string" then
+        return nil, "not a string"
+    end
+
+    local out = {}
+    local lineNumber = 0
+
+    for line in string.gmatch(str, "[^" .. LINE .. "]+") do
+        lineNumber = lineNumber + 1
+
+        local instanceKey, npcID, intent, rank, fallback, maxCount, name =
+            string.match(line, "^([^;]*);([^;]*);([^;]*);([^;]*);([^;]*);([^;]*);(.*)$")
+
+        if not instanceKey or instanceKey == "" then
+            return nil, "line " .. lineNumber .. " is not a rule"
+        end
+
+        if not tonumber(npcID) or not tonumber(rank) then
+            return nil, "line " .. lineNumber .. " has a bad npc id or rank"
+        end
+
+        if not MFD.Seats.INTENTS[intent] then
+            return nil, "line " .. lineNumber .. " has unknown intent '" .. tostring(intent) .. "'"
+        end
+
+        out[instanceKey] = out[instanceKey] or {}
+        table.insert(out[instanceKey], {
+            npcID = tonumber(npcID),
+            intent = intent,
+            rank = tonumber(rank),
+            fallback = fallback ~= "" and fallback or nil,
+            maxCount = tonumber(maxCount) or nil,
+            name = name ~= "" and name or nil,
+        })
+    end
+
+    return out
+end
+
+-- A cheap content hash over the serialised form, used only to decide whether a
+-- peer's rules changed. Not a security primitive.
+function Rules.Hash(rulesByInstance)
+    local payload = Rules.Serialize(rulesByInstance)
+    local hash = 5381
+
+    for i = 1, #payload do
+        hash = (hash * 33 + string.byte(payload, i)) % 4294967296
+    end
+
+    return tostring(hash) .. ":" .. #payload
+end
+
+-- Recomputes db.rulesVersion after a local rule edit. The counter rises so a
+-- peer can tell newer from merely different, and the hash lets it skip a
+-- transfer when nothing actually changed.
+function Rules.BumpVersion(db)
+    local hash = Rules.Hash(db.rules)
+    if db.rulesVersion.hash == hash then
+        return
+    end
+    db.rulesVersion = { counter = (db.rulesVersion.counter or 0) + 1, hash = hash }
+end
+
 _G.MarkedForDeath = MFD

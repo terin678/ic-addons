@@ -215,6 +215,11 @@ commands.status = {
         for _ in pairs(MFD.Rules.Active()) do
             count = count + 1
         end
+        local counts = MFD.Comms:ContributionCounts()
+        for _, owner in ipairs(MFD.H.SortedKeys(counts)) do
+            MFD.Print("|cffffcc66" .. counts[owner] .. " rules merged from " .. owner .. "|r")
+        end
+
         MFD.Print("active rules: " .. count .. " in "
             .. tostring(MFD.Rules.currentInstanceKey or "no known zone"))
     end,
@@ -346,7 +351,8 @@ commands.add = {
         for _, rule in ipairs(list) do
             if rule.npcID == npcID then
                 rule.intent = intent
-                MFD.Rules.RefreshLocal(MFD.db, UnitName("player"))
+                MFD.Comms.Republish()
+                MFD.Comms:AdvertiseRules()
                 MFD.Print(name .. " is now " .. MFD.Seats.INTENTS[intent].label)
                 return
             end
@@ -359,7 +365,8 @@ commands.add = {
             rank = MFD.Rules.NextRank(list),
         }
 
-        MFD.Rules.RefreshLocal(MFD.db, UnitName("player"))
+        MFD.Comms.Republish()
+        MFD.Comms:AdvertiseRules()
         MFD.Print(string.format("%s (npc %d) added as %s, priority %d in %s",
             name, npcID, MFD.Seats.INTENTS[intent].label, list[#list].rank, instanceKey))
     end,
@@ -415,7 +422,8 @@ commands.del = {
         for i, rule in ipairs(list) do
             if rule.npcID == npcID then
                 table.remove(list, i)
-                MFD.Rules.RefreshLocal(MFD.db, UnitName("player"))
+                MFD.Comms.Republish()
+                MFD.Comms:AdvertiseRules()
                 MFD.Print("removed rule for npc " .. npcID)
                 return
             end
