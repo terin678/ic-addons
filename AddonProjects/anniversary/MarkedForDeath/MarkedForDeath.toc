@@ -7,5 +7,6 @@
 ## SavedVariablesPerCharacter: MarkedForDeathCharDB
 
 Helpers.lua
+Seats.lua
 Core.lua
 Tests.lua
