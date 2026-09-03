@@ -438,6 +438,7 @@ function Comms.SweepTransfers(state, now, timeout)
 end
 
 local transfers = {}
+local assignmentTransfers = {}
 local contributions = {}
 local peerVersions = {}
 local haveVersions = {}
@@ -550,7 +551,74 @@ function Comms:HandleRuleMessage(msgType, fields, sender)
         return true
     end
 
+    if msgType == "S" then
+        -- Peer sightings merge into the authority's candidate set with no unit
+        -- token, so the allocator can consider a mob we cannot see ourselves.
+        -- They are stamped lost immediately so they expire through the normal
+        -- grace window unless the backup keeps re-reporting them.
+        if Comms:IsAuthority() then
+            local now = GetTime()
+            for key, npcID in string.gmatch(fields[1] or "", "(%d+:%x+):(%d+)") do
+                MFD.Candidates.Observe(MFD.Candidates.set, key, tonumber(npcID), nil, now)
+                local entry = MFD.Candidates.set[key]
+                if entry and not entry.unit then
+                    entry.lostAt = now
+                end
+            end
+        end
+        return true
+    end
+
+    if msgType == "A" then
+        local index, total = tonumber(fields[1]), tonumber(fields[2])
+        if not index or not total then
+            return true
+        end
+
+        if not assignmentTransfers[sender] then
+            assignmentTransfers[sender] = { total = total, parts = {}, received = 0, startedAt = GetTime() }
+        end
+
+        local payload = Comms.Reassemble(assignmentTransfers, sender, index, total, fields[3] or "")
+        if payload then
+            MFD.Marker.ApplyPublished(payload, GetTime())
+        end
+        return true
+    end
+
     return false
+end
+
+Comms.SIGHTING_INTERVAL_SECONDS = 0.5   -- how often a backup may send a batch
+Comms.SIGHTING_REFRESH_SECONDS = 2      -- how often one key is re-reported
+Comms.SIGHTINGS_PER_MESSAGE = 10
+
+-- Keys this client has reported, with the time of the last report.
+Comms.reportedSightings = {}
+
+-- Returns up to max "key:npcID" strings for ruled, currently visible mobs in
+-- set that are due for a report, and stamps them in reported. Mutates reported.
+--
+-- Filtering to ruled mobs, requiring a unit (so we only vouch for what we can
+-- actually see), and refreshing on an interval rather than every tick is what
+-- keeps the coverage merge affordable on a throttled shared channel.
+function Comms.PendingSightings(set, reported, isRuled, max, now, refreshSeconds)
+    local pending = {}
+
+    for _, key in ipairs(MFD.H.SortedKeys(set)) do
+        if #pending >= max then
+            break
+        end
+
+        local entry = set[key]
+        local isDue = not reported[key] or (now - reported[key]) >= refreshSeconds
+        if isDue and entry.unit and isRuled(entry.npcID) then
+            reported[key] = now
+            pending[#pending + 1] = key .. ":" .. entry.npcID
+        end
+    end
+
+    return pending
 end
 
 -- Returns { [owner] = rule count } for every contributor other than us, for

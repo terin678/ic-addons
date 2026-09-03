@@ -1068,4 +1068,102 @@ T.Case("Comms: an abandoned transfer times out instead of hanging", function()
     T.Eq(state.Zed, nil, "and dropped so a retry can start clean")
 end)
 
+local ALWAYS = function() return true end
+
+T.Case("Comms: only ruled mobs are reported as sightings", function()
+    local set = {}
+    MFD.Candidates.Observe(set, "100:AAA", 100, "nameplate1", 10)
+    MFD.Candidates.Observe(set, "999:BBB", 999, "nameplate2", 10)
+    local isRuled = function(npcID) return npcID == 100 end
+    local pending = MFD.Comms.PendingSightings(set, {}, isRuled, 10, 10, 2)
+    T.Eq(#pending, 1, "the unruled mob is not worth channel bandwidth")
+    T.Eq(pending[1], "100:AAA:100", "key and npc id")
+end)
+
+-- Re-reported on an interval rather than once, because the authority expires
+-- peer-only entries it can no longer vouch for. A backup that went quiet after
+-- one report would let the mob fall out of the merged set while still visible.
+T.Case("Comms: a sighting repeats only after the refresh interval", function()
+    local set = {}
+    MFD.Candidates.Observe(set, "100:AAA", 100, "nameplate1", 10)
+    local reported = {}
+    T.Eq(#MFD.Comms.PendingSightings(set, reported, ALWAYS, 10, 10, 2), 1, "first report")
+    T.Eq(#MFD.Comms.PendingSightings(set, reported, ALWAYS, 10, 11, 2), 0, "quiet inside the interval")
+    T.Eq(#MFD.Comms.PendingSightings(set, reported, ALWAYS, 10, 12, 2), 1, "refreshed once it elapses")
+end)
+
+T.Case("Comms: a mob with no unit is not reported, there is nothing to vouch for", function()
+    local set = {}
+    MFD.Candidates.Observe(set, "100:AAA", 100, nil, 10)
+    T.Eq(#MFD.Comms.PendingSightings(set, {}, ALWAYS, 10, 10, 2), 0, "peer-only entries stay quiet")
+end)
+
+T.Case("Comms: sightings are batched to a message budget", function()
+    local set = {}
+    for i = 1, 25 do
+        MFD.Candidates.Observe(set, "10" .. i .. ":AAA", 100 + i, "nameplate1", 10)
+    end
+    local pending = MFD.Comms.PendingSightings(set, {}, ALWAYS, 10, 10, 2)
+    T.Eq(#pending, 10, "capped at the per-message budget")
+end)
+
+T.Case("Marker: ApplyPublished parses the authority's map and stamps first-seen once", function()
+    MFD.Marker.firstPublishedAt = {}
+    MFD.Marker.ApplyPublished("100:AAA=8=KILL=,200:BBB=5=SHEEP=Grimmtusk", 50)
+    T.Eq(MFD.Marker.published["100:AAA"], 8, "kill icon")
+    T.Eq(MFD.Marker.publishedDetail["200:BBB"].owner, "Grimmtusk", "owner carried")
+    T.Eq(MFD.Marker.publishedDetail["100:AAA"].owner, nil, "empty owner is nil")
+    T.Eq(MFD.Marker.firstPublishedAt["100:AAA"], 50, "stamped on first sight")
+
+    MFD.Marker.ApplyPublished("100:AAA=8=KILL=", 60)
+    T.Eq(MFD.Marker.firstPublishedAt["100:AAA"], 50, "not re-stamped, so the backup delay is honest")
+    T.Eq(MFD.Marker.published["200:BBB"], nil, "dropped from the map")
+    T.Eq(MFD.Marker.firstPublishedAt["200:BBB"], nil, "and its stamp cleared")
+end)
+
+T.Case("Marker: a backup waits before placing an icon the authority published", function()
+    local firstSeen = { ["100:AAA"] = 100 }
+    local actions = MFD.Marker.BackupActions({ ["100:AAA"] = 8 }, {}, firstSeen, 101, 1.5)
+    T.Eq(#actions, 0, "still inside the grace delay")
+end)
+
+T.Case("Marker: a backup places an icon the authority never managed to apply", function()
+    local firstSeen = { ["100:AAA"] = 100 }
+    local actions = MFD.Marker.BackupActions({ ["100:AAA"] = 8 }, { ["100:AAA"] = 0 }, firstSeen, 102, 1.5)
+    T.Eq(#actions, 1, "past the delay, the backup steps in")
+    T.Eq(actions[1].icon, 8, "with the published icon")
+end)
+
+T.Case("Marker: a backup does nothing once the icon is already on the mob", function()
+    local firstSeen = { ["100:AAA"] = 100 }
+    local actions = MFD.Marker.BackupActions({ ["100:AAA"] = 8 }, { ["100:AAA"] = 8 }, firstSeen, 102, 1.5)
+    T.Eq(#actions, 0, "the authority got there")
+end)
+
+T.Case("Marker: a backup cannot act on a mob it has no unit for", function()
+    -- Same rule as the authority: nil in actual means nothing to act through.
+    local firstSeen = { ["100:AAA"] = 100 }
+    local actions = MFD.Marker.BackupActions({ ["100:AAA"] = 8 }, {}, firstSeen, 102, 1.5)
+    T.Eq(#actions, 0, "no unit, no action")
+end)
+
+T.Case("Marker: backup actions are deterministic in order", function()
+    local firstSeen = { ["300:C"] = 100, ["100:A"] = 100, ["200:B"] = 100 }
+    local actual = { ["300:C"] = 0, ["100:A"] = 0, ["200:B"] = 0 }
+    local actions = MFD.Marker.BackupActions(
+        { ["300:C"] = 1, ["100:A"] = 2, ["200:B"] = 3 }, actual, firstSeen, 102, 1.5)
+    T.Eq(actions[1].key, "100:A", "sorted by key")
+    T.Eq(actions[3].key, "300:C", "third")
+end)
+
+-- A peer sighting carries no unit token. Merging it into the set must not
+-- throw away a nameplate handle this client already holds for the same mob.
+T.Case("Candidates: observing with no unit keeps an existing handle", function()
+    local set = {}
+    MFD.Candidates.Observe(set, "100:AAA", 100, "nameplate1", 500)
+    MFD.Candidates.Observe(set, "100:AAA", 100, nil, 501)
+    T.Eq(set["100:AAA"].unit, "nameplate1", "handle preserved")
+    T.Eq(set["100:AAA"].seenAt, 501, "sighting still refreshed")
+end)
+
 _G.MarkedForDeath = MFD

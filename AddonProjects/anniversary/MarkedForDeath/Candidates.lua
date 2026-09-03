@@ -34,7 +34,10 @@ function Candidates.Observe(set, key, npcID, unit, now)
     -- moment the player clicks something else and leaves it unaddressable.
     local hasNameplate = entry.unit and string.find(entry.unit, "^nameplate") ~= nil
     local isTransient = unit and string.find(unit, "^nameplate") == nil
-    if not (hasNameplate and isTransient) then
+    -- A peer sighting arrives with no unit at all. That must not discard a
+    -- handle this client already holds; only Lose() clears a handle.
+    local isDowngrade = (unit == nil and entry.unit ~= nil) or (hasNameplate and isTransient)
+    if not isDowngrade then
         entry.unit = unit
     end
 

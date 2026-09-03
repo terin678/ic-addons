@@ -34,6 +34,60 @@ Marker.locked = {}
 -- it" apart from "this mob simply has no icon yet"; both read as 0.
 Marker.placed = {}
 
+-- The authority's most recently published map, { [key] = icon }, with the
+-- intent and owner alongside and the time each key first appeared. Backups
+-- act from this; the assignment panel displays it.
+Marker.published = {}
+Marker.publishedDetail = {}
+Marker.firstPublishedAt = {}
+
+-- Seconds a backup waits for the authority to apply a published icon before
+-- placing it. Long enough that the authority normally wins, short enough that
+-- a pack is marked before the raid reaches it.
+Marker.BACKUP_DELAY_SECONDS = 1.5
+
+-- Parses the authority's published map into the tables above. Pure apart from
+-- writing those tables. A key's first-seen stamp is set once and kept, so the
+-- backup delay is measured from when the assignment first appeared, not from
+-- the latest republish.
+function Marker.ApplyPublished(payload, now)
+    local published, detail = {}, {}
+
+    for key, icon, intent, owner in string.gmatch(payload or "", "([^=,]+)=(%d+)=(%u+)=([^,]*)") do
+        published[key] = tonumber(icon)
+        detail[key] = { intent = intent, owner = owner ~= "" and owner or nil }
+        if not Marker.firstPublishedAt[key] then
+            Marker.firstPublishedAt[key] = now
+        end
+    end
+
+    for key in pairs(Marker.firstPublishedAt) do
+        if not published[key] then
+            Marker.firstPublishedAt[key] = nil
+        end
+    end
+
+    Marker.published, Marker.publishedDetail = published, detail
+end
+
+-- Returns { key, icon } pairs a backup should place: published icons that are
+-- still not on the mob, that have been outstanding longer than delay, and that
+-- this client has a valid unit for (nil in actual means it does not). Sorted
+-- by key so two backups act in the same order.
+function Marker.BackupActions(published, actual, firstSeenAt, now, delay)
+    local actions = {}
+
+    for _, key in ipairs(MFD.H.SortedKeys(published)) do
+        local since = firstSeenAt[key]
+        local present = actual[key]
+        if since and present ~= nil and (since + delay) <= now and present ~= published[key] then
+            actions[#actions + 1] = { key = key, icon = published[key] }
+        end
+    end
+
+    return actions
+end
+
 -- Takes the desired map, the observed actual map, the set of keys we have
 -- placed, a mutable defense counter table, the current time and the limits.
 -- Returns { actions = array of { key, icon, isDefense }, yielded = array of key }.
@@ -183,6 +237,7 @@ end
 
 local defense = {}
 local accumulator = 0
+local sightingAccumulator = 0
 local hasReportedTickError = false
 
 -- Builds the roster the seat resolver needs. Returns an array of
@@ -302,9 +357,37 @@ function Marker:Tick(elapsed)
         Marker.locked[key] = nil
         Marker.placed[key] = nil
         defense[key] = nil
+        MFD.Comms.reportedSightings[key] = nil
     end
 
     if not MFD.Comms:IsAuthority() then
+        -- Backup: report what we can see, then place anything the authority
+        -- published but could not reach itself.
+        sightingAccumulator = sightingAccumulator + Marker.LIMITS.tickInterval
+        if sightingAccumulator >= MFD.Comms.SIGHTING_INTERVAL_SECONDS then
+            sightingAccumulator = 0
+            local pending = MFD.Comms.PendingSightings(
+                MFD.Candidates.set, MFD.Comms.reportedSightings,
+                function(npcID) return MFD.Comms:IsRuled(npcID) end,
+                MFD.Comms.SIGHTINGS_PER_MESSAGE, now, MFD.Comms.SIGHTING_REFRESH_SECONDS)
+            if #pending > 0 then
+                MFD.Comms:Send("S", { table.concat(pending, ",") })
+            end
+        end
+
+        if Marker:CanMark() then
+            local actual, units = readActual()
+            for _, action in ipairs(Marker.BackupActions(
+                Marker.published, actual, Marker.firstPublishedAt, now, Marker.BACKUP_DELAY_SECONDS)) do
+                local unit = units[action.key]
+                if unit then
+                    SetRaidTarget(unit, action.icon)
+                    Marker.placed[action.key] = true
+                    MFD.Comms:Send("C", { action.key })
+                end
+            end
+        end
+
         return
     end
 
@@ -337,6 +420,24 @@ function Marker:Tick(elapsed)
     end
 
     Marker.lastDesired = desired
+
+    -- Publish only when the map actually changed. The tick runs five times a
+    -- second; publishing every time would consume the entire channel budget.
+    local parts = {}
+    for _, a in ipairs(desired.list) do
+        parts[#parts + 1] = string.format("%s=%d=%s=%s", a.key, a.icon, a.intent, a.owner or "")
+    end
+    local payload = table.concat(parts, ",")
+
+    if payload ~= Marker.lastPublishedPayload then
+        Marker.lastPublishedPayload = payload
+        Marker.ApplyPublished(payload, now)
+
+        local chunks = MFD.Comms.Chunk(payload, MFD.Comms.CHUNK_BYTES)
+        for i, chunkText in ipairs(chunks) do
+            MFD.Comms:Send("A", { i, #chunks, chunkText })
+        end
+    end
 end
 
 MFD.RegisterInit(function()
