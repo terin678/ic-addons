@@ -7,6 +7,11 @@ local MAWRecipeDialog = {}
 local ICUI = LibStub("LibICUI-1.0")
 local STYLE_NAME = "MalexisAuctionWatcher"
 
+-- UI.lua's DIM, repeated here because it is a file-local there: the grey for prose
+-- and cells that are context rather than data. One name per file, so the dialogs
+-- and the main window cannot drift a shade apart again.
+local DIM = { r = 0.68, g = 0.70, b = 0.74 }
+
 local function Button(parent, text, w, h, opts)
     opts = opts or {}
     opts.style = STYLE_NAME
@@ -335,7 +340,7 @@ local function BuildGemPicker()
     info:SetPoint("TOPLEFT", gemFrame, "TOPLEFT", 16, -32)
     info:SetWidth(700)
     info:SetJustifyH("LEFT")
-    info:SetTextColor(0.7, 0.7, 0.7)
+    info:SetTextColor(DIM.r, DIM.g, DIM.b)
     info:SetText("Click a raw gem to add every cut made from it (1 raw -> 1 cut). Each column is a tier; the buttons at the bottom add a whole tier.")
 
     local tiers = { "uncommon", "rare", "epic", "meta" }
@@ -487,16 +492,18 @@ local function BuildImportDialog()
     -- At most two lines: the list underneath starts at a fixed offset, and prose
     -- that grew a third line would land on its first row.
     if importFrame.info.SetMaxLines then importFrame.info:SetMaxLines(2) end
-    importFrame.info:SetTextColor(0.7, 0.7, 0.7)
+    importFrame.info:SetTextColor(DIM.r, DIM.g, DIM.b)
 
-    local scroll = CreateFrame("ScrollFrame", nil, importFrame, "UIPanelScrollFrameTemplate")
-    scroll:SetPoint("TOPLEFT", importFrame, "TOPLEFT", 16, -92)
-    scroll:SetSize(500, IMPORT_ROWS * 22)
-    local child = CreateFrame("Frame", nil, scroll)
-    child:SetSize(480, 1)
-    scroll:SetScrollChild(child)
-    importFrame.child = child
-    importFrame.rows = {}
+    -- Reagents live in the hover tooltip, so the row stays one readable line.
+    importFrame.table = ICUI:Table(importFrame, {
+        style = STYLE_NAME,
+        top = -92, left = 16, width = 500, height = IMPORT_ROWS * 22, rowHeight = 22,
+        columns = {
+            { key = "name", label = "Recipe", width = "flex", hit = true },
+            { key = "header", label = "Category", width = 130 },
+        },
+        buttons = { { key = "add", label = "Add", width = 70 } },
+    })
 
     local addAll = Button(importFrame)
     addAll:SetSize(120, 22)
@@ -540,9 +547,18 @@ function MAWRecipeDialog.RefreshImport()
     if not line then
         importFrame.info:SetText("No recipe book scanned yet on this character. Open a profession window and it is read automatically. Enchanting is not supported.")
     else
-        local age = book and book.scannedAt and math.floor((time() - book.scannedAt) / 60) or nil
+        -- Relative age from the shared helper, so a day-old book reads "1d" rather
+        -- than a four-digit minute count. It says "now" for a fresh scan, which only
+        -- reads right without the "ago".
+        local age = book and book.scannedAt and ICUI:Age(time() - book.scannedAt) or nil
+        local when = "never"
+        if age == "now" then
+            when = "just now"
+        elseif age then
+            when = age .. " ago"
+        end
         importFrame.info:SetText(string.format("%s: %d recipes, scanned %s. Reagents and batch sizes come from your book; vials are vendor priced.%s",
-            line, #rows, age and (age .. " min ago") or "never",
+            line, #rows, when,
             book and book.partial and " Some rows could not be read; scan again." or ""))
     end
 
@@ -557,61 +573,38 @@ function MAWRecipeDialog.RefreshImport()
     end
     importFrame.shown = shown
 
-    for _, r in ipairs(importFrame.rows) do r:Hide() end
-    local y = 0
-    for i, s in ipairs(shown) do
-        local row = importFrame.rows[i]
-        if not row then
-            row = CreateFrame("Frame", nil, importFrame.child)
-            row:SetSize(480, 22)
-            row:EnableMouse(true)
-            row.text = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            row.text:SetPoint("LEFT", row, "LEFT", 4, 0)
-            row.text:SetWidth(370)
-            row.text:SetJustifyH("LEFT")
-            row.text:SetWordWrap(false)
-            if row.text.SetMaxLines then row.text:SetMaxLines(1) end
-            row.btn = Button(row)
-            row.btn:SetSize(70, 20)
-            row.btn:SetPoint("RIGHT", row, "RIGHT", -4, 0)
-            row:SetScript("OnEnter", function(self)
-                if not self.link then return end
-                GameTooltip:SetOwner(self, "ANCHOR_CURSOR")
-                GameTooltip:SetHyperlink(self.link)
-                if self.mats then GameTooltip:AddLine(" "); GameTooltip:AddLine(self.mats, 0.8, 0.8, 0.8, true) end
-                GameTooltip:Show()
-            end)
-            row:SetScript("OnLeave", function() GameTooltip:Hide() end)
-            importFrame.rows[i] = row
-        end
-        row:ClearAllPoints()
-        row:SetPoint("TOPLEFT", importFrame.child, "TOPLEFT", 0, y)
+    local t = importFrame.table
+    t:Render(shown, function(row, s)
         local e, r = s.entry, s.row
         local matText = {}
         for _, m in ipairs(e.reagents) do table.insert(matText, m.count .. " " .. m.item) end
-        row.link = r.link
-        row.mats = "Reagents: " .. table.concat(matText, ", ")
-        row.text:SetText(string.format("%s%s|r%s  |cff777777%s|r  |cff888888%s|r",
-            QualityColor(r), e.name, e.numMade > 1 and (" x" .. e.numMade) or "",
-            r.header or "", table.concat(matText, ", ")))
+
+        t:Set(row, "name", string.format("%s%s|r%s", QualityColor(r), e.name,
+            e.numMade > 1 and (" x" .. e.numMade) or ""))
+        t:Set(row, "header", r.header or "", DIM)
+
+        ICUI:Tooltip(row.hit.name, function()
+            if r.link then GameTooltip:SetHyperlink(r.link) end
+            GameTooltip:AddLine(" ")
+            GameTooltip:AddLine("Reagents: " .. table.concat(matText, ", "), 0.8, 0.8, 0.8, true)
+        end)
+
+        local btn = row.buttons.add
         if s.have then
-            row.btn:SetText("Added")
-            row.btn:SetScript("OnClick", nil)
-            row.btn:Disable()
+            btn:SetText("Added")
+            btn:SetScript("OnClick", nil)
+            btn:Disable()
         else
-            row.btn:SetText("Add")
-            row.btn:Enable()
-            row.btn:SetScript("OnClick", function()
+            btn:SetText("Add")
+            btn:Enable()
+            btn:SetScript("OnClick", function()
                 local ok, err = MAW:ImportProfessionRecipe(e, line)
                 if not ok then print(addonName .. ": " .. (err or "could not add")) end
                 MAWRecipeDialog.RefreshImport()
                 if _G.MalexisAuctionWatcherUI then _G.MalexisAuctionWatcherUI:RefreshData() end
             end)
         end
-        row:Show()
-        y = y - 22
-    end
-    importFrame.child:SetHeight(math.max(1, -y))
+    end)
 end
 
 -- Book.lua calls this after every scan so an open dialog follows along.

@@ -182,6 +182,7 @@ function Tracker.Refresh()
                     end
                 end
                 Tracker.Refresh()
+                if ns.Crafter then ns.Crafter.Focus() end
             end)
 
             row:SetScript("OnMouseUp", nil)

@@ -10,19 +10,31 @@ local MAWUI = {}
 
 local ICUI = LibStub("LibICUI-1.0")
 
--- Color constants for price ranges
-local COLOR_LOW = {r = 0.5, g = 1.0, b = 0.5}      -- Green
-local COLOR_AVE = {r = 1.0, g = 1.0, b = 0.5}      -- Yellow
-local COLOR_HIGH = {r = 1.0, g = 0.5, b = 0.5}     -- Red
-local COLOR_BELOW = {r = 0.3, g = 0.6, b = 1.0}    -- Blue (below low)
-local COLOR_ABOVE = {r = 1.0, g = 0.3, b = 1.0}    -- Magenta (above high)
+-- Price colours. These are drawn as text on the brand navy, not as a background
+-- swatch, so the two ends are lightened well past where they started: saturated
+-- blue and magenta on #152333 were the pair nobody could read. Green through amber
+-- to red carries the position in range; cyan and pink mean "off the scale".
+--
+-- Two rules hold this set together, so measure before changing any of it. Every
+-- colour clears 5.5:1 against a banded row (the navy under STYLE.altBg), including
+-- the whole LOW -> AVE -> HIGH ramp. And the pairs that mean opposite things differ
+-- in lightness, not only hue: BELOW and ABOVE swap meaning between Materials and
+-- Products, so someone who cannot tell red from green has L* left to read them by.
+-- COLOR_AVE is not ICUI.Brand.gold, and folding the two together would break both
+-- rules: gold is this window's heading colour (section rows, totals), and a price
+-- wearing it would read as a label rather than a value.
+local COLOR_LOW = {r = 0.55, g = 0.95, b = 0.55}    -- at the cheap end of your range
+local COLOR_AVE = {r = 0.99, g = 0.67, b = 0.13}    -- mid-range, well under COLOR_LOW in lightness so the middle never shouts
+local COLOR_HIGH = {r = 0.98, g = 0.56, b = 0.52}   -- at the dear end
+local COLOR_BELOW = {r = 0.45, g = 0.85, b = 0.98}  -- under your low bound: a bargain
+local COLOR_ABOVE = {r = 1, g = 0.45, b = 0.98}     -- over your high bound: a spike, darker than BELOW
 
 -- Text colours with one meaning each, as in "User-facing text"
 local BONE = ICUI.Brand.bone
 local GOLD = ICUI.Brand.gold
-local DIM = { r = 0.6, g = 0.6, b = 0.6 }
-local WHITE = { r = 1, g = 1, b = 1 }
-local TSM_TINT = { r = 0.9, g = 0.7, b = 1 }
+local DIM = { r = 0.68, g = 0.70, b = 0.74 }        -- missing or not graded
+local WHITE = { r = 0.93, g = 0.94, b = 0.96 }      -- plain counts
+local TSM_TINT = { r = 0.86, g = 0.74, b = 1 }      -- TSM, which is purple everywhere
 
 -- UI configuration
 local WINDOW_WIDTH = 1024   -- fits Recipes with both TSM profit columns, E/X buttons, scrollbar
@@ -42,6 +54,8 @@ local STYLE = ICUI:Style("MalexisAuctionWatcher", {
     font = "GameFontHighlightSmall",
     headerFont = "GameFontNormalSmall",
     pageWidth = WINDOW_WIDTH - PAGE_INSET * 2,
+    -- 3% banding disappears on the navy ground; this is still quiet but visible.
+    altBg = { r = 1, g = 1, b = 1, a = 0.055 },
 })
 
 local function Button(parent, text, w, h, opts)

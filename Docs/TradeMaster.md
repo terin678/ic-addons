@@ -162,8 +162,35 @@ they asked for, TradeMaster asks you to set the split. If they hand over a reage
 feeds several recipes you never discussed (a stack of Netherbloom, say), it does not
 guess: the Orders tab lists the candidates and you pick one.
 
+The panel under the order list is where an order is edited. Type part of a recipe name (or
+shift-click an item into the box) and **Add** puts it on the order; if the name matches
+several the panel offers them as buttons rather than guessing. Each line has **+**, **-**
+and an **x** to drop it. **paid** takes an amount the way people say it, `25g`, `25g50s` or
+`250` for gold, and corrects the money: the difference is written to the ledger as its own
+entry, so the Income tab agrees without counting the sale twice and the history still says
+what happened.
+
+Finished and cancelled orders are hidden by default, not deleted. The toolbar says how many
+are hidden and the **Finished** button shows them; that choice is saved, so a reload leaves
+the tab looking the way you left it. Nothing is ever removed until you press **Prune Old**,
+which drops finished orders older than `keepDoneDays` (30 by default).
+
 The **Tracker** (`/tm tracker`, or middle-click the minimap icon) is a slim window you can
 leave on screen: open orders, a tick box per item, ticking the last one closes the order.
+
+### Sets up the craft
+
+Open a profession window with an order waiting and TradeMaster selects the next thing that
+order needs and types the number of crafts into the create box. Nothing is crafted: the
+Create click stays yours, and the number is a starting point you can overtype. A recipe
+that makes five per craft counts in crafts, not in items, and if you are short of mats it
+enters what you can make and says how many the order actually wants.
+
+The order selected on the Orders tab wins; otherwise it takes the oldest open order this
+profession can serve. Ticking a line off in the Tracker moves the window on to the next
+one. If the recipe is hidden by the window's own search box or filters it says so rather
+than selecting something else. `/tm craft` does it again on demand, and
+`orders.focusOnOpen` turns it off.
 
 ### Fills the trade window
 
@@ -204,6 +231,7 @@ For Jewelcrafting, gem names in the profession window are replaced with what the
 | `/tm annotate` | Toggle annotations in the profession window |
 | `/tm bark <seconds>` / `/tm send` / `/tm preview` | Reminder interval, send now, preview |
 | `/tm invite` | Toggle invites for every scanned profession |
+| `/tm craft` | Select the next item an order needs in the open profession window |
 | `/tm market` | Seller and buyer counts per profession, and the suggested bark interval |
 | `/tm log` / `/tm clearflags` | Recent decisions; clear competitor flags |
 | `/tm orders` / `/tm order add\|done\|cancel\|reopen <id>` | Manage orders |

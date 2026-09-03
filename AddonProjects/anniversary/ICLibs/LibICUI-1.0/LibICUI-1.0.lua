@@ -20,6 +20,7 @@ and every control wears the guild palette.
     UI:ScrollList(parent, top, bottom, right)
     UI:Toolbar(parent, opts)            -> tb   (tb:Left(w), tb:Right(w))
     UI:Table(parent, opts)              -> t    (t:Render(list, fill), t:Row(i), t:SetSelected(item))
+                                        callbacks get the table as their last argument
 
 A style is a plain table; missing keys fall back to the default one:
     rowHeight, headerHeight, gap, font, headerFont, buttonFont, titleFont,
@@ -32,7 +33,7 @@ Set `theme = false` in a style to get plain Blizzard controls instead of the gui
 The palette is the default; nothing has to ask for it.
 ]]
 
-local MAJOR, MINOR = "LibICUI-1.0", 2
+local MAJOR, MINOR = "LibICUI-1.0", 3
 local Lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not Lib then return end
 
@@ -555,6 +556,8 @@ local function MakeCell(row, col, x, style)
     -- A list row is one line. Long values truncate here and live in full in the tooltip.
     fs:SetWordWrap(false)
     if fs.SetMaxLines then fs:SetMaxLines(1) end
+    -- The font object's own colour, kept so Render can undo a per-item SetTextColor.
+    fs.icBaseColor = { fs:GetTextColor() }
     return fs
 end
 
@@ -595,12 +598,16 @@ function TableMixin:Row(i)
 
     local t = self
     row:SetScript("OnEnter", function(self)
+        -- A section heading is not a row you can do anything with, so it does not
+        -- light up under the cursor or offer a tooltip.
+        if self.isSpan then return end
         if self ~= t.selectedRow then
             self:SetBackdropColor(style.hoverBg.r, style.hoverBg.g, style.hoverBg.b, style.hoverBg.a)
         end
-        if t.onEnter and self.item then t.onEnter(self, self.item) end
+        if t.onEnter and self.item then t.onEnter(self, self.item, t) end
     end)
     row:SetScript("OnLeave", function(self)
+        if self.isSpan then return end
         if self ~= t.selectedRow then
             local c = self.tint or self.baseColor
             self:SetBackdropColor(c.r, c.g, c.b, c.a)
@@ -609,7 +616,9 @@ function TableMixin:Row(i)
     end)
     if self.onClick then
         row:SetScript("OnMouseUp", function(self, button)
-            if self.item then t.onClick(self, self.item, button) end
+            -- The table goes last so a handler written inside the constructor, where
+            -- the caller's own local does not exist yet, can still reach it.
+            if self.item and not self.isSpan then t.onClick(self, self.item, button, t) end
         end)
     end
 
@@ -633,6 +642,7 @@ function TableMixin:Span(row, text, color)
     end
     for _, hit in pairs(row.hit) do hit:Hide() end
     for _, btn in pairs(row.buttons) do btn:Hide() end
+    row.isSpan = true
     row.span:SetText(text or "")
     local c = color or self.style.buttonText
     row.span:SetTextColor(c.r, c.g, c.b)
@@ -656,6 +666,7 @@ function TableMixin:Render(list, fill)
         row:SetPoint("TOPLEFT", 0, -(i - 1) * self.rowHeight)
         row.item = item
         row.tint = nil
+        row.isSpan = nil
         -- Rows come back from the pool as ordinary rows, whatever they were last time:
         -- no span, every built-in cell blank, no tooltip left over from the item that
         -- was here. A "custom" cell and a row button belong to the caller, which sets
@@ -664,6 +675,7 @@ function TableMixin:Render(list, fill)
         for _, cell in pairs(row.cells) do
             if cell.Show then cell:Show() end
             if cell.SetText then cell:SetText("") end
+            if cell.icBaseColor then cell:SetTextColor(unpack(cell.icBaseColor)) end
             if cell.SetTexture then cell:SetTexture(nil) end
             if cell.SetChecked then cell:SetChecked(false) end
         end
@@ -673,7 +685,10 @@ function TableMixin:Render(list, fill)
             hit:SetScript("OnLeave", nil)
             hit:SetScript("OnClick", nil)
         end
-        for _, btn in pairs(row.buttons) do btn:Show() end
+        for _, btn in pairs(row.buttons) do
+            btn:Show()
+            btn:Enable()
+        end
 
         if fill then fill(row, item, i) end
         if self.selected ~= nil and item == self.selected then
@@ -729,7 +744,7 @@ opts = {
     makeButton,                -- function(parent, label, w, h, descriptor) -> button
     columns = { { key, label, width | "flex", justify, type, font, hit, make }, ... },
     buttons = { { key, label, width, kind, template }, ... },  -- packed against the right
-    onEnter(row, item), onClick(row, item, button), onHeaderClick(col),
+    onEnter(row, item, t), onClick(row, item, button, t), onHeaderClick(col, t),
 }
 Returns t with t.header, t.scroll, t.content, t.rows, t.columns.
 ]]
@@ -813,7 +828,7 @@ function Lib:Table(parent, opts)
             local hit = CreateFrame("Button", nil, header)
             hit:SetPoint("LEFT", header, "LEFT", col.x, 0)
             hit:SetSize(col.width, style.headerHeight)
-            hit:SetScript("OnClick", function() opts.onHeaderClick(col) end)
+            hit:SetScript("OnClick", function() opts.onHeaderClick(col, t) end)
         end
     end
     t.header = header

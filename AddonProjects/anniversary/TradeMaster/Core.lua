@@ -2,7 +2,7 @@ local addonName, ns = ...
 
 ns.Util = ns.Util or {}
 
-local VERSION = "1.6.0"
+local VERSION = "1.7.0"
 
 -- Output goes straight into a chat frame rather than through the chat event
 -- system, so it has no message type and the chat settings UI cannot route it.
@@ -92,10 +92,12 @@ ns.Defaults = {
             autoFromWhisper = true,
             autoFromParty = true,
             autoFromTrade = true,
+            focusOnOpen = true,
             captureTranscript = true,
             autoAdvanceMats = true,
             autoFillTrade = true,
             promptOnDone = true,
+            showFinished = false,
             keepDoneDays = 30,
         },
         enabled = true,
@@ -251,6 +253,8 @@ frame:SetScript("OnEvent", function(self, event, ...)
                 count, pd.bookDirty, pd.bookScannedAt, ns.Now(), pd.settings.scan.autoStaleSec)
             if should then
                 ns.Scanner.Scan({ silent = not ns.Scanner.initiatedByUs })
+            elseif ns.Crafter then
+                ns.Crafter.Focus()
             end
         end)
     elseif event == "TRADE_SKILL_CLOSE" then
@@ -330,6 +334,8 @@ local function HandleSlash(input)
         end
     elseif cmd == "scan" then
         ns.Scanner.Scan()
+    elseif cmd == "craft" then
+        ns.Crafter.Focus({ manual = true })
     elseif cmd == "book" then
         local n, products, noun = ns.Prof.BookCounts(profile, book)
         ns.Print(string.format("%s book holds %d recipes (%d %s).", profile.name, n, products, noun))
@@ -396,7 +402,13 @@ local function HandleSlash(input)
         ns.Tracker.Toggle()
     elseif cmd == "orders" then
         local open = ns.Orders.ActiveList()
-        if #open == 0 then ns.Print("no open orders.") end
+        local _, finished = ns.Orders.Visible(ns.db.orders, false)
+        if #open == 0 then
+            ns.Print(finished > 0
+                and string.format("no open orders. %d finished %s still saved: the Orders tab's "
+                    .. "Finished button shows them.", finished, finished == 1 and "order is" or "orders are")
+                or "no open orders.")
+        end
         for _, o in ipairs(open) do
             ns.Print(string.format("|cffffffff#%d|r %s [%s]%s  %s",
                 o.id, o.player, o.status,
@@ -536,9 +548,9 @@ local function HandleSlash(input)
         ns.Print("  /tm try <msg>, /tm trywhisper <msg>, /tm tryparty <msg>, /tm bark [secs],")
         ns.Print("  /tm send, /tm preview, /tm adv epic|rare|all|none|+text|-text,")
         ns.Print("  /tm invite, /tm log, /tm debug, /tm capture, /tm clearcapture,")
-        ns.Print("  /tm orders, /tm order add|done|cancel|reopen, /tm tracker, /tm income,")
-        ns.Print("  /tm market, /tm annotate, /tm clearflags, /tm out [n], /tm status, /tm test,")
-        ns.Print("  /tm disable, /tm enable")
+        ns.Print("  /tm orders, /tm order add|done|cancel|reopen, /tm craft, /tm tracker,")
+        ns.Print("  /tm income, /tm market, /tm annotate, /tm clearflags, /tm out [n],")
+        ns.Print("  /tm status, /tm test, /tm disable, /tm enable")
     end
 end
 

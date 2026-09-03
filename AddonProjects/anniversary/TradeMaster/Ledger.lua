@@ -29,6 +29,26 @@ function Ledger.Record(player, orderID, copper, units, now)
     st.lifetimeOrders = (st.lifetimeOrders or 0) + 1
 end
 
+-- A correction to money already recorded, not a new sale: the totals move by the
+-- difference and the customer's order count stays where it is. Kept as its own
+-- entry so the history says what happened instead of being quietly rewritten.
+function Ledger.Adjust(player, orderID, delta, now)
+    if not delta or delta == 0 then return end
+
+    ns.db.ledger.entries = ns.db.ledger.entries or {}
+    table.insert(ns.db.ledger.entries, 1, {
+        at = now, player = player, orderID = orderID, copper = delta,
+        adjusted = true, profession = ns.db.activeProfession,
+    })
+    for i = #ns.db.ledger.entries, MAX_ENTRIES + 1, -1 do
+        table.remove(ns.db.ledger.entries, i)
+    end
+
+    ns.db.ledger.allTimeCopper = (ns.db.ledger.allTimeCopper or 0) + delta
+    local st = ns.Players.Get(ns.db, player)
+    st.lifetimeCopper = (st.lifetimeCopper or 0) + delta
+end
+
 -- Pure. Sums entries newer than `since`. Accepts the legacy `gems` field.
 function Ledger.SumSince(entries, since)
     local copper, units, n = 0, 0, 0

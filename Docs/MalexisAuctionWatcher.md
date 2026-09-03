@@ -16,7 +16,7 @@ click the coin icon on the minimap.
 
 | Tab | What it shows |
 | --- | --- |
-| Materials | Items you buy. Today, low, average, high per unit. Green is cheap, red is expensive. |
+| Materials | Items you buy. Today, low, average, high per unit. Green is cheap, amber is mid-range, red is expensive; cyan is under your low bound and magenta is over your high one. |
 | Products | Items you sell. Same columns, colors inverted so high is green. |
 | Stores | How many of each item you hold in bags, bank, and on the AH, and what it is worth. |
 | History | Chart of one item over time: 30 or 90 days, by weekday, by day of month, by hour. Highlights the cheapest and priciest bucket. |

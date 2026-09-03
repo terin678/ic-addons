@@ -81,6 +81,11 @@ function Scanner.Scan(opts)
         end
         if ns.UI and ns.UI.Refresh then ns.UI.Refresh() end
 
+        -- The book is fresh and the window is open: put the selection on whatever
+        -- an order is waiting for. Skipped when we opened the window ourselves,
+        -- because we are about to close it again.
+        if not Scanner.initiatedByUs and ns.Crafter then ns.Crafter.Focus() end
+
         if Scanner.initiatedByUs then
             Scanner.initiatedByUs = false
             if CloseTradeSkill then CloseTradeSkill() end

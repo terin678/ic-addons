@@ -924,3 +924,162 @@ T.Case("Order: an operational block still books the order", function()
     local r = { verdict = "invite", blocked = "group full" }
     T.Eq(ns.Events.ShouldOpenOrder(r, 1, 1, true), true, "blocked but wanted")
 end)
+
+--------------------------------------------------------------------------------
+-- Crafting the next thing an order needs
+--------------------------------------------------------------------------------
+
+T.Case("Crafter: the next item is the first one not ticked off", function()
+    local o = { items = { { itemID = 1, cut = true }, { itemID = 2 }, { itemID = 3 } } }
+    T.Eq(ns.Crafter.NextItem(o).itemID, 2, "skips the finished line")
+    T.Eq(ns.Crafter.NextItem({ items = { { itemID = 1, cut = true } } }), nil, "all done")
+    T.Eq(ns.Crafter.NextItem(nil), nil, "no order")
+end)
+
+T.Case("Crafter: picks the oldest order this window can serve", function()
+    local orders = {
+        { id = 1, profession = "alchemy", createdAt = 50, status = "grouped",
+          items = { { itemID = 1 } } },
+        { id = 2, profession = "jewelcrafting", createdAt = 10, status = "grouped",
+          items = { { itemID = 2 } } },
+        { id = 3, profession = "jewelcrafting", createdAt = 20, status = "grouped",
+          items = { { itemID = 3 } } },
+    }
+    T.Eq(ns.Crafter.PickOrder(orders, "jewelcrafting").id, 2, "oldest jewelcrafting order")
+    T.Eq(ns.Crafter.PickOrder(orders, "alchemy").id, 1, "the other book")
+    T.Eq(ns.Crafter.PickOrder(orders, "tailoring"), nil, "nothing for this window")
+end)
+
+T.Case("Crafter: an order with every line ticked is not picked", function()
+    local orders = {
+        { id = 1, profession = "jewelcrafting", createdAt = 10, status = "grouped",
+          items = { { itemID = 1, cut = true } } },
+        { id = 2, profession = "jewelcrafting", createdAt = 20, status = "grouped",
+          items = { { itemID = 2 } } },
+    }
+    T.Eq(ns.Crafter.PickOrder(orders, "jewelcrafting").id, 2, "skips the finished order")
+end)
+
+T.Case("Crafter: mats in hand beat a customer who only asked", function()
+    local orders = {
+        { id = 1, profession = "jewelcrafting", createdAt = 10, status = "pending",
+          items = { { itemID = 1 } } },
+        { id = 2, profession = "jewelcrafting", createdAt = 20, status = "grouped",
+          items = { { itemID = 2 } } },
+        { id = 3, profession = "jewelcrafting", createdAt = 30, status = "mats",
+          items = { { itemID = 3 } } },
+    }
+    T.Eq(ns.Crafter.PickOrder(orders, "jewelcrafting").id, 3, "newest, but their mats are here")
+    orders[3] = nil
+    T.Eq(ns.Crafter.PickOrder(orders, "jewelcrafting").id, 2, "then the one in your group")
+end)
+
+T.Case("Crafter: craft count divides by what one craft makes", function()
+    T.Eq(ns.Crafter.CraftCount(5, 1), 5, "one per craft")
+    T.Eq(ns.Crafter.CraftCount(5, 5), 1, "a batch of five is one craft")
+    T.Eq(ns.Crafter.CraftCount(6, 5), 2, "six needs a second batch")
+    T.Eq(ns.Crafter.CraftCount(3, nil), 3, "no batch size recorded")
+end)
+
+T.Case("Crafter: craft count never offers more than the mats allow", function()
+    local crafts, wanted = ns.Crafter.CraftCount(10, 1, 4)
+    T.Eq(crafts, 4, "mats for four")
+    T.Eq(wanted, 10, "ten still wanted")
+    T.Eq(ns.Crafter.CraftCount(10, 1, 0), 10, "no count from the window means no clamp")
+end)
+
+T.Case("Orders: hiding finished orders never removes them", function()
+    local orders = {
+        { id = 1, status = "grouped" },
+        { id = 2, status = "done" },
+        { id = 3, status = "cancelled" },
+        { id = 4, status = "pending" },
+    }
+    local shown, hidden = ns.Orders.Visible(orders, false)
+    T.Eq(#shown, 2, "the two live orders")
+    T.Eq(hidden, 2, "and a count of what is held back")
+    T.Eq(#orders, 4, "the list itself is untouched")
+
+    local all = ns.Orders.Visible(orders, true)
+    T.Eq(#all, 4, "showing finished shows everything")
+end)
+
+--------------------------------------------------------------------------------
+-- Editing an order by hand
+--------------------------------------------------------------------------------
+
+T.Case("Money: what people type for an amount", function()
+    T.Eq(ns.Util.ParseMoney("25g"), 250000, "gold")
+    T.Eq(ns.Util.ParseMoney("25g50s"), 255000, "gold and silver")
+    T.Eq(ns.Util.ParseMoney("1g 2s 3c"), 10203, "spaced out")
+    T.Eq(ns.Util.ParseMoney("50s"), 5000, "silver alone")
+    T.Eq(ns.Util.ParseMoney("250"), 2500000, "a bare number is gold")
+    T.Eq(ns.Util.ParseMoney("1.5g"), 15000, "fractions of gold")
+    T.Eq(ns.Util.ParseMoney(""), nil, "nothing typed")
+    T.Eq(ns.Util.ParseMoney("thanks!"), nil, "no number in there")
+end)
+
+T.Case("Money: text that can be typed back in", function()
+    T.Eq(ns.Util.MoneyText(255000), "25g50s", "round trips")
+    T.Eq(ns.Util.ParseMoney(ns.Util.MoneyText(10203)), 10203, "and back again")
+    T.Eq(ns.Util.MoneyText(0), "", "nothing to edit")
+    T.Eq(ns.Util.MoneyText(nil), "", "no value at all")
+end)
+
+T.Case("Orders: adding an item, and adding it twice", function()
+    local o = { items = {}, updatedAt = 0 }
+    local it, isNew = ns.Orders.AddItem(o, 111, 2, 100)
+    T.Eq(#o.items, 1, "one line")
+    T.Eq(it.qty, 2, "two of them")
+    T.Eq(isNew, true, "a new line")
+    T.Eq(it.qtySource, "manual", "typed in, so the mats still win later")
+
+    local same, again = ns.Orders.AddItem(o, 111, 3, 200)
+    T.Eq(#o.items, 1, "still one line")
+    T.Eq(same.qty, 5, "the count went up")
+    T.Eq(again, false, "not a new line")
+    T.Eq(o.updatedAt, 200, "the order moved")
+end)
+
+T.Case("Orders: removing an item", function()
+    local o = { items = { { itemID = 1 }, { itemID = 2 }, { itemID = 3 } }, updatedAt = 0 }
+    local gone = ns.Orders.RemoveItem(o, 2, 300)
+    T.Eq(gone.itemID, 2, "the one asked for")
+    T.Eq(#o.items, 2, "two left")
+    T.Eq(o.items[2].itemID, 3, "the rest close up")
+    T.Eq(ns.Orders.RemoveItem(o, 9, 400), nil, "removing what is not there")
+end)
+
+T.Case("Orders: finding a product by what was typed", function()
+    local book = {
+        [1] = { name = "Bold Living Ruby" },
+        [2] = { name = "Delicate Living Ruby" },
+        [3] = { name = "Runed Living Ruby" },
+        [4] = { name = "Bold Ornate Ruby" },
+    }
+    T.Eq(#ns.Orders.FindInBook(book, "living ruby"), 3, "three of them")
+    T.Eq(#ns.Orders.FindInBook(book, "delicate"), 1, "one of them")
+    T.Eq(ns.Orders.FindInBook(book, "delicate")[1].itemID, 2, "the right one")
+    T.Eq(#ns.Orders.FindInBook(book, "thorium"), 0, "none of them")
+    T.Eq(#ns.Orders.FindInBook(book, ""), 0, "nothing typed")
+
+    -- An exact name is never ambiguous, even though it is inside a longer one.
+    local exact = ns.Orders.FindInBook(book, "Bold Ornate Ruby")
+    T.Eq(#exact, 1, "exact wins alone")
+    T.Eq(exact[1].itemID, 4, "and it is the right one")
+
+    -- Shortest first, so the closest match is the first button offered.
+    T.Eq(ns.Orders.FindInBook(book, "ruby")[1].entry.name, "Bold Ornate Ruby", "shortest first")
+end)
+
+T.Case("Orders: correcting what a customer paid", function()
+    local o = { copperIn = 0, updatedAt = 0 }
+    T.Eq(ns.Orders.SetPaid(o, 250000, 100), 250000, "the whole amount is new money")
+    T.Eq(o.copperIn, 250000, "recorded on the order")
+
+    T.Eq(ns.Orders.SetPaid(o, 300000, 200), 50000, "a top-up is the difference")
+    T.Eq(ns.Orders.SetPaid(o, 100000, 300), -200000, "a correction goes backwards")
+    T.Eq(o.copperIn, 100000, "and the order follows")
+    T.Eq(ns.Orders.SetPaid(o, -5, 400), -100000, "never below nothing")
+    T.Eq(o.copperIn, 0, "clamped")
+end)

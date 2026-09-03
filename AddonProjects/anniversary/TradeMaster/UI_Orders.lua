@@ -52,10 +52,20 @@ function UI.BuildOrders(page)
 
     local showDone = UI.Button(bar, "Finished: hidden", 120, 22)
     showDone:SetScript("OnClick", function()
-        UI.showDoneOrders = not UI.showDoneOrders
+        local o = ns.db.settings.orders
+        o.showFinished = not o.showFinished
         UI.RefreshOrders()
     end)
     bar:Left(showDone)
+
+    -- An empty list must never read as lost data: say how many are held back.
+    local hiddenLabel = UI.Label(bar, "", "GameFontDisableSmall")
+    hiddenLabel:SetWordWrap(false)
+    -- Width before placing it: the toolbar packs left to right on measured width,
+    -- and an empty FontString measures zero.
+    hiddenLabel:SetWidth(90)
+    hiddenLabel:SetJustifyH("LEFT")
+    bar:Left(hiddenLabel)
 
     local prune = UI.Button(bar, "Prune Old", 84, 22)
     prune:SetScript("OnClick", function()
@@ -87,8 +97,104 @@ function UI.BuildOrders(page)
     detailHead:SetJustifyH("LEFT")
     detailHead:SetWordWrap(false)
 
-    local dScroll, dContent = UI.ScrollList(detail, -24, 6)
-    dScroll:SetPoint("TOPLEFT", 8, -24)
+    -- Editing by hand. A customer who adds an item mid-trade, or hands over gold
+    -- outside the trade window, should not need the order cancelling and redoing.
+    local function Selected()
+        return UI.selectedOrderID and ns.Orders.ByID(UI.selectedOrderID) or nil
+    end
+
+    -- Set when a typed name matches more than one recipe; the list then offers
+    -- the candidates as buttons rather than guessing.
+    local addChoices = nil
+
+    local addLabel = UI.Label(detail, "add", "GameFontDisableSmall")
+    addLabel:SetPoint("TOPLEFT", 8, -26)
+
+    local addBox = UI.EditBox(detail, 170, 18)
+    addBox:SetPoint("TOPLEFT", 32, -22)
+
+    local addBtn = UI.Button(detail, "Add", 44, 18)
+    addBtn:SetPoint("TOPLEFT", 208, -22)
+
+    local paidLabel = UI.Label(detail, "paid", "GameFontDisableSmall")
+    paidLabel:SetPoint("TOPLEFT", 268, -26)
+
+    local paidBox = UI.EditBox(detail, 90, 18)
+    paidBox:SetPoint("TOPLEFT", 296, -22)
+
+    local paidBtn = UI.Button(detail, "Set", 44, 18)
+    paidBtn:SetPoint("TOPLEFT", 392, -22)
+
+    local paidNow = UI.Label(detail, "", "GameFontDisableSmall")
+    paidNow:SetPoint("TOPLEFT", 444, -26)
+    paidNow:SetWidth(210)
+    paidNow:SetJustifyH("LEFT")
+    paidNow:SetWordWrap(false)
+
+    -- The button and the Enter key take the same path.
+    local function TryAdd()
+        local o = Selected()
+        if not o then return end
+        local text = ns.Util.Trim(addBox:GetText() or "")
+        if text == "" then return end
+
+        local book = ns.Orders.BookFor(o)
+        local profile = (o.profession and ns.Prof.ByKey(o.profession)) or ns.Prof.Current()
+        addChoices = nil
+
+        -- A shift-clicked item link says exactly which one, so it skips the search.
+        local ids = ns.Util.ExtractItemIDs(text)
+        if ids[1] then
+            if book[ids[1]] then
+                ns.Orders.AddItem(o, ids[1], 1, ns.Now())
+                addBox:SetText("")
+            else
+                ns.Print("that item is not in the " .. profile.name .. " book.")
+            end
+            UI.RefreshOrders()
+            return
+        end
+
+        local matches = ns.Orders.FindInBook(book, text)
+        if #matches == 0 then
+            ns.Print(string.format("nothing in the %s book matches \"%s\".", profile.name, text))
+        elseif #matches == 1 then
+            ns.Orders.AddItem(o, matches[1].itemID, 1, ns.Now())
+            addBox:SetText("")
+        else
+            addChoices = { orderID = o.id, text = text, options = matches }
+        end
+        UI.RefreshOrders()
+    end
+    addBtn:SetScript("OnClick", TryAdd)
+    addBox:SetScript("OnEnterPressed", TryAdd)
+
+    -- Correcting the money writes the difference to the ledger, so the Income tab
+    -- and the order agree without the sale being counted twice.
+    local function TrySetPaid()
+        local o = Selected()
+        if not o then return end
+        local copper = ns.Util.ParseMoney(paidBox:GetText() or "")
+        if not copper then
+            ns.Print("paid: type an amount like 25g, 25g50s, or 250 for gold.")
+            return
+        end
+        local now = ns.Now()
+        local delta = ns.Orders.SetPaid(o, copper, now)
+        if delta ~= 0 then
+            ns.Ledger.Adjust(o.player, o.id, delta, now)
+            ns.Print(string.format("order #%d paid is now %s (%s%s).", o.id,
+                ns.Ledger.Money(o.copperIn), delta > 0 and "+" or "-",
+                ns.Ledger.Money(math.abs(delta))))
+        end
+        paidBox:ClearFocus()
+        UI.RefreshOrders()
+    end
+    paidBtn:SetScript("OnClick", TrySetPaid)
+    paidBox:SetScript("OnEnterPressed", TrySetPaid)
+
+    local dScroll, dContent = UI.ScrollList(detail, -46, 6)
+    dScroll:SetPoint("TOPLEFT", 8, -46)
     dScroll:SetPoint("BOTTOMRIGHT", -26, 6)
 
     local detailRows = {}
@@ -110,6 +216,8 @@ function UI.BuildOrders(page)
         r.plus:SetPoint("LEFT", 350, 0)
         r.action = UI.Button(r, "", 100, 16)
         r.action:SetPoint("LEFT", 378, 0)
+        r.remove = UI.Button(r, "x", 18, 16, { kind = "danger" })
+        r.remove:SetPoint("LEFT", 486, 0)
         r.picks = {}
         for b = 1, 3 do
             local btn = UI.Button(r, "", 84, 16)
@@ -123,10 +231,21 @@ function UI.BuildOrders(page)
 
     local function RenderDetail(o)
         for _, r in ipairs(detailRows) do r:Hide() end
+        if addChoices and (not o or addChoices.orderID ~= o.id) then addChoices = nil end
+
         if not o then
             detailHead:SetText("|cff888888select an order to see its items|r")
+            paidNow:SetText("")
+            paidBox:SetText("")
             dContent:SetSize(620, 1)
             return
+        end
+
+        paidNow:SetText((o.copperIn or 0) > 0
+            and ("received " .. ns.Ledger.Money(o.copperIn))
+            or "|cff888888nothing received yet|r")
+        if not paidBox:HasFocus() then
+            paidBox:SetText(ns.Util.MoneyText(o.copperIn))
         end
 
         local book = ns.Orders.BookFor(o)
@@ -138,7 +257,7 @@ function UI.BuildOrders(page)
 
         local used, y = 0, 0
 
-        for _, it in ipairs(o.items) do
+        for idx, it in ipairs(o.items) do
             used = used + 1
             local r = DetailRow(used)
             local e = book[it.itemID]
@@ -156,9 +275,19 @@ function UI.BuildOrders(page)
                 r.count:SetText(tostring(it.qty))
                 UI.RefreshOrders()
             end)
+            r.remove:SetScript("OnClick", function()
+                local gone = ns.Orders.RemoveItem(o, idx, ns.Now())
+                if gone then
+                    local e2 = book[gone.itemID]
+                    ns.Print(string.format("order #%d: removed %s", o.id,
+                        e2 and (e2.link or e2.name) or tostring(gone.itemID)))
+                end
+                UI.RefreshOrders()
+            end)
             r.minus:Show()
             r.plus:Show()
             r.count:Show()
+            r.remove:Show()
             for _, b in ipairs(r.picks) do b:Hide() end
             r.action:Hide()
             r:ClearAllPoints()
@@ -171,7 +300,7 @@ function UI.BuildOrders(page)
             used = used + 1
             local r = DetailRow(used)
             r.label:SetText("|cffff9900quantities above are a guess|r")
-            r.minus:Hide(); r.plus:Hide(); r.count:SetText("")
+            r.minus:Hide(); r.plus:Hide(); r.count:SetText(""); r.remove:Hide()
             for _, b in ipairs(r.picks) do b:Hide() end
             r.action:SetText("Confirm split")
             r.action:SetScript("OnClick", function()
@@ -188,6 +317,38 @@ function UI.BuildOrders(page)
             y = y + 20
         end
 
+        if addChoices and addChoices.orderID == o.id then
+            used = used + 1
+            local r = DetailRow(used)
+            local n = #addChoices.options
+            r.label:SetText(string.format("|cffffcc00\"%s\"|r matches %d, pick one:",
+                addChoices.text, n))
+            r.minus:Hide(); r.plus:Hide(); r.count:SetText(""); r.action:Hide(); r.remove:Hide()
+            for b, btn in ipairs(r.picks) do
+                local m = addChoices.options[b]
+                if m then
+                    btn:SetText(m.entry.name or tostring(m.itemID))
+                    btn:SetScript("OnClick", function()
+                        ns.Orders.AddItem(o, m.itemID, 1, ns.Now())
+                        addChoices = nil
+                        addBox:SetText("")
+                        UI.RefreshOrders()
+                    end)
+                    btn:Show()
+                else
+                    btn:Hide()
+                end
+            end
+            if n > #r.picks then
+                ns.Print(string.format("%d recipes match \"%s\"; the first %d are offered. "
+                    .. "Type more of the name to narrow it.", n, addChoices.text, #r.picks))
+            end
+            r:ClearAllPoints()
+            r:SetPoint("TOPLEFT", 0, -y)
+            r:Show()
+            y = y + 18
+        end
+
         -- Mats that could be for several products: the user picks one.
         local un = 0
         for rawID, info in pairs(o.unmatchedMats or {}) do
@@ -198,7 +359,7 @@ function UI.BuildOrders(page)
             local rawName = GetItemInfo(rawID) or ("item " .. rawID)
             r.label:SetText(string.format("|cffff9900%d x %s|r could be any of %d. Pick:",
                 info.count, rawName, #info.options))
-            r.minus:Hide(); r.plus:Hide(); r.count:SetText(""); r.action:Hide()
+            r.minus:Hide(); r.plus:Hide(); r.count:SetText(""); r.action:Hide(); r.remove:Hide()
             for b, btn in ipairs(r.picks) do
                 local productID = info.options[b]
                 if productID then
@@ -227,8 +388,8 @@ function UI.BuildOrders(page)
 
         if used == 0 then
             local r = DetailRow(1)
-            r.label:SetText("|cff888888nothing on this order yet; trade them the mats|r")
-            r.minus:Hide(); r.plus:Hide(); r.count:SetText(""); r.action:Hide()
+            r.label:SetText("|cff888888nothing on this order yet: trade them the mats, or type a name above|r")
+            r.minus:Hide(); r.plus:Hide(); r.count:SetText(""); r.action:Hide(); r.remove:Hide()
             for _, b in ipairs(r.picks) do b:Hide() end
             r:ClearAllPoints()
             r:SetPoint("TOPLEFT", 0, 0)
@@ -243,7 +404,12 @@ function UI.BuildOrders(page)
     -- The list
     --------------------------------------------------------------------------
 
-    local t = UI.Table(page, {
+    -- Declared before the call: a handler written inside the constructor closes over
+    -- whatever `t` means at that moment, and `local t = ...` is not in scope until the
+    -- assignment finishes. The table is also handed to the callback as its last
+    -- argument, which is what the click below uses.
+    local t
+    t = UI.Table(page, {
         top = -28,
         bottom = DETAIL_H + 6,
         columns = {
@@ -259,9 +425,9 @@ function UI.BuildOrders(page)
             { key = "cancel", label = "Cancel", width = 52 },
             { key = "done", label = "Done", width = 48 },
         },
-        onClick = function(row, o)
+        onClick = function(row, o, button, list)
             UI.selectedOrderID = o.id
-            t:SetSelected(o)
+            list:SetSelected(o)
             RenderDetail(o)
         end,
         onEnter = function(row, o)
@@ -280,13 +446,10 @@ function UI.BuildOrders(page)
     UI.orderTable = t
 
     function UI.RefreshOrders()
-        showDone:SetText(UI.showDoneOrders and "Finished: shown" or "Finished: hidden")
-
-        local list = {}
-        for _, o in ipairs(ns.db.orders) do
-            local finished = (o.status == "done" or o.status == "cancelled")
-            if UI.showDoneOrders or not finished then list[#list + 1] = o end
-        end
+        local showFinished = ns.db.settings.orders.showFinished
+        local list, hidden = ns.Orders.Visible(ns.db.orders, showFinished)
+        showDone:SetText(showFinished and "Finished: shown" or "Finished: hidden")
+        hiddenLabel:SetText(hidden > 0 and ("|cff888888" .. hidden .. " hidden|r") or "")
 
         -- Keep the selection if it is still listed, else take whatever needs
         -- attention first so the panel is never pointing at nothing.

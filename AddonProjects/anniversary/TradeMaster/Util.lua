@@ -74,6 +74,46 @@ function Util.HasPhrase(norm, phrase)
     return (" " .. norm .. " "):find(" " .. phrase .. " ", 1, true) ~= nil
 end
 
+-- Pure. Reads what a person types for an amount of money: "12g", "12g50s",
+-- "1g 2s 3c", "50s". A bare number is gold, which is how people say prices out
+-- loud. Returns copper, or nil when there is no number in there at all.
+function Util.ParseMoney(text)
+    if type(text) ~= "string" then return nil end
+    text = text:lower():gsub("%s+", "")
+    if text == "" then return nil end
+
+    local copper, found = 0, false
+    for amount, unit in text:gmatch("(%d+%.?%d*)([gsc])") do
+        local n = tonumber(amount)
+        if n then
+            found = true
+            if unit == "g" then copper = copper + n * 10000
+            elseif unit == "s" then copper = copper + n * 100
+            else copper = copper + n end
+        end
+    end
+    if found then return math.floor(copper + 0.5) end
+
+    local bare = tonumber(text)
+    if bare then return math.floor(bare * 10000 + 0.5) end
+    return nil
+end
+
+-- Pure. The inverse of ParseMoney, for putting an amount back into a box someone
+-- is about to edit. Coin textures are for reading, not for typing into.
+function Util.MoneyText(copper)
+    copper = math.max(0, math.floor(copper or 0))
+    if copper == 0 then return "" end
+    local g = math.floor(copper / 10000)
+    local s = math.floor((copper % 10000) / 100)
+    local c = copper % 100
+    local out = ""
+    if g > 0 then out = out .. g .. "g" end
+    if s > 0 then out = out .. s .. "s" end
+    if c > 0 then out = out .. c .. "c" end
+    return out
+end
+
 function Util.EscapePattern(s)
     return (s:gsub("[%^%$%(%)%%%.%[%]%*%+%-%?]", "%%%1"))
 end

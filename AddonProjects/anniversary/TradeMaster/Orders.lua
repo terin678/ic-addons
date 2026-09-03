@@ -101,6 +101,62 @@ function Orders.Record(player, source, text, matched, now, profession)
     return o, false
 end
 
+-- Adds a product to an order by hand, or bumps the count when it is already
+-- there. Anything typed in is "manual": the mats they hand over still win.
+function Orders.AddItem(o, itemID, qty, now)
+    qty = math.max(1, math.floor(qty or 1))
+    for _, it in ipairs(o.items) do
+        if it.itemID == itemID then
+            it.qty = (it.qty or 0) + qty
+            it.qtySource = "manual"
+            o.updatedAt = now
+            return it, false
+        end
+    end
+    local it = { itemID = itemID, qty = qty, qtySource = "manual" }
+    o.items[#o.items + 1] = it
+    o.updatedAt = now
+    return it, true
+end
+
+function Orders.RemoveItem(o, index, now)
+    local it = table.remove(o.items, index)
+    if it then o.updatedAt = now end
+    return it
+end
+
+-- Pure. Book entries matching what someone typed. An exact name wins on its own;
+-- otherwise every entry containing the text, best (shortest, so closest) first.
+function Orders.FindInBook(book, text)
+    text = (text or ""):lower():gsub("^%s+", ""):gsub("%s+$", "")
+    if text == "" then return {} end
+
+    local matches = {}
+    for itemID, e in pairs(book or {}) do
+        local name = (e.name or ""):lower()
+        if name == text then return { { itemID = itemID, entry = e } } end
+        if name:find(text, 1, true) then
+            matches[#matches + 1] = { itemID = itemID, entry = e }
+        end
+    end
+    table.sort(matches, function(a, b)
+        local na, nb = a.entry.name or "", b.entry.name or ""
+        if #na ~= #nb then return #na < #nb end
+        return na < nb
+    end)
+    return matches
+end
+
+-- Pure. Sets what the customer has paid and reports the difference, so the
+-- ledger can be corrected by that much rather than double-counting the sale.
+function Orders.SetPaid(o, copper, now)
+    copper = math.max(0, math.floor(copper or 0))
+    local delta = copper - (o.copperIn or 0)
+    o.copperIn = copper
+    o.updatedAt = now
+    return delta
+end
+
 function Orders.AddTranscript(player, dir, text, now)
     local o = Orders.Open(player)
     if not o then return end
@@ -215,6 +271,22 @@ function Orders.Prune(now, keepDays)
         end
     end
     ns.db.orders = kept
+end
+
+-- Pure. What the Orders tab shows, and how many finished orders it is holding
+-- back. Finished orders are never deleted by hiding them: they stay in the saved
+-- variables until Prune, and the count is what tells you they are still there.
+function Orders.Visible(orders, showFinished)
+    local out, hidden = {}, 0
+    for _, o in ipairs(orders or {}) do
+        local finished = (o.status == "done" or o.status == "cancelled")
+        if showFinished or not finished then
+            out[#out + 1] = o
+        else
+            hidden = hidden + 1
+        end
+    end
+    return out, hidden
 end
 
 function Orders.OpenList()

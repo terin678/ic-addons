@@ -49,6 +49,10 @@ API changes. `scripts/package.ps1` bundles required addons into the zip and
   library supplies the window, the tabs and every button in the guild palette, so never
   hand-roll a control or paint one with literal colours.
 - After editing any UI file, run the `wow-ui-reviewer` agent on it before packaging.
+- A function written inside a constructor cannot see the local being assigned:
+  `local t = UI.Table(page, { onClick = function() t:... end })` reads a nil global,
+  because `t` only exists after the assignment finishes. Declare it on its own line
+  first, or use the table the library hands the callback as its last argument.
 - Do not use the Bash heredoc trick for multi-line Lua edits from Claude Code on this
   machine; it fails on some content. Write a small Python script to a scratch file with the
   Write tool and run it, or use the Edit tool.
