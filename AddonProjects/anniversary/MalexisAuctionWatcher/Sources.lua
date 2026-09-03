@@ -175,7 +175,8 @@ function MAW:PullAuctionator(itemName, itemData)
             historyRows = #rows
             for _, row in ipairs(rows) do
                 if row.rawDay and row.minSeen then
-                    local ts = tonumber(row.rawDay) * 86400 + ATR_SCAN_DAY_0
+                    -- Auctionator days start at local midnight; use noon so DST shifts cannot move the day
+                    local ts = tonumber(row.rawDay) * 86400 + ATR_SCAN_DAY_0 + 43200
                     local day = self:DayIndexFromTime(ts)
                     if self:BackfillHistory(itemName, day, row.minSeen, row.maxSeen, "atr") then
                         recorded = true

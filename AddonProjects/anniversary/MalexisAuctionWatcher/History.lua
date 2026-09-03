@@ -8,9 +8,23 @@ local MIN_SAMPLES_FOR_CONFIDENCE = 3
 
 local WEEKDAY_NAMES = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"}
 
--- Day index: whole UTC days since the epoch
+-- Seconds to add to a UTC timestamp to get local wall-clock time (handles DST per timestamp)
+local function LocalOffset(timestamp)
+    local u = date("!*t", timestamp)
+    u.isdst = date("*t", timestamp).isdst
+    return difftime(timestamp, time(u))
+end
+
+-- Day index: whole LOCAL days since the epoch, so a bucket is a calendar day where you play
 function MAW:DayIndexFromTime(timestamp)
-    return math.floor((timestamp or time()) / SECONDS_PER_DAY)
+    timestamp = timestamp or time()
+    return math.floor((timestamp + LocalOffset(timestamp)) / SECONDS_PER_DAY)
+end
+
+-- A timestamp at local noon of a day index (safe for date labels either side of DST)
+function MAW:DayIndexToTime(day)
+    local approx = day * SECONDS_PER_DAY + SECONDS_PER_DAY / 2
+    return approx - LocalOffset(approx)
 end
 
 -- Local-time hour (0-23) for a timestamp
@@ -181,7 +195,7 @@ function MAW:GetSeries(itemName, mode, span)
         local today = self:DayIndexFromTime()
         for day = today - span + 1, today do
             local b = history.days[day]
-            local t = date("*t", day * SECONDS_PER_DAY)
+            local t = date("*t", self:DayIndexToTime(day))
             local label = string.format("%d/%d", t.month, t.day)
             if b and b.n > 0 then
                 table.insert(points, { label = label, low = b.l, avg = b.s / b.n, high = b.h, n = b.n,
@@ -209,7 +223,7 @@ function MAW:GetSeries(itemName, mode, span)
         end
         for day, b in pairs(history.days) do
             if b.n > 0 then
-                local t = date("*t", day * SECONDS_PER_DAY)
+                local t = date("*t", self:DayIndexToTime(day))
                 local idx = (mode == "weekday") and t.wday or t.day
                 local a = agg[idx]
                 if a then

@@ -98,6 +98,10 @@ buy and sell averages, vendor sell, and TSM crafting cost.
 
 ## History
 
+Days are your local calendar days, so a scan after midnight counts toward the new day and
+the Today marker matches. Buckets recorded before 1.10.6 were keyed by UTC day, so evening
+scans from that period may sit one day late; they age out with retention.
+
 Prices are kept in daily buckets for 180 days by default (`/maw retention <days>`,
 minimum 7) plus a per-hour-of-day accumulator. Weekday and day-of-month views are derived
 from the daily buckets. The summary line names the cheapest and priciest bucket and says
