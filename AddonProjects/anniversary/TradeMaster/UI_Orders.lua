@@ -183,9 +183,10 @@ function UI.BuildOrders(page)
         local delta = ns.Orders.SetPaid(o, copper, now)
         if delta ~= 0 then
             ns.Ledger.Adjust(o.player, o.id, delta, now)
+            -- Money carries its own sign now, so a correction reads "-12g".
             ns.Print(string.format("order #%d paid is now %s (%s%s).", o.id,
-                ns.Ledger.Money(o.copperIn), delta > 0 and "+" or "-",
-                ns.Ledger.Money(math.abs(delta))))
+                ns.Ledger.Money(o.copperIn), delta > 0 and "+" or "",
+                ns.Ledger.Money(delta)))
         end
         paidBox:ClearFocus()
         UI.RefreshOrders()
@@ -594,7 +595,10 @@ function UI.BuildIncome(page)
         for i = 1, math.min(50, #(L.entries or {})) do list[i] = L.entries[i] end
         recent:Render(list, function(row, e)
             recent:Set(row, "age", UI.Age(now - (e.at or now)))
-            recent:Set(row, "player", e.player or "?")
+            -- A correction sits in the list beside real payments and can be
+            -- negative, so it says what it is rather than looking like a refund.
+            recent:Set(row, "player", (e.player or "?")
+                .. (e.adjusted and " |cff888888(corrected)|r" or ""))
             recent:Set(row, "gold", ns.Ledger.Money(e.copper or 0))
         end)
     end

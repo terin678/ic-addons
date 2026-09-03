@@ -67,9 +67,21 @@ function Ledger.AllTimeUnits()
     return L.allTimeUnits or L.allTimeGems or 0
 end
 
+-- GetCoinTextureString refuses anything but a whole, positive number, and money
+-- here is neither reliably: a correction is negative, an average is fractional,
+-- and a field that was never written is nil. The sign is put back by hand.
 function Ledger.Money(copper)
-    if GetCoinTextureString then return GetCoinTextureString(copper or 0) end
-    return string.format("%dg", math.floor((copper or 0) / 10000))
+    copper = tonumber(copper) or 0
+    local negative = copper < 0
+    copper = math.floor(math.abs(copper) + 0.5)
+
+    local text
+    if GetCoinTextureString then
+        text = GetCoinTextureString(copper)
+    else
+        text = string.format("%dg", math.floor(copper / 10000))
+    end
+    return negative and ("-" .. text) or text
 end
 
 function Ledger.TopCustomers(limit)

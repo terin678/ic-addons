@@ -1083,3 +1083,13 @@ T.Case("Orders: correcting what a customer paid", function()
     T.Eq(ns.Orders.SetPaid(o, -5, 400), -100000, "never below nothing")
     T.Eq(o.copperIn, 0, "clamped")
 end)
+
+T.Case("Money: the coin API is never handed something it refuses", function()
+    -- GetCoinTextureString errors on a negative, and money reaches it negative
+    -- (a correction), fractional (an average) and nil (a field never written).
+    T.Eq(type(ns.Ledger.Money(-12345)), "string", "a correction")
+    T.Eq(type(ns.Ledger.Money(nil)), "string", "nothing at all")
+    T.Eq(type(ns.Ledger.Money(1.5)), "string", "a fraction")
+    T.Eq(type(ns.Ledger.Money("nonsense")), "string", "not even a number")
+    T.Eq(ns.Ledger.Money(-12345):sub(1, 1), "-", "and the sign survives")
+end)
