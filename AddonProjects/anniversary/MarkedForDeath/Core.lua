@@ -80,6 +80,18 @@ local function onAddonLoaded()
         end
     end
 
+    -- Rules are filed per zone and activate automatically, so the addon needs
+    -- to know where the player is before any rule can match.
+    local zoneFrame = CreateFrame("Frame")
+    zoneFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+    zoneFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
+    zoneFrame:SetScript("OnEvent", function()
+        local _, _, _, _, _, _, _, instanceMapID = GetInstanceInfo()
+        MFD.Rules.currentInstanceKey = MFD.Rules.InstanceKeyFor(instanceMapID)
+    end)
+
+    MFD.Rules.RefreshLocal(MFD.db, UnitName("player"))
+
     MFD.Print("v" .. MFD.VERSION .. " loaded. /mfd help for commands.")
 end
 
@@ -188,19 +200,141 @@ commands.fixcvars = {
     end,
 }
 
--- Temporary hand-testing hook, removed in Task 7 once the rule editor exists.
-commands.testrule = {
-    desc = "temporary: rule the current target as a kill target",
+commands.where = {
+    desc = "print the current zone and how many rules are active for it",
     run = function()
-        local guid = UnitGUID("target")
-        local npcID = guid and MFD.H.NpcIDFromKey(MFD.H.KeyFromGUID(guid) or "")
-        if not npcID then
-            MFD.Print("no valid creature targeted")
+        local name, _, _, _, _, _, _, instanceMapID = GetInstanceInfo()
+        local key = MFD.Rules.InstanceKeyFor(instanceMapID)
+        MFD.Print(string.format("%s (map %s) filed under %s",
+            tostring(name), tostring(instanceMapID), tostring(key)))
+
+        local count = 0
+        for _ in pairs(MFD.Rules.Active()) do
+            count = count + 1
+        end
+        MFD.Print(count .. " active rules here")
+    end,
+}
+
+-- Resolves the unit the player is pointing at. Returns the unit token, its
+-- npcID and its name, or nil plus a reason.
+local function pointedAtCreature()
+    local unit = (UnitExists("target") and "target")
+        or (UnitExists("mouseover") and "mouseover")
+        or nil
+
+    if not unit then
+        return nil, nil, nil, "target or mouse over a mob first"
+    end
+
+    local key = MFD.H.KeyFromGUID(UnitGUID(unit) or "")
+    if not key then
+        return nil, nil, nil, "that is not a creature"
+    end
+
+    return unit, MFD.H.NpcIDFromKey(key), UnitName(unit)
+end
+
+commands.add = {
+    desc = "rule the current target, e.g. /mfd add sheep (defaults to kill)",
+    run = function(rest)
+        local unit, npcID, name, why = pointedAtCreature()
+        if not unit then
+            MFD.Error(why)
             return
         end
-        MFD.Rules.activeByNpcID = MFD.Rules.activeByNpcID or {}
-        MFD.Rules.activeByNpcID[npcID] = { npcID = npcID, intent = "KILL", rank = 10 }
-        MFD.Print("npc " .. npcID .. " will now be marked as a kill target")
+
+        local intent = string.upper(rest or "")
+        if intent == "" then
+            intent = "KILL"
+        end
+
+        if not MFD.Seats.INTENTS[intent] then
+            MFD.Error("unknown intent '" .. intent .. "'. Try /mfd intents.")
+            return
+        end
+
+        local instanceKey = MFD.Rules.currentInstanceKey
+        if not instanceKey then
+            MFD.Error("cannot tell what zone this is yet, try again in a moment")
+            return
+        end
+
+        MFD.db.rules[instanceKey] = MFD.db.rules[instanceKey] or {}
+        local list = MFD.db.rules[instanceKey]
+
+        for _, rule in ipairs(list) do
+            if rule.npcID == npcID then
+                rule.intent = intent
+                MFD.Rules.RefreshLocal(MFD.db, UnitName("player"))
+                MFD.Print(name .. " is now " .. MFD.Seats.INTENTS[intent].label)
+                return
+            end
+        end
+
+        list[#list + 1] = {
+            npcID = npcID,
+            name = name,
+            intent = intent,
+            rank = MFD.Rules.NextRank(list),
+        }
+
+        MFD.Rules.RefreshLocal(MFD.db, UnitName("player"))
+        MFD.Print(string.format("%s (npc %d) added as %s, priority %d in %s",
+            name, npcID, MFD.Seats.INTENTS[intent].label, list[#list].rank, instanceKey))
+    end,
+}
+
+commands.list = {
+    desc = "list the rules active in this zone, best priority first",
+    run = function()
+        local ranked = MFD.Rules.Ranked(MFD.Rules.Active())
+        if #ranked == 0 then
+            MFD.Print("no rules for " .. tostring(MFD.Rules.currentInstanceKey or "this zone")
+                .. ". Target a mob and use /mfd add.")
+            return
+        end
+
+        for _, rule in ipairs(ranked) do
+            local label = MFD.Seats.INTENTS[rule.intent] and MFD.Seats.INTENTS[rule.intent].label or rule.intent
+            local mine = rule.owner == UnitName("player")
+            MFD.Print(string.format("%s%d. %s - %s (npc %d)%s|r",
+                mine and "" or "|cffffcc66",
+                rule.rank, rule.name or "?", label, rule.npcID,
+                mine and "" or (" from " .. tostring(rule.owner))))
+        end
+    end,
+}
+
+commands.del = {
+    desc = "remove a rule by npc id, e.g. /mfd del 22890",
+    run = function(rest)
+        local npcID = tonumber(rest)
+        if not npcID then
+            MFD.Error("give an npc id. /mfd list shows them.")
+            return
+        end
+
+        local list = MFD.db.rules[MFD.Rules.currentInstanceKey or ""] or {}
+        for i, rule in ipairs(list) do
+            if rule.npcID == npcID then
+                table.remove(list, i)
+                MFD.Rules.RefreshLocal(MFD.db, UnitName("player"))
+                MFD.Print("removed rule for npc " .. npcID)
+                return
+            end
+        end
+
+        MFD.Error("no rule of your own for npc " .. npcID .. " in this zone")
+    end,
+}
+
+commands.intents = {
+    desc = "list the crowd control intents a rule can use",
+    run = function()
+        for _, intent in ipairs(MFD.H.SortedKeys(MFD.Seats.INTENTS)) do
+            MFD.Print("  " .. string.lower(intent) .. " - " .. MFD.Seats.INTENTS[intent].label)
+        end
     end,
 }
 

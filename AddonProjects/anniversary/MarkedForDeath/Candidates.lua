@@ -128,7 +128,27 @@ function Candidates.ObserveUnit(unit, now)
 
     local npcID = MFD.H.NpcIDFromKey(key)
     Candidates.Observe(Candidates.set, key, npcID, unit, now)
+
+    -- Learn the mob the first time it is seen, so anything the bundled
+    -- database missed becomes searchable rather than being unreachable forever.
+    if MFD.db and not MFD.db.learnedMobs[npcID] then
+        MFD.Learned.Record(MFD.db, npcID, UnitName(unit), GetRealZoneText(), time())
+    end
+
     return key
+end
+
+MFD.Learned = MFD.Learned or {}
+
+-- Records a sighting so the mob becomes searchable even when the bundled
+-- database missed it. Mutates db.learnedMobs and nothing else.
+-- Incomplete observations are dropped rather than stored half-formed.
+function MFD.Learned.Record(db, npcID, name, zone, now)
+    if type(npcID) ~= "number" or type(name) ~= "string" or name == "" then
+        return
+    end
+
+    db.learnedMobs[npcID] = { name = name, zone = zone, seenAt = now }
 end
 
 local frame

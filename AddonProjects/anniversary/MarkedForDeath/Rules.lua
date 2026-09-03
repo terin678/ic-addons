@@ -108,10 +108,63 @@ function Rules.Reorder(list, index, delta)
     return list
 end
 
--- Returns the merged rules for the current instance as { [npcID] = rule }.
--- Task 7 replaces this with the real instance-aware, comms-merged lookup.
+-- TBC raid instance map ids. Verify each against the live client with
+-- /mfd where before trusting it; these were compiled from documentation, not
+-- read off this client.
+Rules.INSTANCE_KEYS = {
+    [532] = "KARAZHAN",
+    [565] = "GRUUL",
+    [544] = "MAGTHERIDON",
+    [548] = "SERPENTSHRINE",
+    [550] = "TEMPESTKEEP",
+    [534] = "HYJAL",
+    [564] = "BLACKTEMPLE",
+    [568] = "ZULAMAN",
+    [580] = "SUNWELL",
+}
+
+-- Takes an instance map id. Returns the key rules are filed under.
+--
+-- TBC raids get stable named keys so rule sets read well and share cleanly
+-- between players. Every other zone falls back to its map id, so the addon is
+-- usable in heroics and in the open world instead of being inert everywhere
+-- but nine raids.
+function Rules.InstanceKeyFor(instanceMapID)
+    if type(instanceMapID) ~= "number" then
+        return nil
+    end
+
+    return Rules.INSTANCE_KEYS[instanceMapID] or ("MAP" .. instanceMapID)
+end
+
+-- Set by the zone handler in Core. nil before the first zone event.
+Rules.currentInstanceKey = nil
+Rules.merged = {}
+
+-- Recomputes the merged rule set from every contributor and caches it.
+--
+-- Never writes to saved variables: merged rules are session state, so a
+-- contributor's rules can never alter another player's stored configuration.
+function Rules.SetContributions(contributions, leadName)
+    Rules.merged = Rules.Merge(contributions, leadName)
+end
+
+-- Rebuilds the merged set from just this player's own rules. Task 9 replaces
+-- the caller with one that folds in every contributor's rules from the channel.
+function Rules.RefreshLocal(db, playerName)
+    Rules.SetContributions({ { owner = playerName, rules = db.rules } }, db.designatedLead.name)
+end
+
+local EMPTY = {}
+
+-- Returns { [npcID] = rule } for the zone the player is currently in, or an
+-- empty table when there are none. The allocator consumes this directly.
 function Rules.Active()
-    return Rules.activeByNpcID or {}
+    local key = Rules.currentInstanceKey
+    if not key then
+        return EMPTY
+    end
+    return Rules.merged[key] or EMPTY
 end
 
 _G.MarkedForDeath = MFD

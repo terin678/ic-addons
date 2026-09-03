@@ -687,4 +687,68 @@ T.Case("Candidates: a recycled nameplate token is not actionable for the old mob
     T.Eq(units["200:00000000BB"], "nameplate2", "and the live one still works")
 end)
 
+T.Case("Rules: known TBC raid map ids resolve to stable instance keys", function()
+    T.Eq(MFD.Rules.InstanceKeyFor(532), "KARAZHAN", "Karazhan")
+    T.Eq(MFD.Rules.InstanceKeyFor(564), "BLACKTEMPLE", "Black Temple")
+    T.Eq(MFD.Rules.InstanceKeyFor(534), "HYJAL", "Hyjal Summit")
+end)
+
+-- Named keys only exist so raid rule sets share cleanly between players. Every
+-- other zone still gets a key, so the addon is usable in heroics and outdoors
+-- rather than inert everywhere but nine raids.
+T.Case("Rules: any other zone still gets a key derived from its map id", function()
+    T.Eq(MFD.Rules.InstanceKeyFor(1), "MAP1", "open world zone")
+    T.Eq(MFD.Rules.InstanceKeyFor(nil), nil, "nil is safe")
+    T.Eq(MFD.Rules.InstanceKeyFor("nonsense"), nil, "so is rubbish")
+end)
+
+T.Case("Rules: Active returns only the current instance's rules", function()
+    MFD.Rules.SetContributions({
+        { owner = "Dillon", rules = {
+            BLACKTEMPLE = { { npcID = 22890, intent = "SHEEP", rank = 10 } },
+            HYJAL = { { npcID = 17842, intent = "TRAP", rank = 10 } },
+        } },
+    }, "Dillon")
+
+    MFD.Rules.currentInstanceKey = "BLACKTEMPLE"
+    local active = MFD.Rules.Active()
+    T.Eq(active[22890].intent, "SHEEP", "BT rule is active")
+    T.Eq(active[17842], nil, "Hyjal rule is not")
+end)
+
+T.Case("Rules: Active is empty when the zone is unknown", function()
+    MFD.Rules.SetContributions({
+        { owner = "Dillon", rules = { BLACKTEMPLE = { { npcID = 22890, intent = "SHEEP", rank = 10 } } } },
+    }, "Dillon")
+
+    MFD.Rules.currentInstanceKey = nil
+    T.Eq(next(MFD.Rules.Active()), nil, "nothing is marked where we have no rules")
+end)
+
+T.Case("Learned: recording a mob stores its name and zone", function()
+    local db = { learnedMobs = {} }
+    MFD.Learned.Record(db, 22890, "Illidari Nightlord", "Black Temple", 1000)
+    T.Eq(db.learnedMobs[22890].name, "Illidari Nightlord", "name")
+    T.Eq(db.learnedMobs[22890].zone, "Black Temple", "zone")
+    T.Eq(db.learnedMobs[22890].seenAt, 1000, "timestamp")
+end)
+
+T.Case("Learned: re-recording refreshes the timestamp without duplicating", function()
+    local db = { learnedMobs = {} }
+    MFD.Learned.Record(db, 22890, "Illidari Nightlord", "Black Temple", 1000)
+    MFD.Learned.Record(db, 22890, "Illidari Nightlord", "Black Temple", 2000)
+    T.Eq(db.learnedMobs[22890].seenAt, 2000, "refreshed")
+    local count = 0
+    for _ in pairs(db.learnedMobs) do count = count + 1 end
+    T.Eq(count, 1, "still one entry")
+end)
+
+T.Case("Learned: a nameless or idless observation is ignored", function()
+    local db = { learnedMobs = {} }
+    MFD.Learned.Record(db, nil, "Something", "Somewhere", 1000)
+    MFD.Learned.Record(db, 22890, nil, "Somewhere", 1000)
+    MFD.Learned.Record(db, 22890, "", "Somewhere", 1000)
+    T.Eq(next(db.learnedMobs), nil, "nothing stored half-formed")
+end)
+
 _G.MarkedForDeath = MFD
