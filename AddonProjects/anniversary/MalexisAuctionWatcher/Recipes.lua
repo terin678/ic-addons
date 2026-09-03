@@ -2,7 +2,27 @@
 local addonName = "MalexisAuctionWatcher"
 local MAW = _G.MalexisAuctionWatcher or {}
 
-local AH_CUT = 0.05
+local DEFAULT_AH_CUT = 0.15  -- neutral auction houses take 15%; faction ones 5%
+
+-- Auction house cut as a fraction (0.15 = 15%)
+function MAW:GetAHCut()
+    local s = MalexisAuctionWatcherDB and MalexisAuctionWatcherDB.settings
+    local cut = s and s.ahCut
+    if type(cut) ~= "number" or cut < 0 or cut > 0.5 then
+        return DEFAULT_AH_CUT
+    end
+    return cut
+end
+
+function MAW:SetAHCutPercent(percent)
+    local p = tonumber(percent)
+    if not p or p < 0 or p > 50 then
+        return false
+    end
+    MalexisAuctionWatcherDB.settings.ahCut = p / 100
+    self:FireCallbacks("onItemAdded")
+    return true
+end
 
 -- Built-in preset: 10 motes -> 1 primal (no profession required)
 MAW.PRESET_MOTES_TO_PRIMALS = {
@@ -223,7 +243,7 @@ function MAW:ComputeRecipeProfit(recipe, basis)
     result.productWhen = productWhen
     if productUnit then
         result.productValue = productUnit * (recipe.productCount or 1)
-        result.ahNet = result.productValue * (1 - AH_CUT)
+        result.ahNet = result.productValue * (1 - self:GetAHCut())
     else
         complete = false
         table.insert(result.missing, recipe.product)

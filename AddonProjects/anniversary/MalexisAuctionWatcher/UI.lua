@@ -22,13 +22,13 @@ local TAB_HEIGHT = 30
 local RECIPE_CONTROLS_WIDTH = 26
 -- Recipes tab columns. The two TSM profit columns appear only when the TSM feed is on.
 local function RecipeColumns()
+    local MAW = _G.MalexisAuctionWatcher
     local cols = {
         { header = "Recipe",   width = 230, key = "name" },
         { header = "Mat cost", width = 90,  key = "matCost" },
         { header = "Product",  width = 90,  key = "productValue" },
-        { header = "AH net",   width = 90,  key = "ahNet" },
+        { header = string.format("AH net -%d%%", math.floor(MAW:GetAHCut() * 100 + 0.5)), width = 90, key = "ahNet" },
     }
-    local MAW = _G.MalexisAuctionWatcher
     local tsmOn = MAW and MAW.sources and MAW.sources.tsm and MAW.sources.tsm.available and MAW:IsSourceEnabled("tsm")
     if tsmOn then
         table.insert(cols, { header = "Profit 60d", width = 90, key = "profitTsm60", basis = "tsm60" })
@@ -1134,7 +1134,7 @@ function MAWUI:RenderStoresTab(scrollChild, yOffset)
     end
 
     -- Create headers for Stores tab
-    local headers = {"Item", "Inventory", "Bank", "AH", "Total", "Value", "AH Net"}
+    local headers = {"Item", "Inventory", "Bank", "AH", "Total", "Value", string.format("AH Net -%d%%", math.floor(MAW:GetAHCut() * 100 + 0.5))}
     local widths = {ROW_NAME_WIDTH, 80, 80, 80, 80, 100, 100}
     local headerX = PADDING
 
@@ -1213,7 +1213,7 @@ function MAWUI:RenderStoresTab(scrollChild, yOffset)
         elseif stats and stats.average then
             marketValue = stats.average * total
         end
-        local ahNetValue = marketValue * 0.95  -- 5% AH cut
+        local ahNetValue = marketValue * (1 - MAW:GetAHCut())
 
         productTotalInv = productTotalInv + itemCounts.inventory
         productTotalBank = productTotalBank + itemCounts.bank
@@ -1235,7 +1235,7 @@ function MAWUI:RenderStoresTab(scrollChild, yOffset)
         elseif stats and stats.average then
             marketValue = stats.average * total
         end
-        local ahNetValue = marketValue * 0.95  -- 5% AH cut
+        local ahNetValue = marketValue * (1 - MAW:GetAHCut())
 
         materialTotalInv = materialTotalInv + itemCounts.inventory
         materialTotalBank = materialTotalBank + itemCounts.bank
@@ -1376,12 +1376,12 @@ function MAWUI:RenderStoresTab(scrollChild, yOffset)
         rowX = rowX + widths[6]
 
         -- AH Net value (95% of market value, with same color grading)
-        local ahNetValue = marketValue * 0.95
+        local ahNetValue = marketValue * (1 - MAW:GetAHCut())
         local ahNetText = FormatMoney(ahNetValue)
         local ahNetColor = {r=0.1, g=0.15, b=0.1}
         if stats and stats.low and stats.high then
-            -- Use today's price * 0.95 for color grading, even if total is 0
-            local pricePerItem = (stats.today or stats.average or 0) * 0.95
+            -- Use today's price after the AH cut for color grading, even if total is 0
+            local pricePerItem = (stats.today or stats.average or 0) * (1 - MAW:GetAHCut())
             ahNetColor = GetPriceColor(pricePerItem, stats.low, stats.high, true) -- true = invertColors for products
         end
         local ahNetCell = CreateCell(scrollChild, ahNetText, ahNetColor, widths[7], CELL_HEIGHT)
@@ -1527,12 +1527,12 @@ function MAWUI:RenderStoresTab(scrollChild, yOffset)
         rowX = rowX + widths[6]
 
         -- AH Net value (95% of market value, with same color grading)
-        local ahNetValue = marketValue * 0.95
+        local ahNetValue = marketValue * (1 - MAW:GetAHCut())
         local ahNetText = FormatMoney(ahNetValue)
         local ahNetColor = {r=0.1, g=0.15, b=0.1}
         if stats and stats.low and stats.high then
-            -- Use today's price * 0.95 for color grading, even if total is 0
-            local pricePerItem = (stats.today or stats.average or 0) * 0.95
+            -- Use today's price after the AH cut for color grading, even if total is 0
+            local pricePerItem = (stats.today or stats.average or 0) * (1 - MAW:GetAHCut())
             ahNetColor = GetPriceColor(pricePerItem, stats.low, stats.high, false) -- false = normal colors for materials
         end
         local ahNetCell = CreateCell(scrollChild, ahNetText, ahNetColor, widths[7], CELL_HEIGHT)
@@ -1945,7 +1945,7 @@ local function AttachRecipeTooltip(cell, calc)
         local psrc = calc.productSource and (" (" .. (MAW.SourceLabel and MAW:SourceLabel(calc.productSource) or calc.productSource) .. (calc.productWhen and (", " .. calc.productWhen) or "") .. ")") or ""
         GameTooltip:AddDoubleLine("Product: " .. calc.recipe.product .. " x" .. (calc.recipe.productCount or 1) .. psrc, pright, 1, 1, 1, 1, 0.8, 0.5)
         if calc.complete then
-            GameTooltip:AddDoubleLine("AH net (after 5% cut)", FormatMoney(calc.ahNet), 1, 1, 1, 0.8, 0.8, 0.8)
+            GameTooltip:AddDoubleLine(string.format("AH net (after %d%% cut)", math.floor(MAW:GetAHCut() * 100 + 0.5)), FormatMoney(calc.ahNet), 1, 1, 1, 0.8, 0.8, 0.8)
             GameTooltip:AddDoubleLine("Profit per batch", FormatMoney(calc.profit), 1, 1, 1,
                 calc.profit >= 0 and 0.5 or 1, calc.profit >= 0 and 1 or 0.5, 0.5)
         else
@@ -2078,11 +2078,11 @@ function MAWUI:RenderRecipesTab(scrollChild, yOffset)
     for _, recipe in ipairs(recipes) do
         table.insert(rows, MAW:ComputeRecipeProfit(recipe, MAWUI.recipeBasis))
     end
-    -- Most profitable first; recipes without prices go to the bottom
+    -- Best margin first; recipes without prices go to the bottom
     table.sort(rows, function(a, b)
-        local pa = a.profit or -math.huge
-        local pb = b.profit or -math.huge
-        if pa ~= pb then return pa > pb end
+        local ma = a.margin or -math.huge
+        local mb = b.margin or -math.huge
+        if ma ~= mb then return ma > mb end
         return a.recipe.name < b.recipe.name
     end)
 

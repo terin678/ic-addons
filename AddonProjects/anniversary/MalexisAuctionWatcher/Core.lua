@@ -192,6 +192,13 @@ local function SlashCommandHandler(msg)
             print("  /maw sources atr|tsm on|off   - toggle a source")
             print("  /maw sources pull [atr|tsm]   - pull now and report per item")
         end
+    elseif command == "ahcut" then
+        local pct = args[2]
+        if pct and MAW:SetAHCutPercent(pct) then
+            print(addonName .. ": Auction house cut set to " .. tonumber(pct) .. "% (faction AH is 5%, neutral AH is 15%)")
+        else
+            print(string.format("%s: Auction house cut is %d%%. Use /maw ahcut <percent> (faction AH 5, neutral AH 15)", addonName, math.floor(MAW:GetAHCut() * 100 + 0.5)))
+        end
     elseif command == "retention" then
         local days = tonumber(args[2])
         if days and days >= 7 then
@@ -212,6 +219,7 @@ local function SlashCommandHandler(msg)
         print("  /maw recipes - Open the material -> product profit table")
         print("  /maw sources - Show/toggle Auctionator and TSM price feeds")
         print("  /maw retention <days> - Days of price history to keep")
+        print("  /maw ahcut <percent> - Auction house cut used for net values (default 15)")
         print("  /maw scan - Scan auction house for tracked items (merges into a running scan)")
         print("  /maw scan stop - Cancel the running scan")
         print("  /maw scan status - Show scan state")
@@ -245,7 +253,7 @@ eventFrame:SetScript("OnUpdate", function(self, elapsed) MAW:OnUpdateHandler(sel
 eventFrame:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" and arg1 == addonName then
         MAW:InitializeDB()
-        print(addonName .. " v1.8.2 loaded. Type /maw help for commands.")
+        print(addonName .. " v1.9.0 loaded. Type /maw help for commands.")
 
         -- Create minimap button
         if MalexisAuctionWatcherMinimap then

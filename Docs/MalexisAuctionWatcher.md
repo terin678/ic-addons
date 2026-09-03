@@ -101,8 +101,13 @@ when there are fewer than 3 samples, which is too few to trust.
 
 ## Recipes
 
-Profit per batch = product value after the 5% AH cut minus material cost, using each item's
-latest price. Rows sort by profit. Hover a recipe for the full breakdown with sources.
+Profit per batch = product value after the auction house cut minus material cost, using
+each item's latest price. Rows sort by margin, best first. Hover a recipe for the full
+breakdown with sources.
+
+The cut defaults to 15%, the neutral auction house rate, so anything green clears the
+worst case. Faction auction houses take 5%. Change it with `/maw ahcut <percent>`; the
+"AH net" headers on Recipes and Stores show the rate in use.
 
 The "Presets..." menu offers:
 
