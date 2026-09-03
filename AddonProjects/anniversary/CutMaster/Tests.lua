@@ -702,18 +702,65 @@ T.Case("Matcher skips bind on pickup crafts", function()
     T.Eq(index.byID[1], true, "tradeable cut indexed")
 end)
 
-T.Case("FindOrderItems never offers a soulbound craft", function()
-    local savedBook = ns.db.book
-    ns.db.book = {
+T.Case("WantedFromOrder never wants a soulbound craft", function()
+    local book = {
         [1] = { itemID = 1, name = "Tradeable Cut" },
         [2] = { itemID = 2, name = "Soulbound Cut", bindType = 1 },
     }
-    local order = { items = { { itemID = 1, qty = 1 }, { itemID = 2, qty = 1 } } }
-    -- No container API in the test harness, so this asserts the guard rather
-    -- than the bag walk: it must return safely instead of erroring.
-    local found = ns.Trade.FindOrderItems(order)
-    T.Eq(type(found), "table", "returns a table")
-    ns.db.book = savedBook
+    local order = { items = { { itemID = 1, qty = 3 }, { itemID = 2, qty = 1 } } }
+    local wanted = ns.Trade.WantedFromOrder(order, book)
+    T.Eq(wanted[1], 3, "tradeable cut wanted")
+    T.Eq(wanted[2], nil, "soulbound cut never queued, cannot be traded")
+end)
+
+T.Case("WantedFromOrder sums duplicate line items for the same cut", function()
+    local book = { [1] = { itemID = 1, name = "X" } }
+    local order = { items = { { itemID = 1, qty = 2 }, { itemID = 1, qty = 4 } } }
+    T.Eq(ns.Trade.WantedFromOrder(order, book)[1], 6, "quantities summed")
+end)
+
+T.Case("NextFillSlot finds a bag row for a many-of-one order", function()
+    -- Regression for the "only ever adds 2" bug: the fix must never rely on
+    -- coordinates computed before a move, so this simulates a FRESH scan
+    -- each call the same way the real ticker does, against a stack that is
+    -- split across two different bag positions.
+    local wanted = { [50] = 6 }
+    local snapshot = {
+        { bag = 0, slot = 3, itemID = 50, link = "gem50", count = 4 },
+        { bag = 1, slot = 1, itemID = 50, link = "gem50", count = 2 },
+    }
+    local row = ns.Trade.NextFillSlot(wanted, snapshot)
+    T.Eq(row.bag, 0, "first matching row")
+    T.Eq(row.count, 4, "reports the real stack size, not an assumed 1")
+
+    wanted[50] = wanted[50] - row.count
+    T.Eq(wanted[50], 2, "still wants the rest")
+
+    -- A real re-scan happens AFTER row 1's stack has physically left the bag
+    -- (UseContainerItem already moved it), so it would no longer appear.
+    -- Reusing the original snapshot here would just find row 1 again, since
+    -- NextFillSlot has no notion of "already consumed" -- that guarantee
+    -- comes from BagSnapshot() being called fresh each tick in production.
+    local afterFirstMove = { snapshot[2] }
+    local row2 = ns.Trade.NextFillSlot(wanted, afterFirstMove)
+    T.Eq(row2.bag, 1, "second stack found on the next fresh scan")
+end)
+
+T.Case("NextFillSlot handles multiple different gems in one order", function()
+    local wanted = { [10] = 2, [20] = 1 }
+    local snapshot = {
+        { bag = 0, slot = 1, itemID = 99, link = "unrelated", count = 1 },
+        { bag = 0, slot = 2, itemID = 20, link = "gem20", count = 1 },
+        { bag = 0, slot = 3, itemID = 10, link = "gem10", count = 2 },
+    }
+    local row = ns.Trade.NextFillSlot(wanted, snapshot)
+    T.Eq(row.itemID, 20, "skips the unrelated item, finds the first wanted one")
+end)
+
+T.Case("NextFillSlot returns nil once everything is satisfied", function()
+    local wanted = { [1] = 0 }
+    local snapshot = { { bag = 0, slot = 1, itemID = 1, link = "x", count = 5 } }
+    T.Eq(ns.Trade.NextFillSlot(wanted, snapshot), nil, "nothing left to fill")
 end)
 
 T.Case("Loose matching ignores filler words", function()
@@ -993,3 +1040,79 @@ T.Case("IsAvailabilityQuestion requires the ? to be at the end for a bare link",
         "question mark not trailing the message")
 end)
 
+
+T.Case("PrefixNearMiss finds ambiguous unrelated gems sharing a prefix", function()
+    -- The Gingersfury case: "jagged" alone matches two UNRELATED gems, not
+    -- tiers of one family, so this must stay distinct from NearMiss.
+    local book = {
+        [1] = { itemID = 1, name = "Jagged Seaspray Emerald",
+                classID = 3, bindType = 0, match = true, aliases = {} },
+        [2] = { itemID = 2, name = "Jagged Deep Peridot",
+                classID = 3, bindType = 0, match = true, aliases = {} },
+    }
+    local index = ns.Matcher.BuildIndex(book)
+    local text = "looking for jagged and do you happen to be an enchanter as well?"
+    local word, ids = ns.Matcher.PrefixNearMiss(ns.Util.Normalize(text), index)
+    T.Eq(word, "jagged", "prefix found")
+    T.Eq(#ids, 2, "both unrelated gems returned, not merged as one family")
+end)
+
+T.Case("PrefixNearMiss requires the exact token, not a substring", function()
+    local book = {
+        [1] = { itemID = 1, name = "Jagged Seaspray Emerald",
+                classID = 3, bindType = 0, match = true, aliases = {} },
+    }
+    local index = ns.Matcher.BuildIndex(book)
+    T.Eq(ns.Matcher.PrefixNearMiss(ns.Util.Normalize("ragged old boots"), index),
+        nil, "does not fire on an unrelated word containing similar letters")
+end)
+
+T.Case("PrefixNearMiss stays silent below the length gate", function()
+    -- "bold" is 4 letters and appears constantly in unrelated chat
+    -- ("bold move", "boldly"). Must not surface even as a local-only note.
+    local book = {
+        [1] = { itemID = 1, name = "Bold Living Ruby",
+                classID = 3, bindType = 0, match = true, aliases = {} },
+    }
+    local index = ns.Matcher.BuildIndex(book)
+    T.Eq(ns.Matcher.PrefixNearMiss(ns.Util.Normalize("that was a bold move"), index),
+        nil, "short common prefix excluded")
+end)
+
+T.Case("PrefixNearMiss returns nil when nothing shares that prefix", function()
+    local index = ns.Matcher.BuildIndex(fixtureBook())
+    T.Eq(ns.Matcher.PrefixNearMiss(ns.Util.Normalize("lfg deadmines"), index),
+        nil, "no match")
+end)
+
+T.Case("Orders.Open matches regardless of case", function()
+    local saved = ns.db.orders
+    ns.db.orders = { { id = 1, player = "wokenough", status = "grouped", items = {} } }
+    T.Eq(ns.Orders.Open("Wokenough") ~= nil, true,
+        "manually typed lowercase name still found via live proper-case lookup")
+    T.Eq(ns.Orders.Open("WOKENOUGH") ~= nil, true, "all caps also matches")
+    ns.db.orders = saved
+end)
+
+T.Case("Orders.Open still respects done and cancelled regardless of case", function()
+    local saved = ns.db.orders
+    ns.db.orders = { { id = 1, player = "Wokenough", status = "done", items = {} } }
+    T.Eq(ns.Orders.Open("wokenough"), nil, "closed order not returned")
+    ns.db.orders = saved
+end)
+
+T.Case("Classifier scores LF gem crafter as a buyer signal", function()
+    -- The exact Wokenough message: matched the gem, but scored zero buyer
+    -- signal and got blocked by requireBuyerSignal purely on wording.
+    local text = "LF " .. RUBY_LINK .. " crafter"
+    local index = ns.Matcher.BuildIndex(fixtureBook())
+    local norm = ns.Util.Normalize(text)
+    local r = ns.Classifier.Evaluate({
+        norm = norm, raw = text,
+        matched = ns.Matcher.Match(text, norm, index),
+        linkCount = 1,
+        filter = ns.DeepCopy(ns.Defaults.settings.filter),
+    })
+    T.Eq(r.verdict, "invite", "verdict")
+    T.Eq(r.buyerHits.crafter, 2, "crafter scored as a buyer signal")
+end)
