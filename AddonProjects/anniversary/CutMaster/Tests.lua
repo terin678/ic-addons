@@ -849,6 +849,24 @@ T.Case("A bare profession request still invites", function()
     T.Eq(r.verdict, "invite", "still invites when nothing specific was named")
 end)
 
+-- Real Trade chat message from Goopyfloyd that got dropped with
+-- reason "no buyer signal": "LF JEWELCRAFTER" is a professionWords phrase
+-- but was never mirrored into buyerWords, so requireBuyerSignal blocked it
+-- even though isProfReq was true.
+T.Case("A profession request worded without 'jc' still invites", function()
+    local r = classify("LF JEWELCRAFTER")
+    T.Eq(r.verdict, "invite", "verdict")
+    T.Eq(r.professionRequest, true, "flagged as a profession request")
+end)
+
+-- Also from Goopyfloyd, same session: "LF SOMEONE WHO CAN MAKE [gem]" matched
+-- the gem name but scored zero buyer signal, since only "can cut" phrasing
+-- was recognised, not "can make".
+T.Case("Someone who can make a named gem is a buyer, not just can cut", function()
+    local r = classify("LF someone who can make bold living ruby")
+    T.Eq(r.verdict, "invite", "verdict")
+end)
+
 T.Case("A profession request naming a cut we DO have invites", function()
     local text = "LF JC for " .. RUBY_LINK
     local index = ns.Matcher.BuildIndex(fixtureBook())
@@ -953,8 +971,51 @@ T.Case("OpenList only counts people who actually joined", function()
     T.Eq(#ns.Orders.OpenList(), 2, "grouped and mats only")
     T.Eq(#ns.Orders.ActiveList(), 3, "pending included in the full picture")
     T.Eq(ns.Orders.PendingCount(), 1, "one still waiting to join")
+    T.Eq(ns.Orders.PendingList()[1].player, "A", "pending list surfaces who it is, not just a count")
     T.Eq(ns.Orders.ByID(3).player, "C", "lookup by id")
     ns.db.orders = saved
+end)
+
+T.Case("ExpireStale cancels a pending order nobody joined for in time", function()
+    local saved = ns.db.orders
+    ns.db.orders = {
+        { id = 1, player = "A", status = "pending", createdAt = 1000, items = {} },
+        { id = 2, player = "B", status = "pending", createdAt = 1290, items = {} },
+        { id = 3, player = "C", status = "grouped", createdAt = 1000, items = {} },
+    }
+    local expired = ns.Orders.ExpireStale(1300, 300)
+    T.Eq(#expired, 1, "only the one past the timeout")
+    T.Eq(ns.Orders.ByID(1).status, "cancelled", "A timed out")
+    T.Eq(ns.Orders.ByID(2).status, "pending", "B is not there yet")
+    T.Eq(ns.Orders.ByID(3).status, "grouped",
+        "already grouped is not touched by the pending timeout")
+    ns.db.orders = saved
+end)
+
+T.Case("CancelPending closes an order for someone who declined", function()
+    local saved = ns.db.orders
+    ns.db.orders = { { id = 1, player = "Goopyfloyd", status = "pending", items = {} } }
+    local o = ns.Orders.CancelPending("Goopyfloyd", 5000)
+    T.Eq(o.status, "cancelled", "declined order is cancelled")
+    T.Eq(ns.Orders.Open("Goopyfloyd"), nil, "no longer open")
+    ns.db.orders = saved
+end)
+
+T.Case("CancelPending leaves an order alone once they have actually grouped", function()
+    local saved = ns.db.orders
+    ns.db.orders = { { id = 1, player = "Goopyfloyd", status = "grouped", items = {} } }
+    local o = ns.Orders.CancelPending("Goopyfloyd", 5000)
+    T.Eq(o, nil, "grouped orders are not what CancelPending touches")
+    T.Eq(ns.Orders.ByID(1).status, "grouped", "unchanged")
+    ns.db.orders = saved
+end)
+
+T.Case("DeclinedName reads a player out of the system decline message", function()
+    local fmt = "%s declines your group invitation."
+    T.Eq(ns.Inviter.DeclinedName("Goopyfloyd declines your group invitation.", fmt),
+        "Goopyfloyd", "name extracted")
+    T.Eq(ns.Inviter.DeclinedName("Something unrelated happened.", fmt), nil,
+        "unrelated system message does not match")
 end)
 
 T.Case("NearMiss reports whether the family name was complete", function()
@@ -1115,4 +1176,76 @@ T.Case("Classifier scores LF gem crafter as a buyer signal", function()
     })
     T.Eq(r.verdict, "invite", "verdict")
     T.Eq(r.buyerHits.crafter, 2, "crafter scored as a buyer signal")
+end)
+
+T.Case("StripLinkText removes a link's display text entirely", function()
+    local msg = "LF JC " .. RUBY_LINK
+    T.Eq(ns.Util.StripLinkText(msg), "LF JC  ", "link and its name both gone")
+end)
+
+T.Case("A linked gem's own name does not loose-match an unrelated gem", function()
+    -- The exact Ruylopez bug: linking Purified Shadow Pearl normalizes to
+    -- "...purified shadow pearl", and "purified"+"pearl" alone used to loose
+    -- match the completely unrelated Purified Jaggal Pearl, silently
+    -- attaching a gem nobody asked for to the order.
+    local shadowPearlLink =
+        "|cff0070dd|Hitem:32836::::::::70:::::1:3524:::::|h[Purified Shadow Pearl]|h|r"
+    local book = {
+        [32836] = { itemID = 32836, name = "Purified Shadow Pearl",
+                    classID = 3, bindType = 0, match = true, aliases = {} },
+        [32833] = { itemID = 32833, name = "Purified Jaggal Pearl",
+                    classID = 3, bindType = 0, match = true, aliases = {} },
+    }
+    local index = ns.Matcher.BuildIndex(book)
+    local text = "LF JC " .. shadowPearlLink
+    local hits = ns.Matcher.Match(text, ns.Util.Normalize(text), index)
+    T.Eq(#hits, 1, "only the linked gem matches")
+    T.Eq(hits[1].itemID, 32836, "Purified Shadow Pearl, not the unrelated Jaggal Pearl")
+end)
+
+T.Case("Loose matching still works for the customer's own typed words", function()
+    -- The fix must not break ordinary shorthand outside of link text.
+    T.Eq(matchIDs("wtb bold ruby")[24033], "loose", "still matches")
+end)
+
+T.Case("Orders.RemoveItem discards one line without touching the rest", function()
+    local o = { items = {
+        { itemID = 1, qty = 2, cut = true },
+        { itemID = 2, qty = 1 },
+        { itemID = 3, qty = 4, cut = true },
+    }, needsSplit = false }
+    T.Eq(ns.Orders.RemoveItem(o, 2), true, "removed")
+    T.Eq(#o.items, 2, "one line gone")
+    T.Eq(o.items[1].itemID, 1, "first item untouched")
+    T.Eq(o.items[2].itemID, 3, "third item untouched")
+end)
+
+T.Case("Orders.RemoveItem returns false for an item not on the order", function()
+    local o = { items = { { itemID = 1, qty = 1 } }, needsSplit = false }
+    T.Eq(ns.Orders.RemoveItem(o, 99), false, "nothing to remove")
+    T.Eq(#o.items, 1, "unchanged")
+end)
+
+T.Case("Orders.RemoveItem clears needsSplit once no ambiguous line remains", function()
+    local o = { items = {
+        { itemID = 1, qty = 1, qtySource = "ambiguous" },
+        { itemID = 2, qty = 1, qtySource = "ambiguous" },
+    }, needsSplit = true }
+    ns.Orders.RemoveItem(o, 1)
+    T.Eq(o.needsSplit, true, "the other ambiguous line still needs resolving")
+    ns.Orders.RemoveItem(o, 2)
+    T.Eq(o.needsSplit, false, "cleared once nothing ambiguous is left")
+end)
+
+T.Case("Orders.FindItemByName matches case-insensitively by substring", function()
+    local savedBook = ns.db.book
+    ns.db.book = {
+        [32833] = { itemID = 32833, name = "Purified Jaggal Pearl" },
+        [32836] = { itemID = 32836, name = "Purified Shadow Pearl" },
+    }
+    local o = { items = { { itemID = 32833 }, { itemID = 32836 } } }
+    T.Eq(ns.Orders.FindItemByName(o, "jaggal"), 32833, "matches by substring")
+    T.Eq(ns.Orders.FindItemByName(o, "SHADOW"), 32836, "case insensitive")
+    T.Eq(ns.Orders.FindItemByName(o, "topaz"), nil, "no match returns nil")
+    ns.db.book = savedBook
 end)

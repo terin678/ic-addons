@@ -106,6 +106,43 @@ function Orders.SetStatus(o, status, now)
     if status == "done" then o.completedAt = now end
 end
 
+-- There was previously no way to discard one wrong or stale line item
+-- without cancelling the whole order, right-clicking the header ("removes
+-- the order") or leaving the tracker permanently stuck on an item nobody
+-- ever intends to fulfil (nothing to tick, order can never auto-complete).
+-- Returns true if something was removed.
+function Orders.RemoveItem(o, itemID)
+    local removed = false
+    for i = #o.items, 1, -1 do
+        if o.items[i].itemID == itemID then
+            table.remove(o.items, i)
+            removed = true
+        end
+    end
+    if removed then
+        local stillAmbiguous = false
+        for _, it in ipairs(o.items) do
+            if it.qtySource == "ambiguous" then stillAmbiguous = true break end
+        end
+        o.needsSplit = stillAmbiguous
+    end
+    return removed
+end
+
+-- Case-insensitive substring match on the item's name, since a slash command
+-- user has the gem's name in front of them, not its itemID.
+function Orders.FindItemByName(o, text)
+    text = ns.Util.Normalize(text)
+    if text == "" then return nil end
+    for _, it in ipairs(o.items) do
+        local e = ns.db.book[it.itemID]
+        if e and e.name and ns.Util.Normalize(e.name):find(text, 1, true) then
+            return it.itemID
+        end
+    end
+    return nil
+end
+
 function Orders.Summarise(o)
     local parts = {}
     for _, it in ipairs(o.items) do
@@ -214,17 +251,51 @@ function Orders.ActiveList()
     return out
 end
 
-function Orders.PendingCount()
-    local n = 0
+-- Not counted as open work (see OpenList above), but still worth seeing and
+-- still cancellable, so the Tracker has something to render for it.
+function Orders.PendingList()
+    local out = {}
     for _, o in ipairs(ns.db.orders) do
-        if o.status == "pending" then n = n + 1 end
+        if o.status == "pending" then out[#out + 1] = o end
     end
-    return n
+    return out
+end
+
+function Orders.PendingCount()
+    return #Orders.PendingList()
 end
 
 function Orders.ByID(id)
     for _, o in ipairs(ns.db.orders) do
         if o.id == id then return o end
+    end
+    return nil
+end
+
+-- A pending order nobody ever joined for is not real work in progress: they
+-- may have missed the invite, alt-tabbed, or simply changed their mind. Left
+-- alone it sits in the queue forever looking like a live customer. Only
+-- "pending" is touched: once someone has actually grouped up, a slow reply
+-- is not the same problem and should not be auto-cancelled out from under
+-- them.
+function Orders.ExpireStale(now, timeoutSec)
+    local expired = {}
+    for _, o in ipairs(ns.db.orders) do
+        if o.status == "pending" and (now - o.createdAt) >= timeoutSec then
+            Orders.SetStatus(o, "cancelled", now)
+            expired[#expired + 1] = o
+        end
+    end
+    return expired
+end
+
+-- Declining is a faster, explicit version of the same thing: no need to wait
+-- out the timeout once they have said no outright.
+function Orders.CancelPending(player, now)
+    local o = Orders.Open(player)
+    if o and o.status == "pending" then
+        Orders.SetStatus(o, "cancelled", now)
+        return o
     end
     return nil
 end
@@ -243,4 +314,29 @@ function Orders.PromoteGrouped(now)
     end
     if promoted > 0 and ns.Tracker then ns.Tracker.Notify() end
     return promoted
+end
+
+-- Checking every 5 min for a 5 min timeout would let one slip through for
+-- nearly double the configured window. A minute is close enough without
+-- being wasteful.
+local POLL_INTERVAL = 60
+
+function Orders.Poll()
+    if not ns.Enabled() then return end
+    local timeout = ns.db.settings.orders.pendingTimeoutSec
+    if not timeout or timeout <= 0 then return end
+
+    local now = GetServerTime and GetServerTime() or time()
+    local expired = Orders.ExpireStale(now, timeout)
+    for _, o in ipairs(expired) do
+        ns.Print(string.format(
+            "|cff888888order #%d for %s expired, never joined within %d min.|r",
+            o.id, o.player, math.floor(timeout / 60)))
+    end
+    if #expired > 0 and ns.Tracker then ns.Tracker.Refresh() end
+end
+
+function Orders.StartExpiryTicker()
+    if Orders.expiryTicker then Orders.expiryTicker:Cancel() end
+    Orders.expiryTicker = C_Timer.NewTicker(POLL_INTERVAL, Orders.Poll)
 end

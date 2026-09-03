@@ -68,11 +68,17 @@ your group. Quantities come from the mats they hand you, not what they typed, be
 people say "bold living ruby" and then trade three. If the mats fit two cuts they
 asked for, CutMaster refuses to guess and asks you to set the split in **Orders**.
 
+While waiting to join, an order is *pending*, not open, so it never inflates your
+working queue with people who wandered off. It auto-cancels after 5 minutes if they
+never show, and instantly if they decline the invite outright -- no need to babysit it.
+
 The **Tracker** (`/cm tracker`, or middle-click the minimap icon) is a slim window you
 can leave on screen: open orders, a tick box per gem, ticking the last one closes the
-order, right-click a name to cancel. Its own small **On/Off** button pauses everything
-(same as `/cm disable`/`/cm enable`) without alt-tabbing to type a command -- handy for
-stepping away from the keyboard for a minute.
+order, right-click a name to cancel. Pending orders show up here too, greyed out and
+right-clickable to cancel by hand, so you are never stuck waiting on someone with no way
+to act on it. Its own small **On/Off** button pauses everything (same as `/cm
+disable`/`/cm enable`) without alt-tabbing to type a command -- handy for stepping away
+from the keyboard for a minute.
 
 ### Fills the trade window
 
