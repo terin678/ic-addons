@@ -49,6 +49,9 @@ API changes. `scripts/package.ps1` bundles required addons into the zip and
   library supplies the window, the tabs and every button in the guild palette, so never
   hand-roll a control or paint one with literal colours.
 - After editing any UI file, run the `wow-ui-reviewer` agent on it before packaging.
+- Calling into the client: read `client-api.md` next to this file first. It is the list of
+  contracts that have already shipped broken here, symptom first, and it is shorter than
+  the time one of them costs. Add to it whenever the game teaches you something new.
 - A function written inside a constructor cannot see the local being assigned:
   `local t = UI.Table(page, { onClick = function() t:... end })` reads a nil global,
   because `t` only exists after the assignment finishes. Declare it on its own line
@@ -59,7 +62,20 @@ API changes. `scripts/package.ps1` bundles required addons into the zip and
 
 ## Verifying
 
-There is no Lua on the machine and no tests. Say so in the summary and give the player the
+There is no Lua interpreter on the machine, so nothing here runs outside the game. Three
+things stand in for that, in order:
+
+1. `python scripts/lint.py` before packaging. It parses every file, and catches the
+   mistakes that have shipped: a local referenced inside its own assignment, a texture path
+   that does not resolve, a `.toc` out of step with the files on disk, and a version that
+   moved in one place but not the other three. Fix everything it prints.
+2. `TradeMaster/Tests.lua` runs in game with `/tm test` and holds 100 cases. Any decision
+   worth arguing about belongs in a pure function with a case here, and a case that asserts
+   an ordering must have that ordering worked out rather than assumed. MalexisAuctionWatcher
+   has no test file yet.
+3. The `wow-ui-reviewer` agent on every UI file touched.
+
+Then say plainly in the summary that nothing was run in the client, and give the player the
 in-game steps: `/reload`, the commands to run, and to check BugSack. Prefer changes that
 fail loudly in chat over ones that fail silently.
 

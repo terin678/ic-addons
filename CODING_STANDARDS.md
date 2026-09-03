@@ -86,6 +86,9 @@ AddonName/
 - Timestamps in lists show relative age (12s, 5m, 3h, 2d). The exact time goes in the tooltip.
 - A button that toggles something shows the current state in its label or colour, and the
   page refreshes after the click.
+- A toggle that changes which rows a list shows is saved state, not session state. Kept on a
+  Lua table it resets on reload, and a list that comes back empty reads as lost data rather
+  than as a filter. Say how many rows are being held back, too.
 - Colours follow the User-facing text section: green good or on, red bad or off or vetoed,
   amber pending or derived, grey missing or finished. One meaning per colour per addon.
 - Build lists with the shared widget library `LibICUI-1.0` (ICLibs) through the addon's own
