@@ -2,7 +2,7 @@
 ## Title: Malexis Auction Watcher
 ## Notes: Tracks auction house prices for user-defined items with timestamps
 ## Author: Malexis
-## Version: 1.16.1
+## Version: 1.17.0
 ## SavedVariables: MalexisAuctionWatcherDB
 ## SavedVariablesPerCharacter: MalexisAuctionWatcherCharDB
 ## Dependencies: ICLibs
@@ -26,3 +26,4 @@ Chart.lua
 UI.lua
 AHTab.lua
 Minimap.lua
+Tests.lua

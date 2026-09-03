@@ -171,4 +171,27 @@ function MAW:EnsureItemOrders()
     end
 end
 
+-- The auction house category an item sits in, for grouping the History picker.
+--
+-- Return 6 of GetItemInfo is the localized class name ("Trade Goods", "Gem",
+-- "Consumable") and those are exactly the auction house's own headings, so it
+-- needs no mapping table and is right in every locale. GetItemInfo answers
+-- nothing at all for an item this client has never cached, so the answer is nil
+-- rather than wrong; asking also queues the request, which is why an item filed
+-- under "Other" moves to its real category once you open the menu again.
+-- Cached for the session only. The name is localized, so saving it would keep a
+-- character grouping by the last locale it logged in under and never ask again.
+local classCache = {}
+
+function MAW:GetItemClass(itemName, itemData)
+    itemData = itemData or (self:GetActiveDB().items or {})[itemName]
+    local key = (itemData and itemData.itemID) or itemName
+    if classCache[key] then return classCache[key] end
+
+    local _, _, _, _, _, class = GetItemInfo(key)
+    if not class or class == "" then return nil end
+    classCache[key] = class
+    return class
+end
+
 _G.MalexisAuctionWatcher = MAW
