@@ -3211,6 +3211,62 @@ T.Case("Actions: every action is complete enough to bind and draw", function()
     end
 end)
 
+-- Dragging a rule: the gap the cursor is nearest, turned into the index MoveTo
+-- wants. The two differ because MoveTo removes before it inserts.
+local function ruleList(names)
+    local list = {}
+    for index, name in ipairs(names) do
+        list[index] = { name = name, npcID = index, rank = index * MFD.Rules.RANK_STEP }
+    end
+    return list
+end
+
+local function order(list)
+    local names = {}
+    for _, rule in ipairs(list) do
+        names[#names + 1] = rule.name
+    end
+    return table.concat(names, "")
+end
+
+local function drag(names, from, boundary)
+    local list = ruleList(names)
+    MFD.Rules.MoveTo(list, from, MFD.Rules.DropIndex(from, boundary))
+    return order(list)
+end
+
+T.Case("Drag: dropping into either gap touching a rule leaves it alone", function()
+    -- The gap above B and the gap below B both mean "leave B where it is". Get
+    -- this wrong and a rule jumps a place every time you pick it up and put it
+    -- straight back down.
+    T.Eq(drag({ "A", "B", "C", "D" }, 2, 1), "ABCD", "the gap above it")
+    T.Eq(drag({ "A", "B", "C", "D" }, 2, 2), "ABCD", "the gap below it")
+end)
+
+T.Case("Drag: dropping above everything makes it first", function()
+    T.Eq(drag({ "A", "B", "C", "D" }, 3, 0), "CABD", "C to the top")
+end)
+
+T.Case("Drag: dropping below everything makes it last", function()
+    T.Eq(drag({ "A", "B", "C", "D" }, 1, 4), "BCDA", "A to the bottom")
+end)
+
+T.Case("Drag: dropping downward lands in the gap the line was drawn in", function()
+    T.Eq(drag({ "A", "B", "C", "D" }, 1, 3), "BCAD", "A between C and D")
+end)
+
+T.Case("Drag: dropping upward lands in the gap the line was drawn in", function()
+    T.Eq(drag({ "A", "B", "C", "D" }, 4, 1), "ADBC", "D between A and B")
+end)
+
+T.Case("Drag: a move renumbers every rank, so priority still reads top down", function()
+    local list = ruleList({ "A", "B", "C" })
+    MFD.Rules.MoveTo(list, 1, MFD.Rules.DropIndex(1, 3))
+    for index, rule in ipairs(list) do
+        T.Eq(rule.rank, index * MFD.Rules.RANK_STEP, "rank " .. index)
+    end
+end)
+
 T.Case("Actions: no button face can outgrow its button", function()
     -- This is the bug it guards: "Tank: On everywhere" was drawn straight over
     -- the button beside it. The face is clipped now as well, but a label that

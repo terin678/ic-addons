@@ -309,6 +309,20 @@ end
 -- Reorder shifts by one for the arrow buttons; this names an absolute
 -- destination, which is what dragging needs. Ten rows is ten arrow clicks and
 -- one drag.
+-- Turns "the cursor is at gap N" into the index MoveTo should be given.
+--
+-- The two are not the same number. Gaps are counted from 0 above the first row,
+-- but MoveTo removes the dragged rule before re-inserting it, so everything
+-- below has already shifted up by one by the time the insertion happens.
+-- Dropping a rule into either gap touching itself has to be a no-op, and this
+-- is the arithmetic that makes it one. Pure.
+function Rules.DropIndex(from, boundary)
+    if boundary >= from then
+        return boundary
+    end
+    return boundary + 1
+end
+
 function Rules.MoveTo(list, fromIndex, toIndex)
     if fromIndex < 1 or fromIndex > #list or toIndex < 1 or toIndex > #list then
         return list

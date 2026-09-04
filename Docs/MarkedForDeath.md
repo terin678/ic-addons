@@ -260,6 +260,13 @@ It is checked once at login too, and it will not touch another addon's settings 
 4. Hover the minimap skull. It tells you the active rule count, who is marking, and
    warns in red if anything would stop marking from working.
 
+### Reordering rules
+
+Every rule row has a **grip** at its left, three short lines. Grab it and drag the row
+anywhere in the list; a gold bar shows the gap it will land in, and a label follows the
+cursor so you know what you are carrying. The arrows are still there for nudging something
+one place, but you do not need ten clicks to move a rule ten rows.
+
 Rules are filed per zone and switch automatically. They ship empty on purpose: the addon
 never guesses your guild's kill order, because a confidently wrong mark is worse than no
 mark.

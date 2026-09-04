@@ -14,6 +14,12 @@ local ICON_ORDER = { 8, 7, 6, 2, 5, 1, 4, 3 }
 
 -- Returns a reusable row from pool, creating it only when the pool is short.
 -- Shared by every list in the addon so no list churns frames on refresh.
+-- Rows start this far below the top of their list. Exported because anything
+-- that positions against the row grid has to use the same number: the drop
+-- marker did not, and drew its line two thirds of the way into the row above
+-- the gap it was meant to be in.
+MFD.UI.ROW_TOP_PADDING = 8
+
 function MFD.UI.AcquireRow(parent, pool, index, height)
     local row = pool[index]
     if not row then
@@ -23,7 +29,7 @@ function MFD.UI.AcquireRow(parent, pool, index, height)
         row:SetPoint("RIGHT", parent, "RIGHT", -8, 0)
         pool[index] = row
     end
-    row:SetPoint("TOP", parent, "TOP", 0, -((index - 1) * height) - 8)
+    row:SetPoint("TOP", parent, "TOP", 0, -((index - 1) * height) - MFD.UI.ROW_TOP_PADDING)
     row:Show()
     return row
 end
@@ -394,10 +400,11 @@ end
 local dragIndex
 local dropMarker
 
--- Turns a cursor position into the row index it is over. Rows are a fixed
--- height stacked from the top of the list, so this is arithmetic rather than a
--- hit test against every row.
-local function rowIndexAtCursor(count)
+-- Turns the cursor position into a gap between rows: 0 is above the first row,
+-- count is below the last. Rounding rather than flooring is what makes the drop
+-- land where the line is drawn, because the line marks a boundary and the
+-- cursor should pick the nearest one.
+local function boundaryAtCursor(count)
     if not rulesFrame or count == 0 then
         return nil
     end
@@ -409,14 +416,67 @@ local function rowIndexAtCursor(count)
         return nil
     end
 
-    local offset = top - (cursorY / scale)
-    local index = math.floor(offset / RULE_ROW_HEIGHT) + 1
-    if index < 1 then
-        index = 1
-    elseif index > count then
-        index = count
+    local offset = top - (cursorY / scale) - MFD.UI.ROW_TOP_PADDING
+    local boundary = math.floor(offset / RULE_ROW_HEIGHT + 0.5)
+    if boundary < 0 then
+        boundary = 0
+    elseif boundary > count then
+        boundary = count
     end
-    return index
+    return boundary
+end
+
+-- The label that follows the cursor while dragging, so it is obvious what is
+-- being moved and not just that something is.
+local dragGhost
+
+local function ensureDragGhost()
+    if dragGhost then
+        return dragGhost
+    end
+
+    dragGhost = CreateFrame("Frame", nil, UIParent)
+    dragGhost:SetFrameStrata("TOOLTIP")
+    dragGhost:SetSize(180, 20)
+    dragGhost:Hide()
+
+    dragGhost.bg = dragGhost:CreateTexture(nil, "BACKGROUND")
+    dragGhost.bg:SetAllPoints()
+    dragGhost.bg:SetColorTexture(0, 0, 0, 0.8)
+
+    dragGhost.text = dragGhost:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    dragGhost.text:SetPoint("LEFT", dragGhost, "LEFT", 6, 0)
+    dragGhost.text:SetPoint("RIGHT", dragGhost, "RIGHT", -6, 0)
+    dragGhost.text:SetJustifyH("LEFT")
+    dragGhost.text:SetWordWrap(false)
+
+    return dragGhost
+end
+
+-- Three short lines at the left of a row. Every list that can be reordered on
+-- every other piece of software looks like this, which is the point: an arrow
+-- pair says "click me", and nothing at all said the row could be picked up.
+local function addGripTo(row)
+    local grip = CreateFrame("Frame", nil, row)
+    grip:SetSize(10, RULE_ROW_HEIGHT)
+    grip:SetPoint("LEFT", row, "LEFT", 0, 0)
+
+    grip.lines = {}
+    for index = 1, 3 do
+        local line = grip:CreateTexture(nil, "ARTWORK")
+        line:SetSize(8, 1)
+        line:SetPoint("CENTER", grip, "CENTER", 0, (2 - index) * 3)
+        line:SetColorTexture(1, 1, 1, 0.35)
+        grip.lines[index] = line
+    end
+
+    function grip:SetHighlighted(isOn)
+        for _, line in ipairs(self.lines) do
+            line:SetColorTexture(1, 1, 1, isOn and 0.9 or 0.35)
+        end
+    end
+
+    return grip
 end
 
 local function buildRuleRow(row)
@@ -425,21 +485,55 @@ local function buildRuleRow(row)
     end
     row.isBuilt = true
 
-    -- The whole row is a drag handle. Arrows stay for a one-place nudge; this
-    -- is for moving something ten rows without ten clicks.
+    -- The whole row is a drag handle, and the grip says so. Arrows stay for a
+    -- one-place nudge; this is for moving something ten rows without ten clicks.
     row:EnableMouse(true)
     row:RegisterForDrag("LeftButton")
+
+    row.hoverTexture = row:CreateTexture(nil, "BACKGROUND")
+    row.hoverTexture:SetAllPoints()
+    row.hoverTexture:SetColorTexture(1, 1, 1, 0.07)
+    row.hoverTexture:Hide()
+
+    row.dragTexture = row:CreateTexture(nil, "BACKGROUND")
+    row.dragTexture:SetAllPoints()
+    row.dragTexture:SetColorTexture(1, 0.82, 0, 0.18)
+    row.dragTexture:Hide()
+
+    row.grip = addGripTo(row)
+
+    row:SetScript("OnEnter", function(self)
+        if self.rule and self.isMine and not dragIndex then
+            self.hoverTexture:Show()
+            self.grip:SetHighlighted(true)
+        end
+    end)
+    row:SetScript("OnLeave", function(self)
+        self.hoverTexture:Hide()
+        self.grip:SetHighlighted(false)
+    end)
+
     row:SetScript("OnDragStart", function(self)
         if not self.rule or not self.isMine then
             return
         end
         dragIndex = self.index
+        self.hoverTexture:Hide()
         self.dragTexture:Show()
+
+        local ghost = ensureDragGhost()
+        ghost.text:SetText(self.rule.name or ("npc " .. tostring(self.rule.npcID)))
+        ghost:Show()
     end)
+
     row:SetScript("OnDragStop", function(self)
         self.dragTexture:Hide()
+        self.grip:SetHighlighted(false)
         if dropMarker then
             dropMarker:Hide()
+        end
+        if dragGhost then
+            dragGhost:Hide()
         end
 
         local from = dragIndex
@@ -449,33 +543,20 @@ local function buildRuleRow(row)
         end
 
         local list = localList(self.instanceKey)
-        local to = rowIndexAtCursor(#list)
-        if to and to ~= from then
+        local boundary = boundaryAtCursor(#list)
+        if not boundary then
+            return
+        end
+
+        local to = MFD.Rules.DropIndex(from, boundary)
+        if to ~= from then
             MFD.Rules.MoveTo(list, from, to)
             commitRules()
         end
     end)
-    row:SetScript("OnUpdate", function(self)
-        if not dragIndex or not dropMarker then
-            return
-        end
-        local list = localList(self.instanceKey or "")
-        local to = rowIndexAtCursor(#list)
-        if to then
-            dropMarker:ClearAllPoints()
-            dropMarker:SetPoint("TOPLEFT", rulesFrame.ruleList, "TOPLEFT", 0, -(to - 1) * RULE_ROW_HEIGHT)
-            dropMarker:SetPoint("RIGHT", rulesFrame.ruleList, "RIGHT", 0, 0)
-            dropMarker:Show()
-        end
-    end)
-
-    row.dragTexture = row:CreateTexture(nil, "BACKGROUND")
-    row.dragTexture:SetAllPoints()
-    row.dragTexture:SetColorTexture(1, 1, 1, 0.15)
-    row.dragTexture:Hide()
 
     row.rank = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    row.rank:SetPoint("LEFT", row, "LEFT", 0, 0)
+    row.rank:SetPoint("LEFT", row, "LEFT", 14, 0)
     row.rank:SetWidth(28)
     row.rank:SetJustifyH("RIGHT")
 
@@ -821,7 +902,8 @@ local function buildRulesFrame()
 
     rulesFrame.ruleHint = rulesFrame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     rulesFrame.ruleHint:SetPoint("TOPLEFT", rulesFrame.ruleHeader, "BOTTOMLEFT", 0, -2)
-    rulesFrame.ruleHint:SetText("top = highest priority.  drag a row to move it.  amber = merged from another player")
+    rulesFrame.ruleHint:SetText("top = highest priority.  grab a row by the |cffffd100grip|r on its left to drag it anywhere.  "
+        .. "amber = merged from another player")
 
     rulesFrame.ruleList = CreateFrame("Frame", nil, rulesFrame)
 
@@ -830,10 +912,58 @@ local function buildRulesFrame()
 
     -- Shows where a dragged rule would land. One marker for the whole list
     -- rather than a highlight per row.
-    dropMarker = rulesFrame.ruleList:CreateTexture(nil, "OVERLAY")
-    dropMarker:SetHeight(2)
-    dropMarker:SetColorTexture(0.4, 1, 0.4, 0.9)
+    -- The insertion point, drawn in the gap the rule would land in. A frame
+    -- rather than a bare texture so it can carry an end cap: a plain line
+    -- across the list read as a strike-through of the row it crossed, which is
+    -- exactly what it looked like before the row maths were fixed.
+    dropMarker = CreateFrame("Frame", nil, rulesFrame.ruleList)
+    dropMarker:SetHeight(10)
+    dropMarker:SetFrameLevel(rulesFrame.ruleList:GetFrameLevel() + 10)
     dropMarker:Hide()
+
+    dropMarker.line = dropMarker:CreateTexture(nil, "OVERLAY")
+    dropMarker.line:SetHeight(3)
+    dropMarker.line:SetPoint("LEFT", dropMarker, "LEFT", 8, 0)
+    dropMarker.line:SetPoint("RIGHT", dropMarker, "RIGHT", -8, 0)
+    dropMarker.line:SetColorTexture(1, 0.82, 0, 1)
+
+    dropMarker.capLeft = dropMarker:CreateTexture(nil, "OVERLAY")
+    dropMarker.capLeft:SetSize(3, 10)
+    dropMarker.capLeft:SetPoint("CENTER", dropMarker.line, "LEFT", 0, 0)
+    dropMarker.capLeft:SetColorTexture(1, 0.82, 0, 1)
+
+    dropMarker.capRight = dropMarker:CreateTexture(nil, "OVERLAY")
+    dropMarker.capRight:SetSize(3, 10)
+    dropMarker.capRight:SetPoint("CENTER", dropMarker.line, "RIGHT", 0, 0)
+    dropMarker.capRight:SetColorTexture(1, 0.82, 0, 1)
+
+    -- One driver for the whole list rather than an OnUpdate on every row, which
+    -- had each of them recomputing the same answer every frame.
+    rulesFrame.ruleList:SetScript("OnUpdate", function(self)
+        if not dragIndex then
+            return
+        end
+
+        if dragGhost and dragGhost:IsShown() then
+            local x, y = GetCursorPosition()
+            local scale = UIParent:GetEffectiveScale()
+            dragGhost:ClearAllPoints()
+            dragGhost:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", x / scale + 14, y / scale - 10)
+        end
+
+        local list = localList(RulesUI:TargetKey())
+        local boundary = boundaryAtCursor(#list)
+        if not boundary then
+            dropMarker:Hide()
+            return
+        end
+
+        dropMarker:ClearAllPoints()
+        dropMarker:SetPoint("TOPLEFT", self, "TOPLEFT", 0,
+            -(boundary * RULE_ROW_HEIGHT) - MFD.UI.ROW_TOP_PADDING + 5)
+        dropMarker:SetPoint("RIGHT", self, "RIGHT", 0, 0)
+        dropMarker:Show()
+    end)
 
     rulesFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
     rulesFrame:SetScript("OnEvent", function()
