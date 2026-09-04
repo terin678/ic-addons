@@ -42,6 +42,7 @@ local files = {
     "Conflicts.lua",
     "Chatter.lua",
     "CombatLog.lua",
+    "UI_ActionBar.lua",
     "Comms.lua",
     "RaidCheck.lua",
     "Encounters.lua",

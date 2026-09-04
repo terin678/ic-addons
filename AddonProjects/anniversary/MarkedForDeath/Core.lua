@@ -2,7 +2,7 @@
 local MFD = _G.MarkedForDeath or {}
 
 -- Must match ## Version: in the toc and the packaged zip name.
-MFD.VERSION = "1.18.1"
+MFD.VERSION = "1.18.2"
 
 -- Bumped only when the saved-variable shape changes in a way that needs a
 -- migration. See MFD:MigrateDB.
@@ -76,7 +76,7 @@ local DB_DEFAULTS = {
         -- The mid-pull button bar. Shown by default: buttons nobody can find
         -- are no better than no buttons, which is how the first attempt at
         -- this went.
-        actionBar = { isShown = true, isLocked = false },
+        actionBar = { isShown = true, isLocked = false, onlyInRaid = true },
         -- Death announcements. The two kinds are configured separately all the
         -- way down: their own boss list, their own override, their own people.
         -- Wanting healer calls on Naj'entus and tank calls on Illidan is a

@@ -14,6 +14,24 @@ local PADDING = 8              -- pixels around the buttons
 local TITLE_HEIGHT = 14        -- pixels for the drag strip
 local REFRESH_SECONDS = 0.5    -- how often the stateful buttons repaint
 
+-- Should the bar be on screen? Takes the settings and what GetInstanceInfo
+-- reports for the zone. Pure.
+--
+-- These are buttons for running a raid. Outside one they are a box sitting on
+-- the screen while you post auctions, so by default the bar goes away with the
+-- job it is for and comes back when you zone in.
+function Bar.ShouldShow(settings, zoneType)
+    if not settings or not settings.isShown then
+        return false
+    end
+
+    if not settings.onlyInRaid then
+        return true
+    end
+
+    return zoneType == "raid"
+end
+
 local frame
 
 local function settings()
@@ -147,10 +165,21 @@ function Bar:UpdateLock()
     frame.bg:SetColorTexture(0, 0, 0, isLocked and 0.3 or 0.55)
 end
 
-function Bar:SetShown(isShown)
-    settings().isShown = isShown and true or false
+-- Puts the bar on screen or takes it off, from whatever the settings and the
+-- current zone say. Everything that could change the answer calls this.
+function Bar:Evaluate()
+    if not MFD.db then
+        return
+    end
 
-    if isShown then
+    local ok, zoneType = pcall(function()
+        local _, kind = GetInstanceInfo()
+        return kind
+    end)
+
+    local wanted = Bar.ShouldShow(settings(), ok and zoneType or nil)
+
+    if wanted then
         if not frame then
             build()
         end
@@ -158,11 +187,29 @@ function Bar:SetShown(isShown)
     elseif frame then
         frame:Hide()
     end
+
+    return wanted
+end
+
+function Bar:SetShown(isShown)
+    settings().isShown = isShown and true or false
+    Bar:Evaluate()
 end
 
 function Bar:Toggle()
     Bar:SetShown(not settings().isShown)
-    MFD.Print("action bar " .. (settings().isShown and "shown" or "hidden"))
+
+    if not settings().isShown then
+        MFD.Print("action bar hidden")
+        return
+    end
+
+    -- Turning it on outside a raid otherwise looks like the button did nothing.
+    if not Bar:Evaluate() then
+        MFD.Print("action bar shown, but it is set to raids only so it stays hidden until you zone in")
+    else
+        MFD.Print("action bar shown")
+    end
 end
 
 -- Puts the bar back in the middle of the screen at its default size, for when
@@ -180,9 +227,26 @@ function Bar:Reset()
 end
 
 MFD.RegisterInit(function()
-    if settings().isShown then
-        Bar:SetShown(true)
-    end
+    -- The same zone events and the same settle delay the combat log toggle
+    -- uses, for the same reason: GetInstanceInfo is not reliable the instant a
+    -- loading screen ends.
+    local watcher = CreateFrame("Frame")
+    watcher:RegisterEvent("PLAYER_ENTERING_WORLD")
+    watcher:RegisterEvent("ZONE_CHANGED_NEW_AREA")
+
+    local pending = false
+    watcher:SetScript("OnEvent", function()
+        if pending or not C_Timer then
+            return
+        end
+        pending = true
+        C_Timer.After(MFD.CombatLog.SETTLE_SECONDS, function()
+            pending = false
+            pcall(Bar.Evaluate, Bar)
+        end)
+    end)
+
+    Bar:Evaluate()
 end)
 
 _G.MarkedForDeath = MFD

@@ -3292,6 +3292,27 @@ T.Case("Announce: adds can be switched off entirely for a Hyjal night", function
         pullOpts({ allowAdds = false })), false, "silent whatever arrives")
 end)
 
+-- The action bar is for running a raid, so by default it goes away with the job
+-- it is for rather than sitting on the screen while you post auctions.
+T.Case("ActionBar: in a raid it shows, elsewhere it does not", function()
+    local raidOnly = { isShown = true, onlyInRaid = true }
+    T.Eq(MFD.UI.ActionBar.ShouldShow(raidOnly, "raid"), true, "in a raid")
+    T.Eq(MFD.UI.ActionBar.ShouldShow(raidOnly, "party"), false, "a five man is not one")
+    T.Eq(MFD.UI.ActionBar.ShouldShow(raidOnly, "none"), false, "out in the world")
+    T.Eq(MFD.UI.ActionBar.ShouldShow(raidOnly, nil), false, "and when the zone is not known yet")
+end)
+
+T.Case("ActionBar: turned off it stays off, raid or not", function()
+    T.Eq(MFD.UI.ActionBar.ShouldShow({ isShown = false, onlyInRaid = true }, "raid"), false, "hidden is hidden")
+    T.Eq(MFD.UI.ActionBar.ShouldShow({ isShown = false, onlyInRaid = false }, "raid"), false, "still hidden")
+end)
+
+T.Case("ActionBar: without the raid rule it shows anywhere", function()
+    local anywhere = { isShown = true, onlyInRaid = false }
+    T.Eq(MFD.UI.ActionBar.ShouldShow(anywhere, "none"), true, "in the world")
+    T.Eq(MFD.UI.ActionBar.ShouldShow(anywhere, "raid"), true, "and in a raid")
+end)
+
 -- The log exists to be read off disk after a raid, so what it writes has to
 -- make sense without the addon's own tables to decode it against.
 local L = MFD.Log

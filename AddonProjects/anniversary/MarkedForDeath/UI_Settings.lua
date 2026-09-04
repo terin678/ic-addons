@@ -128,6 +128,15 @@ local TOGGLES = {
         set = function(v) MFD.UI.ActionBar:SetShown(v) end,
     },
     {
+        label = "Only show the action bar in a raid",
+        tip = "These are buttons for running a raid, so by default the bar goes away with the job it is for and comes back when you zone in. Turn this off to keep it on screen everywhere.",
+        get = function() return MFD.db.settings.actionBar.onlyInRaid end,
+        set = function(v)
+            MFD.db.settings.actionBar.onlyInRaid = v
+            MFD.UI.ActionBar:Evaluate()
+        end,
+    },
+    {
         label = "Lock the action bar",
         tip = "Hides its resize grip and refuses drags, so a stray click mid-fight cannot shove it across the screen. /mfd bar reset puts it back in the middle.",
         get = function() return MFD.db.settings.actionBar.isLocked end,

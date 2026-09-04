@@ -79,6 +79,10 @@ frames, or a vertical strip down the edge. It remembers position and size per ch
 Lock it in Settings once it is where you want it, and the grip disappears so a stray click
 mid-fight cannot shove it across the screen.
 
+**It only appears inside a raid.** These are buttons for running one, and outside a raid
+the bar is just a box sitting on your screen while you post auctions. It comes back on its
+own when you zone in. Turn that off in Settings to keep it up everywhere.
+
 It is on by default. `/mfd bar` hides and shows it, `/mfd bar lock` locks it, and
 `/mfd bar reset` puts it back in the middle if it ends up somewhere unreachable.
 
