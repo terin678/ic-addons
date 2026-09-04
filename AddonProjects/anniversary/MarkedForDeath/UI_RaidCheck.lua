@@ -47,6 +47,43 @@ local function presence(value, isMissing)
     return GREEN .. "yes|r"
 end
 
+local ICON_SIZE = 14        -- pixels per buff icon
+local ICON_GAP = 2          -- pixels between blessing icons
+
+-- Paints one icon to say present, missing or unknown.
+--
+-- Colour carries the meaning, not the picture: full colour is present, a
+-- desaturated red one is missing and worth fixing, a desaturated grey one is
+-- absent but nobody's problem. The icon itself says which buff, which is the
+-- thing a word column made you read.
+local function paintIcon(texture, iconPath, value, isMissing)
+    if not iconPath then
+        texture:Hide()
+        return false
+    end
+
+    texture:SetTexture(iconPath)
+    texture:Show()
+
+    if value == true then
+        texture:SetDesaturated(false)
+        texture:SetVertexColor(1, 1, 1)
+    elseif value == false then
+        texture:SetDesaturated(true)
+        if isMissing then
+            texture:SetVertexColor(1, 0.3, 0.3)
+        else
+            texture:SetVertexColor(0.45, 0.45, 0.45)
+        end
+    else
+        -- Unknown. Dimmer than an absence, because "no data" is not "no buff".
+        texture:SetDesaturated(true)
+        texture:SetVertexColor(0.3, 0.3, 0.3)
+    end
+
+    return true
+end
+
 -- Returns the text for one cell of one player's entry.
 local function cellText(column, entry)
     local state, missingSet = entry.row.state, entry.missingSet
@@ -74,14 +111,14 @@ local function cellText(column, entry)
     elseif MFD.Data.Auras.RAID_BUFFS[column] then
         return presence(state[column], missingSet[column])
     elseif column == "BLESSINGS" then
-        -- Which ones they hold, named, plus how far short they are. Someone
-        -- with Kings but no Salvation needs to see the names, not a tick.
+        -- The icons are drawn separately; this is only the shortfall count that
+        -- rides alongside them, and the words for anyone whose blessing icons
+        -- have not been seen yet.
         local short = entry.missingShort
-        local held = #state.blessings > 0 and table.concat(state.blessings, " ") or (GREY .. "none|r")
         if short then
-            return held .. "  " .. RED .. "(" .. short.have .. "/" .. short.expected .. ")|r"
+            return RED .. "(" .. short.have .. "/" .. short.expected .. ")|r"
         end
-        return held
+        return ""
     elseif column == "DUR" then
         local d = state.durability
         if d == nil then
@@ -141,13 +178,72 @@ local function buildRow(row)
             text:SetJustifyH("LEFT")
             -- One line, always. A cell with a width wraps by default, and a
             -- second line has nowhere to go in an 18 pixel row: it would draw
-            -- over the person below. Five blessings and a shortfall count is
-            -- the case that gets close to the edge. Clipping is the honest
-            -- failure here; overlapping two players' data is not.
+            -- over the person below. Clipping is the honest failure here;
+            -- overlapping two players' data is not.
             text:SetWordWrap(false)
             row.cells[column.key] = text
+
+            -- Raid buffs get an icon in front of the text. The text stays as
+            -- the fallback for a buff whose icon this client has not seen on
+            -- anybody yet, so the column always says something.
+            if MFD.Data.Auras.RAID_BUFFS[column.key] then
+                local icon = row:CreateTexture(nil, "ARTWORK")
+                icon:SetSize(ICON_SIZE, ICON_SIZE)
+                icon:SetPoint("LEFT", row, "LEFT", column.x, 0)
+                icon:Hide()
+                row.icons = row.icons or {}
+                row.icons[column.key] = icon
+            end
         end
     end
+
+    -- A pool of blessing icons, one per blessing anybody can hold.
+    row.blessingIcons = {}
+    for index = 1, 6 do
+        local icon = row:CreateTexture(nil, "ARTWORK")
+        icon:SetSize(ICON_SIZE, ICON_SIZE)
+        icon:Hide()
+        row.blessingIcons[index] = icon
+    end
+end
+
+-- Draws the blessings somebody holds as their own icons, left to right, with
+-- the shortfall count following them. Returns the x offset the count should
+-- start at, so it never lands on top of an icon.
+local function paintBlessings(row, entry, column)
+    local learned = MFD.db.learnedAuraIcons
+    local state = entry.row.state
+    local drawn = 0
+
+    for _, label in ipairs(state.blessings) do
+        -- The names in the aura table map to labels; find one that maps back to
+        -- this label and whose icon has been seen.
+        local iconPath
+        for name, mapped in pairs(MFD.Data.Auras.BLESSINGS) do
+            if mapped == label and learned[name] then
+                iconPath = learned[name]
+                break
+            end
+        end
+
+        if iconPath and drawn < #row.blessingIcons then
+            drawn = drawn + 1
+            local icon = row.blessingIcons[drawn]
+            icon:SetTexture(iconPath)
+            icon:ClearAllPoints()
+            icon:SetPoint("LEFT", row, "LEFT",
+                column.x + (drawn - 1) * (ICON_SIZE + ICON_GAP), 0)
+            icon:SetDesaturated(false)
+            icon:SetVertexColor(1, 1, 1)
+            icon:Show()
+        end
+    end
+
+    for index = drawn + 1, #row.blessingIcons do
+        row.blessingIcons[index]:Hide()
+    end
+
+    return column.x + drawn * (ICON_SIZE + ICON_GAP), drawn
 end
 
 local function missingSetFor(entry)
@@ -201,9 +297,31 @@ function Grid:Refresh()
         local nameColor = entry.row.isReported and "" or AMBER
         row.cells.NAME.text:SetText(nameColor .. entry.name .. (nameColor ~= "" and "|r" or ""))
 
+        local learned = MFD.db.learnedAuraIcons
+
         for _, column in ipairs(COLUMNS) do
-            if column.key ~= "NAME" then
-                row.cells[column.key]:SetText(cellText(column.key, entry))
+            if column.key == "NAME" then
+                -- Already painted above.
+            elseif column.key == "BLESSINGS" then
+                local countX = paintBlessings(row, entry, column)
+                local cell = row.cells.BLESSINGS
+                cell:ClearAllPoints()
+                cell:SetPoint("LEFT", row, "LEFT", countX + 2, 0)
+                cell:SetWidth(column.w - (countX - column.x) - 2)
+                cell:SetText(cellText(column.key, entry))
+            else
+                local buff = MFD.Data.Auras.RAID_BUFFS[column.key]
+                local icon = row.icons and row.icons[column.key]
+                local drewIcon = false
+
+                if buff and icon then
+                    drewIcon = paintIcon(icon, RC.IconFor(buff.names, learned),
+                        entry.row.state[column.key], entry.missingSet[column.key])
+                end
+
+                -- The word only appears when the icon could not, so the column
+                -- is never both at once and never empty.
+                row.cells[column.key]:SetText(drewIcon and "" or cellText(column.key, entry))
             end
         end
     end
@@ -416,9 +534,52 @@ local function buildBoardRow(row)
     end)
 
     row.missing = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    row.missing:SetPoint("LEFT", row.button, "RIGHT", 6, 0)
     row.missing:SetPoint("RIGHT", row, "RIGHT", 0, 0)
     row.missing:SetJustifyH("LEFT")
+
+    -- One icon per thing they are missing, drawn before the words. A row of
+    -- greyed-out icons reads faster than a comma list when you are scanning
+    -- twenty five of them between pulls.
+    row.missingIcons = {}
+    for index = 1, 8 do
+        local icon = row:CreateTexture(nil, "ARTWORK")
+        icon:SetSize(ICON_SIZE, ICON_SIZE)
+        icon:Hide()
+        row.missingIcons[index] = icon
+    end
+end
+
+-- Draws an icon for each missing entry that has one and returns the words for
+-- the rest, so nothing is lost when an icon has not been seen yet.
+local function paintMissingIcons(row, entry, startX)
+    local learned = MFD.db.learnedAuraIcons
+    local buffs = MFD.Data.Auras.RAID_BUFFS
+    local drawn, words = 0, {}
+
+    for _, m in ipairs(entry.missing) do
+        local buff = buffs[m.column]
+        local iconPath = buff and RC.IconFor(buff.names, learned) or nil
+
+        if iconPath and drawn < #row.missingIcons then
+            drawn = drawn + 1
+            local icon = row.missingIcons[drawn]
+            icon:SetTexture(iconPath)
+            icon:ClearAllPoints()
+            icon:SetPoint("LEFT", row, "LEFT", startX + (drawn - 1) * (ICON_SIZE + ICON_GAP), 0)
+            icon:SetDesaturated(true)
+            icon:SetVertexColor(1, 0.3, 0.3)
+            icon:Show()
+        else
+            -- Consumables, blessings and anything not yet seen keep their word.
+            words[#words + 1] = m.label
+        end
+    end
+
+    for index = drawn + 1, #row.missingIcons do
+        row.missingIcons[index]:Hide()
+    end
+
+    return startX + drawn * (ICON_SIZE + ICON_GAP), words
 end
 
 local function paintBoard(view)
@@ -437,13 +598,18 @@ local function paintBoard(view)
             local nameColor = entry.row.isReported and "" or AMBER
             row.button.text:SetText(nameColor .. entry.name .. (nameColor ~= "" and "|r" or ""))
 
+            row.missing:ClearAllPoints()
+            row.missing:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+
             if hasMissing then
-                local labels = {}
-                for _, m in ipairs(entry.missing) do
-                    labels[#labels + 1] = m.label
-                end
-                row.missing:SetText(RED .. table.concat(labels, ", ") .. "|r")
+                local textX, words = paintMissingIcons(row, entry, 106)
+                row.missing:SetPoint("LEFT", row, "LEFT", textX + 4, 0)
+                row.missing:SetText(#words > 0 and (RED .. table.concat(words, ", ") .. "|r") or "")
             else
+                for _, icon in ipairs(row.missingIcons) do
+                    icon:Hide()
+                end
+                row.missing:SetPoint("LEFT", row, "LEFT", 106, 0)
                 row.missing:SetText(GREEN .. "ok|r")
             end
         end

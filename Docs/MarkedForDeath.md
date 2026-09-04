@@ -446,6 +446,17 @@ A buff nobody present can cast is never reported missing; with no mage in the ra
 nobody is "missing Intellect". Blessings are shown, never judged: the grid tells you which
 blessings each person has and leaves which they should have to you.
 
+**The buff columns are icons, not words.** Full colour means they have it, a greyed red
+one means it is missing and worth fixing, a dim grey one means it is absent but nobody's
+problem. The blessings column shows the actual blessing icons somebody is carrying, with
+the shortfall count beside them. The buff board does the same: a row of greyed icons for
+what each person is short.
+
+The icons are learned from the client rather than shipped as a list of texture paths. The
+first time the addon sees Arcane Intellect on anybody it remembers that icon for good, so
+the grid fills in over a raid night and is complete from then on. Anything not yet seen
+falls back to the word, so a column is never blank.
+
 Buffs are recognised by name. If a flask or elixir you are wearing shows as unclassified
 or does not show at all, run `/mfd auras` and send the name along; it is a one-line
 addition to the tables.

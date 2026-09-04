@@ -2662,6 +2662,32 @@ T.Case("Blessings: no paladin means it is never mentioned", function()
     T.Eq(#MFD.RaidCheck.Missing(state, { BLESSING = false, BLESSING_COUNT = 0 }, {}), 0, "nobody can cast one")
 end)
 
+-- Buff icons are learned from the auras the client reports, never written down
+-- as texture paths, so nothing here can be a guess that renders a blank square.
+T.Case("Icons: a name seen once is remembered, and never relearned", function()
+    local learned = {}
+    T.Eq(MFD.RaidCheck.LearnIcons({ ["Arcane Intellect"] = "path/ai" }, learned), 1, "one new")
+    T.Eq(learned["Arcane Intellect"], "path/ai", "filed")
+    T.Eq(MFD.RaidCheck.LearnIcons({ ["Arcane Intellect"] = "path/other" }, learned), 0, "nothing new")
+    T.Eq(learned["Arcane Intellect"], "path/ai", "the first answer stands")
+end)
+
+T.Case("Icons: greater and single ranks answer for the same column", function()
+    local learned = { ["Prayer of Fortitude"] = "path/fort" }
+    local names = MFD.Data.Auras.RAID_BUFFS.FORT.names
+    T.Eq(MFD.RaidCheck.IconFor(names, learned), "path/fort", "the greater one was seen, so the column has an icon")
+end)
+
+T.Case("Icons: a buff nobody has been seen with has none, and falls back to words", function()
+    T.Eq(MFD.RaidCheck.IconFor(MFD.Data.Auras.RAID_BUFFS.AI.names, {}), nil, "nothing yet")
+end)
+
+T.Case("Icons: learning survives a nil or empty batch", function()
+    local learned = {}
+    T.Eq(MFD.RaidCheck.LearnIcons(nil, learned), 0, "nil")
+    T.Eq(MFD.RaidCheck.LearnIcons({}, learned), 0, "empty")
+end)
+
 T.Case("Spirit: Divine Spirit and Prayer of Spirit both count, and are not Shadow Protection", function()
     -- The two are one letter apart in the grid header, so the check that they
     -- are separate buffs is worth writing down.

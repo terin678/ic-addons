@@ -412,19 +412,53 @@ RC.reports = {}
 -- Returns an array of aura names on unit. Reads only the first return of
 -- UnitAura, which is the name on every client build. Wrapped because the
 -- return signature differs across the flavors this repo targets.
+-- Returns the aura names on a unit, and { [name] = iconTexture } alongside.
+--
+-- The icons are read from the client rather than written down here. A table of
+-- texture paths would be forty guesses at strings nobody can verify without
+-- logging in, and the aura itself is carrying the right answer already. What
+-- the addon sees, it remembers.
 function RC.AuraNames(unit)
-    local names = {}
+    local names, icons = {}, {}
     if not UnitAura then
-        return names
+        return names, icons
     end
     for i = 1, 40 do
-        local ok, name = pcall(UnitAura, unit, i, "HELPFUL")
+        local ok, name, _, icon = pcall(UnitAura, unit, i, "HELPFUL")
         if not ok or not name then
             break
         end
         names[#names + 1] = name
+        if icon then
+            icons[name] = icon
+        end
     end
-    return names
+    return names, icons
+end
+
+-- Files newly seen icons. Returns how many were new, so a caller can tell
+-- whether anything changed. Mutates learned.
+function RC.LearnIcons(icons, learned)
+    local added = 0
+    for name, icon in pairs(icons or {}) do
+        if learned[name] == nil then
+            learned[name] = icon
+            added = added + 1
+        end
+    end
+    return added
+end
+
+-- The icon for a buff, given the names it can appear under. Greater and single
+-- ranks share a column, so whichever has been seen answers for both. Returns
+-- nil until one of them has been seen on somebody. Pure.
+function RC.IconFor(names, learned)
+    for _, name in ipairs(names or {}) do
+        if learned[name] then
+            return learned[name]
+        end
+    end
+    return nil
 end
 
 -- Equipped item slots that have durability: head, shoulder, chest, waist,
@@ -478,7 +512,9 @@ end
 -- Reads this client's own state. The only place durability and spec can be
 -- learned from directly, which is why they are self-reported.
 function RC:GatherSelf()
-    local state = RC.Classify(RC.AuraNames("player"))
+    local auraNames, auraIcons = RC.AuraNames("player")
+    RC.LearnIcons(auraIcons, MFD.db.learnedAuraIcons)
+    local state = RC.Classify(auraNames)
     state.version = MFD.VERSION
     state.durability = durabilityPercent()
     state.spec = specName()
@@ -557,7 +593,12 @@ function RC:ScanUnit(unit)
         return
     end
     local _, class = UnitClass(unit)
-    local scanned = RC.Classify(RC.AuraNames(unit))
+    local auraNames, auraIcons = RC.AuraNames(unit)
+    -- Every scan of every player is a chance to learn an icon this client has
+    -- not seen yet, which is why the grid fills in with icons over a raid night
+    -- rather than needing a table of texture paths.
+    RC.LearnIcons(auraIcons, MFD.db.learnedAuraIcons)
+    local scanned = RC.Classify(auraNames)
     -- The local player is their own authority: a client never receives its
     -- own report, so without this the own row would read as scan-only.
     local reported

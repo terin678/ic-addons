@@ -2,7 +2,7 @@
 local MFD = _G.MarkedForDeath or {}
 
 -- Must match ## Version: in the toc and the packaged zip name.
-MFD.VERSION = "1.13.0"
+MFD.VERSION = "1.14.0"
 
 -- Bumped only when the saved-variable shape changes in a way that needs a
 -- migration. See MFD:MigrateDB.
@@ -39,6 +39,10 @@ local DB_DEFAULTS = {
     rulesVersion = { counter = 0, hash = "" },
     designatedLead = { name = "", setBy = "", setAt = 0 },
     learnedMobs = {},
+    -- { [aura name] = icon texture }, filled in as the addon sees buffs on
+    -- people. Saved, so the grid is icons from the second raid night onward
+    -- without anyone having written a texture path down.
+    learnedAuraIcons = {},
     settings = {
         -- The master switch. Off means the addon takes no action of its own:
         -- no icons, no chat, no warnings. Windows still open so it can be
