@@ -12,28 +12,6 @@ local ROW_HEIGHT = 24   -- pixels
 -- raid reads a pack. Cosmetic only; the role plan itself is keyed by icon.
 local ICON_ORDER = { 8, 7, 6, 2, 5, 1, 4, 3 }
 
--- Returns a reusable row from pool, creating it only when the pool is short.
--- Shared by every list in the addon so no list churns frames on refresh.
--- Rows start this far below the top of their list. Exported because anything
--- that positions against the row grid has to use the same number: the drop
--- marker did not, and drew its line two thirds of the way into the row above
--- the gap it was meant to be in.
-MFD.UI.ROW_TOP_PADDING = 8
-
-function MFD.UI.AcquireRow(parent, pool, index, height)
-    local row = pool[index]
-    if not row then
-        row = CreateFrame("Frame", nil, parent)
-        row:SetHeight(height)
-        row:SetPoint("LEFT", parent, "LEFT", 8, 0)
-        row:SetPoint("RIGHT", parent, "RIGHT", -8, 0)
-        pool[index] = row
-    end
-    row:SetPoint("TOP", parent, "TOP", 0, -((index - 1) * height) - MFD.UI.ROW_TOP_PADDING)
-    row:Show()
-    return row
-end
-
 -- Adds a resize grip to a window, and remembers the size per character.
 --
 -- onResize(frame, isFinal) runs on every change so the window never looks stale
@@ -93,14 +71,9 @@ end
 -- is the answer that keeps working as more settings are added, where a taller
 -- window only moves the day it happens.
 function MFD.UI.MakeScrollable(container)
-    local scroll = CreateFrame("ScrollFrame", nil, container, "UIPanelScrollFrameTemplate")
-    scroll:SetPoint("TOPLEFT", container, "TOPLEFT", 0, 0)
-    -- Room on the right for the scroll bar, and clear of the resize grip below.
-    scroll:SetPoint("BOTTOMRIGHT", container, "BOTTOMRIGHT", -26, 4)
-
-    local content = CreateFrame("Frame", nil, scroll)
-    content:SetSize(1, 1)
-    scroll:SetScrollChild(content)
+    -- The library's scroll list, which already leaves the 26 pixels its
+    -- scrollbar needs on the right.
+    local scroll, content = MFD.UI.ScrollList(container, 0, 4)
 
     -- The child has to be told its width or its anchored children have nothing
     -- to lay out against; height is set by whoever fills it.
@@ -115,18 +88,7 @@ function MFD.UI.MakeScrollable(container)
     return content
 end
 
--- Hides every pooled row from index onward, so a shorter refresh does not leave
--- stale rows on screen.
-function MFD.UI.ReleaseRows(pool, fromIndex)
-    for i = fromIndex, #pool do
-        if pool[i] then
-            pool[i]:Hide()
-        end
-    end
-end
-
 local frame
-local rows = {}
 
 local function intentNames()
     local names = {}
@@ -212,71 +174,81 @@ local function shiftOrdinal(icon, delta)
     end
 end
 
-local function buildRow(row, icon)
-    if row.isBuilt then
-        return
-    end
-    row.isBuilt = true
-
-    row.texture = row:CreateTexture(nil, "ARTWORK")
-    row.texture:SetSize(18, 18)
-    row.texture:SetPoint("LEFT", row, "LEFT", 0, 0)
-    row.texture:SetTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcons")
-
-    row.intentText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    row.intentText:SetPoint("LEFT", row.texture, "RIGHT", 8, 0)
-    row.intentText:SetWidth(120)
-    row.intentText:SetJustifyH("LEFT")
-
-    row.cycle = MFD.UI.Button(row, "", 64, 20)
-    row.cycle:SetPoint("LEFT", row.intentText, "RIGHT", 4, 0)
-    row.cycle:SetText("Intent")
-    row.cycle:SetScript("OnClick", function(button)
+-- The intent picker. A custom cell rather than a trailing button because it
+-- belongs in the middle of the row, beside the job it changes.
+--
+-- Every handler here reads row.item at click time rather than closing over the
+-- icon this cell was first built for. Rows come back from a pool holding a
+-- different icon each render, so a closure over the first one would edit the
+-- wrong role from the second render onward.
+local function makeIntentCell(row, col, x)
+    local button = MFD.UI.Button(row, "Change", col.width - 4, row.rowHeight - 2)
+    button:SetPoint("LEFT", row, "LEFT", x + 2, 0)
+    button:SetScript("OnClick", function(self)
+        local icon = row.item
         local role = MFD.db.rolePlan[icon]
-        openIntentMenu(button, role and role.intent, function(intent)
+        openIntentMenu(self, role and role.intent, function(intent)
             MFD.db.rolePlan[icon] = MFD.db.rolePlan[icon] or { ordinal = 1 }
             MFD.db.rolePlan[icon].intent = intent
             Config:Refresh()
         end)
     end)
+    return button
+end
 
-    row.up = MFD.UI.Button(row, "", 24, 20)
-    row.up:SetPoint("LEFT", row.cycle, "RIGHT", 4, 0)
-    row.up:SetText("^")
-    row.up:SetScript("OnClick", function()
-        shiftOrdinal(icon, -1)
+-- The two ordinal arrows, in one cell.
+local function makeOrderCell(row, col, x)
+    local cell = CreateFrame("Frame", nil, row)
+    cell:SetPoint("LEFT", row, "LEFT", x, 0)
+    cell:SetSize(col.width, row.rowHeight)
+
+    cell.up = MFD.UI.Button(cell, "^", 24, row.rowHeight - 2)
+    cell.up:SetPoint("LEFT", cell, "LEFT", 2, 0)
+    cell.up:SetScript("OnClick", function()
+        shiftOrdinal(row.item, -1)
         Config:Refresh()
     end)
 
-    row.down = MFD.UI.Button(row, "", 24, 20)
-    row.down:SetPoint("LEFT", row.up, "RIGHT", 2, 0)
-    row.down:SetText("v")
-    row.down:SetScript("OnClick", function()
-        shiftOrdinal(icon, 1)
+    cell.down = MFD.UI.Button(cell, "v", 24, row.rowHeight - 2)
+    cell.down:SetPoint("LEFT", cell.up, "RIGHT", 2, 0)
+    cell.down:SetScript("OnClick", function()
+        shiftOrdinal(row.item, 1)
         Config:Refresh()
     end)
 
-    row.pinBox = MFD.UI.EditBox(row, 110, 20)
-    row.pinBox:SetPoint("LEFT", row.down, "RIGHT", 14, 0)
-    row.pinBox:SetAutoFocus(false)
-    row.pinBox:SetScript("OnEnterPressed", function(box)
-        local text = string.gsub(box:GetText(), "^%s+", "")
+    return cell
+end
+
+-- The pinned player. Committed on Enter so a half-typed name is never saved.
+local function makePinCell(row, col, x)
+    local box = MFD.UI.EditBox(row, col.width - 6, row.rowHeight - 2)
+    box:SetPoint("LEFT", row, "LEFT", x + 2, 0)
+
+    box:SetScript("OnEnterPressed", function(self)
+        local text = string.gsub(self:GetText(), "^%s+", "")
         text = string.gsub(text, "%s+$", "")
+        local icon = row.item
         MFD.db.rolePlan[icon] = MFD.db.rolePlan[icon] or { intent = "KILL", ordinal = 1 }
         MFD.db.rolePlan[icon].pin = text ~= "" and text or nil
-        box:ClearFocus()
+        self:ClearFocus()
         Config:Refresh()
     end)
-    row.pinBox:SetScript("OnEscapePressed", function(box)
-        box:ClearFocus()
+    box:SetScript("OnEscapePressed", function(self)
+        self:ClearFocus()
         Config:Refresh()
     end)
 
-    row.ownerText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    row.ownerText:SetPoint("LEFT", row.pinBox, "RIGHT", 10, 0)
-    row.ownerText:SetPoint("RIGHT", row, "RIGHT", 0, 0)
-    row.ownerText:SetJustifyH("LEFT")
+    return box
 end
+
+local ROLE_COLUMNS = {
+    { key = "icon",   label = "",       width = 24, type = "texture" },
+    { key = "job",    label = "Job",    width = 120 },
+    { key = "change", label = "Change", width = 72, type = "custom", make = makeIntentCell },
+    { key = "order",  label = "Order",  width = 56, type = "custom", make = makeOrderCell },
+    { key = "pin",    label = "Pinned player", width = 120, type = "custom", make = makePinCell },
+    { key = "owner",  label = "Owner right now", width = "flex" },
+}
 
 -- Repaints every row from the current role plan and the live roster, so the
 -- Owner column shows who actually holds each role right now.
@@ -292,38 +264,34 @@ function Config:Refresh()
     end
 
     local resolved = MFD.Roles.Resolve(MFD.db.rolePlan, MFD.Marker.CurrentRoster())
+    local t = frame.table
 
-    for index, icon in ipairs(ICON_ORDER) do
-        local row = MFD.UI.AcquireRow(frame.body, rows, index, ROW_HEIGHT)
-        buildRow(row, icon)
-
+    t:Render(ICON_ORDER, function(row, icon)
         local role = MFD.db.rolePlan[icon]
-        SetRaidTargetIconTexture(row.texture, icon)
+        SetRaidTargetIconTexture(row.cells.icon, icon)
 
         if role then
-            local label = MFD.Roles.INTENTS[role.intent] and MFD.Roles.INTENTS[role.intent].label or role.intent
-            row.intentText:SetText(label .. " " .. role.ordinal)
+            local def = MFD.Roles.INTENTS[role.intent]
+            t:Set(row, "job", ((def and def.label) or role.intent) .. " " .. role.ordinal)
         else
-            row.intentText:SetText("|cff999999unbound|r")
+            t:Set(row, "job", "unbound", { r = 0.6, g = 0.6, b = 0.6 })
         end
 
-        if not row.pinBox:HasFocus() then
-            row.pinBox:SetText(role and role.pin or "")
+        if not row.cells.pin:HasFocus() then
+            row.cells.pin:SetText(role and role.pin or "")
         end
 
         local record = resolved.byIcon[icon]
         if not record then
-            row.ownerText:SetText("|cff999999no role|r")
+            t:Set(row, "owner", "no role", { r = 0.6, g = 0.6, b = 0.6 })
         elseif record.owner == true then
-            row.ownerText:SetText("|cff66ff66always available|r")
+            t:Set(row, "owner", "always available", { r = 0.4, g = 1, b = 0.4 })
         elseif record.owner then
-            row.ownerText:SetText("|cff66ff66" .. record.owner .. "|r")
+            t:Set(row, "owner", record.owner, { r = 0.4, g = 1, b = 0.4 })
         else
-            row.ownerText:SetText("|cffff4444nobody in the group can do this|r")
+            t:Set(row, "owner", "nobody in the group can do this", { r = 1, g = 0.3, b = 0.3 })
         end
-    end
-
-    MFD.UI.ReleaseRows(rows, #ICON_ORDER + 1)
+    end)
 end
 
 -- Builds the role editor into a container the main window owns. The window
@@ -331,13 +299,14 @@ end
 function Config:BuildInto(container)
     frame = container
 
-    frame.header = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    frame.header:SetPoint("TOPLEFT", frame, "TOPLEFT", 40, -6)
-    frame.header:SetText("icon      job                    change   order      pinned player          owner right now")
-
-    frame.body = CreateFrame("Frame", nil, frame)
-    frame.body:SetPoint("TOPLEFT", frame, "TOPLEFT", 6, -18)
-    frame.body:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -6, 6)
+    -- The header is the table's own, so the hand-spaced string of column names
+    -- that used to sit above these rows is gone with it.
+    frame.table = MFD.UI.Table(frame, {
+        top = -6,
+        bottom = 6,
+        rowHeight = ROW_HEIGHT,
+        columns = ROLE_COLUMNS,
+    })
 
     -- The roster changes under an open window; repaint so the owner column
     -- stays truthful without the player needing to close and reopen it.
@@ -362,7 +331,6 @@ local RULE_ROWS = 14       -- visible rules
 local RULE_ROW_HEIGHT = 24 -- pixels
 
 local rulesFrame
-local ruleRows = {}
 local filterKey = nil
 local lastResults = {}
 
@@ -456,20 +424,22 @@ local dropMarker
 -- count is below the last. Rounding rather than flooring is what makes the drop
 -- land where the line is drawn, because the line marks a boundary and the
 -- cursor should pick the nearest one.
-local function boundaryAtCursor(count)
-    if not rulesFrame or count == 0 then
+--
+-- Measured against the table's scroll content rather than the page, so the
+-- answer stays right when the list is scrolled.
+local function boundaryAtCursor(t, count)
+    if not t or count == 0 then
         return nil
     end
 
     local _, cursorY = GetCursorPosition()
-    local scale = rulesFrame.ruleList:GetEffectiveScale()
-    local top = rulesFrame.ruleList:GetTop()
+    local scale = t.content:GetEffectiveScale()
+    local top = t.content:GetTop()
     if not top then
         return nil
     end
 
-    local offset = top - (cursorY / scale) - MFD.UI.ROW_TOP_PADDING
-    local boundary = math.floor(offset / RULE_ROW_HEIGHT + 0.5)
+    local boundary = math.floor((top - (cursorY / scale)) / t.rowHeight + 0.5)
     if boundary < 0 then
         boundary = 0
     elseif boundary > count then
@@ -531,56 +501,134 @@ local function addGripTo(row)
     return grip
 end
 
-local function buildRuleRow(row)
-    if row.isBuilt then
+-- The grip cell. Three short lines, which is what a reorderable list looks like
+-- everywhere else; an arrow pair says "click me" and nothing said the row could
+-- be picked up at all.
+local function makeGripCell(row, col, x)
+    local grip = CreateFrame("Frame", nil, row)
+    grip:SetPoint("LEFT", row, "LEFT", x, 0)
+    grip:SetSize(col.width, row.rowHeight)
+
+    grip.lines = {}
+    for index = 1, 3 do
+        local line = grip:CreateTexture(nil, "ARTWORK")
+        line:SetSize(8, 1)
+        line:SetPoint("CENTER", grip, "CENTER", 0, (2 - index) * 3)
+        line:SetColorTexture(1, 1, 1, 0.35)
+        grip.lines[index] = line
+    end
+
+    function grip:SetHighlighted(isOn)
+        for _, line in ipairs(self.lines) do
+            line:SetColorTexture(1, 1, 1, isOn and 0.9 or 0.35)
+        end
+    end
+
+    return grip
+end
+
+local function makeRuleIntentCell(row, col, x)
+    local button = MFD.UI.Button(row, "", col.width - 4, row.rowHeight - 2)
+    button:SetPoint("LEFT", row, "LEFT", x + 2, 0)
+    button:SetScript("OnClick", function(self)
+        local item = row.item
+        if not item then
+            return
+        end
+        openIntentMenu(self, item.rule.intent, function(intent)
+            local rule = ownedRule(item.key, item.rule)
+            rule.intent = intent
+            commitRules()
+        end)
+    end)
+    return button
+end
+
+local function makeRuleOrderCell(row, col, x)
+    local cell = CreateFrame("Frame", nil, row)
+    cell:SetPoint("LEFT", row, "LEFT", x, 0)
+    cell:SetSize(col.width, row.rowHeight)
+
+    local function nudge(delta)
+        return function()
+            local item = row.item
+            if not item then
+                return
+            end
+            local list = localList(item.key)
+            local _, index = ownedRule(item.key, item.rule)
+            MFD.Rules.Reorder(list, index, delta)
+            commitRules()
+        end
+    end
+
+    cell.up = MFD.UI.Button(cell, "^", 24, row.rowHeight - 2)
+    cell.up:SetPoint("LEFT", cell, "LEFT", 2, 0)
+    cell.up:SetScript("OnClick", nudge(-1))
+
+    cell.down = MFD.UI.Button(cell, "v", 24, row.rowHeight - 2)
+    cell.down:SetPoint("LEFT", cell.up, "RIGHT", 2, 0)
+    cell.down:SetScript("OnClick", nudge(1))
+
+    return cell
+end
+
+local RULE_COLUMNS = {
+    { key = "grip",   label = "",     width = 14, type = "custom", make = makeGripCell },
+    { key = "rank",   label = "#",    width = 30, justify = "RIGHT" },
+    { key = "name",   label = "Mob",  width = "flex" },
+    { key = "intent", label = "Job",  width = 92, type = "custom", make = makeRuleIntentCell },
+    { key = "order",  label = "Move", width = 56, type = "custom", make = makeRuleOrderCell },
+}
+
+local RULE_BUTTONS = {
+    { key = "delete", label = "X", width = 24, kind = "danger" },
+}
+
+-- Gives a pooled row its drag behaviour, once. Everything it does reads
+-- row.item at the moment of the drag rather than closing over whatever rule the
+-- row held when it was built, because the pool hands the same frame a different
+-- rule on every render.
+local function wireDrag(t, row)
+    if row.mfdDragWired then
         return
     end
-    row.isBuilt = true
+    row.mfdDragWired = true
 
-    -- The whole row is a drag handle, and the grip says so. Arrows stay for a
-    -- one-place nudge; this is for moving something ten rows without ten clicks.
-    row:EnableMouse(true)
     row:RegisterForDrag("LeftButton")
-
-    row.hoverTexture = row:CreateTexture(nil, "BACKGROUND")
-    row.hoverTexture:SetAllPoints()
-    row.hoverTexture:SetColorTexture(1, 1, 1, 0.07)
-    row.hoverTexture:Hide()
 
     row.dragTexture = row:CreateTexture(nil, "BACKGROUND")
     row.dragTexture:SetAllPoints()
     row.dragTexture:SetColorTexture(1, 0.82, 0, 0.18)
     row.dragTexture:Hide()
 
-    row.grip = addGripTo(row)
-
-    row:SetScript("OnEnter", function(self)
-        if self.rule and self.isMine and not dragIndex then
-            self.hoverTexture:Show()
-            self.grip:SetHighlighted(true)
+    -- Hooked rather than set: the library's own OnEnter paints the hover, and
+    -- replacing it would take that away.
+    row:HookScript("OnEnter", function(self)
+        if self.item and self.item.isMine and not dragIndex then
+            self.cells.grip:SetHighlighted(true)
         end
     end)
-    row:SetScript("OnLeave", function(self)
-        self.hoverTexture:Hide()
-        self.grip:SetHighlighted(false)
+    row:HookScript("OnLeave", function(self)
+        self.cells.grip:SetHighlighted(false)
     end)
 
     row:SetScript("OnDragStart", function(self)
-        if not self.rule or not self.isMine then
+        local item = self.item
+        if not item or not item.isMine then
             return
         end
-        dragIndex = self.index
-        self.hoverTexture:Hide()
+        dragIndex = item.index
         self.dragTexture:Show()
 
         local ghost = ensureDragGhost()
-        ghost.text:SetText(self.rule.name or ("npc " .. tostring(self.rule.npcID)))
+        ghost.text:SetText(item.rule.name or ("npc " .. tostring(item.rule.npcID)))
         ghost:Show()
     end)
 
     row:SetScript("OnDragStop", function(self)
         self.dragTexture:Hide()
-        self.grip:SetHighlighted(false)
+        self.cells.grip:SetHighlighted(false)
         if dropMarker then
             dropMarker:Hide()
         end
@@ -590,12 +638,13 @@ local function buildRuleRow(row)
 
         local from = dragIndex
         dragIndex = nil
-        if not from or not self.instanceKey then
+        local item = self.item
+        if not from or not item then
             return
         end
 
-        local list = localList(self.instanceKey)
-        local boundary = boundaryAtCursor(#list)
+        local list = localList(item.key)
+        local boundary = boundaryAtCursor(t, #list)
         if not boundary then
             return
         end
@@ -603,70 +652,6 @@ local function buildRuleRow(row)
         local to = MFD.Rules.DropIndex(from, boundary)
         if to ~= from then
             MFD.Rules.MoveTo(list, from, to)
-            commitRules()
-        end
-    end)
-
-    row.rank = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    row.rank:SetPoint("LEFT", row, "LEFT", 14, 0)
-    row.rank:SetWidth(28)
-    row.rank:SetJustifyH("RIGHT")
-
-    row.name = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    row.name:SetPoint("LEFT", row.rank, "RIGHT", 6, 0)
-    row.name:SetWidth(150)
-    row.name:SetJustifyH("LEFT")
-
-    row.intent = MFD.UI.Button(row, "", 88, 20)
-    row.intent:SetPoint("LEFT", row.name, "RIGHT", 4, 0)
-    row.intent:SetScript("OnClick", function(button)
-        if not row.rule then
-            return
-        end
-        openIntentMenu(button, row.rule.intent, function(intent)
-            local rule = ownedRule(row.instanceKey, row.rule)
-            rule.intent = intent
-            commitRules()
-        end)
-    end)
-
-    row.up = MFD.UI.Button(row, "", 24, 20)
-    row.up:SetPoint("LEFT", row.intent, "RIGHT", 4, 0)
-    row.up:SetText("^")
-    row.up:SetScript("OnClick", function()
-        if not row.rule then
-            return
-        end
-        local list = localList(row.instanceKey)
-        local _, index = ownedRule(row.instanceKey, row.rule)
-        MFD.Rules.Reorder(list, index, -1)
-        commitRules()
-    end)
-
-    row.down = MFD.UI.Button(row, "", 24, 20)
-    row.down:SetPoint("LEFT", row.up, "RIGHT", 2, 0)
-    row.down:SetText("v")
-    row.down:SetScript("OnClick", function()
-        if not row.rule then
-            return
-        end
-        local list = localList(row.instanceKey)
-        local _, index = ownedRule(row.instanceKey, row.rule)
-        MFD.Rules.Reorder(list, index, 1)
-        commitRules()
-    end)
-
-    row.delete = MFD.UI.Button(row, "", 24, 20)
-    row.delete:SetPoint("LEFT", row.down, "RIGHT", 6, 0)
-    row.delete:SetText("X")
-    row.delete:SetScript("OnClick", function()
-        if not row.rule then
-            return
-        end
-        local list = localList(row.instanceKey)
-        local index = localIndexOf(list, row.rule)
-        if index then
-            table.remove(list, index)
             commitRules()
         end
     end)
@@ -735,29 +720,36 @@ local function paintRules()
     local ranked = key and MFD.Rules.Ranked(MFD.Rules.merged[key] or {}) or {}
     local me = playerName()
     local hasBadRule = false
+    local t = rulesFrame.ruleTable
 
-    local shown = 0
+    local list = {}
     for index, rule in ipairs(ranked) do
         if index > RULE_ROWS then
             break
         end
-        local row = MFD.UI.AcquireRow(rulesFrame.ruleList, ruleRows, index, RULE_ROW_HEIGHT)
-        buildRuleRow(row)
-        row.rule = rule
-        row.instanceKey = key
-        row.index = index
-
-        local isMine = rule.owner == me or rule.owner == nil
         -- Only your own rules can be reordered; a merged rule belongs to
         -- whoever wrote it and dragging it here would achieve nothing.
-        row.isMine = isMine
-        local color = isMine and "" or "|cffffcc66"
-        local suffix = isMine and "" or ("  (" .. tostring(rule.owner) .. ")")
+        list[index] = {
+            rule = rule,
+            key = key,
+            index = index,
+            isMine = rule.owner == me or rule.owner == nil,
+        }
+    end
 
-        row.rank:SetText(tostring(rule.rank))
-        row.name:SetText(color .. (rule.name or ("npc " .. rule.npcID)) .. suffix .. "|r")
+    t:Render(list, function(row, item)
+        wireDrag(t, row)
 
-        local label = MFD.Roles.INTENTS[rule.intent] and MFD.Roles.INTENTS[rule.intent].label or rule.intent
+        local rule = item.rule
+        local suffix = item.isMine and "" or ("  (" .. tostring(rule.owner) .. ")")
+
+        t:Set(row, "rank", tostring(rule.rank), { r = 0.6, g = 0.6, b = 0.6 })
+        t:Set(row, "name", (rule.name or ("npc " .. rule.npcID)) .. suffix,
+            not item.isMine and { r = 1, g = 0.8, b = 0.4 } or nil)
+
+        local def = MFD.Roles.INTENTS[rule.intent]
+        local label = (def and def.label) or rule.intent
+
         -- A rule typed by name has no id to look up, so find the creature type
         -- by name instead; that is the whole population of pre-planned rules.
         local learned = rule.npcID and MFD.db.learnedMobs[rule.npcID] or nil
@@ -769,21 +761,26 @@ local function paintRules()
                 end
             end
         end
+
         local canApply = MFD.Roles.CanIntentApply(rule.intent, learned and learned.creatureType)
-        row.intent:SetText((canApply and "" or "|cffff4444") .. label .. "|r")
+        row.cells.intent:SetText((canApply and "" or "|cffff4444") .. label .. "|r")
         if not canApply then
             hasBadRule = true
         end
 
-        -- Merged rules are read only until touched; touching one copies it
-        -- into the local set. The arrows stay enabled for that reason, but
-        -- delete only ever removes a local rule.
-        row.delete:SetEnabled(isMine)
-
-        shown = index
-    end
-
-    MFD.UI.ReleaseRows(ruleRows, shown + 1)
+        -- Merged rules are read only until touched; touching one copies it into
+        -- the local set. The arrows stay enabled for that reason, but delete
+        -- only ever removes a local rule.
+        row.buttons.delete:SetEnabled(item.isMine)
+        row.buttons.delete:SetScript("OnClick", function()
+            local rules = localList(item.key)
+            local index = localIndexOf(rules, item.rule)
+            if index then
+                table.remove(rules, index)
+                commitRules()
+            end
+        end)
+    end)
 
     if hasBadRule and not rulesFrame.hasPlayedBadSound then
         rulesFrame.hasPlayedBadSound = true
@@ -971,19 +968,24 @@ local function buildRulesFrame()
         .. "amber = merged from another player")
 
     rulesFrame.ruleList = CreateFrame("Frame", nil, rulesFrame)
-
     rulesFrame.ruleList:SetPoint("TOPLEFT", rulesFrame, "TOPLEFT", 342, -76)
     rulesFrame.ruleList:SetPoint("BOTTOMRIGHT", rulesFrame, "BOTTOMRIGHT", -6, 40)
 
-    -- Shows where a dragged rule would land. One marker for the whole list
-    -- rather than a highlight per row.
+    rulesFrame.ruleTable = MFD.UI.Table(rulesFrame.ruleList, {
+        rowHeight = RULE_ROW_HEIGHT,
+        columns = RULE_COLUMNS,
+        buttons = RULE_BUTTONS,
+    })
+
     -- The insertion point, drawn in the gap the rule would land in. A frame
     -- rather than a bare texture so it can carry an end cap: a plain line
-    -- across the list read as a strike-through of the row it crossed, which is
-    -- exactly what it looked like before the row maths were fixed.
-    dropMarker = CreateFrame("Frame", nil, rulesFrame.ruleList)
+    -- across the list read as a strike-through of the row it crossed.
+    --
+    -- Parented to the scroll content, so it travels with the rows instead of
+    -- staying put while they move under it.
+    dropMarker = CreateFrame("Frame", nil, rulesFrame.ruleTable.content)
     dropMarker:SetHeight(10)
-    dropMarker:SetFrameLevel(rulesFrame.ruleList:GetFrameLevel() + 10)
+    dropMarker:SetFrameLevel(rulesFrame.ruleTable.content:GetFrameLevel() + 10)
     dropMarker:Hide()
 
     dropMarker.line = dropMarker:CreateTexture(nil, "OVERLAY")
@@ -1016,17 +1018,21 @@ local function buildRulesFrame()
             dragGhost:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", x / scale + 14, y / scale - 10)
         end
 
+        local t = rulesFrame.ruleTable
         local list = localList(RulesUI:TargetKey())
-        local boundary = boundaryAtCursor(#list)
+        local boundary = boundaryAtCursor(t, #list)
         if not boundary then
             dropMarker:Hide()
             return
         end
 
+        -- Rows sit at -(i - 1) * rowHeight from the top of the content, so gap
+        -- N is exactly -N * rowHeight. No padding to account for any more,
+        -- which is what the line was drawn wrong by before.
         dropMarker:ClearAllPoints()
-        dropMarker:SetPoint("TOPLEFT", self, "TOPLEFT", 0,
-            -(boundary * RULE_ROW_HEIGHT) - MFD.UI.ROW_TOP_PADDING + 5)
-        dropMarker:SetPoint("RIGHT", self, "RIGHT", 0, 0)
+        dropMarker:SetPoint("TOPLEFT", t.content, "TOPLEFT", 0,
+            -(boundary * t.rowHeight) + 5)
+        dropMarker:SetPoint("RIGHT", t.content, "RIGHT", 0, 0)
         dropMarker:Show()
     end)
 
