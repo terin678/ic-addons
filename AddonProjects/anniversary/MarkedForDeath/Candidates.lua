@@ -85,7 +85,15 @@ function Candidates.ToList(set)
     local list = {}
 
     for _, key in ipairs(MFD.H.SortedKeys(set)) do
-        list[#list + 1] = { key = key, npcID = set[key].npcID, name = set[key].name }
+        -- isLost marks a mob whose nameplate has gone but which is still
+        -- inside the grace window. It stays a candidate so a flicker does not
+        -- churn the pack, but the allocator ranks it below anything visible.
+        list[#list + 1] = {
+            key = key,
+            npcID = set[key].npcID,
+            name = set[key].name,
+            isLost = set[key].lostAt ~= nil or nil,
+        }
     end
 
     return list

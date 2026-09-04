@@ -320,6 +320,11 @@ function Grid:BuildInto(container)
 
     frame:SetScript("OnShow", function()
         setLive(true)
+        -- Scan on open. Without this the tab painted whatever the last scan
+        -- left behind, which on a fresh login is nothing at all, so the grid
+        -- read "nobody in the group" in a full raid and Call out had nothing
+        -- to say.
+        RC:Scan()
     end)
     frame:SetScript("OnHide", function()
         setLive(false)

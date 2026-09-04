@@ -2458,4 +2458,73 @@ T.Case("Share: a rule with neither a name nor an npc id is rejected", function()
     T.Eq(type(err), "string", "with a reason")
 end)
 
+-- A patrol wandering off must not keep Skull away from the pack you are about
+-- to pull. Present mobs outrank departed ones whatever the rules say.
+T.Case("Patrol: a mob you can see beats a departed one to the icon", function()
+    local roles = defaultRoles("Thok", "WARRIOR")
+    local out = MFD.Allocator.Compute({
+        { key = "100:PATROL", npcID = 100, name = "Patrol", isLost = true },
+        { key = "200:STATIC", npcID = 200, name = "Static" },
+    }, {
+        -- The patrol even has the better rule; being gone still loses.
+        [100] = { npcID = 100, intent = "KILL", rank = 10 },
+        [200] = { npcID = 200, intent = "KILL", rank = 90 },
+    }, roles, nil, false)
+
+    T.Eq(out.byKey["200:STATIC"], 8, "the mob in front of you takes skull")
+    T.Eq(out.byKey["100:PATROL"], 7, "the patrol drops to the next icon")
+end)
+
+T.Case("Patrol: a departed mob keeps its icon when nothing else wants it", function()
+    local roles = defaultRoles("Thok", "WARRIOR")
+    local out = MFD.Allocator.Compute({
+        { key = "100:PATROL", npcID = 100, name = "Patrol", isLost = true },
+    }, { [100] = { npcID = 100, intent = "KILL", rank = 10 } }, roles, nil, false)
+
+    T.Eq(out.byKey["100:PATROL"], 8, "no churn from a nameplate that merely flickered")
+end)
+
+T.Case("Patrol: coming back into view puts it back in the running", function()
+    local roles = defaultRoles("Thok", "WARRIOR")
+    local out = MFD.Allocator.Compute({
+        { key = "100:PATROL", npcID = 100, name = "Patrol" },
+        { key = "200:STATIC", npcID = 200, name = "Static" },
+    }, {
+        [100] = { npcID = 100, intent = "KILL", rank = 10 },
+        [200] = { npcID = 200, intent = "KILL", rank = 90 },
+    }, roles, nil, false)
+
+    T.Eq(out.byKey["100:PATROL"], 8, "present again, so its better rule wins again")
+    T.Eq(out.byKey["200:STATIC"], 7, "and the static mob steps down")
+end)
+
+T.Case("Patrol: among departed mobs the usual priority still applies", function()
+    local roles = defaultRoles("Thok", "WARRIOR")
+    local out = MFD.Allocator.Compute({
+        { key = "100:A", npcID = 100, name = "A", isLost = true },
+        { key = "200:B", npcID = 200, name = "B", isLost = true },
+    }, {
+        [100] = { npcID = 100, intent = "KILL", rank = 90 },
+        [200] = { npcID = 200, intent = "KILL", rank = 10 },
+    }, roles, nil, false)
+
+    T.Eq(out.byKey["200:B"], 8, "better rule first")
+    T.Eq(out.byKey["100:A"], 7, "then the other")
+end)
+
+T.Case("Candidates: ToList reports whether a mob has gone out of view", function()
+    local set = {}
+    MFD.Candidates.Observe(set, "100:AAA", 100, "nameplate1", 500)
+    MFD.Candidates.Observe(set, "200:BBB", 200, "nameplate2", 500)
+    MFD.Candidates.Lose(set, "200:BBB", 501)
+
+    local byKey = {}
+    for _, c in ipairs(MFD.Candidates.ToList(set)) do
+        byKey[c.key] = c
+    end
+
+    T.Eq(byKey["100:AAA"].isLost, nil, "still visible")
+    T.Eq(byKey["200:BBB"].isLost, true, "nameplate gone")
+end)
+
 _G.MarkedForDeath = MFD

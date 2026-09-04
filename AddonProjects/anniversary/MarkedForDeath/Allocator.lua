@@ -88,7 +88,17 @@ function Allocator.Compute(candidates, rulesByNpcID, roles, locked, allowIconReu
         end
     end
 
+    -- A mob you can actually see outranks one that has walked off, whatever
+    -- the rules say. A patrol pacing the edge of nameplate range would
+    -- otherwise hold Skull hostage from the pack you are about to pull, while
+    -- being untouchable itself. It keeps its icon only when nothing else
+    -- wants it, so a nameplate that merely flickered causes no churn.
     table.sort(eligible, function(a, b)
+        local aLost = a.candidate.isLost and 1 or 0
+        local bLost = b.candidate.isLost and 1 or 0
+        if aLost ~= bLost then
+            return aLost < bLost
+        end
         if a.rule.rank ~= b.rule.rank then
             return a.rule.rank < b.rule.rank
         end
