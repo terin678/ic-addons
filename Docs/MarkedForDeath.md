@@ -334,8 +334,11 @@ Every command is in `/mfd help`.
 | `/mfd callout` | Post who is missing what to raid chat, grouped by fix. |
 | `/mfd auras` | List the buffs on you and how the addon classified each one. Use it to catch a name the tables do not know. |
 | `/mfd candidates` | The hostile mobs the addon can currently see. |
-| `/mfd selftest` | Run the built-in test suite. |
-| `/mfd version` | Print the version. |
+| `/mfd selftest` | Run the built-in test suite. `/mfd test` does the same. |
+| `/mfd version` | Print the addon version and the ICLibs versions it is running against. |
+| `/mfd out [n]` | Move everything the addon prints to ChatFrame n. |
+| `/mfd scale [percent]` | Resize the window. Dragging its bottom-right corner does the same. |
+| `/mfd reset [what]` | Restore `settings`, the log, or everything, to defaults. |
 
 Keybinds, under Key Bindings then Marked For Death: add target as a rule, re-mark the
 visible pack, toggle the rule editor, toggle the assignment panel, toggle the buff board.

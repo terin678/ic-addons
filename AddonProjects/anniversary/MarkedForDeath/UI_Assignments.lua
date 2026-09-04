@@ -101,11 +101,11 @@ end
 
 local function savePosition()
     local point, _, relativePoint, x, y = frame:GetPoint()
-    MFD.charDb.windows.assignments = { point = point, relativePoint = relativePoint, x = x, y = y }
+    MFD.cdb.windows.assignments = { point = point, relativePoint = relativePoint, x = x, y = y }
 end
 
 local function restorePosition()
-    local saved = MFD.charDb.windows.assignments
+    local saved = MFD.cdb.windows.assignments
     frame:ClearAllPoints()
     if saved and saved.point then
         frame:SetPoint(saved.point, UIParent, saved.relativePoint or saved.point, saved.x or 0, saved.y or 0)
@@ -125,8 +125,8 @@ local function build()
         strata = "FULLSCREEN_DIALOG",
         scalable = true,
         onScaleChanged = function(_, scale)
-            MFD.charDb.windows.assignments = MFD.charDb.windows.assignments or {}
-            MFD.charDb.windows.assignments.scale = scale
+            MFD.cdb.windows.assignments = MFD.cdb.windows.assignments or {}
+            MFD.cdb.windows.assignments.scale = scale
         end,
     })
 
@@ -138,7 +138,7 @@ local function build()
     frame.empty = MFD.UI.Label(frame, "")
     frame.empty:SetPoint("TOPLEFT", frame, "TOPLEFT", 14, -54)
 
-    local saved = MFD.charDb.windows.assignments
+    local saved = MFD.cdb.windows.assignments
     if frame.SetWindowScale and saved and saved.scale then
         frame:SetWindowScale(saved.scale, true)
     end

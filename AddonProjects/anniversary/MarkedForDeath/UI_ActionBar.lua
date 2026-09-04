@@ -40,7 +40,7 @@ end
 
 local function saveGeometry()
     local point, _, relativePoint, x, y = frame:GetPoint()
-    MFD.charDb.windows.actionBar = {
+    MFD.cdb.windows.actionBar = {
         point = point, relativePoint = relativePoint, x = x, y = y,
         width = frame:GetWidth(), height = frame:GetHeight(),
     }
@@ -169,7 +169,7 @@ local function build()
         end
     end)
 
-    local saved = MFD.charDb.windows.actionBar
+    local saved = MFD.cdb.windows.actionBar
     frame:ClearAllPoints()
     if saved and saved.point then
         frame:SetPoint(saved.point, UIParent, saved.relativePoint or saved.point, saved.x or 0, saved.y or 0)
@@ -265,7 +265,7 @@ end
 -- Puts the bar back in the middle of the screen at its default size, for when
 -- it has been dragged somewhere unreachable or off a monitor that is gone.
 function Bar:Reset()
-    MFD.charDb.windows.actionBar = nil
+    MFD.cdb.windows.actionBar = nil
     if frame then
         frame:ClearAllPoints()
         frame:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, 220)

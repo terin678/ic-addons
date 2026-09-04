@@ -1,14 +1,20 @@
 -- Namespace, saved variables, event dispatch and the slash router.
+--
+-- Like MalexisAuctionWatcher, every file here shares one global table rather
+-- than the `local addonName, ns = ...` pair. LibICCore attaches to that table
+-- just the same, so MFD.Print, MFD.db, MFD.cdb, MFD.Util and the dispatcher at
+-- the bottom of this file are all the library's and not this addon's.
 local MFD = _G.MarkedForDeath or {}
 
+local ADDON_NAME = "MarkedForDeath"
+local Core = LibStub("LibICCore-1.0")
+
 -- Must match ## Version: in the toc and the packaged zip name.
-MFD.VERSION = "1.19.0"
+MFD.VERSION = "1.20.0"
 
 -- Bumped only when the saved-variable shape changes in a way that needs a
--- migration. See MFD:MigrateDB.
-local SCHEMA_VERSION = 5
-
-local CHAT_PREFIX = "|cff33ff99Marked For Death|r: "
+-- migration. See MIGRATIONS.
+local SCHEMA = 5
 
 local inits = {}
 
@@ -19,12 +25,9 @@ function MFD.RegisterInit(fn)
     inits[#inits + 1] = fn
 end
 
-function MFD.Print(msg)
-    DEFAULT_CHAT_FRAME:AddMessage(CHAT_PREFIX .. tostring(msg))
-end
-
 -- Prints to chat and also to the on-screen error area, per the repo standard
--- that errors are visible without watching the chat frame.
+-- that errors are visible without watching the chat frame. The chat half is
+-- MFD.Print, which LibICCore installs.
 function MFD.Error(msg)
     MFD.Print("|cffff4444" .. tostring(msg) .. "|r")
     -- Guarded: Log loads after this file and errors can happen in between.
@@ -37,7 +40,6 @@ function MFD.Error(msg)
 end
 
 local DB_DEFAULTS = {
-    schemaVersion = SCHEMA_VERSION,
     rolePlan = {},
     rules = {},
     rulesVersion = { counter = 0, hash = "" },
@@ -53,6 +55,10 @@ local DB_DEFAULTS = {
         -- no icons, no chat, no warnings. Windows still open so it can be
         -- turned back on, and nothing configured is lost.
         isEnabled = true,
+        -- LibICCore's Print and Debug read these two: which chat frame the
+        -- addon talks in, and whether maintainer lines are shown.
+        outputFrame = 1,
+        debug = false,
         isMarkingEnabled = true,
         isAnnounceEnabled = true,
         -- Announce the pack as it is marked rather than as it is pulled. The
@@ -117,124 +123,121 @@ local CHAR_DB_DEFAULTS = {
     windows = {},
 }
 
--- Migrates an existing saved-variable table in place. Reads the previous shape
--- for one version and never deletes user data.
-function MFD:MigrateDB()
-    local db = MarkedForDeathDB
-    if not db.schemaVersion then
-        db.schemaVersion = SCHEMA_VERSION
+-- Keyed by the schema each step upgrades FROM, which is the shape LibICCore's
+-- Migrate wants. Every step reads the previous shape and never deletes user
+-- data: old keys are left where they are for a version.
+local MIGRATIONS = {}
+
+-- Schemas 1 through 5 were stamped in db.schemaVersion, before LibICCore owned
+-- the bootstrap. An install that has already run them must not replay them, so
+-- the first step adopts that number rather than upgrading: Migrate adds one
+-- after every step, so it is handed one less and the loop resumes there. A
+-- table with no stamp at all falls through to the schema 2 work below, which is
+-- exactly what it needs.
+--
+-- Schema 2: "seats" became "roles" everywhere. Copy rather than move, so a
+-- downgrade to the previous version still finds its plan.
+MIGRATIONS[1] = function(db)
+    local stamped = db.schemaVersion
+    if stamped and stamped > 1 then
+        db.schema = stamped - 1
+        return
     end
 
-    -- Schema 2: "seats" became "roles" everywhere. Copy rather than move, so a
-    -- downgrade to the previous version still finds its plan. The old key is
-    -- kept for one version per the repo standard.
-    if db.schemaVersion < 2 then
-        if db.seatPlan and next(db.seatPlan) and not (db.rolePlan and next(db.rolePlan)) then
-            db.rolePlan = MFD.H.DeepCopy(db.seatPlan)
-        end
-
-        -- Circle became the icon of last resort at the same time. Only applied
-        -- to a plan that still matches the shipped default for that icon, so
-        -- an edited plan is left exactly as the player left it.
-        local circle = db.rolePlan and db.rolePlan[2]
-        if circle and circle.intent == "KILL" and circle.ordinal == 4 and circle.isLastResort == nil then
-            circle.isLastResort = true
-        end
-
-        db.schemaVersion = 2
+    if db.seatPlan and next(db.seatPlan) and not (db.rolePlan and next(db.rolePlan)) then
+        db.rolePlan = MFD.H.DeepCopy(db.seatPlan)
     end
 
-    -- Schema 3: the separate FLASK, BATTLE and GUARDIAN expectations became one
-    -- ELIXIRS requirement, met by a flask or by both elixirs. Anyone who asked
-    -- for any of the three was asking for elixirs, so that carries over. The
-    -- old keys stay for one version.
-    if db.schemaVersion < 3 then
-        local expected = db.settings and db.settings.raidCheck and db.settings.raidCheck.expected
-        if expected and expected.ELIXIRS == nil then
-            expected.ELIXIRS = (expected.FLASK or expected.BATTLE or expected.GUARDIAN) and true or false
-        end
-
-        db.schemaVersion = 3
-    end
-
-    -- Schema 4: the two tank death settings moved under settings.deaths, which
-    -- now holds healer deaths and the shared boss gate as well. Copied rather
-    -- than moved, per the repo standard of keeping the old keys for a version.
-    if db.schemaVersion < 4 then
-        local settings = db.settings
-        if settings then
-            settings.deaths = settings.deaths or {}
-            if settings.deaths.isTankAlertEnabled == nil and settings.isTankDeathAlertEnabled ~= nil then
-                settings.deaths.isTankAlertEnabled = settings.isTankDeathAlertEnabled
-            end
-            if settings.deaths.tankNames == nil and settings.tankNames ~= nil then
-                settings.deaths.tankNames = settings.tankNames
-            end
-        end
-
-        db.schemaVersion = 4
-    end
-
-    -- Schema 5: tank and healer announcements stopped sharing a boss list and
-    -- an override and became two independent blocks, and "boss fights only"
-    -- became a plain trash yes or no per kind.
-    --
-    -- The point is to land on the same behaviour the player already had. Tank
-    -- deaths that announced everywhere become trash yes and every boss ticked;
-    -- tank deaths already held to the list keep that list and lose trash.
-    -- Healers were never on trash either way.
-    if db.schemaVersion < 5 then
-        local deaths = db.settings and db.settings.deaths
-        if deaths and not deaths.tank then
-            local sharedBosses = deaths.bosses or {}
-            local sharedOverride = deaths.override or "AUTO"
-            local wasBossOnly = deaths.isTankBossOnly == true
-
-            local tankBosses
-            if wasBossOnly then
-                tankBosses = MFD.H.DeepCopy(sharedBosses)
-            else
-                tankBosses = {}
-                for _, boss in ipairs(MFD.Data.Bosses) do
-                    tankBosses[boss.name] = true
-                end
-            end
-
-            deaths.tank = {
-                isEnabled = deaths.isTankAlertEnabled ~= false,
-                onTrash = not wasBossOnly,
-                override = sharedOverride,
-                names = deaths.tankNames or "",
-                bosses = tankBosses,
-            }
-            deaths.healer = {
-                isEnabled = deaths.isHealerAlertEnabled == true,
-                onTrash = false,
-                override = sharedOverride,
-                names = deaths.healerNames or "",
-                -- A copy, not the same table. Sharing one would make these two
-                -- lists move together forever, which is the thing being fixed.
-                bosses = MFD.H.DeepCopy(sharedBosses),
-            }
-            -- Already decided above; the seeder must not touch it.
-            deaths.isSeeded = true
-        end
-
-        db.schemaVersion = 5
+    -- Circle became the icon of last resort at the same time. Only applied to a
+    -- plan that still matches the shipped default for that icon, so an edited
+    -- plan is left exactly as the player left it.
+    local circle = db.rolePlan and db.rolePlan[2]
+    if circle and circle.intent == "KILL" and circle.ordinal == 4 and circle.isLastResort == nil then
+        circle.isLastResort = true
     end
 end
 
-local function onAddonLoaded()
-    MarkedForDeathDB = MarkedForDeathDB or {}
-    MarkedForDeathCharDB = MarkedForDeathCharDB or {}
+-- Schema 3: the separate FLASK, BATTLE and GUARDIAN expectations became one
+-- ELIXIRS requirement, met by a flask or by both elixirs. Anyone who asked for
+-- any of the three was asking for elixirs, so that carries over. The old keys
+-- stay for one version.
+MIGRATIONS[2] = function(db)
+    local expected = db.settings and db.settings.raidCheck and db.settings.raidCheck.expected
+    if expected and expected.ELIXIRS == nil then
+        expected.ELIXIRS = (expected.FLASK or expected.BATTLE or expected.GUARDIAN) and true or false
+    end
+end
 
-    MFD:MigrateDB()
-    MFD.H.ApplyDefaults(MarkedForDeathDB, DB_DEFAULTS)
-    MFD.H.ApplyDefaults(MarkedForDeathCharDB, CHAR_DB_DEFAULTS)
+-- Schema 4: the two tank death settings moved under settings.deaths, which now
+-- holds healer deaths and the shared boss gate as well. Copied rather than
+-- moved, per the repo standard of keeping the old keys for a version.
+MIGRATIONS[3] = function(db)
+    local settings = db.settings
+    if not settings then
+        return
+    end
 
-    MFD.db = MarkedForDeathDB
-    MFD.charDb = MarkedForDeathCharDB
+    settings.deaths = settings.deaths or {}
+    if settings.deaths.isTankAlertEnabled == nil and settings.isTankDeathAlertEnabled ~= nil then
+        settings.deaths.isTankAlertEnabled = settings.isTankDeathAlertEnabled
+    end
+    if settings.deaths.tankNames == nil and settings.tankNames ~= nil then
+        settings.deaths.tankNames = settings.tankNames
+    end
+end
 
+-- Schema 5: tank and healer announcements stopped sharing a boss list and an
+-- override and became two independent blocks, and "boss fights only" became a
+-- plain trash yes or no per kind.
+--
+-- The point is to land on the same behaviour the player already had. Tank
+-- deaths that announced everywhere become trash yes and every boss ticked; tank
+-- deaths already held to the list keep that list and lose trash. Healers were
+-- never on trash either way.
+MIGRATIONS[4] = function(db)
+    local deaths = db.settings and db.settings.deaths
+    if not deaths or deaths.tank then
+        return
+    end
+
+    local sharedBosses = deaths.bosses or {}
+    local sharedOverride = deaths.override or "AUTO"
+    local wasBossOnly = deaths.isTankBossOnly == true
+
+    local tankBosses
+    if wasBossOnly then
+        tankBosses = MFD.H.DeepCopy(sharedBosses)
+    else
+        tankBosses = {}
+        for _, boss in ipairs(MFD.Data.Bosses) do
+            tankBosses[boss.name] = true
+        end
+    end
+
+    deaths.tank = {
+        isEnabled = deaths.isTankAlertEnabled ~= false,
+        onTrash = not wasBossOnly,
+        override = sharedOverride,
+        names = deaths.tankNames or "",
+        bosses = tankBosses,
+    }
+    deaths.healer = {
+        isEnabled = deaths.isHealerAlertEnabled == true,
+        onTrash = false,
+        override = sharedOverride,
+        names = deaths.healerNames or "",
+        -- A copy, not the same table. Sharing one would make these two lists
+        -- move together forever, which is the thing being fixed.
+        bosses = MFD.H.DeepCopy(sharedBosses),
+    }
+    -- Already decided above; the seeder must not touch it.
+    deaths.isSeeded = true
+end
+
+-- Everything this addon does on its own once the saved tables are ready.
+-- LibICCore has already migrated them, applied the defaults and published them
+-- as MFD.db and MFD.cdb by the time this runs.
+local function onLoad()
     MFD.Roles.EnsurePlan(MFD.db)
     MFD.Encounters.SeedDefaults(MFD.db.settings.deaths, MFD.Data.Bosses)
 
@@ -278,38 +281,12 @@ local function onAddonLoaded()
             MFD.RaidCheck:Scan()
         end
     end)
-
-    MFD.Print("v" .. MFD.VERSION .. " loaded. /mfd help for commands.")
 end
 
-local frame = CreateFrame("Frame")
-frame:RegisterEvent("ADDON_LOADED")
-frame:SetScript("OnEvent", function(_, event, arg1)
-    if event == "ADDON_LOADED" and arg1 == "MarkedForDeath" then
-        onAddonLoaded()
-    end
-end)
-
--- Slash commands. Every entry here must also appear in the help output below,
--- which is enforced by the review checklist rather than by code.
+-- Slash commands. Each carries its own help line, and the list handed to
+-- LibICCore at the bottom of this file is built from them, so a new command is
+-- one entry here and nothing else.
 local commands = {}
-
-commands.help = {
-    desc = "list commands",
-    run = function()
-        MFD.Print("commands:")
-        for _, name in ipairs(MFD.H.SortedKeys(commands)) do
-            MFD.Print("  /mfd " .. name .. " - " .. commands[name].desc)
-        end
-    end,
-}
-
-commands.version = {
-    desc = "print the addon version",
-    run = function()
-        MFD.Print("version " .. MFD.VERSION)
-    end,
-}
 
 commands.selftest = {
     desc = "run the test suite in game",
@@ -1055,26 +1032,58 @@ end
 
 MFD.commands = commands
 
-SLASH_MARKEDFORDEATH1 = "/mfd"
-SLASH_MARKEDFORDEATH2 = "/markedfordeath"
-SlashCmdList["MARKEDFORDEATH"] = function(input)
-    local cmd, rest = string.match(input or "", "^(%S*)%s*(.-)$")
-    cmd = string.lower(cmd or "")
+-- LibICCore's dispatcher takes a flat name -> function table and a list of help
+-- rows. Both are built from `commands`, so the two can never drift, and the
+-- library's own rows (help, version, out, scale, reset) are listed beside them
+-- without this addon implementing any of them.
+local COMMANDS = {}
+local HELP = {
+    { "", "open the main window" },
+    { "help", "this list" },
+    { "version", "addon and library versions" },
+    { "out [n]", "print to ChatFrame n" },
+    { "scale [percent]", "resize the window, or drag its bottom-right corner" },
+    { "reset [what]", "restore settings, the log, or everything, to defaults" },
+}
 
-    -- Bare /mfd opens the window, which is what a player reaching for it
-    -- almost always wants. /mfd help still lists everything.
-    if cmd == "" then
-        MFD.UI.Main:Toggle()
-        return
-    end
-
-    local entry = commands[cmd]
-    if not entry then
-        MFD.Error("unknown command '" .. cmd .. "'. Try /mfd help.")
-        return
-    end
-
-    entry.run(rest)
+for _, name in ipairs(MFD.H.SortedKeys(commands)) do
+    COMMANDS[name] = commands[name].run
+    HELP[#HELP + 1] = { name, commands[name].desc }
 end
+
+-- Bare /mfd opens the window, which is what a player reaching for it almost
+-- always wants. The library's default for it looks for MFD.UI.Toggle, and the
+-- window this addon opens is MFD.UI.Main.
+COMMANDS[""] = function()
+    MFD.UI.Main:Toggle()
+end
+
+-- The library's enable and disable write settings.enabled, which this addon
+-- does not read: its master switch has always been settings.isEnabled, and
+-- turning it off clears the icons on the way out. Point both names at the
+-- commands that actually do that.
+COMMANDS.enable, COMMANDS.disable = commands.on.run, commands.off.run
+
+Core:Attach(MFD, {
+    name = ADDON_NAME,
+    prefix = "Marked For Death",
+    version = MFD.VERSION,
+    db = "MarkedForDeathDB",
+    cdb = "MarkedForDeathCharDB",
+    defaults = DB_DEFAULTS,
+    charDefaults = CHAR_DB_DEFAULTS,
+    schema = SCHEMA,
+    migrations = MIGRATIONS,
+    slash = { "/mfd", "/markedfordeath" },
+    slashKey = "MARKEDFORDEATH",
+    help = HELP,
+    commands = COMMANDS,
+    -- This addon keeps a log of its own shape: entries are keyed by kind and
+    -- carry the mob, the icon and the rule that chose it, which the library's
+    -- two ring buffers have nowhere to put. See Log.lua.
+    log = false,
+    loadedHint = "/mfd help for commands.",
+    onLoad = onLoad,
+})
 
 _G.MarkedForDeath = MFD

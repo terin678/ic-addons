@@ -37,11 +37,11 @@ local currentKey
 
 local function savePosition()
     local point, _, relativePoint, x, y = frame:GetPoint()
-    MFD.charDb.windows.main = { point = point, relativePoint = relativePoint, x = x, y = y }
+    MFD.cdb.windows.main = { point = point, relativePoint = relativePoint, x = x, y = y }
 end
 
 local function restorePosition()
-    local saved = MFD.charDb.windows.main
+    local saved = MFD.cdb.windows.main
     frame:ClearAllPoints()
     if saved and saved.point then
         frame:SetPoint(saved.point, UIParent, saved.relativePoint or saved.point, saved.x or 0, saved.y or 0)
@@ -95,15 +95,15 @@ local function build()
         status = false,
         scalable = true,
         onScaleChanged = function(_, scale)
-            MFD.charDb.windows.main = MFD.charDb.windows.main or {}
-            MFD.charDb.windows.main.scale = scale
+            MFD.cdb.windows.main = MFD.cdb.windows.main or {}
+            MFD.cdb.windows.main.scale = scale
         end,
     })
 
     -- Guarded like any optional dependency: an older ICLibs bundled by another
     -- addon can win the LibStub race, and that should cost the grip rather
     -- than the whole window.
-    local saved = MFD.charDb.windows.main
+    local saved = MFD.cdb.windows.main
     if frame.SetWindowScale and saved and saved.scale then
         frame:SetWindowScale(saved.scale, true)
     end

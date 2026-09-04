@@ -609,11 +609,11 @@ end
 
 local function saveBoardPosition()
     local point, _, relativePoint, x, y = board:GetPoint()
-    MFD.charDb.windows.buffBoard = { point = point, relativePoint = relativePoint, x = x, y = y }
+    MFD.cdb.windows.buffBoard = { point = point, relativePoint = relativePoint, x = x, y = y }
 end
 
 local function restoreBoardPosition()
-    local saved = MFD.charDb.windows.buffBoard
+    local saved = MFD.cdb.windows.buffBoard
     board:ClearAllPoints()
     if saved and saved.point then
         board:SetPoint(saved.point, UIParent, saved.relativePoint or saved.point, saved.x or 0, saved.y or 0)
@@ -655,8 +655,8 @@ local function buildBoard()
         strata = "FULLSCREEN_DIALOG",
         scalable = true,
         onScaleChanged = function(_, scale)
-            MFD.charDb.windows.buffBoard = MFD.charDb.windows.buffBoard or {}
-            MFD.charDb.windows.buffBoard.scale = scale
+            MFD.cdb.windows.buffBoard = MFD.cdb.windows.buffBoard or {}
+            MFD.cdb.windows.buffBoard.scale = scale
         end,
     })
 
@@ -690,7 +690,7 @@ local function buildBoard()
         setBoardLive(false)
     end)
 
-    local saved = MFD.charDb.windows.buffBoard
+    local saved = MFD.cdb.windows.buffBoard
     if board.SetWindowScale and saved and saved.scale then
         board:SetWindowScale(saved.scale, true)
     end
