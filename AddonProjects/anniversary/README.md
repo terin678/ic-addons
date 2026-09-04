@@ -9,6 +9,7 @@ Target interface: 20506. Client folder `_anniversary_`.
 | TradeMaster | 1.10.0 | [Docs/TradeMaster.md](../../Docs/TradeMaster.md) |
 | CutMaster | 1.2.0 | [Docs/CutMaster.md](../../Docs/CutMaster.md) |
 | ICLibs | 1.5.0 | [Docs/ICLibs.md](../../Docs/ICLibs.md) |
+| ICTemplate | 1.0.0 | [Docs/ICTemplate.md](../../Docs/ICTemplate.md) |
 
 `ICLibs` is a library addon. MalexisAuctionWatcher and TradeMaster list it under
 `## Dependencies`, so it must be installed alongside them; `scripts/package.ps1` bundles it

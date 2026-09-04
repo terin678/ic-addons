@@ -61,7 +61,8 @@ request. Development happens on branches:
 | anniversary | [CutMaster](AddonProjects/anniversary/CutMaster) | Jewelcrafting book scanning, trade chat/whisper customer detection, order tracking, income. Guide: [Docs/CutMaster.md](Docs/CutMaster.md) |
 | anniversary | [AuctionatorSellingTweaks](AddonProjects/anniversary/AuctionatorSellingTweaks) | Expiry column before "You?" in Auctionator's Selling price list. Guide: [Docs/AuctionatorSellingTweaks.md](Docs/AuctionatorSellingTweaks.md) |
 | anniversary | [TradeMaster](AddonProjects/anniversary/TradeMaster) | Crafting business assistant for any profession, generalised from CutMaster. Guide: [Docs/TradeMaster.md](Docs/TradeMaster.md) |
-| anniversary | [ICLibs](AddonProjects/anniversary/ICLibs) | Shared libraries (LibStub, LibICTradeSkill) required by MalexisAuctionWatcher and TradeMaster. Guide: [Docs/ICLibs.md](Docs/ICLibs.md) |
+| anniversary | [ICLibs](AddonProjects/anniversary/ICLibs) | Shared libraries (LibStub, LibICTradeSkill, LibICUI) required by MalexisAuctionWatcher, TradeMaster and ICTemplate. Guide: [Docs/ICLibs.md](Docs/ICLibs.md) |
+| anniversary | [ICTemplate](AddonProjects/anniversary/ICTemplate) | The worked example: every LibICUI widget on screen beside the source it was built from. Copy it to start a new addon. Guide: [Docs/ICTemplate.md](Docs/ICTemplate.md) |
 
 ## Client paths on the maintainer's machine
 

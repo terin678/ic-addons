@@ -8,25 +8,35 @@ any addon here and find the same shape.
 ```
 AddonName/
   AddonName.toc        Interface, Title, Version, SavedVariables, OptionalDeps, file list
-  Core.lua             Namespace table, event frame, slash commands, load message
-  <Feature>.lua        One file per concern (Database, Scanning, UI, ...)
-  Helpers.lua          Pure functions with no frame or event dependencies
+  Core.lua             Namespace, event frame, defaults, migrations, slash commands
+  Util.lua             Pure functions with no frame or event dependencies
+  <Feature>.lua        One file per concern (Database, Scanning, ...)
+  UI.lua, UI_*.lua     The window shell and one file per page
+  Tests.lua            Loaded last, so every module exists when its cases register
 ```
 
 - The `.toc` file list is load order. Data and logic files load before UI files.
 - Only the addon folder ships. No README, screenshots, or scripts inside it.
-- One global per addon, named after the addon, holding everything the other files need.
-  Files that need it start with `local MAW = _G.MalexisAuctionWatcher or {}` and end with
-  `_G.MalexisAuctionWatcher = MAW`. Do not create other globals except frames that must be
-  named for `UISpecialFrames` or templates.
+- **No globals.** Every file starts with `local addonName, ns = ...` and hangs what it
+  exports off `ns`, which the client gives each addon privately. A module claims its own
+  table idempotently: `ns.Log = ns.Log or {}` then `local Log = ns.Log`. The only
+  intentional globals are the saved-variable tables named in the `.toc`, frames that must
+  be named for `UISpecialFrames` or a template, and the `BINDING_*` strings and functions
+  `Bindings.xml` calls by name.
+- `ICTemplate` is the worked example of all of this, and copying it (or running
+  `scripts/new-addon.ps1`) is how a new addon starts.
+
+MalexisAuctionWatcher predates the private namespace and still uses a single `_G` table
+with colon methods. That is the old shape; do not copy it into anything new.
 
 ## Lua style
 
 - Four-space indentation. No tabs.
 - `local` everything that is not deliberately exported. Cache library functions you call in
   hot paths at file scope.
-- Functions on the addon table use colon syntax: `function MAW:DoThing()`. Pure helpers are
-  `local function`.
+- Functions on a namespace table use dot syntax: `function Log.Push(list, entry)`.
+  Colon syntax is for things with a `self` worth having: a mixin, or a widget's own
+  method. Pure helpers that nothing outside the file calls are `local function`.
 - Name booleans as questions (`isScanning`, `hasData`), tables as plural nouns, constants
   in `UPPER_SNAKE` at the top of the file with a comment saying what unit they are in.
 - Prefer early returns over nested `if` blocks.

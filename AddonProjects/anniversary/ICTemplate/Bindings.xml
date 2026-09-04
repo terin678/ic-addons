@@ -1,0 +1,8 @@
+<Bindings>
+    <Binding name="ICTEMPLATE_PULSE" header="ICTEMPLATE" description="Send the armed ICTemplate pulse">
+        ICTemplate_PulseNow()
+    </Binding>
+    <Binding name="ICTEMPLATE_TOGGLE" description="Open or close the ICTemplate window">
+        ICTemplate_Toggle()
+    </Binding>
+</Bindings>
