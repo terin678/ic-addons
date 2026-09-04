@@ -140,6 +140,15 @@ function Classifier.Evaluate(ctx)
         return result
     end
 
+    -- They asked for a specialization this character does not hold. It is a
+    -- customer, just not ours: no invite, no order, no reply. Scored first so the
+    -- log still shows they looked like a buyer.
+    if ctx.wrongSpec then
+        result.verdict = "vetoed"
+        result.reason = "wants a " .. ctx.wrongSpec
+        return result
+    end
+
     for _, word in ipairs(filter.vetoWords) do
         if Util.HasPhrase(ctx.norm, word) then
             result.verdict = "vetoed"

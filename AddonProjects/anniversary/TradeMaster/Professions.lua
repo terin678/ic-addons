@@ -138,6 +138,19 @@ local SPECS = {
         personNouns = list("alchemist"),
         craftVerbs = list("brew", "make"), gerunds = { make = "making" },
         craftNoun = list("potion", "potions"), doneWord = "brewed",
+        specs = list(
+            { key = "potion", name = "Master of Potions", label = "Potion Master", spellID = 28675,
+              words = list("potion master", "master of potions", "potion spec",
+                           "potion specialist", "potion alchemist") },
+            { key = "elixir", name = "Master of Elixirs", label = "Elixir Master", spellID = 28677,
+              words = list("elixir master", "master of elixirs", "elixir spec",
+                           "elixir specialist", "elixir alchemist") },
+            { key = "transmute", name = "Master of Transmutation", label = "Transmutation Master",
+              spellID = 28672,
+              words = list("transmute master", "transmutation master", "transmute alchemist",
+                           "master of transmutation", "transmute spec", "transmutation spec",
+                           "transmute specialist") }
+        ),
         recipeItemPrefix = "Recipe:", productClasses = { [0] = true },
         shorthand = "none", minTokenLen = 7,
         bulkFilters = { { "Rare+", "rare" }, { "All", "all" }, { "None", "none" } },
@@ -148,6 +161,18 @@ local SPECS = {
         personNouns = list("blacksmith"),
         craftVerbs = list("craft", "smith", "make"), gerunds = { make = "making" },
         craftNoun = list("item", "items"), barkTag = "BS", doneWord = "made",
+        specs = list(
+            { key = "armorsmith", name = "Armorsmith", spellID = 9788,
+              words = list("armorsmith", "armoursmith", "armor smith", "armour smith") },
+            { key = "weaponsmith", name = "Weaponsmith", spellID = 9787,
+              words = list("weaponsmith", "weapon smith") },
+            { key = "swordsmith", name = "Master Swordsmith", spellID = 17039,
+              words = list("swordsmith", "sword smith") },
+            { key = "axesmith", name = "Master Axesmith", spellID = 17041,
+              words = list("axesmith", "axe smith") },
+            { key = "hammersmith", name = "Master Hammersmith", spellID = 17040,
+              words = list("hammersmith", "hammer smith") }
+        ),
         recipeItemPrefix = "Plans:", productClasses = { [2] = true, [4] = true },
         shorthand = "none", minTokenLen = 7,
         bulkFilters = { { "Rare+", "rare" }, { "All", "all" }, { "None", "none" } },
@@ -158,6 +183,14 @@ local SPECS = {
         personNouns = list("tailor"),
         craftVerbs = list("craft", "sew", "make"), gerunds = { make = "making" },
         craftNoun = list("item", "items"), barkTag = "Tailoring", doneWord = "made",
+        specs = list(
+            { key = "spellfire", name = "Spellfire Tailoring", spellID = 26797,
+              words = list("spellfire tailor", "spellfire tailoring", "spellfire spec") },
+            { key = "mooncloth", name = "Mooncloth Tailoring", spellID = 26798,
+              words = list("mooncloth tailor", "mooncloth tailoring", "mooncloth spec") },
+            { key = "shadoweave", name = "Shadoweave Tailoring", spellID = 26801,
+              words = list("shadoweave tailor", "shadoweave tailoring", "shadoweave spec") }
+        ),
         recipeItemPrefix = "Pattern:", productClasses = { [4] = true, [1] = true },
         shorthand = "none", minTokenLen = 7,
         bulkFilters = { { "Rare+", "rare" }, { "All", "all" }, { "None", "none" } },
@@ -168,6 +201,17 @@ local SPECS = {
         personNouns = list("leatherworker"),
         craftVerbs = list("craft", "make"), gerunds = { make = "making" },
         craftNoun = list("item", "items"), barkTag = "LW", doneWord = "made",
+        specs = list(
+            { key = "dragonscale", name = "Dragonscale Leatherworking", spellID = 10656,
+              words = list("dragonscale lw", "dragonscale leatherworker",
+                           "dragonscale leatherworking", "dragonscale spec") },
+            { key = "elemental", name = "Elemental Leatherworking", spellID = 10658,
+              words = list("elemental lw", "elemental leatherworker",
+                           "elemental leatherworking", "elemental spec") },
+            { key = "tribal", name = "Tribal Leatherworking", spellID = 10660,
+              words = list("tribal lw", "tribal leatherworker",
+                           "tribal leatherworking", "tribal spec") }
+        ),
         recipeItemPrefix = "Pattern:", productClasses = { [4] = true, [1] = true },
         shorthand = "none", minTokenLen = 7,
         bulkFilters = { { "Rare+", "rare" }, { "All", "all" }, { "None", "none" } },
@@ -178,6 +222,13 @@ local SPECS = {
         personNouns = list("engineer"),
         craftVerbs = list("craft", "make", "build"), gerunds = { make = "making" },
         craftNoun = list("item", "items"), barkTag = "Engineering", doneWord = "made",
+        specs = list(
+            { key = "gnomish", name = "Gnomish Engineer", spellID = 20219,
+              words = list("gnomish engineer", "gnomish engineering", "gnome engineer",
+                           "gnomish spec") },
+            { key = "goblin", name = "Goblin Engineer", spellID = 20222,
+              words = list("goblin engineer", "goblin engineering", "goblin spec") }
+        ),
         recipeItemPrefix = "Schematic:",
         productClasses = { [7] = true, [15] = true, [2] = true, [4] = true, [0] = true },
         shorthand = "none", minTokenLen = 7,
@@ -303,6 +354,163 @@ end
 --------------------------------------------------------------------------------
 
 -- Default settings for one profession, built from its profile.
+--------------------------------------------------------------------------------
+-- Specializations
+--------------------------------------------------------------------------------
+
+-- Asking for a specialization is asking for a different crafter, not a different
+-- item. A potion master can still brew the elixir; they cannot give the customer
+-- the proc they came for. So a request naming one we do not hold is not a
+-- customer for us, however well it matches the book.
+--
+-- The words are deliberately specific. A bare "transmute" is an ordinary request
+-- any alchemist can take; "transmute master" is not.
+
+-- The spellbook, read once. A specialization is a passive spell that only changes
+-- at a trainer, so this is cached and dropped on SPELLS_CHANGED.
+local spellNames
+local specCache
+
+-- nil when this client cannot be asked. "You hold nothing" and "we could not
+-- look" are the same table otherwise, and the first would refuse every
+-- specialization request there is.
+local function ReadSpellbook()
+    if not (GetNumSpellTabs and GetSpellTabInfo and GetSpellBookItemName) then
+        return nil
+    end
+    local names = {}
+    for i = 1, GetNumSpellTabs() do
+        local _, _, offset, count = GetSpellTabInfo(i)
+        offset, count = offset or 0, count or 0
+        for j = offset + 1, offset + count do
+            local name = GetSpellBookItemName(j, "spell")
+            if name then names[name:lower()] = true end
+        end
+    end
+    return names
+end
+
+function Prof.ForgetSpells()
+    spellNames, specCache = nil, nil
+end
+
+-- True when we can answer the question at all.
+function Prof.CanDetectSpecs()
+    if IsSpellKnown then return true end
+    if spellNames == nil then spellNames = ReadSpellbook() or false end
+    return spellNames ~= false
+end
+
+-- IsSpellKnown answers straight away when the client has it. The spellbook walk
+-- is the fallback, and it is why the spec `name` has to be the client's own
+-- wording, same rule as the profession names above.
+function Prof.KnowsSpec(spec)
+    if not spec then return false end
+    if IsSpellKnown and spec.spellID then
+        local ok, known = pcall(IsSpellKnown, spec.spellID)
+        if ok and known then return true end
+    end
+    if spellNames == nil then spellNames = ReadSpellbook() or false end
+    if spellNames == false then return false end
+    return spellNames[(spec.name or ""):lower()] == true
+end
+
+-- Every specialization this character actually holds, as a set. More than one is
+-- normal: a Weaponsmith who went on to Swordsmith holds both.
+function Prof.DetectSpecs(profile)
+    local key = profile and profile.key
+    specCache = specCache or {}
+    if key and specCache[key] then return specCache[key] end
+    local found = {}
+    for _, spec in ipairs(profile and profile.specs or {}) do
+        if Prof.KnowsSpec(spec) then found[spec.key] = true end
+    end
+    if key then specCache[key] = found end
+    return found
+end
+
+-- What we answer to, and where that came from. The saved override wins:
+--   nil     leave it to the client, so retraining is picked up on its own
+--   <key>   you hold that one, whatever the client says
+--   "none"  you hold none, so every specialization request is somebody else's
+--   "off"   stop weighing specializations at all
+function Prof.SpecSet(key)
+    local pd = ns.db and ns.db.professions and ns.db.professions[key]
+    local override = pd and pd.settings and pd.settings.specialization
+    if override == "off" then return {}, "off" end
+    if override == "none" then return {}, "none" end
+    if override then return { [override] = true }, "manual" end
+    -- Nothing to read it from, so refuse nobody rather than everybody.
+    if not Prof.CanDetectSpecs() then return {}, "off" end
+    return Prof.DetectSpecs(Prof.ByKey(key)), "auto"
+end
+
+-- The states the Professions button cycles through, in order.
+function Prof.SpecChoices(profile)
+    local out = { "auto" }
+    for _, spec in ipairs(profile and profile.specs or {}) do out[#out + 1] = spec.key end
+    out[#out + 1] = "none"
+    out[#out + 1] = "off"
+    return out
+end
+
+-- Short enough for a button: what we hold, and whether anyone chose it.
+function Prof.SpecLabel(key)
+    local have, source = Prof.SpecSet(key)
+    if source == "off" then return "off" end
+    if source == "none" then return "none" end
+    local profile = Prof.ByKey(key)
+    local keys = {}
+    for _, spec in ipairs(profile and profile.specs or {}) do
+        if have[spec.key] then keys[#keys + 1] = spec.key end
+    end
+    local what = (#keys == 0 and "none") or (#keys == 1 and keys[1]) or (#keys .. " held")
+    return source == "auto" and ("auto: " .. what) or what
+end
+
+-- Pure. The specialization a line asks for that we do not hold, as its display
+-- name and key, or nil.
+--
+-- Anything they linked or that matched the book is cut out first: "[Bolt of
+-- Mooncloth]" is an item and "mooncloth tailor" is a specialization, and the word
+-- is the same one. Reading the whole line would refuse the customer who wanted
+-- the item.
+function Prof.SpecWanted(profile, raw, have, matchedNames)
+    if not profile or not profile.specs or not raw then return nil end
+    local norm = ns.Util.Normalize((raw:gsub("%[.-%]", " ")))
+    for _, name in ipairs(matchedNames or {}) do
+        local n = ns.Util.Normalize(name or "")
+        if n ~= "" then norm = norm:gsub(ns.Util.EscapePattern(n), " ") end
+    end
+    for _, spec in ipairs(profile.specs) do
+        if not (have or {})[spec.key] then
+            for _, word in ipairs(spec.words) do
+                if ns.Util.HasPhrase(norm, word) then
+                    return spec.label or spec.name, spec.key
+                end
+            end
+        end
+    end
+    return nil
+end
+
+-- How to describe what we hold, for the UI and /tm spec.
+function Prof.DescribeSpecs(key)
+    local profile = Prof.ByKey(key)
+    if not profile or not profile.specs or #profile.specs == 0 then return "none for this profession" end
+    local have, source = Prof.SpecSet(key)
+    if source == "off" then
+        return "|cff888888not checked; requests for a specialization are not refused|r"
+    end
+    local names = {}
+    for _, spec in ipairs(profile.specs) do
+        if have[spec.key] then names[#names + 1] = spec.label or spec.name end
+    end
+    local what = #names > 0 and table.concat(names, ", ") or "none"
+    if source == "auto" then return what .. " |cff888888(detected)|r" end
+    return what .. " |cff888888(set by you)|r"
+end
+
 function Prof.DefaultSettings(profile)
     local v = profile.vocab
     local t = profile.templates

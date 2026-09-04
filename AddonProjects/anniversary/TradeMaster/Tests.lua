@@ -110,6 +110,7 @@ local function classify(text, over)
         linkCount = #ns.Util.ExtractItemIDs(text),
         hasRecipeLink = over.hasRecipeLink or false,
         namedUnknownItem = over.namedUnknownItem or false,
+        wrongSpec = over.wrongSpec,
         isRepeat = over.isRepeat or false,
         isDirect = over.isDirect or false,
         playerState = over.playerState,
@@ -1509,4 +1510,84 @@ T.Case("Invites: a decline is read in the client's own words", function()
     T.Eq(ns.Inviter.DeclinedName(nil, fmt), nil, "no message")
     T.Eq(ns.Inviter.DeclinedName("anything", nil), nil, "no format string on this client")
     T.Eq(ns.Inviter.DeclinedName("anything", "no placeholder here"), nil, "a format with no %s")
+end)
+
+--------------------------------------------------------------------------------
+-- Specializations
+--------------------------------------------------------------------------------
+
+local TAILOR = ns.Prof.ByKey("tailoring")
+
+local function set(...)
+    local out = {}
+    for _, k in ipairs({ ... }) do out[k] = true end
+    return out
+end
+
+T.Case("Specializations: they want a transmute master and you brew potions", function()
+    -- Draxxino, in Trade: this matched [Primal Might] out of the book and opened
+    -- an order, because nothing read the four words in front of it.
+    local line = "LF  transmute alchemist for  primal might cool down pst"
+    T.Eq(ns.Prof.SpecWanted(ALCH, line, set("potion")), "Transmutation Master",
+        "not our customer")
+    T.Eq(ns.Prof.SpecWanted(ALCH, line, set("transmute")), nil, "unless it is us")
+    T.Eq(ns.Prof.SpecWanted(ALCH, line, set("potion", "transmute")), nil, "or one of ours")
+
+    T.Eq(ns.Prof.SpecWanted(ALCH, "LF elixir master to make an elixir", set("potion")),
+        "Elixir Master", "the same for elixirs, named the way people say it")
+    T.Eq(ns.Prof.SpecWanted(ALCH, "lf alch to make a potion", set("potion")), nil,
+        "an ordinary request names no specialization")
+
+    -- A bare verb is an ordinary request any alchemist can take. Only the words
+    -- that mean the specialist are listed.
+    T.Eq(ns.Prof.SpecWanted(ALCH, "can you transmute this for me", set("potion")), nil,
+        "transmute on its own is not a specialization")
+end)
+
+T.Case("Specializations: an item is not a request for a specialist", function()
+    -- "Spellfire Belt" is an item; "spellfire tailor" is a specialization; the
+    -- word is the same one. Reading the whole line would refuse the customer.
+    local linked = "LF tailor for |cffa335ee|Hitem:21848:0:0:0:0:0:0:0|h[Spellfire Belt]|h|r"
+    T.Eq(ns.Prof.SpecWanted(TAILOR, linked, set("mooncloth")), nil, "what they linked is cut out")
+
+    local typed = "LF tailor for Spellfire Belt"
+    T.Eq(ns.Prof.SpecWanted(TAILOR, typed, set("mooncloth"), { "Spellfire Belt" }), nil,
+        "and so is what matched the book")
+    -- Nor is the bare word enough on its own: the vanilla Shadoweave set needs no
+    -- specialization at all, so every word here carries a qualifier.
+    T.Eq(ns.Prof.SpecWanted(TAILOR, typed, set("mooncloth")), nil,
+        "the item name alone asks for nobody in particular")
+    T.Eq(ns.Prof.SpecWanted(TAILOR, "LF spellfire tailor for a belt", set("mooncloth")),
+        "Spellfire Tailoring", "asking for the specialist is another matter")
+end)
+
+T.Case("Specializations: professions without them are unaffected", function()
+    T.Eq(ns.Prof.SpecWanted(JC, "LF jc for a transmute master cut", set()), nil,
+        "jewelcrafting has none, so nothing is refused")
+    T.Eq(ns.Prof.SpecWanted(nil, "anything", set()), nil, "nor does no profile")
+    T.Eq(ns.Prof.SpecWanted(ALCH, nil, set("potion")), nil, "nor no message")
+end)
+
+T.Case("Specializations: the choices a profession offers", function()
+    local choices = ns.Prof.SpecChoices(ALCH)
+    T.Eq(choices[1], "auto", "auto first")
+    T.Eq(choices[#choices], "off", "off last")
+    T.Eq(#choices, 5, "auto, three specializations, none, off")
+    T.Eq(#ns.Prof.SpecChoices(JC), 3, "auto, none and off even with no specializations")
+end)
+
+T.Case("Requests: a specialization we lack is vetoed, not scored", function()
+    -- Primal Might has to be in the book for this line to get past the "no item
+    -- match" exit: matching it is exactly what opened Draxxino an order.
+    local book = { [23571] = { itemID = 23571, name = "Primal Might", classID = 7,
+                               bindType = 0, match = true, aliases = {} } }
+    local line = "LF transmute alchemist for primal might cool down pst"
+
+    local plain = classify(line, { profile = ALCH, book = book })
+    T.Eq(plain.verdict ~= "vetoed", true, "a transmute master would take this one")
+
+    local r = classify(line, { profile = ALCH, book = book,
+        wrongSpec = "Transmutation Master" })
+    T.Eq(r.verdict, "vetoed", "not our customer")
+    T.Eq(r.reason, "wants a Transmutation Master", "and the log says why")
 end)

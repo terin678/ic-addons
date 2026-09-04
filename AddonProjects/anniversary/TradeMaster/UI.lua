@@ -267,13 +267,16 @@ function UI.BuildProfessions(page)
         columns = {
             { key = "icon", label = "", width = 26, type = "texture" },
             { key = "name", label = "Profession", width = 128 },
-            { key = "recipes", label = "Recipes", width = 60, justify = "RIGHT" },
-            { key = "products", label = "Products", width = 68, justify = "RIGHT" },
-            { key = "scanned", label = "Scanned", width = 62, justify = "RIGHT" },
-            { key = "adv", label = "Advertised", width = 70, justify = "RIGHT" },
+            { key = "recipes", label = "Recipes", width = 52, justify = "RIGHT" },
+            { key = "products", label = "Products", width = 64, justify = "RIGHT" },
+            { key = "scanned", label = "Scanned", width = 56, justify = "RIGHT" },
+            { key = "adv", label = "Advertised", width = 62, justify = "RIGHT" },
             { key = "note", label = "", width = "flex" },
         },
-        buttons = { { key = "active", label = "Make active", width = 100 } },
+        buttons = {
+            { key = "spec", label = "Spec", width = 100 },
+            { key = "active", label = "Make active", width = 100 },
+        },
     })
     UI.profTable = t
 
@@ -309,14 +312,50 @@ function UI.BuildProfessions(page)
                     ns.Print(p.name .. " is now the active profession.")
                     UI.Refresh()
                 end)
+
+                -- Which specialization we answer to. Cycles auto, each one this
+                -- profession has, none, then off.
+                local spec = row.buttons.spec
+                local choices = ns.Prof.SpecChoices(p)
+                if #(p.specs or {}) == 0 then
+                    spec:Hide()
+                else
+                    local _, source = ns.Prof.SpecSet(key)
+                    spec:SetText(ns.Prof.SpecLabel(key))
+                    -- Off means the check is not running, which has to look
+                    -- different from a specialization that is set.
+                    spec:SetKind(source == "off" and "danger" or "normal")
+                    spec:Show()
+                    UI.Lib:Tooltip(spec, function()
+                        GameTooltip:AddLine(p.name .. " specialization", 1, 1, 1)
+                        GameTooltip:AddLine(ns.Prof.DescribeSpecs(key), 0.8, 0.8, 0.8, true)
+                        GameTooltip:AddLine(" ")
+                        GameTooltip:AddLine("Someone asking for one you do not hold is not "
+                            .. "invited and opens no order.", 0.8, 0.8, 0.8, true)
+                        GameTooltip:AddLine("Click to cycle: auto (read from your spellbook), "
+                            .. "each specialization, none, then off.", 0.6, 0.6, 0.6, true)
+                    end)
+                    spec:SetScript("OnClick", function()
+                        local current = pd.settings.specialization or "auto"
+                        local nextIndex = 1
+                        for i, choice in ipairs(choices) do
+                            if choice == current then nextIndex = (i % #choices) + 1 end
+                        end
+                        local picked = choices[nextIndex]
+                        pd.settings.specialization = (picked ~= "auto") and picked or nil
+                        ns.Print(string.format("%s: %s", p.name, ns.Prof.DescribeSpecs(key)))
+                        UI.Refresh()
+                    end)
+                end
             else
                 t:Set(row, "name", "|cff777777" .. p.name .. "|r")
                 t:Set(row, "recipes", "")
                 t:Set(row, "products", "")
                 t:Set(row, "scanned", "")
                 t:Set(row, "adv", "")
-                t:Set(row, "note", "|cff777777not scanned; open its window once|r")
+                t:Set(row, "note", "|cff777777not scanned|r")
                 btn:Hide()
+                row.buttons.spec:Hide()
             end
         end)
     end

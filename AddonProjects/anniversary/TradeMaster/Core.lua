@@ -2,7 +2,7 @@ local addonName, ns = ...
 
 ns.Util = ns.Util or {}
 
-local VERSION = "1.10.0"
+local VERSION = "1.11.0"
 
 -- Output goes straight into a chat frame rather than through the chat event
 -- system, so it has no message type and the chat settings UI cannot route it.
@@ -178,6 +178,7 @@ frame:RegisterEvent("CHAT_MSG_CHANNEL")
 frame:RegisterEvent("CHAT_MSG_WHISPER")
 frame:RegisterEvent("GROUP_ROSTER_UPDATE")
 frame:RegisterEvent("CHAT_MSG_SYSTEM")
+frame:RegisterEvent("SPELLS_CHANGED")
 frame:RegisterEvent("CHAT_MSG_RAID_LEADER")
 frame:RegisterEvent("CHAT_MSG_RAID")
 frame:RegisterEvent("CHAT_MSG_PARTY_LEADER")
@@ -242,6 +243,11 @@ frame:SetScript("OnEvent", function(self, event, ...)
             ns.Print("|cffff9900CutMaster is also loaded.|r Both watch Trade chat and both will invite. "
                 .. "Disable one of them (/tm disable or /cm disable).")
         end
+    elseif event == "SPELLS_CHANGED" then
+        -- Retraining a specialization changes the spellbook, and nothing else
+        -- tells us it happened.
+        ns.Prof.ForgetSpells()
+        if ns.UI and ns.UI.frame and ns.UI.frame:IsShown() then ns.UI.Refresh() end
     elseif event == "SKILL_LINES_CHANGED" then
         if ns.db and ns.db.professions then
             for _, pd in pairs(ns.db.professions) do pd.bookDirty = true end
@@ -356,6 +362,30 @@ local function HandleSlash(input)
         ns.Scanner.Scan()
     elseif cmd == "craft" then
         ns.Crafter.Focus({ manual = true })
+    elseif cmd == "spec" then
+        local want = ns.Util.Trim(rest or ""):lower()
+        local key = ns.db.activeProfession
+        local p = key and ns.Prof.ByKey(key)
+        if not p or not p.specs or #p.specs == 0 then
+            ns.Print("no specializations for " .. (p and p.name or "this profession") .. ".")
+        elseif want == "" then
+            ns.Print(string.format("%s: %s", p.name, ns.Prof.DescribeSpecs(key)))
+            ns.Print("  /tm spec " .. table.concat(ns.Prof.SpecChoices(p), "|")
+                .. "   (none = you have none, off = stop refusing on this)")
+        else
+            local pd = ns.Prof.DB(key)
+            local ok = false
+            for _, choice in ipairs(ns.Prof.SpecChoices(p)) do
+                if choice == want then ok = true end
+            end
+            if not ok then
+                ns.Print("|cffff4444no such specialization.|r /tm spec lists them.")
+                return
+            end
+            pd.settings.specialization = (want ~= "auto") and want or nil
+            ns.Print(string.format("%s: %s", p.name, ns.Prof.DescribeSpecs(key)))
+            if ns.UI then ns.UI.Refresh() end
+        end
     elseif cmd == "probe" then
         ns.Crafter.Probe()
     elseif cmd == "book" then
@@ -593,7 +623,7 @@ local function HandleSlash(input)
         ns.Print("  /tm send, /tm preview, /tm adv epic|rare|all|none|+text|-text,")
         ns.Print("  /tm invite, /tm log, /tm debug, /tm capture, /tm clearcapture,")
         ns.Print("  /tm orders, /tm order add|done|cancel|reopen|removeitem, /tm craft,")
-        ns.Print("  /tm probe,")
+        ns.Print("  /tm probe, /tm spec [auto|none|off|<name>],")
         ns.Print("  /tm tracker,")
         ns.Print("  /tm income, /tm market, /tm annotate, /tm clearflags, /tm out [n],")
         ns.Print("  /tm status, /tm test, /tm disable, /tm enable")

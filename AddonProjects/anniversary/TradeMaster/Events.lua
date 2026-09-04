@@ -125,7 +125,7 @@ function Events.Process(text, author, source, opts)
     end
 
     -- Fragmented requests across two messages, direct channels only.
-    local usedContext = false
+    local usedContext, contextText = false, nil
     if isDirect and #matched == 0 then
         local combined = ns.Players.RecentText(state, now, CONTEXT_WINDOW)
         if combined ~= "" then
@@ -136,6 +136,7 @@ function Events.Process(text, author, source, opts)
                 Use(cpick)
                 matched = cm
                 norm = cnorm
+                contextText = combined
                 usedContext = true
             end
         end
@@ -239,9 +240,28 @@ function Events.Process(text, author, source, opts)
         end
     end
 
+    -- A request for a specialization we do not hold. Checked against the line
+    -- with everything they named cut out, so an item whose name happens to carry
+    -- a specialization word is still an ordinary request for that item.
+    local wrongSpec
+    if pick.key then
+        local have, source = ns.Prof.SpecSet(pick.key)
+        if source ~= "off" then
+            local names = {}
+            for _, h in ipairs(matched) do
+                local e = book[h.itemID]
+                if e and e.name then names[#names + 1] = e.name end
+            end
+            -- The stitched line when they said it across two messages, so
+            -- "LF transmute master" then "[Primal Might]" is still read as one.
+            wrongSpec = ns.Prof.SpecWanted(profile, contextText or text, have, names)
+        end
+    end
+
     local result = ns.Classifier.Evaluate({
         norm = norm,
         raw = text,
+        wrongSpec = wrongSpec,
         matched = matched,
         linkCount = #ns.Util.ExtractItemIDs(text),
         hasRecipeLink = HasRecipeLink(text, profile),

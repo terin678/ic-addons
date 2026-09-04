@@ -144,6 +144,7 @@ profession in **Filter**.
 | Names an item you lack | "Sorry, I don't have that potion." No alternatives pitched. |
 | Names several, you have some | "I can do X, but I don't have Y." |
 | Types half a gem name (Jewelcrafting) | "Did you mean one of these?" |
+| Asks for a specialization you lack | Nothing. Not your customer. |
 | Just chatting about prices | Nothing. Not a question. |
 
 The reply is decided over **everything** they named, not the first thing that matched:
@@ -215,6 +216,38 @@ cancelling it out from under them would be wrong.
 
 The decline is read by turning the client's own `ERR_DECLINE_GROUP_S` into a pattern, so it
 works on any locale rather than only on an English client.
+
+### Knows which specialist you are
+
+"LF transmute alchemist for primal might cooldown" matched Primal Might out of the book and
+opened an order, because nothing read the four words in front of it. A potion master can
+still brew the elixir; they cannot give the customer the proc they came for. So a request
+naming a specialization you do not hold gets no invite, no order and no reply. It shows in
+the Log as vetoed, with the specialization it wanted as the reason.
+
+Covered: Alchemy (potion, elixir, transmutation), Blacksmithing (armorsmith, weaponsmith and
+the three weapon masteries), Leatherworking (dragonscale, elemental, tribal), Tailoring
+(spellfire, mooncloth, shadoweave), Engineering (gnomish, goblin).
+
+The words are deliberately narrow. A bare "transmute" is an ordinary request any alchemist
+can take; "transmute master" is not. Anything linked or matched against your book is cut out
+of the line first, because "[Spellfire Belt]" is an item and "spellfire tailor" is a
+specialization and the word is the same one — reading the whole line would refuse the
+customer who wanted the item.
+
+**Which one you are** is read from your spellbook on login and whenever it changes, so
+retraining is picked up on its own. The **Spec** button on the Professions tab cycles it:
+
+| State | Means |
+| --- | --- |
+| `auto: potion` | read from your spellbook; the name after the colon is what it found |
+| `potion` | you say you hold this one, whatever the spellbook says |
+| `none` | you hold none, so every specialization request is somebody else's |
+| `off` | stop weighing specializations for this profession at all |
+
+`/tm spec` reports it, `/tm spec auto|none|off|<name>` sets it for the active profession.
+If the spellbook cannot be read on this client, set it by hand — the button says `auto: none`
+when detection came back empty, which is the same thing as `none` and worth checking.
 
 ### Shows you the message first
 
@@ -301,6 +334,7 @@ For Jewelcrafting, gem names in the profession window are replaced with what the
 | `/tm invite` | Toggle invites for every scanned profession |
 | `/tm craft` | Select the next item an order needs in the open profession window |
 | `/tm capture` | Record every Trade line, not only the ones a decision was made about |
+| `/tm spec [auto\|none\|off\|<name>]` | Which specialization you answer to for the active profession |
 | `/tm probe` | Say which profession-window functions this client provides, and what each missing one costs |
 | `/tm market` | Seller and buyer counts per profession, and the suggested bark interval |
 | `/tm log` / `/tm clearflags` | Recent decisions; clear competitor flags |
