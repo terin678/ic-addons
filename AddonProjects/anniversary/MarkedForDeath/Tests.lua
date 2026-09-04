@@ -3211,6 +3211,31 @@ T.Case("Actions: every action is complete enough to bind and draw", function()
     end
 end)
 
+T.Case("Actions: no button face can outgrow its button", function()
+    -- This is the bug it guards: "Tank: On everywhere" was drawn straight over
+    -- the button beside it. The face is clipped now as well, but a label that
+    -- needs clipping is already a label nobody can read.
+    local BUDGET = 18   -- characters that fit 116 pixels at the button font
+
+    for _, action in ipairs(A.LIST) do
+        T.Eq(#action.label <= BUDGET, true, action.key .. " label is too long: " .. action.label)
+    end
+
+    -- The stateful ones render a prefix plus a state word, which is the pair
+    -- that actually overflowed.
+    for _, kind in ipairs(MFD.Encounters.KINDS) do
+        local prefix = MFD.Encounters.KIND_LABELS[kind]
+        for _, state in ipairs({ "AUTO", "ON", "OFF" }) do
+            local short = MFD.Encounters.OVERRIDE_SHORT[state]
+            T.Eq(type(short), "string", state .. " needs a short label")
+            local face = prefix .. ": " .. short
+            T.Eq(#face <= BUDGET, true, "button face is too long: " .. face)
+        end
+    end
+
+    T.Eq(#("Marking off") <= BUDGET, true, "and the marking toggle's longer state")
+end)
+
 T.Case("Actions: keys are unique, so a binding cannot fire the wrong one", function()
     local seen = {}
     for _, action in ipairs(A.LIST) do

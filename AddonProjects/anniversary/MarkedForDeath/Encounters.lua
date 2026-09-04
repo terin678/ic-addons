@@ -22,6 +22,15 @@ Encounters.OVERRIDE_LABELS = {
     OFF = "Off everywhere",
 }
 
+-- The same three for a button face, where the label is prefixed by which kind
+-- it governs and the whole thing has to fit in one. "Tank: On everywhere" did
+-- not, and spilled across the button beside it.
+Encounters.OVERRIDE_SHORT = {
+    AUTO = "per boss",
+    ON = "all",
+    OFF = "off",
+}
+
 -- Builds { [npcID] = encounterName } from the boss table. Pure.
 function Encounters.IndexByNpcID(bosses)
     local index = {}

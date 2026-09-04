@@ -110,7 +110,7 @@ local function overrideAction(kind, label)
         status = function()
             local override = MFD.Encounters.Settings(kind).override
             local color = (override == "ON" and GREEN) or (override == "OFF" and RED) or AMBER
-            return color .. label .. ": " .. MFD.Encounters.OVERRIDE_LABELS[override] .. "|r"
+            return color .. label .. ": " .. MFD.Encounters.OVERRIDE_SHORT[override] .. "|r"
         end,
     }
 end
@@ -151,7 +151,7 @@ end
 
 -- The buttons are deliberately large. This is the one surface that gets used
 -- with a boss on you, and a 60 pixel button is a miss.
-Actions.BUTTON_WIDTH = 104
+Actions.BUTTON_WIDTH = 116
 Actions.BUTTON_HEIGHT = 24
 Actions.BUTTON_GAP = 6
 
@@ -166,6 +166,16 @@ function Actions.BuildBar(container)
         button:SetSize(Actions.BUTTON_WIDTH, Actions.BUTTON_HEIGHT)
         button.action = action
         button:SetText(Actions.TextFor(action))
+
+        -- Clip rather than spill. A label that outgrows its button used to draw
+        -- straight across the one next to it, which is how "Tank: On
+        -- everywhere" and "Healer: On everywhere" ended up on top of each
+        -- other. Truncation is visibly truncation; overlap just looks broken.
+        local face = button:GetFontString()
+        if face then
+            face:SetWidth(Actions.BUTTON_WIDTH - 10)
+            face:SetWordWrap(false)
+        end
 
         button:SetScript("OnClick", function()
             Actions.Run(action.key)
