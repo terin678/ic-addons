@@ -31,7 +31,8 @@ local CHECKS = {
 
     -- Nor has anything read the guild roster.
     { "IsInGuild", "is there a guild to talk to at all" },
-    { "GuildRoster", "asks the server for the roster; answers on GUILD_ROSTER_UPDATE" },
+    { "C_GuildInfo.GuildRoster", "asks the server to refresh the roster" },
+    { "GuildRoster", "the legacy name for the same thing" },
     { "GetGuildRosterInfo", "name, rank and rankIndex per member" },
     { "GetGuildInfo", "the guild's own name" },
 

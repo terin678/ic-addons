@@ -130,11 +130,18 @@ function Roster.Refresh(force)
     local now = ns.Now()
     if not force and (now - (Roster.requestedAt or 0)) < REFRESH_GAP then return false end
     Roster.requestedAt = now
-    if type(GuildRoster) == "function" then
-        GuildRoster()
+
+    -- /gr probe on 20506: the bare GuildRoster global does NOT exist, so the
+    -- modern name is tried first and the old one kept only as a fallback for
+    -- anywhere else this lands.
+    local ask = (C_GuildInfo and C_GuildInfo.GuildRoster) or _G.GuildRoster
+    if type(ask) == "function" then
+        pcall(ask)
         return true
     end
-    -- No way to ask: read whatever the client already has rather than nothing.
+
+    -- Nothing to ask with. The client keeps the roster populated anyway -- 450
+    -- rows read on a probe that never asked -- so read what is already there.
     Roster.Read()
     return false
 end

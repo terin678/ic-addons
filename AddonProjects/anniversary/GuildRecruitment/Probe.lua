@@ -26,7 +26,10 @@ local CHECKS = {
     { "RegisterAddonMessagePrefix", "the legacy prefix registration" },
 
     { "IsInGuild", "is there a guild to talk to at all" },
-    { "GuildRoster", "asks the server for the roster, answered on GUILD_ROSTER_UPDATE" },
+    -- 20506 has neither the bare GuildRoster nor, so far as the code knows, the
+    -- namespaced one. Both are checked; the roster reads fine without either.
+    { "C_GuildInfo.GuildRoster", "asks the server to refresh the roster" },
+    { "GuildRoster", "the legacy name for the same thing" },
     { "GetNumGuildMembers", "how many rows to walk" },
     { "GetGuildRosterInfo", "name, rank and rankIndex per member" },
     { "GetGuildInfo", "the guild's own name, used to drop a message from elsewhere" },

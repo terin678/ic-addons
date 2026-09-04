@@ -482,7 +482,13 @@ T.Case("Bark: every reason it will not send, in a fixed order", function()
     T.Eq(ns.Bark.BlockReason(state({ inCombat = true, pauseCombat = false })), nil,
         "unless you asked it not to care")
     T.Eq(ns.Bark.BlockReason(state({ inInstance = true })), "in an instance", "or an instance")
-    T.Eq(ns.Bark.BlockReason(state({ channel = nil })):find("no channel", 1, true), 1,
+    -- Cleared after the fact, not passed in: `{ channel = nil }` is an EMPTY table
+    -- in Lua, so the override never happens and the field keeps its default. This
+    -- shipped green from a Python port of these cases, where a dict really can
+    -- hold a None, and failed the first time it ran in the client.
+    local noChannel = state()
+    noChannel.channel = nil
+    T.Eq(ns.Bark.BlockReason(noChannel):find("no channel", 1, true), 1,
         "somewhere to send it")
     T.Eq(ns.Bark.BlockReason(state({ messageReason = "nothing to recruit" })),
         "nothing to recruit", "something to say")

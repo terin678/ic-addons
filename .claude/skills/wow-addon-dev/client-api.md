@@ -104,24 +104,33 @@ player sees, it belongs in the saved table.
 channel's name as an id, and the bug is invisible until the character has joined an odd
 number of channels. `TradeMaster/Barker.lua` and `GuildRecruitment/Bark.lua` both step by 3.
 
-## Not verified yet
+## Addon messages and the guild roster
 
-Everything above was paid for. These are the opposite: things the code guards against
-because nobody has ever run them on this client. Replace an entry with what actually
-happened the first time somebody does.
+Answered by `/gr probe` on 20506, so these are facts now rather than guesses.
 
-**Addon messages.** Whether `C_ChatInfo.SendAddonMessage` exists on 20506 or only the bare
-`SendAddonMessage`; whether `RegisterAddonMessagePrefix` is required before
-`CHAT_MSG_ADDON` fires at all; whether the 255-byte cap counts the prefix; whether your own
-`GUILD` message is echoed back to you. `GuildRecruitment` tries both names, guards every
-call in `pcall`, and `/gr probe` reports which answered and then sends a real message and
-waits for it — the round trip is the only thing that proves the channel carries anything.
-`/gr probe noreg` plus a `/reload` answers the registration question on its own.
+**`C_ChatInfo` is the live path; the bare globals are gone.**
+`C_ChatInfo.SendAddonMessage` and `C_ChatInfo.RegisterAddonMessagePrefix` both exist;
+`SendAddonMessage` and `RegisterAddonMessagePrefix` as globals do **not**. Registration is
+accepted. Resolve the namespaced name first and keep the global only as a fallback for
+other flavours.
 
-**The guild roster.** The exact return positions of `GetGuildRosterInfo(i)` on 20506, and
-whether `rankIndex` is 0-based with 0 meaning guild master. Everything that decides
-permission takes the index as an argument and is pure, so if the polarity turns out to be
-inverted only `Roster.Read` changes.
+**`GuildRoster()` does not exist either**, under that name. `IsInGuild`,
+`GetNumGuildMembers`, `GetGuildRosterInfo` and `GetGuildInfo` all do, and the roster is
+populated without anyone asking for it -- a probe that never called a refresh still read
+450 rows. `GuildRecruitment/Roster.lua` tries `C_GuildInfo.GuildRoster` and falls back to
+reading whatever is already there, because a refresh you cannot request is not a reason to
+have no roster.
 
-**`SendChatMessage` to `GUILD`.** The hardware-event rule above is documented for `CHANNEL`
-and `SAY`. Nothing has tried `GUILD`. Assume it needs one until somebody finds out.
+**`GetGuildRosterInfo` returns a 0-based rankIndex** with 0 as the guild master, as
+assumed: a rank-2 officer reads as 2.
+
+**`loadstring` exists.** ICTemplate's gallery compiles each demo from the same string it
+displays, and that rests on it.
+
+## Lua, not the client
+
+**A table constructor cannot carry a nil.** `{ channel = nil }` is an *empty* table, so a
+test helper that merges an overrides table silently applies no override and the field keeps
+its default. This passed a Python port of the same cases -- a dict really can hold a `None`
+-- and failed the first time it ran in the client. Clear the field on the built table
+instead: `local s = state(); s.channel = nil`.
