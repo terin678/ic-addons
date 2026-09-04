@@ -194,13 +194,37 @@ function Message.Assemble(doc, cursor, maxLen)
         return nil, nil, 0, cursor, "the message has no {teams} in it"
     end
 
+    --[[
+    Three different situations used to come back as "nothing to recruit", which is true and
+    useless: a new install seeds two teams with no needs, so that is the FIRST thing a raid
+    leader sees, with nothing telling them the teams already exist or what to do next.
+
+    They are separated because the fix is different for each one, and this reason is shown
+    on the Bark tab's gate as well as under the Message preview.
+    ]]
     local recruiting = {}
+    local anyActive, anyNeeds = false, false
     for _, team in ipairs(doc.teams or {}) do
-        if team.active ~= false and #(team.needs or {}) > 0 then
-            recruiting[#recruiting + 1] = team
-        end
+        local active = team.active ~= false
+        local wants = #(team.needs or {}) > 0
+        anyActive = anyActive or active
+        anyNeeds = anyNeeds or wants
+        if active and wants then recruiting[#recruiting + 1] = team end
     end
-    if #recruiting == 0 then return nil, nil, 0, cursor, "nothing to recruit" end
+
+    if #recruiting == 0 then
+        local why
+        if #(doc.teams or {}) == 0 then
+            why = "no teams yet: add one on the Teams tab"
+        elseif not anyNeeds then
+            why = "no roles wanted yet: pick a team on the Teams tab and add a need"
+        elseif not anyActive then
+            why = "every team is switched off: turn one back on with its On button"
+        else
+            why = "the only teams asking for anyone are switched off"
+        end
+        return nil, nil, 0, cursor, why
+    end
 
     local head = Fill(template, "{guild}", (doc.guild ~= "" and doc.guild) or "our guild")
     head = Fill(head, "{contacts}", table.concat(doc.contacts or {}, " or "))

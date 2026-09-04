@@ -320,7 +320,45 @@ T.Case("Message: a team with nothing to ask for is not in the message", function
     doc.teams[1].active = false
     local none, _, _, _, reason = ns.Message.Assemble(doc, 1)
     T.Eq(none, nil, "with both off there is nothing to send")
-    T.Eq(reason, "nothing to recruit", "and it says so in words an officer can read")
+    T.Eq(reason, "every team is switched off: turn one back on with its On button",
+        "and it names the button that fixes it")
+end)
+
+T.Case("Message: having nothing to send says WHICH nothing", function()
+    -- All four of these used to be the single word "nothing to recruit". A new install
+    -- seeds two teams with no needs, so the useless one was the first thing anybody saw.
+    local function reasonFor(build)
+        local doc = TwoTeams()
+        build(doc)
+        local msg, _, _, _, why = ns.Message.Assemble(doc, 1)
+        T.Eq(msg, nil, "nothing assembles")
+        return why
+    end
+
+    local noTeams = reasonFor(function(doc) doc.teams = {} end)
+    T.Eq(noTeams, "no teams yet: add one on the Teams tab", "no teams at all")
+
+    -- What a fresh install looks like: SeedTeams makes two teams and no needs.
+    local noNeeds = reasonFor(function(doc)
+        for _, team in ipairs(doc.teams) do team.needs = {} end
+    end)
+    T.Eq(noNeeds, "no roles wanted yet: pick a team on the Teams tab and add a need",
+        "teams exist but want nobody")
+
+    local allOff = reasonFor(function(doc)
+        for _, team in ipairs(doc.teams) do team.active = false end
+    end)
+    T.Eq(allOff, "every team is switched off: turn one back on with its On button",
+        "teams want people but are switched off")
+
+    -- The mixed case: one team is on but wants nobody, the other wants people but is off.
+    -- Neither "no roles wanted" nor "every team is off" is true, and both would mislead.
+    local mixed = reasonFor(function(doc)
+        doc.teams[1].needs = {}
+        doc.teams[2].active = false
+    end)
+    T.Eq(mixed, "the only teams asking for anyone are switched off",
+        "one team on with no needs, one with needs switched off")
 end)
 
 T.Case("Message: a template with nowhere to put the teams is refused", function()
