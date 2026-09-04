@@ -60,18 +60,19 @@ function RC.Classify(auraNames)
     return state
 end
 
-RC.CONSUMABLE_ORDER = { "FOOD", "FLASK", "BATTLE", "GUARDIAN", "WEAPON" }
+RC.CONSUMABLE_ORDER = { "FOOD", "FLASK", "BATTLE", "GUARDIAN" }
 RC.CONSUMABLE_LABELS = {
     FOOD = "Food", FLASK = "Flask", BATTLE = "Battle elixir",
-    GUARDIAN = "Guardian elixir", WEAPON = "Weapon enchant",
+    GUARDIAN = "Guardian elixir",
 }
 
 -- Takes the roster ({ name, class } array). Returns { [column] = bool } saying
 -- whether anyone present can cast each raid buff. Pure.
 function RC.Providers(roster)
-    local classesPresent = {}
+    local classesPresent, classCounts = {}, {}
     for _, member in ipairs(roster or {}) do
         classesPresent[member.class] = true
+        classCounts[member.class] = (classCounts[member.class] or 0) + 1
     end
 
     local providers = {}
@@ -84,12 +85,13 @@ function RC.Providers(roster)
         end
     end
 
-    providers.BLESSING = false
+    -- Not a boolean: how many blessings somebody should be carrying is however
+    -- many paladins are in the raid, one each, and that changes week to week.
+    providers.BLESSING_COUNT = 0
     for _, class in ipairs(MFD.Data.Auras.BLESSING_CLASSES) do
-        if classesPresent[class] then
-            providers.BLESSING = true
-        end
+        providers.BLESSING_COUNT = providers.BLESSING_COUNT + (classCounts[class] or 0)
     end
+    providers.BLESSING = providers.BLESSING_COUNT > 0
 
     return providers
 end
@@ -111,10 +113,20 @@ function RC.Missing(state, providers, expected)
         end
     end
 
-    -- Having no blessing at all is a gap worth naming. Which one they should
-    -- have is not the addon's business, so any blessing satisfies this.
-    if providers.BLESSING and #state.blessings == 0 then
-        missing[#missing + 1] = { column = "BLESSING", label = "Blessing" }
+    -- One blessing per paladin present. Which blessings those should be is
+    -- still the raid leader's call, so only the shortfall is reported; the
+    -- grid shows exactly which ones somebody is actually carrying.
+    --
+    -- The label stays plain so everybody short a blessing groups onto one
+    -- callout line; the counts ride alongside for the grid to show.
+    local expectedBlessings = providers.BLESSING_COUNT or 0
+    if expectedBlessings > 0 and #state.blessings < expectedBlessings then
+        missing[#missing + 1] = {
+            column = "BLESSING",
+            label = "Blessing",
+            have = #state.blessings,
+            expected = expectedBlessings,
+        }
     end
 
     -- A flask occupies both elixir slots, so it satisfies both.
@@ -124,7 +136,6 @@ function RC.Missing(state, providers, expected)
         FLASK = hasFlask,
         BATTLE = hasFlask or state.battle ~= nil,
         GUARDIAN = hasFlask or state.guardian ~= nil,
-        WEAPON = state.weapon,
     }
 
     for _, column in ipairs(RC.CONSUMABLE_ORDER) do
@@ -136,7 +147,7 @@ function RC.Missing(state, providers, expected)
     return missing
 end
 
-local REPORT_ONLY = { "weapon", "durability", "spec", "version" }
+local REPORT_ONLY = { "durability", "spec", "version" }
 local FLAG_ONLY = { "AI", "MOTW", "FORT", "SP" }
 
 -- Takes a scanned state, a reported state (or nil) and a durability percent
@@ -145,7 +156,7 @@ local FLAG_ONLY = { "AI", "MOTW", "FORT", "SP" }
 --
 -- The owning client is the authority on its own flags, so a non-nil reported
 -- flag overrides the scan. Names come only from the scan because the wire
--- carries flags, not names. Weapon, spec and version come only from the
+-- carries flags, not names. Spec and version come only from the
 -- report because nothing else can see them. Durability prefers the report and
 -- falls back to LibDurability, which most raiders answer through BigWigs, DBM
 -- or MRT whether or not they run this addon.
@@ -325,7 +336,7 @@ RC.REPORT_DEBOUNCE_SECONDS = 2     -- coalesce bursts of change into one report
 
 -- Tri-state flags on the wire: 1 true, 0 false, ? unknown. Unknown must stay
 -- distinct from false, because "no data" is not "no flask".
-local FLAG_ORDER = { "weapon", "AI", "MOTW", "FORT", "SP", "food", "flask", "battle", "guardian" }
+local FLAG_ORDER = { "AI", "MOTW", "FORT", "SP", "food", "flask", "battle", "guardian" }
 
 local function flagChar(v)
     if v == true then
@@ -387,7 +398,6 @@ end
 -- beyond caching globals, so the harness can still load this file.
 
 local UnitAura = UnitAura
-local GetWeaponEnchantInfo = GetWeaponEnchantInfo
 local GetInventoryItemDurability = GetInventoryItemDurability
 local GetTalentTabInfo = GetTalentTabInfo
 
@@ -460,20 +470,13 @@ local function specName()
     return RC.SpecFromTabs(tabs)
 end
 
--- Reads this client's own state. The only place weapon enchant, durability
--- and spec can ever be learned from, which is why they are self-reported.
+-- Reads this client's own state. The only place durability and spec can be
+-- learned from directly, which is why they are self-reported.
 function RC:GatherSelf()
     local state = RC.Classify(RC.AuraNames("player"))
     state.version = MFD.VERSION
     state.durability = durabilityPercent()
     state.spec = specName()
-
-    if GetWeaponEnchantInfo then
-        local ok, hasMainHand = pcall(GetWeaponEnchantInfo)
-        if ok then
-            state.weapon = hasMainHand and true or false
-        end
-    end
 
     -- Flatten names to flags for the wire; a receiver in range has the names
     -- from its own scan, and names for twenty five people do not fit.

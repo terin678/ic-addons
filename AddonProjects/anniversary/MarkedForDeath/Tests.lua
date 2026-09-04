@@ -1415,25 +1415,14 @@ T.Case("Missing: a present consumable is not reported even when expected", funct
     T.Eq(#missing, 0, "fed")
 end)
 
-T.Case("Missing: weapon enchant comes from the reported flag, not auras", function()
-    local state = MFD.RaidCheck.Classify({})
-    state.weapon = false
-    T.Eq(#MFD.RaidCheck.Missing(state, {}, { WEAPON = true }), 1, "reported absent")
-    state.weapon = true
-    T.Eq(#MFD.RaidCheck.Missing(state, {}, { WEAPON = true }), 0, "reported present")
-    state.weapon = nil
-    T.Eq(#MFD.RaidCheck.Missing(state, {}, { WEAPON = true }), 0, "unknown is never reported missing")
-end)
-
 T.Case("Report: encode and decode round-trip the self-reported state", function()
     local state = {
-        version = "0.9.0", weapon = true, durability = 87, spec = "Fire",
+        version = "0.9.0", durability = 87, spec = "Fire",
         AI = true, MOTW = false, FORT = true, SP = false,
         food = true, flask = false, battle = true, guardian = false,
     }
     local decoded = MFD.RaidCheck.DecodeReport(MFD.RaidCheck.EncodeReport(state))
     T.Eq(decoded.version, "0.9.0", "version")
-    T.Eq(decoded.weapon, true, "weapon")
     T.Eq(decoded.durability, 87, "durability as a number")
     T.Eq(decoded.spec, "Fire", "spec")
     T.Eq(decoded.AI, true, "AI")
@@ -1444,7 +1433,6 @@ end)
 
 T.Case("Report: unknown fields encode as unknown and decode as nil", function()
     local decoded = MFD.RaidCheck.DecodeReport(MFD.RaidCheck.EncodeReport({ version = "x" }))
-    T.Eq(decoded.weapon, nil, "no weapon data is nil, never false")
     T.Eq(decoded.durability, nil, "no durability is nil")
     T.Eq(decoded.spec, nil, "no spec is nil")
     T.Eq(decoded.AI, nil, "unknown buff is nil")
@@ -1452,7 +1440,7 @@ end)
 
 T.Case("Report: the encoded form fits one addon message with room to spare", function()
     local fields = MFD.RaidCheck.EncodeReport({
-        version = "10.10.10", weapon = true, durability = 100, spec = "Restoration",
+        version = "10.10.10", durability = 100, spec = "Restoration",
         AI = true, MOTW = true, FORT = true, SP = true, food = true, flask = true, battle = true, guardian = true,
     })
     local wire = MFD.Comms.Encode("PC", fields)
@@ -1468,12 +1456,11 @@ end)
 
 T.Case("MergeRow: a report overrides a scanned flag but never a scanned name", function()
     local scanned = MFD.RaidCheck.Classify({ "Flask of Relentless Assault" })
-    local reported = { flask = false, AI = true, weapon = true, durability = 90, spec = "Fire", version = "1.0.0" }
+    local reported = { flask = false, AI = true, durability = 90, spec = "Fire", version = "1.0.0" }
     local row = MFD.RaidCheck.MergeRow(scanned, reported)
     T.Eq(row.isReported, true, "marked as reported")
     T.Eq(row.state.AI, true, "report supplies a flag the scan could not see")
     T.Eq(row.state.flask, "Flask of Relentless Assault", "the scanned name is kept for display")
-    T.Eq(row.state.weapon, true, "weapon only ever comes from the report")
     T.Eq(row.state.durability, 90, "durability from the report")
     T.Eq(row.state.spec, "Fire", "spec from the report")
 end)
@@ -1482,7 +1469,6 @@ T.Case("MergeRow: no report leaves the row scan-only with unknowns nil", functio
     local row = MFD.RaidCheck.MergeRow(MFD.RaidCheck.Classify({ "Well Fed" }), nil)
     T.Eq(row.isReported, false, "scan only")
     T.Eq(row.state.food, "Well Fed", "scanned name")
-    T.Eq(row.state.weapon, nil, "unknown, never false")
     T.Eq(row.state.durability, nil, "unknown")
 end)
 
@@ -2565,28 +2551,30 @@ end)
 -- every one of them counts.
 T.Case("Blessing: someone with none is reported when a paladin is present", function()
     local state = MFD.RaidCheck.Classify({})
-    local missing = MFD.RaidCheck.Missing(state, { BLESSING = true }, {})
+    local missing = MFD.RaidCheck.Missing(state, { BLESSING = true, BLESSING_COUNT = 1 }, {})
     T.Eq(#missing, 1, "one thing missing")
     T.Eq(missing[1].column, "BLESSING", "the blessing")
     T.Eq(missing[1].label, "Blessing", "labelled plainly")
 end)
 
 T.Case("Blessing: any blessing at all satisfies it, and none is judged", function()
-    T.Eq(#MFD.RaidCheck.Missing(MFD.RaidCheck.Classify({ "Blessing of Salvation" }), { BLESSING = true }, {}), 0,
-        "salvation counts")
-    T.Eq(#MFD.RaidCheck.Missing(MFD.RaidCheck.Classify({ "Greater Blessing of Kings" }), { BLESSING = true }, {}), 0,
+    T.Eq(#MFD.RaidCheck.Missing(MFD.RaidCheck.Classify({ "Blessing of Salvation" }),
+        { BLESSING = true, BLESSING_COUNT = 1 }, {}), 0, "salvation counts")
+    T.Eq(#MFD.RaidCheck.Missing(MFD.RaidCheck.Classify({ "Greater Blessing of Kings" }),
+        { BLESSING = true, BLESSING_COUNT = 1 }, {}), 0,
         "so does kings, and the addon does not say which they should have")
 end)
 
 T.Case("Blessing: with no paladin present it is never reported", function()
     local state = MFD.RaidCheck.Classify({})
-    T.Eq(#MFD.RaidCheck.Missing(state, { BLESSING = false }, {}), 0,
+    T.Eq(#MFD.RaidCheck.Missing(state, { BLESSING = false, BLESSING_COUNT = 0 }, {}), 0,
         "nobody can cast it, so it is an absence rather than a failure")
 end)
 
 T.Case("Blessing: a paladin in the group makes it providable", function()
     local withPaladin = MFD.RaidCheck.Providers(roster("Dezedin", "PALADIN", "Thok", "WARRIOR"))
     T.Eq(withPaladin.BLESSING, true, "paladin present")
+    T.Eq(withPaladin.BLESSING_COUNT, 1, "and one blessing expected")
 
     local without = MFD.RaidCheck.Providers(roster("Thok", "WARRIOR"))
     T.Eq(without.BLESSING, false, "no paladin")
@@ -2594,7 +2582,7 @@ end)
 
 T.Case("Blessing: it is listed with the raid buffs, before consumables", function()
     local state = MFD.RaidCheck.Classify({})
-    local missing = MFD.RaidCheck.Missing(state, { AI = true, BLESSING = true }, { FOOD = true })
+    local missing = MFD.RaidCheck.Missing(state, { AI = true, BLESSING = true, BLESSING_COUNT = 1 }, { FOOD = true })
     T.Eq(missing[1].column, "AI", "raid buffs first")
     T.Eq(missing[2].column, "BLESSING", "then the blessing")
     T.Eq(missing[3].column, "FOOD", "then consumables")
@@ -2634,6 +2622,66 @@ T.Case("TalentTab: SpecFromTabs still picks the tab with the most points", funct
         tabs[#tabs + 1] = { name = name, points = points }
     end
     T.Eq(MFD.RaidCheck.SpecFromTabs(tabs), "Fire", "fire")
+end)
+
+-- How many blessings somebody should have is not fixed: it is however many
+-- paladins are in the raid, one each.
+T.Case("Blessings: the expected count is the number of paladins present", function()
+    T.Eq(MFD.RaidCheck.Providers(roster("Thok", "WARRIOR")).BLESSING_COUNT, 0, "none")
+    T.Eq(MFD.RaidCheck.Providers(roster("A", "PALADIN")).BLESSING_COUNT, 1, "one paladin")
+    T.Eq(MFD.RaidCheck.Providers(roster("A", "PALADIN", "B", "PALADIN", "C", "PALADIN")).BLESSING_COUNT, 3, "three")
+end)
+
+T.Case("Blessings: holding fewer than the paladin count is reported", function()
+    local state = MFD.RaidCheck.Classify({ "Blessing of Kings" })
+    local missing = MFD.RaidCheck.Missing(state, { BLESSING = true, BLESSING_COUNT = 3 }, {})
+    T.Eq(#missing, 1, "short two")
+    T.Eq(missing[1].column, "BLESSING", "the blessing")
+    T.Eq(missing[1].have, 1, "carrying one")
+    T.Eq(missing[1].expected, 3, "out of three")
+end)
+
+T.Case("Blessings: holding one from each paladin is enough", function()
+    local state = MFD.RaidCheck.Classify({ "Blessing of Kings", "Greater Blessing of Salvation" })
+    T.Eq(#MFD.RaidCheck.Missing(state, { BLESSING = true, BLESSING_COUNT = 2 }, {}), 0, "two of two")
+end)
+
+T.Case("Blessings: more than expected is never a complaint", function()
+    local state = MFD.RaidCheck.Classify({ "Blessing of Kings", "Blessing of Might", "Blessing of Wisdom" })
+    T.Eq(#MFD.RaidCheck.Missing(state, { BLESSING = true, BLESSING_COUNT = 1 }, {}), 0, "three when one was expected")
+end)
+
+T.Case("Blessings: the callout label stays groupable, the count rides alongside", function()
+    local state = MFD.RaidCheck.Classify({})
+    local missing = MFD.RaidCheck.Missing(state, { BLESSING = true, BLESSING_COUNT = 2 }, {})
+    T.Eq(missing[1].label, "Blessing", "so everyone short one groups onto a single callout line")
+end)
+
+T.Case("Blessings: no paladin means it is never mentioned", function()
+    local state = MFD.RaidCheck.Classify({})
+    T.Eq(#MFD.RaidCheck.Missing(state, { BLESSING = false, BLESSING_COUNT = 0 }, {}), 0, "nobody can cast one")
+end)
+
+T.Case("Blessings: which ones somebody holds is still listed, sorted", function()
+    local state = MFD.RaidCheck.Classify({ "Greater Blessing of Salvation", "Blessing of Kings" })
+    T.Eq(state.blessings[1], "Kings", "first")
+    T.Eq(state.blessings[2], "Salv", "second, so the grid can show exactly which")
+end)
+
+-- Weapon enchant is gone: it could only ever be read from the player's own
+-- client, so it was the one column that needed the addon on both ends.
+T.Case("Weapon: is no longer a consumable the check knows about", function()
+    for _, column in ipairs(MFD.RaidCheck.CONSUMABLE_ORDER) do
+        if column == "WEAPON" then
+            error("WEAPON is still in the consumable order")
+        end
+    end
+    T.Eq(MFD.RaidCheck.CONSUMABLE_LABELS.WEAPON, nil, "and has no label")
+end)
+
+T.Case("Weapon: asking for it explicitly no longer reports anything", function()
+    local state = MFD.RaidCheck.Classify({})
+    T.Eq(#MFD.RaidCheck.Missing(state, {}, { WEAPON = true }), 0, "a stale setting cannot resurrect it")
 end)
 
 _G.MarkedForDeath = MFD

@@ -19,15 +19,14 @@ local COLUMNS = {
     { key = "FLASK",     label = "Flask",     x = 158, w = 44 },
     { key = "BATTLE",    label = "Battle",    x = 204, w = 44 },
     { key = "GUARDIAN",  label = "Guard",     x = 250, w = 44 },
-    { key = "WEAPON",    label = "Weapon",    x = 296, w = 44 },
-    { key = "AI",        label = "Int",       x = 342, w = 40 },
-    { key = "MOTW",      label = "MotW",      x = 384, w = 40 },
-    { key = "FORT",      label = "Fort",      x = 426, w = 40 },
-    { key = "SP",        label = "SProt",     x = 468, w = 40 },
-    { key = "BLESSINGS", label = "Blessings", x = 510, w = 120 },
-    { key = "DUR",       label = "Dur",       x = 632, w = 40 },
-    { key = "SPEC",      label = "Spec",      x = 674, w = 80 },
-    { key = "VER",       label = "Ver",       x = 756, w = 50 },
+    { key = "AI",        label = "Int",       x = 296, w = 40 },
+    { key = "MOTW",      label = "MotW",      x = 338, w = 40 },
+    { key = "FORT",      label = "Fort",      x = 380, w = 40 },
+    { key = "SP",        label = "SProt",     x = 422, w = 40 },
+    { key = "BLESSINGS", label = "Blessings", x = 464, w = 210 },
+    { key = "DUR",       label = "Dur",       x = 676, w = 40 },
+    { key = "SPEC",      label = "Spec",      x = 718, w = 80 },
+    { key = "VER",       label = "Ver",       x = 800, w = 50 },
 }
 
 local GREEN, RED, GREY, AMBER = "|cff66ff66", "|cffff4444", "|cff999999", "|cffffcc66"
@@ -63,15 +62,17 @@ local function cellText(column, entry)
             return GREEN .. "flask|r"
         end
         return presence(state.guardian ~= nil, missingSet.GUARDIAN)
-    elseif column == "WEAPON" then
-        return presence(state.weapon, missingSet.WEAPON)
     elseif column == "AI" or column == "MOTW" or column == "FORT" or column == "SP" then
         return presence(state[column], missingSet[column])
     elseif column == "BLESSINGS" then
-        if #state.blessings == 0 then
-            return (missingSet.BLESSING and RED or GREY) .. "none|r"
+        -- Which ones they hold, named, plus how far short they are. Someone
+        -- with Kings but no Salvation needs to see the names, not a tick.
+        local short = entry.missingShort
+        local held = #state.blessings > 0 and table.concat(state.blessings, " ") or (GREY .. "none|r")
+        if short then
+            return held .. "  " .. RED .. "(" .. short.have .. "/" .. short.expected .. ")|r"
         end
-        return table.concat(state.blessings, " ")
+        return held
     elseif column == "DUR" then
         local d = state.durability
         if d == nil then
@@ -175,6 +176,12 @@ function Grid:Refresh()
         buildRow(row)
         row.entry = entry
         entry.missingSet = missingSetFor(entry)
+        entry.missingShort = nil
+        for _, m in ipairs(entry.missing or {}) do
+            if m.column == "BLESSING" then
+                entry.missingShort = m
+            end
+        end
 
         local nameColor = entry.row.isReported and "" or AMBER
         row.cells.NAME.text:SetText(nameColor .. entry.name .. (nameColor ~= "" and "|r" or ""))
