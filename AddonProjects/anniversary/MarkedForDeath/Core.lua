@@ -2,7 +2,7 @@
 local MFD = _G.MarkedForDeath or {}
 
 -- Must match ## Version: in the toc and the packaged zip name.
-MFD.VERSION = "1.17.0"
+MFD.VERSION = "1.18.0"
 
 -- Bumped only when the saved-variable shape changes in a way that needs a
 -- migration. See MFD:MigrateDB.
@@ -27,6 +27,10 @@ end
 -- that errors are visible without watching the chat frame.
 function MFD.Error(msg)
     MFD.Print("|cffff4444" .. tostring(msg) .. "|r")
+    -- Guarded: Log loads after this file and errors can happen in between.
+    if MFD.Log and MFD.Log.Add then
+        MFD.Log.Add(MFD.Log.KINDS.ERROR, tostring(msg))
+    end
     if UIErrorsFrame then
         UIErrorsFrame:AddMessage("Marked For Death: " .. tostring(msg), 1, 0.3, 0.3)
     end
@@ -43,6 +47,7 @@ local DB_DEFAULTS = {
     -- people. Saved, so the grid is icons from the second raid night onward
     -- without anyone having written a texture path down.
     learnedAuraIcons = {},
+    log = {},
     settings = {
         -- The master switch. Off means the addon takes no action of its own:
         -- no icons, no chat, no warnings. Windows still open so it can be
@@ -63,6 +68,10 @@ local DB_DEFAULTS = {
         isIconReuseEnabled = true,
         isManualOverrideEnabled = true,
         isLateCCAlertEnabled = true,
+        -- The addon's own record of what it did, kept in SavedVariables so it
+        -- can be read after a raid rather than remembered during one.
+        isLogEnabled = true,
+        combatLog = { isEnabled = true, includeHeroics = false },
         minimap = { hide = false },
         -- The mid-pull button bar. Shown by default: buttons nobody can find
         -- are no better than no buttons, which is how the first attempt at
@@ -563,6 +572,47 @@ commands.options = {
     desc = "open the settings window",
     run = function()
         MFD.UI.Settings:Toggle()
+    end,
+}
+
+commands.log = {
+    desc = "show what the addon has been doing: /mfd log [count|kind|clear]",
+    run = function(rest)
+        local what = string.lower(string.match(rest or "", "^%s*(%S*)") or "")
+
+        if what == "clear" then
+            MFD.db.log = {}
+            MFD.Print("log cleared")
+            return
+        end
+
+        local count = tonumber(what)
+        if count then
+            MFD.Log.Print(count)
+            return
+        end
+
+        if what ~= "" then
+            local isKind = false
+            for _, kind in pairs(MFD.Log.KINDS) do
+                if kind == what then
+                    isKind = true
+                end
+            end
+            if not isKind then
+                local names = {}
+                for _, kind in pairs(MFD.Log.KINDS) do
+                    names[#names + 1] = kind
+                end
+                table.sort(names)
+                MFD.Error("no such kind. Try: " .. table.concat(names, ", "))
+                return
+            end
+            MFD.Log.Print(20, what)
+            return
+        end
+
+        MFD.Log.Print(20)
     end,
 }
 

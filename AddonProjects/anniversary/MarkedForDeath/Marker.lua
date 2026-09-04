@@ -576,6 +576,8 @@ function Marker:AlertLateCrowdControl(desired, now)
 
             local learned = MFD.db.learnedMobs[MFD.H.NpcIDFromKey(assignment.key)]
             local mobName = learned and learned.name or nil
+            MFD.Log.Add(MFD.Log.KINDS.CC,
+                MFD.Announce.FormatLateAlert(assignment, mobName))
 
             -- The raid may or may not hear about it, depending on how much
             -- has already been said. The owner always does.
@@ -725,6 +727,8 @@ function Marker:Tick(elapsed)
             local icon = manual.added[key]
             Marker.manual[key] = icon
             Marker.locked[key] = icon
+            MFD.Log.Add(MFD.Log.KINDS.MANUAL,
+                string.format("held %s on %s, placed by hand", MFD.Announce.IconName(icon), key))
             -- Whoever did it wins, so the brake has nothing left to argue
             -- about. Clearing the counter also means an honest fight later
             -- still gets its full budget.
@@ -757,9 +761,11 @@ function Marker:Tick(elapsed)
         if entry and not entry.hasReported then
             entry.hasReported = true
             local culprits = MFD.Conflicts and MFD.Conflicts.Format(MFD.Conflicts.Detect()) or {}
-            MFD.Print("backing off " .. key .. " for " .. Marker.LIMITS.defenseWindow
+            local why = "backing off " .. key .. " for " .. Marker.LIMITS.defenseWindow
                 .. "s, something keeps changing that icon"
-                .. (#culprits > 0 and (" -- likely " .. culprits[1]) or ""))
+                .. (#culprits > 0 and (" -- likely " .. culprits[1]) or "")
+            MFD.Print(why)
+            MFD.Log.Add(MFD.Log.KINDS.YIELD, why)
         end
     end
 
@@ -801,6 +807,7 @@ function Marker:Tick(elapsed)
 
     if payload ~= Marker.lastPublishedPayload then
         Marker.lastPublishedPayload = payload
+        MFD.Log.Add(MFD.Log.KINDS.MARK, MFD.Announce.Format(desired.list))
         Marker.ApplyPublished(payload, now)
 
         local chunks = MFD.Comms.Chunk(payload, MFD.Comms.CHUNK_BYTES)
@@ -915,6 +922,11 @@ local ICON_NAMES = {
     [5] = "Moon", [1] = "Star", [4] = "Triangle", [3] = "Diamond",
 }
 local ANNOUNCE_ORDER = { 8, 7, 6, 2, 5, 1, 4, 3 }
+
+-- Exposed so nothing else has to keep a second copy of these names. Pure.
+function Announce.IconName(icon)
+    return ICON_NAMES[icon] or ("icon " .. tostring(icon))
+end
 
 -- Takes the allocator's assignment list. Returns one compact line ordered by
 -- the display order above, so it reads identically every pull. Pure.

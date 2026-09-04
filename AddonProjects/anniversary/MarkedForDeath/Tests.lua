@@ -3292,6 +3292,93 @@ T.Case("Announce: adds can be switched off entirely for a Hyjal night", function
         pullOpts({ allowAdds = false })), false, "silent whatever arrives")
 end)
 
+-- The log exists to be read off disk after a raid, so what it writes has to
+-- make sense without the addon's own tables to decode it against.
+local L = MFD.Log
+
+T.Case("Log: newest first, and trimmed to the cap", function()
+    local log = {}
+    for index = 1, 5 do
+        L.Push(log, { text = "line " .. index }, 3)
+    end
+
+    T.Eq(#log, 3, "trimmed")
+    T.Eq(log[1].text, "line 5", "newest first")
+    T.Eq(log[3].text, "line 3", "oldest kept")
+end)
+
+T.Case("Log: an entry carries a readable time, not only an epoch", function()
+    -- The file is read in a text editor. A column of epoch seconds is a puzzle.
+    local entry = L.NewEntry(L.KINDS.MARK, "Skull>Kill", 1757000000, "BLACKTEMPLE")
+    T.Eq(entry.at, 1757000000, "the machine readable one")
+    T.Eq(type(entry.when), "string", "and the human readable one")
+    T.Eq(entry.when ~= "", true, "which is not empty")
+    T.Eq(entry.zone, "BLACKTEMPLE", "and where it happened")
+end)
+
+T.Case("Log: every kind has a name, and they are unique", function()
+    local seen = {}
+    for key, kind in pairs(L.KINDS) do
+        T.Eq(type(kind), "string", key .. " needs a name")
+        T.Eq(seen[kind], nil, "two kinds share the name " .. kind)
+        seen[kind] = true
+    end
+end)
+
+T.Case("Log: describing an entry never drops what it says", function()
+    local entry = L.NewEntry(L.KINDS.YIELD, "backing off 22917:1AC1", 1757000000)
+    local line = L.Describe(entry)
+    T.Eq(string.find(line, "backing off 22917:1AC1", 1, true) ~= nil, true, "the text survives")
+    T.Eq(string.find(line, "yield", 1, true) ~= nil, true, "and the kind is named")
+end)
+
+T.Case("Log: reading back a slice, and reading back one kind", function()
+    local log = {}
+    L.Push(log, L.NewEntry(L.KINDS.MARK, "a", 3), 100)
+    L.Push(log, L.NewEntry(L.KINDS.YIELD, "b", 2), 100)
+    L.Push(log, L.NewEntry(L.KINDS.MARK, "c", 1), 100)
+
+    T.Eq(#L.Recent(log, 2), 2, "just the tail")
+    T.Eq(L.Recent(log, 99)[1].text, "c", "newest first")
+
+    local marks = L.OfKind(log, L.KINDS.MARK, 10)
+    T.Eq(#marks, 2, "only the marks")
+    T.Eq(marks[1].text, "c", "still newest first")
+end)
+
+T.Case("Log: asking for more than there is is not an error", function()
+    T.Eq(#L.Recent({}, 20), 0, "empty log")
+    T.Eq(#L.OfKind({}, L.KINDS.MARK, 20), 0, "empty of that kind")
+end)
+
+-- Combat logging, MRT's manner: decide from the zone, and never switch off a
+-- log somebody else switched on.
+local CL = MFD.CombatLog
+
+T.Case("CombatLog: raids yes, the world no", function()
+    local on = { isEnabled = true }
+    T.Eq(CL.ShouldLog("raid", 9, on), true, "a raid")
+    T.Eq(CL.ShouldLog("none", nil, on), false, "outside")
+    T.Eq(CL.ShouldLog("party", 174, on), false, "a heroic, not asked for")
+    T.Eq(CL.ShouldLog("raid", 9, { isEnabled = false }), false, "switched off")
+    T.Eq(CL.ShouldLog("raid", 9, nil), false, "no settings at all")
+end)
+
+T.Case("CombatLog: heroics only when asked for, and only heroics", function()
+    local on = { isEnabled = true, includeHeroics = true }
+    T.Eq(CL.ShouldLog("party", CL.DIFFICULTY_HEROIC_DUNGEON, on), true, "heroic")
+    T.Eq(CL.ShouldLog("party", 173, on), false, "a normal dungeon is still no")
+end)
+
+T.Case("CombatLog: never stops a log it did not start", function()
+    -- The rule that stops two addons cutting each other's files short.
+    T.Eq(CL.Decide(false, true, false), nil, "somebody else is logging, leave it")
+    T.Eq(CL.Decide(false, true, true), "stop", "ours, and we have left the raid")
+    T.Eq(CL.Decide(true, false, false), "start", "should be logging and nothing is")
+    T.Eq(CL.Decide(true, true, true), nil, "already running, nothing to do")
+    T.Eq(CL.Decide(false, false, false), nil, "nothing to do at all")
+end)
+
 -- One limiter owns every outbound message. Before it there was a throttle per
 -- feature and no single place knew the total.
 local C = MFD.Chatter

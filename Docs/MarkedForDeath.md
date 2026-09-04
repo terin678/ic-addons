@@ -305,6 +305,7 @@ Every command is in `/mfd help`.
 | `/mfd off` | Stop the addon doing anything: no icons, no chat, no warnings. Nothing configured is lost. |
 | `/mfd on` | Resume after `/mfd off`. |
 | `/mfd minimap` | Hide or show the minimap button. |
+| `/mfd log [count\|kind\|clear]` | What the addon has been doing. Also written to SavedVariables for reading after the fact. |
 | `/mfd bar [lock|reset]` | Hide or show the action bar, lock it in place, or move it back to the middle. |
 | `/mfd sound` | Toggle the sound played when a rule cannot work on its target. |
 | `/mfd bulk` | Paste a whole kill order for a zone, one mob per line. |
@@ -510,6 +511,40 @@ falls back to the word, so a column is never blank.
 Buffs are recognised by name. If a flask or elixir you are wearing shows as unclassified
 or does not show at all, run `/mfd auras` and send the name along; it is a one-line
 addition to the tables.
+
+## Logging
+
+Two separate things, both on by default.
+
+**The addon keeps its own record** of what it did: marks placed, marks it backed off,
+lines sent and lines held back, deaths called, late crowd control, errors. It lives in
+`SavedVariables\MarkedForDeath.lua` and survives reloads, so "it marked the wrong thing
+an hour ago" is answerable by reading the file rather than by remembering. Entries are
+newest first, capped at four hundred, and each carries a readable timestamp and the zone,
+because a log you have to decode against the addon's own tables is a puzzle rather than a
+log.
+
+```
+/mfd log            the last 20 entries
+/mfd log 50         the last 50
+/mfd log yield      only the times it backed off a mob
+/mfd log clear      start again
+```
+
+The kinds are `mark`, `yield`, `manual`, `say`, `held`, `death`, `cc`, `lead`, `logging`
+and `error`.
+
+**The game's own combat log** is turned on when you zone into a raid and off when you
+leave, so there is always a `WoWCombatLog.txt` to upload. This is the same job MRT's
+Logging does, done the same way: the decision waits two seconds after the zone event
+because the client does not reliably know where you are the instant a loading screen ends.
+
+It only ever stops a log it started itself. If you turned combat logging on by hand, or
+another addon did, leaving the raid will not cut your file short. Heroic dungeons are off
+by default; raids are the case worth having a file for.
+
+If MRT's Logging is also enabled, `/mfd conflicts` names it, because two addons toggling
+one switch is how a log ends up truncated.
 
 ## Crowd control that cannot work
 

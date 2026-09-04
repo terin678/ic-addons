@@ -28,6 +28,17 @@ Conflicts.KNOWN = {
             return VMRT and VMRT.MarksSimple and VMRT.MarksSimple.buffMarkEnabled and true or false
         end,
     },
+    {
+        label = "Method Raid Tools",
+        what = "its auto logging is on as well, so two addons are toggling the same combat log",
+        fix = "/mrt, Logging, untick Enable, or untick combat logging in /mfd options",
+        isActive = function()
+            return VMRT and VMRT.Logging and VMRT.Logging.enabled
+                and MarkedForDeathDB and MarkedForDeathDB.settings
+                and MarkedForDeathDB.settings.combatLog
+                and MarkedForDeathDB.settings.combatLog.isEnabled and true or false
+        end,
+    },
 }
 
 -- Takes definitions and returns the ones whose test says they are active. A

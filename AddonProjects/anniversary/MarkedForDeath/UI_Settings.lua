@@ -94,6 +94,32 @@ local TOGGLES = {
         set = function(v) MFD.db.settings.raidCheck.isAutoOpenEnabled = v end,
     },
 
+    { section = "Logging" },
+    {
+        label = "Keep a log of what the addon does",
+        tip = "Marks placed, marks backed off, lines sent and lines held back, deaths called, errors. Saved across reloads and readable in SavedVariables\\MarkedForDeath.lua, which is how a problem from an hour ago gets answered rather than guessed at. /mfd log shows the tail.",
+        get = function() return MFD.db.settings.isLogEnabled end,
+        set = function(v) MFD.db.settings.isLogEnabled = v end,
+    },
+    {
+        label = "Turn on combat logging in raids",
+        tip = "Starts the game's own combat log when you zone into a raid and stops it when you leave, so there is always a file to upload. Only ever stops logging it started itself, so it cannot cut short a log another addon or you turned on.",
+        get = function() return MFD.db.settings.combatLog.isEnabled end,
+        set = function(v)
+            MFD.db.settings.combatLog.isEnabled = v
+            MFD.CombatLog.Schedule()
+        end,
+    },
+    {
+        label = "Combat log heroic dungeons too",
+        tip = "Off by default. Raids are the case worth having a file for.",
+        get = function() return MFD.db.settings.combatLog.includeHeroics end,
+        set = function(v)
+            MFD.db.settings.combatLog.includeHeroics = v
+            MFD.CombatLog.Schedule()
+        end,
+    },
+
     { section = "Interface" },
     {
         label = "Show the action bar",

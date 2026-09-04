@@ -139,6 +139,7 @@ function Chatter.Say(message, channel, target, force)
     local ok, reason = Chatter.Allow(Chatter.state, channel, now, Chatter.LIMITS, force)
 
     if not ok then
+        MFD.Log.Add(MFD.Log.KINDS.HELD, string.format("%s: %s (%s)", channel, message, reason))
         if Chatter.ShouldReportDrop(Chatter.state, now, Chatter.LIMITS.window) then
             MFD.Print("|cff999999holding back raid chat (" .. reason
                 .. "). Nothing is broken; there is just too much to say.|r")
@@ -146,6 +147,8 @@ function Chatter.Say(message, channel, target, force)
         return false
     end
 
+    MFD.Log.Add(MFD.Log.KINDS.SAY, string.format("%s%s: %s",
+        channel, target and (" to " .. target) or "", message))
     pcall(SendChatMessage, message, channel, nil, target)
     return true
 end

@@ -8,6 +8,7 @@ assert(addonDir, "usage: luajit scripts/test-harness.lua <addon dir>")
 
 -- The few client globals the logic modules and the runner touch.
 _G.time = _G.time or os.time
+_G.date = _G.date or os.date
 _G.GetServerTime = function() return os.time() end
 
 -- The client's in-place table clear. Pure Lua, so a faithful stand-in is three
@@ -31,6 +32,7 @@ local files = {
     "Data_Mobs.lua",
     "Data_Auras.lua",
     "Data_Bosses.lua",
+    "Log.lua",
     "Actions.lua",
     "Roles.lua",
     "Rules.lua",
@@ -39,6 +41,7 @@ local files = {
     "Marker.lua",
     "Conflicts.lua",
     "Chatter.lua",
+    "CombatLog.lua",
     "Comms.lua",
     "RaidCheck.lua",
     "Encounters.lua",

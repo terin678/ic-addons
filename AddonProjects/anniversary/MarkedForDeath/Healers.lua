@@ -127,6 +127,7 @@ function Healers:OnDeath(name, now)
 
     -- Forced: rare, already guarded per name, and the one line nobody can
     -- afford to lose to an announcement about a trash pack.
+    MFD.Log.Add(MFD.Log.KINDS.DEATH, "healer death called: " .. name)
     MFD.Chatter.Say(Healers.FormatDeath(name), channel, true)
 end
 
