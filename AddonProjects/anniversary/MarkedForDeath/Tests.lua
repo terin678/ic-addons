@@ -3237,6 +3237,36 @@ T.Case("Announce: the same line is not posted twice in a row", function()
     T.Eq(Ann.ShouldPost("Skull>Kill", "Skull>Kill", 100, 140, 30), true, "long enough ago to be news again")
 end)
 
+T.Case("Announce: once the fight is on, a reshuffle is not worth saying", function()
+    -- A mob dies, its icon moves to the next one, the line changes. Seven
+    -- seconds into a fight nobody needs to read that.
+    local told = { ["1-A"] = true, ["1-B"] = true }
+    T.Eq(Ann.IsStalePullChange({ "1-A", "1-B" }, told, 100, 110, 3), true, "same mobs, just rearranged")
+end)
+
+T.Case("Announce: a mob nobody has heard about still gets a line", function()
+    local told = { ["1-A"] = true }
+    T.Eq(Ann.IsStalePullChange({ "1-A", "1-C" }, told, 100, 110, 3), false, "an add walked in")
+end)
+
+T.Case("Announce: the first seconds of a pull still announce", function()
+    -- Pulled the instant it was marked, before the line had settled. That one
+    -- is worth catching up on.
+    local told = { ["1-A"] = true }
+    T.Eq(Ann.IsStalePullChange({ "1-A" }, told, 100, 102, 3), false, "inside the grace")
+    T.Eq(Ann.IsStalePullChange({ "1-A" }, told, 100, 104, 3), true, "past it")
+end)
+
+T.Case("Announce: out of combat nothing is stale", function()
+    T.Eq(Ann.IsStalePullChange({ "1-A" }, {}, nil, 110, 3), false, "no pull under way")
+end)
+
+T.Case("Announce: keys come out sorted, so the same pack reads the same", function()
+    local keys = Ann.KeysOf({ { key = "1-C" }, { key = "1-A" }, { key = "1-B" } })
+    T.Eq(table.concat(keys, ","), "1-A,1-B,1-C", "sorted")
+    T.Eq(#Ann.KeysOf(nil), 0, "and nothing is not an error")
+end)
+
 T.Case("Announce: a different pack is always news", function()
     T.Eq(Ann.ShouldPost("Moon>Sheep", "Skull>Kill", 100, 101, 30), true, "different assignments")
 end)

@@ -363,10 +363,17 @@ Editing a merged rule copies it into your own set first. From then on it is your
   the budget.
 - **The pack is announced as it is marked, not as it is pulled.** One line to raid chat:
   `[MFD] Skull>Kill | Moon>Sheep Grimmtusk`, for the people not running the addon. It
-  waits a second and a half for the assignments to stop changing, because walking up to a
-  pack brings nameplates in one at a time and the first version of a kill order is usually
+  waits three seconds for the assignments to stop changing, because walking up to a pack
+  brings nameplates in one at a time and the first version of a kill order is usually
   wrong. Announcing at the pull was too late to be useful: the tank is going in while the
   crowd control is still reading.
+- **Once the fight starts it goes quiet.** Three seconds into a pull, assignments moving
+  around is no longer news: a mob died and its icon moved on, or something got re-marked.
+  Announcing that is spam and buries the line that mattered. The exception is a mob nobody
+  has been told about, because an add walking in is exactly what somebody needs to hear.
+- The pull is detected from the pack, not from you. The marking lead is often at range and
+  enters combat seconds after the tank, and reading only their own combat flag would leave
+  their client announcing into a fight that had already started.
 - The pull announcement is still there as a backstop for a pack pulled before it settled,
   and stays quiet when the same line has already gone out. The same assignments are not
   announced twice within thirty seconds, however they were triggered.

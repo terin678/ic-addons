@@ -16,6 +16,7 @@ local UnitIsGroupAssistant = UnitIsGroupAssistant
 local IsInRaid = IsInRaid
 local IsInGroup = IsInGroup
 local GetCVar = GetCVar
+local UnitAffectingCombat = UnitAffectingCombat
 
 -- maxActions and defenseLimit are counts. defenseWindow and tickInterval are
 -- seconds.
@@ -500,6 +501,25 @@ local function readActual()
     return actual, units
 end
 
+-- Whether anything this client can see is fighting. The marking lead is often
+-- at range and enters combat seconds after the tank does, so reading only their
+-- own combat flag would leave their client announcing into a fight that has
+-- already started.
+local function anyUnitInCombat(units)
+    if not UnitAffectingCombat then
+        return false
+    end
+
+    for _, unit in pairs(units or {}) do
+        local ok, isFighting = pcall(UnitAffectingCombat, unit)
+        if ok and isFighting then
+            return true
+        end
+    end
+
+    return false
+end
+
 -- Recomputes the desired map from the current candidates, rules and roles.
 function Marker:Desired()
     local roles = Marker.ResolvedRoles(MFD.db.rolePlan)
@@ -764,11 +784,13 @@ function Marker:Tick(elapsed)
 
     Marker:AlertLateCrowdControl(desired, now)
 
-    -- Announce the pack as it is marked rather than as it is pulled. Out of
-    -- combat only: once the pull happens the pull announcement covers it.
-    if not (UnitAffectingCombat and UnitAffectingCombat("player")) then
-        MFD.Announce.Auto(desired, now)
+    -- Announce the pack as it is marked rather than as it is pulled. Auto
+    -- decides for itself what a pull means for it; all the tick owes it is an
+    -- honest answer about whether one has started.
+    if (UnitAffectingCombat and UnitAffectingCombat("player")) or anyUnitInCombat(units) then
+        MFD.Announce.pullAt = MFD.Announce.pullAt or now
     end
+    MFD.Announce.Auto(desired, now)
 
     Marker.lastDesired = desired
 
@@ -843,6 +865,12 @@ MFD.RegisterInit(function()
             for key, icon in pairs(Marker.manual) do
                 Marker.locked[key] = icon
             end
+
+            -- The next pack is a new conversation.
+            MFD.Announce.pullAt = nil
+            wipe(MFD.Announce.announcedKeys)
+            MFD.Announce.autoState.line = nil
+            MFD.Announce.autoState.since = nil
         elseif event == "PLAYER_ENTERING_WORLD" then
             Marker.ResetMarkState()
             wipe(Marker.alertedCrowdControl)
@@ -938,7 +966,7 @@ Announce.REPEAT_SECONDS = 30
 -- Walking up to a pack brings nameplates in one at a time and the allocator
 -- re-optimises with each one; announcing on the first version would post a
 -- kill order that is wrong two frames later.
-Announce.SETTLE_SECONDS = 1.5
+Announce.SETTLE_SECONDS = 3
 
 -- Is this line worth posting? Pure.
 --
@@ -969,17 +997,67 @@ function Announce.Settled(line, state, now, settleSeconds)
     return state.since ~= nil and (now - state.since) >= settleSeconds
 end
 
+-- How long after a pull a changed set of assignments is still worth saying.
+-- Covers the pack pulled the instant it was marked, where the line had not
+-- settled yet. After this, only a mob nobody has heard about gets one.
+Announce.PULL_GRACE_SECONDS = 3
+
+-- Is this change worth ignoring because the fight is already under way?
+--
+-- Once people are swinging, assignments shifting around is not news: a mob
+-- died and its icon moved, or something was re-marked. Announcing that reads
+-- as spam and buries the line that mattered. A mob nobody has been told about
+-- is the exception, because an add walking in is exactly what somebody needs to
+-- hear. Pure.
+function Announce.IsStalePullChange(keys, announcedKeys, pullAt, now, graceSeconds)
+    if not pullAt then
+        return false
+    end
+
+    if (now - pullAt) <= graceSeconds then
+        return false
+    end
+
+    for _, key in ipairs(keys or {}) do
+        if not announcedKeys[key] then
+            return false
+        end
+    end
+
+    return true
+end
+
+-- The mob keys in an assignment list, sorted. Pure.
+function Announce.KeysOf(assignments)
+    local keys = {}
+    for _, a in ipairs(assignments or {}) do
+        keys[#keys + 1] = a.key
+    end
+    table.sort(keys)
+    return keys
+end
+
 -- Announces a pack as it is marked, before anybody pulls it.
 --
 -- This is the one that matters. A line posted at the moment combat starts
 -- reaches the sheep three seconds after they needed it; the tank is pulling
--- while the crowd control is still reading. Out of combat only, so it never
--- competes with the pull announcement.
+-- while the crowd control is still reading.
 Announce.autoState = {}
+
+-- When the current pull started, and every mob key the raid has already been
+-- told about during it. Both cleared when combat ends.
+Announce.pullAt = nil
+Announce.announcedKeys = {}
 
 function Announce.Auto(desired, now)
     if not MFD.IsEnabled() or not MFD.db.settings.isAnnounceOnMarkEnabled
         or not MFD.Comms:IsAuthority() or not desired then
+        return false
+    end
+
+    local keys = Announce.KeysOf(desired.list)
+    if Announce.IsStalePullChange(keys, Announce.announcedKeys, Announce.pullAt,
+        now, Announce.PULL_GRACE_SECONDS) then
         return false
     end
 
@@ -998,6 +1076,10 @@ function Announce.Auto(desired, now)
     end
 
     Announce.lastLine, Announce.lastAt = line, now
+    for _, key in ipairs(keys) do
+        Announce.announcedKeys[key] = true
+    end
+
     pcall(SendChatMessage, "[MFD] " .. line, target)
     return true
 end
