@@ -36,6 +36,18 @@ local TOGGLES = {
         set = function(v) MFD.db.settings.isCvarWarnEnabled = v end,
     },
     {
+        label = "Use spare crowd control icons for extra kill targets",
+        tip = "When no mob in the pack needs Moon, Star, Triangle or Diamond, hand them to kill targets rather than leaving them idle. A crowd control mob always takes its own icon back, even one that walks in late.",
+        get = function() return MFD.db.settings.isIconReuseEnabled end,
+        set = function(v) MFD.db.settings.isIconReuseEnabled = v end,
+    },
+    {
+        label = "Raid warning when crowd control turns up late",
+        tip = "If a sheep or banish target appears after the pull, take its icon back, post a raid warning and whisper whoever owns that job.",
+        get = function() return MFD.db.settings.isLateCCAlertEnabled end,
+        set = function(v) MFD.db.settings.isLateCCAlertEnabled = v end,
+    },
+    {
         label = "Play a sound for crowd control that cannot land",
         tip = "Sounds when you rule a mob for something its creature type is immune to, such as banishing a humanoid.",
         get = function() return MFD.db.settings.isWarningSoundEnabled end,

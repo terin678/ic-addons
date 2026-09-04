@@ -44,6 +44,8 @@ local DB_DEFAULTS = {
         isAnnounceEnabled = true,
         isCvarWarnEnabled = true,
         isWarningSoundEnabled = true,
+        isIconReuseEnabled = true,
+        isLateCCAlertEnabled = true,
         minimap = { hide = false },
         raidCheck = {
             isAutoOpenEnabled = true,

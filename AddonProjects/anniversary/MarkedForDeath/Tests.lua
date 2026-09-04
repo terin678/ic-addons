@@ -2042,4 +2042,169 @@ T.Case("Pack: a fourth kill target takes circle, a fifth goes unmarked", functio
     T.Eq(icons["22877:E"], nil, "fifth unmarked rather than stealing a cc icon")
 end)
 
+-- Spare icon reuse: when no mob needs Moon or Triangle, let kill targets have
+-- them rather than leaving four icons idle on a big pull.
+local function defaultSeats(...)
+    local db = { seatPlan = {} }
+    MFD.Seats.EnsurePlan(db)
+    return MFD.Seats.Resolve(db.seatPlan, roster(...))
+end
+
+local function killCandidates(count)
+    local list = {}
+    for i = 1, count do
+        list[i] = { key = "100:" .. string.char(64 + i), npcID = 100, name = "Trash" }
+    end
+    return list
+end
+
+T.Case("Reuse: off by default, a fifth kill target stays unmarked", function()
+    local out = MFD.Allocator.Compute(killCandidates(5),
+        { [100] = { npcID = 100, intent = "KILL", rank = 10 } },
+        defaultSeats("Thok", "WARRIOR"), nil, false)
+    T.Eq(out.byKey["100:E"], nil, "no spare icons handed out")
+end)
+
+T.Case("Reuse: on, spare crowd control icons go to kill overflow", function()
+    local out = MFD.Allocator.Compute(killCandidates(8),
+        { [100] = { npcID = 100, intent = "KILL", rank = 10 } },
+        defaultSeats("Thok", "WARRIOR"), nil, true)
+    local placed = 0
+    for _ in pairs(out.byKey) do placed = placed + 1 end
+    T.Eq(placed, 8, "all eight icons used when nothing needs the cc ones")
+end)
+
+-- The property that matters. Reuse must never take an icon a crowd control
+-- mob is going to need, however low that mob's priority is.
+T.Case("Reuse: a sheep mob still gets Moon even when kill targets outrank it", function()
+    local seats = defaultSeats("Grimmtusk", "MAGE")
+    local candidates = killCandidates(6)
+    candidates[7] = { key = "200:Z", npcID = 200, name = "Sheepable" }
+
+    local out = MFD.Allocator.Compute(candidates, {
+        [100] = { npcID = 100, intent = "KILL", rank = 10 },
+        [200] = { npcID = 200, intent = "SHEEP", rank = 99 },
+    }, seats, nil, true)
+
+    T.Eq(out.byKey["200:Z"], 5, "the sheep target holds Moon despite the worst rank")
+end)
+
+T.Case("Reuse: with no mage present the sheep icons are free for kills", function()
+    local seats = defaultSeats("Thok", "WARRIOR")
+    local candidates = killCandidates(5)
+    candidates[6] = { key = "200:Z", npcID = 200, name = "Sheepable" }
+
+    local out = MFD.Allocator.Compute(candidates, {
+        [100] = { npcID = 100, intent = "KILL", rank = 10 },
+        [200] = { npcID = 200, intent = "SHEEP", rank = 20 },
+    }, seats, nil, true)
+
+    local placed = 0
+    for _ in pairs(out.byKey) do placed = placed + 1 end
+    T.Eq(placed, 6, "nobody can sheep, so every mob gets an icon")
+end)
+
+T.Case("Reuse: reused assignments are reported as kills with no owner", function()
+    local out = MFD.Allocator.Compute(killCandidates(5),
+        { [100] = { npcID = 100, intent = "KILL", rank = 10 } },
+        defaultSeats("Grimmtusk", "MAGE"), nil, true)
+
+    for _, a in ipairs(out.list) do
+        if a.key == "100:E" then
+            T.Eq(a.intent, "KILL", "a borrowed icon still means kill this")
+            T.Eq(a.owner, nil, "and carries no crowd control owner")
+        end
+    end
+end)
+
+T.Case("Reuse: maxCount is still respected", function()
+    local out = MFD.Allocator.Compute(killCandidates(8),
+        { [100] = { npcID = 100, intent = "KILL", rank = 10, maxCount = 2 } },
+        defaultSeats("Thok", "WARRIOR"), nil, true)
+    local placed = 0
+    for _ in pairs(out.byKey) do placed = placed + 1 end
+    T.Eq(placed, 2, "the cap wins over filling icons")
+end)
+
+T.Case("Reuse: is deterministic, so two clients agree", function()
+    local a = MFD.Allocator.Compute(killCandidates(8),
+        { [100] = { npcID = 100, intent = "KILL", rank = 10 } },
+        defaultSeats("Thok", "WARRIOR"), nil, true).byKey
+    local b = MFD.Allocator.Compute(killCandidates(8),
+        { [100] = { npcID = 100, intent = "KILL", rank = 10 } },
+        defaultSeats("Thok", "WARRIOR"), nil, true).byKey
+    for key, icon in pairs(a) do
+        T.Eq(b[key], icon, "same icon for " .. key)
+    end
+end)
+
+-- A crowd control mob nobody saw before the pull. The icon it needs may
+-- already be lent out to a kill target, so it has to be taken back and
+-- shouted about.
+T.Case("Unmet: a sheep mob with no icon is reported, a kill mob is not", function()
+    local candidates = {
+        { key = "100:A", npcID = 100, name = "Trash" },
+        { key = "200:B", npcID = 200, name = "Sheepable" },
+    }
+    local rules = {
+        [100] = { npcID = 100, intent = "KILL", rank = 10 },
+        [200] = { npcID = 200, intent = "SHEEP", rank = 20 },
+    }
+    local unmet = MFD.Allocator.UnmetCrowdControl(candidates, rules, {})
+    T.Eq(#unmet, 1, "only the crowd control one")
+    T.Eq(unmet[1].key, "200:B", "the sheep target")
+    T.Eq(unmet[1].intent, "SHEEP", "carrying its job")
+end)
+
+T.Case("Unmet: a mob that already has its icon is not reported", function()
+    local candidates = { { key = "200:B", npcID = 200, name = "Sheepable" } }
+    local rules = { [200] = { npcID = 200, intent = "SHEEP", rank = 20 } }
+    T.Eq(#MFD.Allocator.UnmetCrowdControl(candidates, rules, { ["200:B"] = 5 }), 0, "satisfied")
+end)
+
+T.Case("Unmet: a mob with no rule at all is not reported", function()
+    local candidates = { { key = "999:C", npcID = 999, name = "Unruled" } }
+    T.Eq(#MFD.Allocator.UnmetCrowdControl(candidates, {}, {}), 0, "nothing was asked for")
+end)
+
+T.Case("Release: borrowed locks are given up only when crowd control needs them", function()
+    local locked = { ["100:A"] = 8, ["100:E"] = 5 }
+    local borrowed = { ["100:E"] = true }
+
+    T.Eq(#MFD.Marker.ReleaseBorrowed(locked, borrowed, 0), 0, "nothing unmet, nothing released")
+
+    local released = MFD.Marker.ReleaseBorrowed(locked, borrowed, 1)
+    T.Eq(#released, 1, "one released")
+    T.Eq(released[1], "100:E", "the borrowed one, not the real assignment")
+end)
+
+T.Case("Release: never gives up more locks than crowd control actually needs", function()
+    local locked = { ["1:A"] = 1, ["2:B"] = 3, ["3:C"] = 4 }
+    local borrowed = { ["1:A"] = true, ["2:B"] = true, ["3:C"] = true }
+    T.Eq(#MFD.Marker.ReleaseBorrowed(locked, borrowed, 2), 2, "two needed, two released")
+end)
+
+T.Case("Release: is deterministic in which borrowed lock goes first", function()
+    local locked = { ["3:C"] = 1, ["1:A"] = 3, ["2:B"] = 4 }
+    local borrowed = { ["3:C"] = true, ["1:A"] = true, ["2:B"] = true }
+    T.Eq(MFD.Marker.ReleaseBorrowed(locked, borrowed, 1)[1], "1:A", "lowest key first")
+end)
+
+T.Case("Alert: the raid warning names the job, the icon, the mob and the owner", function()
+    T.Eq(MFD.Announce.FormatLateAlert(
+        { icon = 5, intent = "SHEEP", owner = "Grimmtusk" }, "Illidari Nightlord"),
+        "SHEEP Moon: Illidari Nightlord - Grimmtusk", "raid warning text")
+end)
+
+T.Case("Alert: an unowned job still warns, naming nobody rather than nil", function()
+    T.Eq(MFD.Announce.FormatLateAlert({ icon = 4, intent = "BANISH" }, "Illidari Defiler"),
+        "BANISH Triangle: Illidari Defiler - unassigned", "still worth shouting")
+end)
+
+T.Case("Alert: the whisper tells one person exactly what to do", function()
+    T.Eq(MFD.Announce.FormatLateWhisper(
+        { icon = 5, intent = "SHEEP", owner = "Grimmtusk" }, "Illidari Nightlord"),
+        "Sheep the Moon now: Illidari Nightlord", "whisper text")
+end)
+
 _G.MarkedForDeath = MFD

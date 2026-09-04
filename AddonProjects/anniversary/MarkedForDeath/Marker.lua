@@ -232,6 +232,32 @@ function Marker.DecodeAssignments(payload)
     return list
 end
 
+-- Chooses which borrowed locks to give up so that crowd control can have its
+-- icons back. Returns the keys to release, lowest first, at most as many as
+-- are actually needed. Pure.
+--
+-- Only borrowed locks are eligible. A real assignment is never disturbed
+-- mid-fight, because moving somebody's actual kill target under them is worse
+-- than one mob going unmarked.
+function Marker.ReleaseBorrowed(locked, borrowed, neededCount)
+    if neededCount <= 0 then
+        return {}
+    end
+
+    local candidates = {}
+    for _, key in ipairs(MFD.H.SortedKeys(locked)) do
+        if borrowed[key] then
+            candidates[#candidates + 1] = key
+        end
+    end
+
+    local released = {}
+    for i = 1, math.min(neededCount, #candidates) do
+        released[i] = candidates[i]
+    end
+    return released
+end
+
 -- Returns whether the player may place raid icons, and a reason when they may
 -- not. Marking needs raid leader or assistant; solo and parties are allowed.
 function Marker:CanMark()
@@ -361,7 +387,72 @@ function Marker:Desired()
     -- Rules may be filed by npcID or by name; the allocator only thinks in
     -- ids, so name rules are matched onto the mobs actually on screen first.
     local rules = MFD.Rules.ResolveForCandidates(MFD.Rules.Active(), candidates)
-    return MFD.Allocator.Compute(candidates, rules, seats, Marker.locked)
+    local allowReuse = MFD.db.settings.isIconReuseEnabled
+    local desired = MFD.Allocator.Compute(candidates, rules, seats, Marker.locked, allowReuse)
+
+    -- Which mobs wanted crowd control and got nothing. The tick uses this to
+    -- take a borrowed icon back and shout about it.
+    desired.unmetCrowdControl = MFD.Allocator.UnmetCrowdControl(candidates, rules, desired.byKey)
+    desired.candidates = candidates
+    return desired
+end
+
+-- Icons currently on loan to a kill target, { [key] = true }.
+Marker.borrowed = {}
+
+-- Crowd control assignments already shouted about this pull.
+Marker.alertedCrowdControl = {}
+
+-- Set at the pull: the crowd control the raid knew about going in. Anything
+-- that appears afterwards is by definition a surprise and worth a warning.
+Marker.pullCrowdControl = nil
+
+local lastAlertAt = 0
+
+-- Shouts about a crowd control assignment that appeared after the pull.
+--
+-- Silent before combat, because the allocator is still settling and the pull
+-- announcement covers it. Silent for anything present at the pull. Authority
+-- only, and once per mob.
+function Marker:AlertLateCrowdControl(desired, now)
+    if not MFD.db.settings.isLateCCAlertEnabled then
+        return
+    end
+    if not Marker.pullCrowdControl or not MFD.Comms:IsAuthority() then
+        return
+    end
+    if (now - lastAlertAt) < MFD.Announce.LATE_ALERT_THROTTLE_SECONDS then
+        return
+    end
+
+    for _, assignment in ipairs(desired.list) do
+        local def = MFD.Seats.INTENTS[assignment.intent]
+        local isCrowdControl = def and def.classes
+        if isCrowdControl and not Marker.pullCrowdControl[assignment.key]
+            and not Marker.alertedCrowdControl[assignment.key] then
+
+            Marker.alertedCrowdControl[assignment.key] = true
+            lastAlertAt = now
+
+            local learned = MFD.db.learnedMobs[MFD.H.NpcIDFromKey(assignment.key)]
+            local mobName = learned and learned.name or nil
+
+            local channel = (IsInRaid and IsInRaid() and "RAID_WARNING")
+                or (IsInGroup and IsInGroup() and "PARTY") or nil
+            if channel then
+                pcall(SendChatMessage, "[MFD] " .. MFD.Announce.FormatLateAlert(assignment, mobName), channel)
+            end
+
+            if assignment.owner and assignment.owner ~= UnitName("player") then
+                pcall(SendChatMessage, "[MFD] " .. MFD.Announce.FormatLateWhisper(assignment, mobName),
+                    "WHISPER", nil, assignment.owner)
+            end
+
+            MFD.Print("|cffff4444late " .. tostring(assignment.intent)
+                .. ": " .. (mobName or assignment.key) .. "|r")
+            return
+        end
+    end
 end
 
 -- Gathers the live pipeline state and runs it through DiagnoseState. Returns
@@ -488,6 +579,27 @@ function Marker:Tick(elapsed)
         end
     end
 
+    -- A crowd control mob nobody planned for has turned up and has no icon.
+    -- Give back a borrowed one so it can have its seat on the next tick. Only
+    -- borrowed locks are eligible, so a real assignment is never moved.
+    if #desired.unmetCrowdControl > 0 then
+        local released = Marker.ReleaseBorrowed(Marker.locked, Marker.borrowed, #desired.unmetCrowdControl)
+        for _, key in ipairs(released) do
+            Marker.locked[key] = nil
+            Marker.borrowed[key] = nil
+        end
+    end
+
+    -- Remember which icons are on loan, so the release above knows what it may
+    -- take back.
+    wipe(Marker.borrowed)
+    for _, assignment in ipairs(desired.list) do
+        if assignment.isBorrowed then
+            Marker.borrowed[assignment.key] = true
+        end
+    end
+
+    Marker:AlertLateCrowdControl(desired, now)
     Marker.lastDesired = desired
 
     -- Publish only when the map actually changed. The tick runs five times a
@@ -517,6 +629,7 @@ MFD.RegisterInit(function()
     end)
 
     frame:RegisterEvent("PLAYER_REGEN_DISABLED")
+    frame:RegisterEvent("PLAYER_REGEN_ENABLED")
     frame:RegisterEvent("PLAYER_ENTERING_WORLD")
     frame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
     frame:RegisterEvent("GROUP_ROSTER_UPDATE")
@@ -529,15 +642,35 @@ MFD.RegisterInit(function()
         if event == "PLAYER_REGEN_DISABLED" then
             -- Freeze the current map so nothing shifts under the raid mid-pull.
             local desired = Marker.lastDesired
+            Marker.pullCrowdControl = {}
+            wipe(Marker.alertedCrowdControl)
+
             if desired then
                 for key, icon in pairs(desired.byKey) do
                     Marker.locked[key] = icon
                 end
+                -- What the raid knew about going in. Anything crowd control
+                -- that appears after this is a surprise worth warning about.
+                for _, assignment in ipairs(desired.list) do
+                    local def = MFD.Seats.INTENTS[assignment.intent]
+                    if def and def.classes then
+                        Marker.pullCrowdControl[assignment.key] = true
+                    end
+                end
             end
             MFD.Announce.Post(desired, GetTime())
+        elseif event == "PLAYER_REGEN_ENABLED" then
+            -- Out of combat the allocator is free to re-optimise again, and
+            -- late-arrival warnings go quiet: between pulls there is no such
+            -- thing as a surprise.
+            wipe(Marker.locked)
+            wipe(Marker.alertedCrowdControl)
+            Marker.pullCrowdControl = nil
         elseif event == "PLAYER_ENTERING_WORLD" then
             wipe(Marker.locked)
             wipe(Marker.placed)
+            wipe(Marker.alertedCrowdControl)
+            Marker.pullCrowdControl = nil
             Marker.InvalidateRoster()
             if MFD.db and MFD.db.settings.isCvarWarnEnabled then
                 local ok, message = Marker:CheckCvars()
@@ -593,6 +726,25 @@ function Announce.Format(assignments)
     end
 
     return table.concat(parts, " | ")
+end
+
+Announce.LATE_ALERT_THROTTLE_SECONDS = 3   -- minimum gap between late alerts
+
+-- The raid warning for a crowd control target nobody planned for. Names the
+-- job first because that is the word the reader is scanning for. Pure.
+function Announce.FormatLateAlert(assignment, mobName)
+    local def = MFD.Seats.INTENTS[assignment.intent]
+    local label = def and def.label:upper() or assignment.intent
+    return string.format("%s %s: %s - %s", label, ICON_NAMES[assignment.icon] or "?",
+        mobName or "unknown", assignment.owner or "unassigned")
+end
+
+-- The whisper to the one person who has to act on it. Pure.
+function Announce.FormatLateWhisper(assignment, mobName)
+    local def = MFD.Seats.INTENTS[assignment.intent]
+    local label = def and def.label or assignment.intent
+    return string.format("%s the %s now: %s", label,
+        ICON_NAMES[assignment.icon] or "?", mobName or "unknown")
 end
 
 -- Posts the current pack to the group once per pull, authority only, throttled

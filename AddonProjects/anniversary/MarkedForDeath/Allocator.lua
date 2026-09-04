@@ -37,7 +37,7 @@ end
 --
 -- Returns { list = array of { key, icon, intent, owner }, byKey = { [key] = icon } }.
 -- Has no side effects and does not mutate any argument.
-function Allocator.Compute(candidates, rulesByNpcID, seats, locked)
+function Allocator.Compute(candidates, rulesByNpcID, seats, locked, allowIconReuse)
     locked = locked or {}
 
     local usedIcons, countByNpcID = {}, {}
@@ -48,7 +48,7 @@ function Allocator.Compute(candidates, rulesByNpcID, seats, locked)
         byKeyCandidate[candidate.key] = candidate
     end
 
-    local function record(key, icon, intent, owner, npcID)
+    local function record(key, icon, intent, owner, npcID, isBorrowed)
         usedIcons[icon] = true
         countByNpcID[npcID] = (countByNpcID[npcID] or 0) + 1
         byKey[key] = icon
@@ -57,6 +57,7 @@ function Allocator.Compute(candidates, rulesByNpcID, seats, locked)
             icon = icon,
             intent = intent,
             owner = type(owner) == "string" and owner or nil,
+            isBorrowed = isBorrowed or nil,
         }
     end
 
@@ -108,7 +109,64 @@ function Allocator.Compute(candidates, rulesByNpcID, seats, locked)
         end
     end
 
+    -- Second pass: hand any icon still unused to a mob that got nothing.
+    --
+    -- This runs only after every mob has been offered its proper seat, which
+    -- is what makes it safe: an icon is only spare here because nothing in
+    -- this pack needs it. A crowd control target always wins its own icon in
+    -- the pass above, however low its priority, so borrowing can never take
+    -- Moon away from a mob somebody is about to sheep.
+    if allowIconReuse then
+        local spare = {}
+        for icon in pairs(seats.byIcon) do
+            if not usedIcons[icon] then
+                spare[#spare + 1] = icon
+            end
+        end
+        table.sort(spare)
+
+        local nextSpare = 1
+        for _, entry in ipairs(eligible) do
+            if nextSpare > #spare then
+                break
+            end
+            local candidate, rule = entry.candidate, entry.rule
+            local used = countByNpcID[candidate.npcID] or 0
+            if not byKey[candidate.key] and (not rule.maxCount or used < rule.maxCount) then
+                -- Reported as a kill: the icon carries no crowd control
+                -- meaning here, and saying otherwise would be a lie to whoever
+                -- reads the assignment panel.
+                record(candidate.key, spare[nextSpare], "KILL", nil, candidate.npcID, true)
+                nextSpare = nextSpare + 1
+            end
+        end
+    end
+
     return { list = list, byKey = byKey }
+end
+
+-- Returns the candidates whose rule asks for crowd control but which got no
+-- icon, as an array of { key, npcID, intent } sorted by key. Pure.
+--
+-- These are the "we did not know we needed a sheep" cases: a mob that walked
+-- in late, or one that was outranked while every seat was taken. The marker
+-- uses this to reclaim a borrowed icon and shout about it.
+function Allocator.UnmetCrowdControl(candidates, rulesByNpcID, byKey)
+    local unmet = {}
+
+    for _, candidate in ipairs(candidates) do
+        if not byKey[candidate.key] then
+            local rule = rulesByNpcID[candidate.npcID]
+            local intent = rule and rule.intent
+            local def = intent and MFD.Seats.INTENTS[intent]
+            if def and def.classes then
+                unmet[#unmet + 1] = { key = candidate.key, npcID = candidate.npcID, intent = intent }
+            end
+        end
+    end
+
+    table.sort(unmet, function(a, b) return a.key < b.key end)
+    return unmet
 end
 
 _G.MarkedForDeath = MFD
