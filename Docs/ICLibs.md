@@ -10,11 +10,10 @@ Extract the zip of any addon that needs it; the `ICLibs` folder is included. It 
 in `Interface\AddOns` next to the addon. The dependent addons list it under
 `## Dependencies`, so the game refuses to load them without it and says why.
 
-ICLibs also heads the family in the in-game AddOns list. Every guild addon carries
-`## Group: ICLibs`, which collects them under one collapsible heading, and the guild mark
-in front of each name is drawn from `Textures/ImpulseControl-64` in this folder.
-`Docs/client-reference.md` has the detail; the short version is that a group's value has to
-be a real addon folder name, and ICLibs is the one that is always installed.
+Every guild addon carries `## Category: Impulse Control`, so they collapse under one
+heading in the in-game AddOns list, and a `## Group:` naming the area it belongs to --
+`Core`, `Auction` or `Professions`. The guild mark in `Textures/ImpulseControl-64` is the
+icon for the ones that have no art of their own. `Docs/client-reference.md` has the detail.
 
 ## Contents
 

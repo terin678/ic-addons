@@ -1,11 +1,11 @@
 ## Interface: 20506
-## Title: |TInterface\AddOns\ICLibs\Textures\ImpulseControl-64:16|t TradeMaster
+## Title: TradeMaster
 ## Notes: Crafting business assistant for any profession: book scanning, customer detection, trade chat barking, order tracking and income. Generalised from CutMaster.
 ## Author: Malexis, Dezedin
 ## Version: 1.13.1
 ## IconTexture: Interface\AddOns\TradeMaster\TradeMaster.tga
-## Group: ICLibs
-## Category: Auctions
+## Group: Professions
+## Category: Impulse Control
 ## SavedVariablesPerCharacter: TradeMasterDB
 ## Dependencies: ICLibs
 ## OptionalDeps: CutMaster

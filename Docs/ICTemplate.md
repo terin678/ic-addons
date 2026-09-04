@@ -98,15 +98,11 @@ Everything else is namespaced: every file opens with `local addonName, ns = ...`
 other file has to know what the addon is called.
 
 Two lines in the `.toc` are deliberately **not** tokens and must survive a rename:
-`## Group: ICLibs`, which is what puts the addon under the Impulse Control heading in the
-in-game AddOns list, and the `|TInterface\AddOns\ICLibs\Textures\ImpulseControl-64:16|t`
-escape at the front of `## Title`, which draws the guild mark beside the name. The script
-lifts the mark off the old title and puts it back on the new one; a hand rename has to
-remember. `Docs/client-reference.md` has the detail on how the list groups things.
-
-Then, outside the folder: a row in `AddonProjects/anniversary/README.md` (the linter checks
-it against the `.toc` and `Core.lua`), a row in the root `README.md`, a row in
-`Docs/README.md`, and a `Docs/<Name>.md`.
+`## Category: Impulse Control`, which is the heading every guild addon collapses under in
+the in-game AddOns list, and `## Group:`, which nests it inside one of the areas (`Core`,
+`Auction`, `Professions`). The script carries both over untouched; a hand rename has to
+remember. `Docs/client-reference.md` has how the list actually behaves, including the rule
+that an addon uses either a title texture or an `## IconTexture`, never both.
 
 ## What to keep and what to throw away
 

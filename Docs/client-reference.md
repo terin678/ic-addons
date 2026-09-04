@@ -51,23 +51,35 @@ logout and `/reload` only. Lua errors: BugSack in game or `<flavor>\Errors\`.
 
 ## The AddOns list
 
-`## Group:` collects several addons under one collapsible heading in the in-game AddOns
-list. It is verified in use on 20506 by four installed families — AtlasLoot, Bagnon,
-GatherMate2, and AtlasBIStooltips, which is TBC-only and so was written for this client.
-In every one of them the value is **an existing addon folder name** that heads the group,
-never an invented label. The guild addons all use `## Group: ICLibs`, which is the one
-every other guild addon depends on and therefore the one that is always installed.
+The list has exactly **two levels**, confirmed in game:
 
-WeakAuras is the counter-example worth knowing about: five folders, no `## Group:` at all.
-It leans on a shared `## IconTexture`, a common title prefix, and `## Dependencies` on its
-core instead.
+- **`## Category:`** is the top-level heading. It is free text, and every addon sharing a
+  string collapses under it. The guild addons all use `## Category: Impulse Control`.
+- **One level of nesting inside it.** A nested addon is drawn indented under the row of the
+  addon that heads its cluster; there is no separate label row for the cluster itself, so
+  the heading you read is the head addon's `## Title`.
 
-`## Category:` is free text and drives the list's category filter. Values already in use on
-this client include Action Bars, Attunements, Auctions, Bags & Inventory, Combat,
-Development Tools, Gambling, Guild, Libraries, Loot, Map, Quests, UI Overhaul, Unit Frames
-and User Interface. There is also a `## Category-enUS:` localized form; both work, and
-picking a string nobody else uses just creates a category of one.
+Two mechanisms produce that nesting, and an addon needs only one of them:
 
-A title may carry an inline texture, which is how the guild mark gets in front of every
-addon's name: `## Title: |TInterface\AddOns\ICLibs\Textures\ImpulseControl-64:16|t Name`.
-The escape takes the path **without** a file extension; `## IconTexture` takes it with one.
+- **`## Group:`**, used by AtlasLoot, Bagnon, GatherMate2 and AtlasBIStooltips (the last
+  being TBC-only, so written for this client). In all four the value is an existing addon
+  folder name.
+- **A shared folder-name prefix**, which is what Guild Roster Manager relies on:
+  `Guild_Roster_Manager_Group_Info` nests under `Guild_Roster_Manager` with no `## Group:`
+  line anywhere in either .toc. WeakAuras has no `## Group:` either.
+
+**Do not put a texture in `## Title` if the addon also has an `## IconTexture`.** Both
+draw, so every row gets two icons side by side. AtlasLoot does this and it looks like a
+mistake; GRM does not, and looks right.
+
+Category values already in use on this client include Action Bars, Attunements, Auctions,
+Bags & Inventory, Combat, Development Tools, Gambling, Guild, Libraries, Loot, Map, Quests,
+UI Overhaul, Unit Frames and User Interface, plus a localized `## Category-enUS:` form.
+Reusing one of those files an addon in with everyone else's; inventing one, as the guild
+addons do with `Impulse Control`, gives it a heading of its own. Which you want depends on
+whether the addon is meant to be found among its peers or among its siblings.
+
+A `## Title` can carry an inline texture --
+`|TInterface\AddOns\ICLibs\Textures\ImpulseControl-64:16|t Name` -- and the escape takes
+the path **without** a file extension while `## IconTexture` takes it with one. Worth
+knowing, but see the warning above: use one or the other, never both.
