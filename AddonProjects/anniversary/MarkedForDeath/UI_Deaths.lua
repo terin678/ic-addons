@@ -155,49 +155,37 @@ local function setInstance(kind, instance, value)
 end
 
 local function addCheck(entry, x, y)
-    local check = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")
-    check:SetSize(24, 24)
+    -- The library's check button carries its own label; nothing places one
+    -- beside it by hand.
+    local check = MFD.UI.CheckBox(frame, entry.label)
     check:SetPoint("TOPLEFT", frame, "TOPLEFT", x, y)
-
-    local label = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    label:SetPoint("LEFT", check, "RIGHT", 4, 0)
-    label:SetText(entry.label)
 
     check.entry = entry
     check:SetScript("OnClick", function(self)
         entry.set(self:GetChecked() and true or false)
     end)
-    check:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:AddLine(entry.label)
-        GameTooltip:AddLine(entry.tip, 1, 1, 1, true)
-        GameTooltip:Show()
+    MFD.UI.Tooltip(check, function()
+        GameTooltip:AddLine(entry.label, 1, 1, 1)
+        GameTooltip:AddLine(entry.tip, 0.8, 0.8, 0.8, true)
     end)
-    check:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
     frame.checks[#frame.checks + 1] = check
 end
 
 local function addEdit(entry, x, y, width)
-    local label = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    local label = MFD.UI.CellLabel(frame, entry.label)
     label:SetPoint("TOPLEFT", frame, "TOPLEFT", x + 4, y - 4)
     label:SetWidth(84)
-    label:SetJustifyH("LEFT")
-    label:SetText(entry.label)
 
-    local box = CreateFrame("EditBox", nil, frame, "InputBoxTemplate")
-    box:SetSize(width - 104, 20)
+    local box = MFD.UI.EditBox(frame, width - 104, 20)
     box:SetPoint("LEFT", label, "RIGHT", 12, 0)
-    box:SetAutoFocus(false)
     box.entry = entry
-    box:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
-    box:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+    -- Escape comes with the library's box; Enter to commit does not.
+    box:SetScript("OnEnterPressed", box.ClearFocus)
 
-    box.preview = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    box.preview = MFD.UI.CellLabel(frame, "", "GameFontDisableSmall")
     box.preview:SetPoint("TOPLEFT", box, "BOTTOMLEFT", 4, -2)
     box.preview:SetWidth(width - 20)
-    box.preview:SetJustifyH("LEFT")
-    box.preview:SetWordWrap(false)
 
     -- Set last, so the handler cannot fire against a preview that does not
     -- exist yet when SetText runs during the first refresh.
@@ -211,9 +199,8 @@ end
 
 -- One kind's controls as a column. Returns the y it finished at.
 local function buildKind(kind, x, width)
-    local heading = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local heading = MFD.UI.Label(frame, MFD.Encounters.KIND_LABELS[kind] .. " deaths", "GameFontNormal")
     heading:SetPoint("TOPLEFT", frame, "TOPLEFT", x + 4, -10)
-    heading:SetText(MFD.Encounters.KIND_LABELS[kind] .. " deaths")
 
     local y = -32
     for _, entry in ipairs(togglesFor(kind)) do
@@ -223,25 +210,20 @@ local function buildKind(kind, x, width)
 
     y = y - 4
 
-    local overrideLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    local overrideLabel = MFD.UI.CellLabel(frame, "Right now:")
     overrideLabel:SetPoint("TOPLEFT", frame, "TOPLEFT", x + 4, y - 6)
-    overrideLabel:SetText("Right now:")
 
-    local button = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-    button:SetSize(130, 22)
+    local button = MFD.UI.Button(frame, "", 130, 22)
     button:SetPoint("LEFT", overrideLabel, "RIGHT", 8, 0)
     button:SetScript("OnClick", function()
         MFD.Actions.Run("deaths_" .. kind)
     end)
-    button:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:AddLine(MFD.Encounters.KIND_LABELS[kind] .. " deaths, right now")
+    MFD.UI.Tooltip(button, function()
+        GameTooltip:AddLine(MFD.Encounters.KIND_LABELS[kind] .. " deaths, right now", 1, 1, 1)
         GameTooltip:AddLine("Per boss follows the ticks below and the trash setting above. "
             .. "On everywhere announces every death of this kind, trash included. Off everywhere "
-            .. "announces none. The other kind is not affected.", 1, 1, 1, true)
-        GameTooltip:Show()
+            .. "announces none. The other kind is not affected.", 0.8, 0.8, 0.8, true)
     end)
-    button:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
     frame.overrides[kind] = button
     y = y - 30
@@ -322,7 +304,10 @@ local function buildBossList(top)
             local y = -rowIndex * ROW_HEIGHT
 
             for index, kind in ipairs(KIND_ORDER) do
-                local check = CreateFrame("CheckButton", nil, list, "UICheckButtonTemplate")
+                -- No label on these: the boss's name is the row, shared by both
+                -- ticks, so each box is bare and says which kind it is in its
+                -- tooltip instead.
+                local check = MFD.UI.CheckBox(list, "")
                 check:SetSize(TICK_SIZE, TICK_SIZE)
                 check:SetPoint("TOPLEFT", list, "TOPLEFT", left + (index - 1) * (TICK_SIZE + 2), y)
 
@@ -330,12 +315,10 @@ local function buildBossList(top)
                 check:SetScript("OnClick", function(self)
                     settings(self.kind).bosses[self.bossName] = self:GetChecked() and true or nil
                 end)
-                check:SetScript("OnEnter", function(self)
-                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                    GameTooltip:AddLine(MFD.Encounters.KIND_LABELS[self.kind] .. " deaths on " .. self.bossName)
-                    GameTooltip:Show()
+                MFD.UI.Tooltip(check, function(self)
+                    GameTooltip:AddLine(MFD.Encounters.KIND_LABELS[self.kind]
+                        .. " deaths on " .. self.bossName, 1, 1, 1)
                 end)
-                check:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
                 frame.bossChecks[#frame.bossChecks + 1] = check
             end

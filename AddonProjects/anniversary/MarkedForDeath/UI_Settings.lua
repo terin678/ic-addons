@@ -175,51 +175,43 @@ local function buildBody(parent)
     parent.edits = {}
     local y = -12
 
+    local UI = MFD.UI
+
     for _, entry in ipairs(TOGGLES) do
         if entry.section then
             y = y - SECTION_SPACING
-            local heading = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            local heading = UI.Label(parent, entry.section, "GameFontNormal")
             heading:SetPoint("TOPLEFT", parent, "TOPLEFT", 16, y)
-            heading:SetText(entry.section)
             y = y - ROW_SPACING
         elseif entry.note then
             -- A pointer, not a control. Settings that moved elsewhere are worth
             -- saying so, otherwise they read as removed.
-            local note = parent:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+            local note = UI.Label(parent, entry.label, "GameFontDisableSmall")
             note:SetPoint("TOPLEFT", parent, "TOPLEFT", 24, y - 4)
             note:SetPoint("RIGHT", parent, "RIGHT", -20, 0)
-            note:SetJustifyH("LEFT")
-            note:SetText(entry.label)
             y = y - ROW_SPACING
         elseif entry.edit then
-            local label = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            local label = UI.Label(parent, entry.label)
             label:SetPoint("TOPLEFT", parent, "TOPLEFT", 24, y - 4)
-            label:SetText(entry.label)
 
-            local box = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
-            box:SetSize(360, 20)
+            local box = UI.EditBox(parent, 360, 20)
             box:SetPoint("LEFT", label, "RIGHT", 12, 0)
-            box:SetAutoFocus(false)
             box.entry = entry
             -- Saved as you type rather than on enter, so a name typed and then
             -- forgotten still counts.
             box:SetScript("OnTextChanged", function(self)
                 entry.set(self:GetText())
             end)
-            box:SetScript("OnEscapePressed", function(self)
-                self:ClearFocus()
-            end)
-            box:SetScript("OnEnterPressed", function(self)
-                self:ClearFocus()
-            end)
+            -- The library gives every box Escape; Enter to commit and let go is
+            -- this addon's own habit and has to be asked for.
+            box:SetScript("OnEnterPressed", box.ClearFocus)
 
             -- Live feedback on what the text parsed to. A list field with no
             -- echo leaves you guessing whether the separator was right.
             if entry.preview then
-                box.preview = parent:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+                box.preview = UI.Label(parent, "", "GameFontDisableSmall")
                 box.preview:SetPoint("TOPLEFT", box, "BOTTOMLEFT", 4, -2)
                 box.preview:SetPoint("RIGHT", parent, "RIGHT", -20, 0)
-                box.preview:SetJustifyH("LEFT")
                 box:HookScript("OnTextChanged", function(self)
                     self.preview:SetText(entry.preview(self:GetText()))
                 end)
@@ -230,26 +222,19 @@ local function buildBody(parent)
             parent.edits[#parent.edits + 1] = box
             y = y - ROW_SPACING
         else
-            local check = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
-            check:SetSize(24, 24)
+            -- The library's check button owns its own label, so nothing here
+            -- places a FontString beside it. Hanging one off it by hand is what
+            -- the standards mean by hand-rolling a control.
+            local check = UI.CheckBox(parent, entry.label)
             check:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, y)
-
-            local label = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-            label:SetPoint("LEFT", check, "RIGHT", 4, 0)
-            label:SetText(entry.label)
 
             check.entry = entry
             check:SetScript("OnClick", function(self)
                 entry.set(self:GetChecked() and true or false)
             end)
-            check:SetScript("OnEnter", function(self)
-                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                GameTooltip:AddLine(entry.label)
-                GameTooltip:AddLine(entry.tip, 1, 1, 1, true)
-                GameTooltip:Show()
-            end)
-            check:SetScript("OnLeave", function()
-                GameTooltip:Hide()
+            UI.Tooltip(check, function()
+                GameTooltip:AddLine(entry.label, 1, 1, 1)
+                GameTooltip:AddLine(entry.tip, 0.8, 0.8, 0.8, true)
             end)
 
             parent.checks[#parent.checks + 1] = check
@@ -258,31 +243,27 @@ local function buildBody(parent)
     end
 
     y = y - SECTION_SPACING
-    local heading = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local heading = UI.Label(parent, "Windows", "GameFontNormal")
     heading:SetPoint("TOPLEFT", parent, "TOPLEFT", 16, y)
-    heading:SetText("Windows")
     y = y - ROW_SPACING
 
     local previous
     for _, shortcut in ipairs(SHORTCUTS) do
-        local button = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-        button:SetSize(100, 22)
+        local button = UI.Button(parent, shortcut.label, 100, 22)
         if previous then
             button:SetPoint("LEFT", previous, "RIGHT", 6, 0)
         else
             button:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, y)
         end
-        button:SetText(shortcut.label)
         button:SetScript("OnClick", shortcut.open)
         previous = button
     end
 
     y = y - ROW_SPACING - SECTION_SPACING
 
-    parent.status = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    parent.status = UI.Label(parent, "")
     parent.status:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, y)
     parent.status:SetPoint("RIGHT", parent, "RIGHT", -20, 0)
-    parent.status:SetJustifyH("LEFT")
 
     -- How tall the content ended up. y runs negative down the panel, so this is
     -- the height a scroll child needs to be for all of it to be reachable.

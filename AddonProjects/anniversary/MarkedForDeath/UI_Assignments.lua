@@ -117,32 +117,33 @@ local function restorePosition()
 end
 
 local function build()
-    frame = CreateFrame("Frame", "MarkedForDeathAssignmentsFrame", UIParent, "BasicFrameTemplateWithInset")
-    frame:SetSize(300, 30 + MAX_ROWS * ROW_HEIGHT + 16)
-    frame:SetMovable(true)
-    frame:EnableMouse(true)
-    frame:RegisterForDrag("LeftButton")
-    frame:SetScript("OnDragStart", frame.StartMoving)
-    frame:SetScript("OnDragStop", function()
-        frame:StopMovingOrSizing()
+    -- The library's window: guild palette, the mark, a close button and the
+    -- dragging, none of it painted here.
+    frame = MFD.UI.Window("MarkedForDeathAssignmentsFrame", {
+        width = 300,
+        height = 30 + MAX_ROWS * ROW_HEIGHT + 16,
+        title = "Assignments",
+        status = false,
+        strata = "FULLSCREEN_DIALOG",
+        scalable = true,
+        onScaleChanged = function(_, scale)
+            MFD.charDb.windows.assignments = MFD.charDb.windows.assignments or {}
+            MFD.charDb.windows.assignments.scale = scale
+        end,
+    })
+
+    frame:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
         savePosition()
     end)
-    frame:SetFrameStrata("FULLSCREEN_DIALOG")
 
-    frame.title = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    frame.title:SetPoint("TOP", frame, "TOP", 0, -6)
-    frame.title:SetText("Assignments")
-
-    frame.body = CreateFrame("Frame", nil, frame)
-    frame.body:SetPoint("TOPLEFT", frame, "TOPLEFT", 6, -26)
-    frame.body:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -6, 6)
-
-    frame.empty = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    frame.empty = MFD.UI.Label(frame.body, "")
     frame.empty:SetPoint("TOPLEFT", frame.body, "TOPLEFT", 8, -8)
 
-    MFD.UI.MakeResizable(frame, "assignments", 220, 120, function()
-        Panel:Refresh()
-    end)
+    local saved = MFD.charDb.windows.assignments
+    if frame.SetWindowScale and saved and saved.scale then
+        frame:SetWindowScale(saved.scale, true)
+    end
 
     restorePosition()
     addView(frame)

@@ -424,36 +424,29 @@ function Grid:BuildInto(container)
     frame.empty = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     frame.empty:SetPoint("TOPLEFT", frame.body, "TOPLEFT", 8, -8)
 
-    frame.refresh = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-    frame.refresh:SetSize(90, 22)
+    frame.refresh = MFD.UI.Button(frame, "", 90, 22)
     frame.refresh:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 14, 10)
     frame.refresh:SetText("Refresh")
     frame.refresh:SetScript("OnClick", function()
         RC:Scan()
     end)
 
-    frame.ready = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-    frame.ready:SetSize(110, 22)
+    frame.ready = MFD.UI.Button(frame, "", 110, 22)
     frame.ready:SetPoint("LEFT", frame.refresh, "RIGHT", 8, 0)
     frame.ready:SetText("Ready check")
     frame.ready:SetScript("OnClick", function()
         RC:StartReadyCheck()
     end)
 
-    frame.callout = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-    frame.callout:SetSize(90, 22)
+    frame.callout = MFD.UI.Button(frame, "", 90, 22)
     frame.callout:SetPoint("LEFT", frame.ready, "RIGHT", 8, 0)
     frame.callout:SetText("Call out")
     frame.callout:SetScript("OnClick", function()
         RC:PostCallout()
     end)
 
-    frame.auto = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")
-    frame.auto:SetSize(24, 24)
+    frame.auto = MFD.UI.CheckBox(frame, "Open on ready check (leader and assist)")
     frame.auto:SetPoint("LEFT", frame.callout, "RIGHT", 16, 0)
-    frame.auto.label = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    frame.auto.label:SetPoint("LEFT", frame.auto, "RIGHT", 2, 0)
-    frame.auto.label:SetText("Open on ready check (leader and assist)")
     frame.auto:SetScript("OnClick", function(box)
         MFD.db.settings.raidCheck.isAutoOpenEnabled = box:GetChecked() and true or false
     end)
@@ -639,22 +632,16 @@ function Board:BuildInto(container)
     container.body:SetPoint("TOPLEFT", container, "TOPLEFT", 6, -6)
     container.body:SetPoint("BOTTOMRIGHT", container, "BOTTOMRIGHT", -6, 34)
 
-    container.empty = container:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    container.empty = MFD.UI.Label(container, "")
     container.empty:SetPoint("TOPLEFT", container.body, "TOPLEFT", 8, -8)
 
-    local callout = CreateFrame("Button", nil, container, "UIPanelButtonTemplate")
-    callout:SetSize(80, 22)
+    local callout = MFD.UI.Button(container, "Call out", 80, 22)
     callout:SetPoint("BOTTOMLEFT", container, "BOTTOMLEFT", 14, 6)
-    callout:SetText("Call out")
     callout:SetScript("OnClick", function() RC:PostCallout() end)
 
-    local all = CreateFrame("CheckButton", nil, container, "UICheckButtonTemplate")
-    all:SetSize(24, 24)
+    local all = MFD.UI.CheckBox(container, "Show all")
     all:SetPoint("LEFT", callout, "RIGHT", 12, 0)
     all:SetChecked(isShowingAll)
-    local allLabel = container:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    allLabel:SetPoint("LEFT", all, "RIGHT", 2, 0)
-    allLabel:SetText("Show all")
     all:SetScript("OnClick", function(box)
         isShowingAll = box:GetChecked() and true or false
         Board:Refresh()
@@ -707,43 +694,39 @@ local function setBoardLive(isLive)
 end
 
 local function buildBoard()
-    board = CreateFrame("Frame", "MarkedForDeathBuffBoardFrame", UIParent, "BasicFrameTemplateWithInset")
-    board:SetSize(BOARD_WIDTH, 30 + BOARD_MAX_ROWS * BOARD_ROW_HEIGHT + 40)
-    board:SetMovable(true)
-    board:EnableMouse(true)
-    board:RegisterForDrag("LeftButton")
-    board:SetScript("OnDragStart", board.StartMoving)
-    board:SetScript("OnDragStop", function()
-        board:StopMovingOrSizing()
+    board = MFD.UI.Window("MarkedForDeathBuffBoardFrame", {
+        width = BOARD_WIDTH,
+        height = 30 + BOARD_MAX_ROWS * BOARD_ROW_HEIGHT + 40,
+        title = "Buffs",
+        status = false,
+        strata = "FULLSCREEN_DIALOG",
+        scalable = true,
+        onScaleChanged = function(_, scale)
+            MFD.charDb.windows.buffBoard = MFD.charDb.windows.buffBoard or {}
+            MFD.charDb.windows.buffBoard.scale = scale
+        end,
+    })
+
+    board:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
         saveBoardPosition()
     end)
-    board:SetFrameStrata("FULLSCREEN_DIALOG")
 
-    board.title = board:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    board.title:SetPoint("TOP", board, "TOP", 0, -6)
-    board.title:SetText("Buffs")
-
-    board.body = CreateFrame("Frame", nil, board)
-    board.body:SetPoint("TOPLEFT", board, "TOPLEFT", 6, -26)
+    -- The library's body starts under the title bar; the toolbar along the
+    -- bottom is this board's own, so the list stops short of it.
     board.body:SetPoint("BOTTOMRIGHT", board, "BOTTOMRIGHT", -6, 40)
 
-    board.empty = board:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    board.empty = MFD.UI.Label(board.body, "")
     board.empty:SetPoint("TOPLEFT", board.body, "TOPLEFT", 8, -8)
 
-    board.callout = CreateFrame("Button", nil, board, "UIPanelButtonTemplate")
-    board.callout:SetSize(80, 22)
+    board.callout = MFD.UI.Button(board, "Call out", 80, 22)
     board.callout:SetPoint("BOTTOMLEFT", board, "BOTTOMLEFT", 14, 10)
-    board.callout:SetText("Call out")
     board.callout:SetScript("OnClick", function()
         RC:PostCallout()
     end)
 
-    board.all = CreateFrame("CheckButton", nil, board, "UICheckButtonTemplate")
-    board.all:SetSize(24, 24)
+    board.all = MFD.UI.CheckBox(board, "Show all")
     board.all:SetPoint("LEFT", board.callout, "RIGHT", 12, 0)
-    board.all.label = board:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    board.all.label:SetPoint("LEFT", board.all, "RIGHT", 2, 0)
-    board.all.label:SetText("Show all")
     board.all:SetScript("OnClick", function(box)
         isShowingAll = box:GetChecked() and true or false
         Board:Refresh()
@@ -756,9 +739,10 @@ local function buildBoard()
         setBoardLive(false)
     end)
 
-    MFD.UI.MakeResizable(board, "buffBoard", 300, 140, function()
-        Board:Refresh()
-    end)
+    local saved = MFD.charDb.windows.buffBoard
+    if board.SetWindowScale and saved and saved.scale then
+        board:SetWindowScale(saved.scale, true)
+    end
 
     restoreBoardPosition()
     addBoardView(board)

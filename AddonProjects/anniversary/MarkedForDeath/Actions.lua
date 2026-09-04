@@ -162,10 +162,9 @@ function Actions.BuildBar(container)
     container.actionButtons = {}
 
     for _, action in ipairs(Actions.LIST) do
-        local button = CreateFrame("Button", nil, container, "UIPanelButtonTemplate")
-        button:SetSize(Actions.BUTTON_WIDTH, Actions.BUTTON_HEIGHT)
+        local button = MFD.UI.Button(container, Actions.TextFor(action),
+            Actions.BUTTON_WIDTH, Actions.BUTTON_HEIGHT)
         button.action = action
-        button:SetText(Actions.TextFor(action))
 
         -- Clip rather than spill. A label that outgrows its button used to draw
         -- straight across the one next to it, which is how "Tank: On
@@ -182,14 +181,11 @@ function Actions.BuildBar(container)
             Actions.RefreshBar(container)
         end)
 
-        button:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_TOPLEFT")
-            GameTooltip:AddLine(action.label)
-            GameTooltip:AddLine(action.tip, 1, 1, 1, true)
+        MFD.UI.Tooltip(button, function()
+            GameTooltip:AddLine(action.label, 1, 1, 1)
+            GameTooltip:AddLine(action.tip, 0.8, 0.8, 0.8, true)
             GameTooltip:AddLine("Bindable under Key Bindings, Marked For Death.", 0.6, 0.8, 1, true)
-            GameTooltip:Show()
         end)
-        button:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
         container.actionButtons[#container.actionButtons + 1] = button
     end

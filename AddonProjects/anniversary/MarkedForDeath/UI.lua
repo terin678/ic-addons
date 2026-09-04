@@ -96,10 +96,21 @@ end
 
 -- A plain label. Not a library call, but every page wants one and each writing
 -- its own three lines is how fonts drift apart.
+--
+-- Wrapping is left alone deliberately. Prose on a settings page has to wrap;
+-- a cell in a fixed-height row must not. Forcing either here would be wrong
+-- half the time, so a caller that needs one says so.
 function UI.Label(parent, text, template)
     local fs = parent:CreateFontString(nil, "OVERLAY", template or "GameFontHighlightSmall")
     fs:SetText(text or "")
     fs:SetJustifyH("LEFT")
+    return fs
+end
+
+-- A label for one line of a list or a fixed-height row: clipped, never wrapped,
+-- because a second line in an eighteen pixel row draws over the row below.
+function UI.CellLabel(parent, text, template)
+    local fs = UI.Label(parent, text, template)
     fs:SetWordWrap(false)
     return fs
 end
