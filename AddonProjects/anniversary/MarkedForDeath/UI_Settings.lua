@@ -27,7 +27,7 @@ local TOGGLES = {
     { section = "Marking" },
     {
         label = "Place raid icons automatically",
-        tip = "Turn this off to stop the addon marking anything without losing your rules or seats.",
+        tip = "Turn this off to stop the addon marking anything without losing your rules or roles.",
         get = function() return MFD.db.settings.isMarkingEnabled end,
         set = function(v) MFD.db.settings.isMarkingEnabled = v end,
     },
@@ -101,7 +101,7 @@ local TOGGLES = {
 
 -- Windows reachable from the buttons at the bottom of the panel.
 local SHORTCUTS = {
-    { label = "Seats", open = function() MFD.UI.Config:Toggle() end },
+    { label = "Roles", open = function() MFD.UI.Config:Toggle() end },
     { label = "Rules", open = function() MFD.UI.Rules:Toggle() end },
     { label = "Raid check", open = function() MFD.UI.RaidCheck:Toggle() end },
     { label = "Buff board", open = function() MFD.UI.BuffBoard:Toggle() end },

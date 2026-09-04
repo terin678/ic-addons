@@ -133,7 +133,7 @@ function Rules.ParseBulk(text)
             local intent = "KILL"
             if job and job ~= "" then
                 intent = string.upper(job)
-                if not MFD.Seats.INTENTS[intent] then
+                if not MFD.Roles.INTENTS[intent] then
                     return nil, "line " .. lineNumber .. ": unknown job '" .. job .. "'"
                 end
             end
@@ -357,7 +357,7 @@ function Rules.Deserialize(str)
             return nil, "line " .. lineNumber .. " has a bad npc id or rank"
         end
 
-        if not MFD.Seats.INTENTS[intent] then
+        if not MFD.Roles.INTENTS[intent] then
             return nil, "line " .. lineNumber .. " has unknown intent '" .. tostring(intent) .. "'"
         end
 

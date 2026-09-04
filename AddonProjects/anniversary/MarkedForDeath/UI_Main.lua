@@ -1,4 +1,4 @@
--- The one window. Seats, rules, the raid check grid and settings live here as
+-- The one window. Roles, rules, the raid check grid and settings live here as
 -- tabs rather than as four separate windows you have to close and reopen.
 --
 -- The assignment panel and the buff board are tabs here as well as floating
@@ -19,7 +19,7 @@ local CONTENT_TOP = 54             -- pixels below the window top
 -- Declared up front so the tabs are always in this order, rather than in
 -- whatever order the panels happened to be opened in.
 local TABS = {
-    { key = "seats",  label = "Seats",      owner = function() return MFD.UI.Config end },
+    { key = "roles",  label = "Roles",      owner = function() return MFD.UI.Config end },
     { key = "rules",  label = "Rules",      owner = function() return MFD.UI.Rules end },
     { key = "check",  label = "Raid check", owner = function() return MFD.UI.RaidCheck end },
     { key = "buffs",  label = "Buffs",      owner = function() return MFD.UI.BuffBoard end },

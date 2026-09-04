@@ -1,4 +1,4 @@
--- Seat editor. Frames are built lazily on first Toggle and reused from a pool
+-- Role editor. Frames are built lazily on first Toggle and reused from a pool
 -- on every refresh, never created and destroyed per row.
 local MFD = _G.MarkedForDeath or {}
 
@@ -9,7 +9,7 @@ local Config = MFD.UI.Config
 local ROW_HEIGHT = 24   -- pixels
 
 -- Display order: kill icons first, then sheep, then banish, matching how the
--- raid reads a pack. Cosmetic only; the seat plan itself is keyed by icon.
+-- raid reads a pack. Cosmetic only; the role plan itself is keyed by icon.
 local ICON_ORDER = { 8, 7, 6, 2, 5, 1, 4, 3 }
 
 -- Returns a reusable row from pool, creating it only when the pool is short.
@@ -43,7 +43,7 @@ local rows = {}
 
 local function intentNames()
     local names = {}
-    for intent in pairs(MFD.Seats.INTENTS) do
+    for intent in pairs(MFD.Roles.INTENTS) do
         names[#names + 1] = intent
     end
     table.sort(names)
@@ -69,7 +69,7 @@ local function openIntentMenu(anchor, current, onPick)
     UIDropDownMenu_Initialize(intentMenu, function()
         for _, intent in ipairs(intentNames()) do
             local info = UIDropDownMenu_CreateInfo()
-            info.text = MFD.Seats.INTENTS[intent].label
+            info.text = MFD.Roles.INTENTS[intent].label
             info.checked = intent == current
             info.func = function()
                 onPick(intent)
@@ -83,24 +83,24 @@ local function openIntentMenu(anchor, current, onPick)
 end
 
 -- Moves an icon's ordinal within its intent. Ordinals are renumbered from 1 so
--- two seats of one intent never share a number.
+-- two roles of one intent never share a number.
 local function shiftOrdinal(icon, delta)
-    local plan = MFD.db.seatPlan
-    local seat = plan[icon]
-    if not seat then
+    local plan = MFD.db.rolePlan
+    local role = plan[icon]
+    if not role then
         return
     end
 
     local siblings = {}
     for otherIcon, other in pairs(plan) do
-        if other.intent == seat.intent then
-            siblings[#siblings + 1] = { icon = otherIcon, seat = other }
+        if other.intent == role.intent then
+            siblings[#siblings + 1] = { icon = otherIcon, role = other }
         end
     end
 
     table.sort(siblings, function(a, b)
-        if a.seat.ordinal ~= b.seat.ordinal then
-            return a.seat.ordinal < b.seat.ordinal
+        if a.role.ordinal ~= b.role.ordinal then
+            return a.role.ordinal < b.role.ordinal
         end
         return a.icon < b.icon
     end)
@@ -121,7 +121,7 @@ local function shiftOrdinal(icon, delta)
     siblings[index], siblings[target] = siblings[target], siblings[index]
 
     for i, s in ipairs(siblings) do
-        s.seat.ordinal = i
+        s.role.ordinal = i
     end
 end
 
@@ -146,10 +146,10 @@ local function buildRow(row, icon)
     row.cycle:SetPoint("LEFT", row.intentText, "RIGHT", 4, 0)
     row.cycle:SetText("Intent")
     row.cycle:SetScript("OnClick", function(button)
-        local seat = MFD.db.seatPlan[icon]
-        openIntentMenu(button, seat and seat.intent, function(intent)
-            MFD.db.seatPlan[icon] = MFD.db.seatPlan[icon] or { ordinal = 1 }
-            MFD.db.seatPlan[icon].intent = intent
+        local role = MFD.db.rolePlan[icon]
+        openIntentMenu(button, role and role.intent, function(intent)
+            MFD.db.rolePlan[icon] = MFD.db.rolePlan[icon] or { ordinal = 1 }
+            MFD.db.rolePlan[icon].intent = intent
             Config:Refresh()
         end)
     end)
@@ -179,8 +179,8 @@ local function buildRow(row, icon)
     row.pinBox:SetScript("OnEnterPressed", function(box)
         local text = string.gsub(box:GetText(), "^%s+", "")
         text = string.gsub(text, "%s+$", "")
-        MFD.db.seatPlan[icon] = MFD.db.seatPlan[icon] or { intent = "KILL", ordinal = 1 }
-        MFD.db.seatPlan[icon].pin = text ~= "" and text or nil
+        MFD.db.rolePlan[icon] = MFD.db.rolePlan[icon] or { intent = "KILL", ordinal = 1 }
+        MFD.db.rolePlan[icon].pin = text ~= "" and text or nil
         box:ClearFocus()
         Config:Refresh()
     end)
@@ -195,10 +195,10 @@ local function buildRow(row, icon)
     row.ownerText:SetJustifyH("LEFT")
 end
 
--- Repaints every row from the current seat plan and the live roster, so the
--- Owner column shows who actually holds each seat right now.
+-- Repaints every row from the current role plan and the live roster, so the
+-- Owner column shows who actually holds each role right now.
 function Config:Refresh()
-    -- The seat plan is edited in place, so its table identity never changes and
+    -- The role plan is edited in place, so its table identity never changes and
     -- the marker's cache cannot notice on its own. Every editor in this file
     -- calls Refresh after mutating, so dropping the cache here covers all of
     -- them, including any added later.
@@ -208,29 +208,29 @@ function Config:Refresh()
         return
     end
 
-    local resolved = MFD.Seats.Resolve(MFD.db.seatPlan, MFD.Marker.CurrentRoster())
+    local resolved = MFD.Roles.Resolve(MFD.db.rolePlan, MFD.Marker.CurrentRoster())
 
     for index, icon in ipairs(ICON_ORDER) do
         local row = MFD.UI.AcquireRow(frame.body, rows, index, ROW_HEIGHT)
         buildRow(row, icon)
 
-        local seat = MFD.db.seatPlan[icon]
+        local role = MFD.db.rolePlan[icon]
         SetRaidTargetIconTexture(row.texture, icon)
 
-        if seat then
-            local label = MFD.Seats.INTENTS[seat.intent] and MFD.Seats.INTENTS[seat.intent].label or seat.intent
-            row.intentText:SetText(label .. " " .. seat.ordinal)
+        if role then
+            local label = MFD.Roles.INTENTS[role.intent] and MFD.Roles.INTENTS[role.intent].label or role.intent
+            row.intentText:SetText(label .. " " .. role.ordinal)
         else
             row.intentText:SetText("|cff999999unbound|r")
         end
 
         if not row.pinBox:HasFocus() then
-            row.pinBox:SetText(seat and seat.pin or "")
+            row.pinBox:SetText(role and role.pin or "")
         end
 
         local record = resolved.byIcon[icon]
         if not record then
-            row.ownerText:SetText("|cff999999no seat|r")
+            row.ownerText:SetText("|cff999999no role|r")
         elseif record.owner == true then
             row.ownerText:SetText("|cff66ff66always available|r")
         elseif record.owner then
@@ -243,7 +243,7 @@ function Config:Refresh()
     MFD.UI.ReleaseRows(rows, #ICON_ORDER + 1)
 end
 
--- Builds the seat editor into a container the main window owns. The window
+-- Builds the role editor into a container the main window owns. The window
 -- provides the border, the title and the dragging; this only fills the space.
 function Config:BuildInto(container)
     frame = container
@@ -265,7 +265,7 @@ function Config:BuildInto(container)
 end
 
 function Config:Toggle()
-    MFD.UI.Main:Toggle("seats")
+    MFD.UI.Main:Toggle("roles")
 end
 
 -- Rule editor and mob search. Left pane searches bundled and learned mobs and
@@ -537,7 +537,7 @@ local function paintRules()
         row.rank:SetText(tostring(rule.rank))
         row.name:SetText(color .. (rule.name or ("npc " .. rule.npcID)) .. suffix .. "|r")
 
-        local label = MFD.Seats.INTENTS[rule.intent] and MFD.Seats.INTENTS[rule.intent].label or rule.intent
+        local label = MFD.Roles.INTENTS[rule.intent] and MFD.Roles.INTENTS[rule.intent].label or rule.intent
         -- A rule typed by name has no id to look up, so find the creature type
         -- by name instead; that is the whole population of pre-planned rules.
         local learned = rule.npcID and MFD.db.learnedMobs[rule.npcID] or nil
@@ -549,7 +549,7 @@ local function paintRules()
                 end
             end
         end
-        local canApply = MFD.Seats.CanIntentApply(rule.intent, learned and learned.creatureType)
+        local canApply = MFD.Roles.CanIntentApply(rule.intent, learned and learned.creatureType)
         row.intent:SetText((canApply and "" or "|cffff4444") .. label .. "|r")
         if not canApply then
             hasBadRule = true

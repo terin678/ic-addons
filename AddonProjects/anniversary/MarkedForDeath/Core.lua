@@ -6,7 +6,7 @@ MFD.VERSION = "1.5.0"
 
 -- Bumped only when the saved-variable shape changes in a way that needs a
 -- migration. See MFD:MigrateDB.
-local SCHEMA_VERSION = 1
+local SCHEMA_VERSION = 2
 
 local CHAT_PREFIX = "|cff33ff99Marked For Death|r: "
 
@@ -34,7 +34,7 @@ end
 
 local DB_DEFAULTS = {
     schemaVersion = SCHEMA_VERSION,
-    seatPlan = {},
+    rolePlan = {},
     rules = {},
     rulesVersion = { counter = 0, hash = "" },
     designatedLead = { name = "", setBy = "", setAt = 0 },
@@ -72,6 +72,25 @@ function MFD:MigrateDB()
     if not db.schemaVersion then
         db.schemaVersion = SCHEMA_VERSION
     end
+
+    -- Schema 2: "seats" became "roles" everywhere. Copy rather than move, so a
+    -- downgrade to the previous version still finds its plan. The old key is
+    -- kept for one version per the repo standard.
+    if db.schemaVersion < 2 then
+        if db.seatPlan and next(db.seatPlan) and not (db.rolePlan and next(db.rolePlan)) then
+            db.rolePlan = MFD.H.DeepCopy(db.seatPlan)
+        end
+
+        -- Circle became the icon of last resort at the same time. Only applied
+        -- to a plan that still matches the shipped default for that icon, so
+        -- an edited plan is left exactly as the player left it.
+        local circle = db.rolePlan and db.rolePlan[2]
+        if circle and circle.intent == "KILL" and circle.ordinal == 4 and circle.isLastResort == nil then
+            circle.isLastResort = true
+        end
+
+        db.schemaVersion = 2
+    end
 end
 
 local function onAddonLoaded()
@@ -85,7 +104,7 @@ local function onAddonLoaded()
     MFD.db = MarkedForDeathDB
     MFD.charDb = MarkedForDeathCharDB
 
-    MFD.Seats.EnsurePlan(MFD.db)
+    MFD.Roles.EnsurePlan(MFD.db)
 
     for _, fn in ipairs(inits) do
         local ok, err = pcall(fn)
@@ -247,7 +266,7 @@ commands.on = {
 }
 
 commands.config = {
-    desc = "open the seat editor: which icon means which job, and who is pinned to it",
+    desc = "open the role editor: which icon means which job, and who is pinned to it",
     run = function()
         MFD.UI.Config:Toggle()
     end,
@@ -435,8 +454,8 @@ commands.debug = {
         end
 
         MFD.Print(string.format(
-            "|cff888888seats %d, visible %d, rules %d, assigned %d, zone %s|r",
-            state.seatCount, state.candidateCount, state.ruleCount, state.desiredCount,
+            "|cff888888roles %d, visible %d, rules %d, assigned %d, zone %s|r",
+            state.roleCount, state.candidateCount, state.ruleCount, state.desiredCount,
             tostring(state.instanceKey or "none")))
     end,
 }
@@ -515,7 +534,7 @@ commands.add = {
             intent = "KILL"
         end
 
-        if not MFD.Seats.INTENTS[intent] then
+        if not MFD.Roles.INTENTS[intent] then
             MFD.Error("unknown intent '" .. intent .. "'. Try /mfd intents.")
             return
         end
@@ -529,7 +548,7 @@ commands.add = {
         -- Advisory only. The rule is still added: the player may know something
         -- this table does not, and a wrong table must not block real work.
         local creatureType = UnitCreatureType and UnitCreatureType(unit) or nil
-        local canApply, why = MFD.Seats.CanIntentApply(intent, creatureType)
+        local canApply, why = MFD.Roles.CanIntentApply(intent, creatureType)
         if not canApply then
             MFD.Print("|cffff4444" .. why .. ". Adding it anyway.|r")
             MFD.PlayBadMarkSound()
@@ -543,7 +562,7 @@ commands.add = {
                 rule.intent = intent
                 MFD.Comms.Republish()
                 MFD.Comms:AdvertiseRules()
-                MFD.Print(name .. " is now " .. MFD.Seats.INTENTS[intent].label)
+                MFD.Print(name .. " is now " .. MFD.Roles.INTENTS[intent].label)
                 return
             end
         end
@@ -558,7 +577,7 @@ commands.add = {
         MFD.Comms.Republish()
         MFD.Comms:AdvertiseRules()
         MFD.Print(string.format("%s (npc %d) added as %s, priority %d in %s",
-            name, npcID, MFD.Seats.INTENTS[intent].label, list[#list].rank, instanceKey))
+            name, npcID, MFD.Roles.INTENTS[intent].label, list[#list].rank, instanceKey))
     end,
 }
 
@@ -575,7 +594,7 @@ commands.list = {
         local hasBadRule = false
 
         for _, rule in ipairs(ranked) do
-            local label = MFD.Seats.INTENTS[rule.intent] and MFD.Seats.INTENTS[rule.intent].label or rule.intent
+            local label = MFD.Roles.INTENTS[rule.intent] and MFD.Roles.INTENTS[rule.intent].label or rule.intent
             local mine = rule.owner == UnitName("player")
             MFD.Print(string.format("%s%d. %s - %s (npc %d)%s|r",
                 mine and "" or "|cffffcc66",
@@ -583,9 +602,9 @@ commands.list = {
                 mine and "" or (" from " .. tostring(rule.owner))))
 
             -- Surfaced here as well as at /mfd add, because a rule can become
-            -- wrong later: rebinding a seat changes which intent a mob gets.
+            -- wrong later: rebinding a role changes which intent a mob gets.
             local learned = MFD.db.learnedMobs[rule.npcID]
-            local canApply, why = MFD.Seats.CanIntentApply(rule.intent, learned and learned.creatureType)
+            local canApply, why = MFD.Roles.CanIntentApply(rule.intent, learned and learned.creatureType)
             if not canApply then
                 MFD.Print("     |cffff4444" .. why .. "|r")
                 hasBadRule = true
@@ -626,8 +645,8 @@ commands.del = {
 commands.intents = {
     desc = "list the crowd control intents a rule can use",
     run = function()
-        for _, intent in ipairs(MFD.H.SortedKeys(MFD.Seats.INTENTS)) do
-            MFD.Print("  " .. string.lower(intent) .. " - " .. MFD.Seats.INTENTS[intent].label)
+        for _, intent in ipairs(MFD.H.SortedKeys(MFD.Roles.INTENTS)) do
+            MFD.Print("  " .. string.lower(intent) .. " - " .. MFD.Roles.INTENTS[intent].label)
         end
     end,
 }

@@ -148,7 +148,7 @@ end
 --
 -- This exists because the tick runs five times a second and cannot print, so
 -- without it the addon can do nothing at all and give the player no clue why.
--- An empty seat plan silently marking nothing is exactly the failure this
+-- An empty role plan silently marking nothing is exactly the failure this
 -- catches, and it is the one that shipped.
 function Marker.DiagnoseState(state)
     local reasons = {}
@@ -169,8 +169,8 @@ function Marker.DiagnoseState(state)
         return reasons
     end
 
-    if state.seatCount == 0 then
-        reasons[#reasons + 1] = "no seats are configured, so no icon can be assigned. /mfd config"
+    if state.roleCount == 0 then
+        reasons[#reasons + 1] = "no roles are configured, so no icon can be assigned. /mfd config"
         return reasons
     end
 
@@ -320,7 +320,7 @@ local accumulator = 0
 local sightingAccumulator = 0
 local hasReportedTickError = false
 
--- Builds the roster the seat resolver needs. Returns an array of
+-- Builds the roster the role resolver needs. Returns an array of
 -- { name, class }. Reads client state, so it never runs at file scope.
 function Marker.BuildRoster()
     local roster = {}
@@ -352,12 +352,12 @@ function Marker.BuildRoster()
     return roster
 end
 
-local rosterCache, seatsCache, seatsCachePlan
+local rosterCache, rolesCache, rolesCachePlan
 
--- Drops the cached roster and the seats resolved from it. Called whenever the
--- group changes or the seat plan is edited.
+-- Drops the cached roster and the roles resolved from it. Called whenever the
+-- group changes or the role plan is edited.
 function Marker.InvalidateRoster()
-    rosterCache, seatsCache, seatsCachePlan = nil, nil, nil
+    rosterCache, rolesCache, rolesCachePlan = nil, nil, nil
 end
 
 -- Returns the group roster, built once and reused until invalidated.
@@ -372,15 +372,15 @@ function Marker.CurrentRoster()
     return rosterCache
 end
 
--- Returns the resolved seats for a plan, cached against the roster. Re-resolves
+-- Returns the resolved roles for a plan, cached against the roster. Re-resolves
 -- when the roster is invalidated or a different plan table is passed, which is
--- what the seat editor does after an edit.
-function Marker.ResolvedSeats(plan)
-    if not seatsCache or seatsCachePlan ~= plan then
-        seatsCache = MFD.Seats.Resolve(plan, Marker.CurrentRoster())
-        seatsCachePlan = plan
+-- what the role editor does after an edit.
+function Marker.ResolvedRoles(plan)
+    if not rolesCache or rolesCachePlan ~= plan then
+        rolesCache = MFD.Roles.Resolve(plan, Marker.CurrentRoster())
+        rolesCachePlan = plan
     end
-    return seatsCache
+    return rolesCache
 end
 
 -- Returns { [key] = icon } for the units the client can currently read, plus
@@ -399,15 +399,15 @@ local function readActual()
     return actual, units
 end
 
--- Recomputes the desired map from the current candidates, rules and seats.
+-- Recomputes the desired map from the current candidates, rules and roles.
 function Marker:Desired()
-    local seats = Marker.ResolvedSeats(MFD.db.seatPlan)
+    local roles = Marker.ResolvedRoles(MFD.db.rolePlan)
     local candidates = MFD.Candidates.ToList(MFD.Candidates.set)
     -- Rules may be filed by npcID or by name; the allocator only thinks in
     -- ids, so name rules are matched onto the mobs actually on screen first.
     local rules = MFD.Rules.ResolveForCandidates(MFD.Rules.Active(), candidates)
     local allowReuse = MFD.db.settings.isIconReuseEnabled
-    local desired = MFD.Allocator.Compute(candidates, rules, seats, Marker.locked, allowReuse)
+    local desired = MFD.Allocator.Compute(candidates, rules, roles, Marker.locked, allowReuse)
 
     -- Which mobs wanted crowd control and got nothing. The tick uses this to
     -- take a borrowed icon back and shout about it.
@@ -445,7 +445,7 @@ function Marker:AlertLateCrowdControl(desired, now)
     end
 
     for _, assignment in ipairs(desired.list) do
-        local def = MFD.Seats.INTENTS[assignment.intent]
+        local def = MFD.Roles.INTENTS[assignment.intent]
         local isCrowdControl = def and def.classes
         if isCrowdControl and not Marker.pullCrowdControl[assignment.key]
             and not Marker.alertedCrowdControl[assignment.key] then
@@ -490,9 +490,9 @@ function Marker:Diagnose()
         ruleCount = ruleCount + 1
     end
 
-    local seatCount = 0
-    for _ in pairs(MFD.db.seatPlan) do
-        seatCount = seatCount + 1
+    local roleCount = 0
+    for _ in pairs(MFD.db.rolePlan) do
+        roleCount = roleCount + 1
     end
 
     local desiredCount = 0
@@ -509,7 +509,7 @@ function Marker:Diagnose()
         canMarkReason = canMarkReason,
         cvarsOk = cvarsOk,
         cvarMessage = cvarMessage,
-        seatCount = seatCount,
+        roleCount = roleCount,
         candidateCount = candidateCount,
         ruleCount = ruleCount,
         desiredCount = desiredCount,
@@ -599,7 +599,7 @@ function Marker:Tick(elapsed)
     end
 
     -- A crowd control mob nobody planned for has turned up and has no icon.
-    -- Give back a borrowed one so it can have its seat on the next tick. Only
+    -- Give back a borrowed one so it can have its role on the next tick. Only
     -- borrowed locks are eligible, so a real assignment is never moved.
     if #desired.unmetCrowdControl > 0 then
         local released = Marker.ReleaseBorrowed(Marker.locked, Marker.borrowed, #desired.unmetCrowdControl)
@@ -671,7 +671,7 @@ MFD.RegisterInit(function()
                 -- What the raid knew about going in. Anything crowd control
                 -- that appears after this is a surprise worth warning about.
                 for _, assignment in ipairs(desired.list) do
-                    local def = MFD.Seats.INTENTS[assignment.intent]
+                    local def = MFD.Roles.INTENTS[assignment.intent]
                     if def and def.classes then
                         Marker.pullCrowdControl[assignment.key] = true
                     end
@@ -739,7 +739,7 @@ function Announce.Format(assignments)
     for _, icon in ipairs(ANNOUNCE_ORDER) do
         local a = byIcon[icon]
         if a then
-            local label = MFD.Seats.INTENTS[a.intent] and MFD.Seats.INTENTS[a.intent].label or a.intent
+            local label = MFD.Roles.INTENTS[a.intent] and MFD.Roles.INTENTS[a.intent].label or a.intent
             parts[#parts + 1] = ICON_NAMES[icon] .. ">" .. label .. (a.owner and (" " .. a.owner) or "")
         end
     end
@@ -752,7 +752,7 @@ Announce.LATE_ALERT_THROTTLE_SECONDS = 3   -- minimum gap between late alerts
 -- The raid warning for a crowd control target nobody planned for. Names the
 -- job first because that is the word the reader is scanning for. Pure.
 function Announce.FormatLateAlert(assignment, mobName)
-    local def = MFD.Seats.INTENTS[assignment.intent]
+    local def = MFD.Roles.INTENTS[assignment.intent]
     local label = def and def.label:upper() or assignment.intent
     return string.format("%s %s: %s - %s", label, ICON_NAMES[assignment.icon] or "?",
         mobName or "unknown", assignment.owner or "unassigned")
@@ -760,7 +760,7 @@ end
 
 -- The whisper to the one person who has to act on it. Pure.
 function Announce.FormatLateWhisper(assignment, mobName)
-    local def = MFD.Seats.INTENTS[assignment.intent]
+    local def = MFD.Roles.INTENTS[assignment.intent]
     local label = def and def.label or assignment.intent
     return string.format("%s the %s now: %s", label,
         ICON_NAMES[assignment.icon] or "?", mobName or "unknown")

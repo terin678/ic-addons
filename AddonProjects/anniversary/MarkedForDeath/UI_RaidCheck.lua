@@ -516,7 +516,7 @@ local function buildBoard()
         board:StopMovingOrSizing()
         saveBoardPosition()
     end)
-    board:SetFrameStrata("MEDIUM")
+    board:SetFrameStrata("FULLSCREEN_DIALOG")
 
     board.title = board:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     board.title:SetPoint("TOP", board, "TOP", 0, -6)
@@ -571,6 +571,7 @@ function Board:Toggle()
     end
 
     board:Show()
+    board:Raise()
     RC:Scan()
 end
 

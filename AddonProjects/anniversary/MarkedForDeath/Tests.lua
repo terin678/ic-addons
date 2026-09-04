@@ -28,7 +28,7 @@ function T.Eq(actual, expected, label)
 end
 
 -- Compares two tables one level deep. Enough for the assignment maps and
--- seat lists the pure modules return; deliberately not a deep compare.
+-- role lists the pure modules return; deliberately not a deep compare.
 function T.EqShallow(actual, expected, label)
     if type(actual) ~= "table" then
         error(string.format("%s: expected a table, got [%s]", tostring(label), type(actual)), 2)
@@ -101,66 +101,66 @@ local function roster(...)
     return out
 end
 
-T.Case("Seats: a pinned player owns their seat when present", function()
+T.Case("Roles: a pinned player owns their role when present", function()
     local plan = {
         [5] = { intent = "SHEEP", ordinal = 1, pin = "Grimmtusk" },
         [4] = { intent = "SHEEP", ordinal = 2 },
     }
-    local r = MFD.Seats.Resolve(plan, roster("Alfred", "MAGE", "Grimmtusk", "MAGE"))
+    local r = MFD.Roles.Resolve(plan, roster("Alfred", "MAGE", "Grimmtusk", "MAGE"))
     T.Eq(r.byIcon[5].owner, "Grimmtusk", "moon owner")
     T.Eq(r.byIcon[4].owner, "Alfred", "triangle owner")
 end)
 
-T.Case("Seats: an absent pin falls through to the next eligible mage", function()
+T.Case("Roles: an absent pin falls through to the next eligible mage", function()
     local plan = {
         [5] = { intent = "SHEEP", ordinal = 1, pin = "Grimmtusk" },
         [4] = { intent = "SHEEP", ordinal = 2 },
     }
-    local r = MFD.Seats.Resolve(plan, roster("Alfred", "MAGE", "Zed", "MAGE"))
+    local r = MFD.Roles.Resolve(plan, roster("Alfred", "MAGE", "Zed", "MAGE"))
     T.Eq(r.byIcon[5].owner, "Alfred", "moon falls to first mage by name")
     T.Eq(r.byIcon[4].owner, "Zed", "triangle takes the second")
 end)
 
-T.Case("Seats: an intent with no capable class is unowned", function()
+T.Case("Roles: an intent with no capable class is unowned", function()
     local plan = { [5] = { intent = "SHEEP", ordinal = 1 } }
-    local r = MFD.Seats.Resolve(plan, roster("Thok", "WARRIOR"))
+    local r = MFD.Roles.Resolve(plan, roster("Thok", "WARRIOR"))
     T.Eq(r.byIcon[5].owner, false, "no mage means no sheep owner")
 end)
 
-T.Case("Seats: KILL needs no owner", function()
+T.Case("Roles: KILL needs no owner", function()
     local plan = { [8] = { intent = "KILL", ordinal = 1 } }
-    local r = MFD.Seats.Resolve(plan, roster())
-    T.Eq(r.byIcon[8].owner, true, "kill seat is always available")
+    local r = MFD.Roles.Resolve(plan, roster())
+    T.Eq(r.byIcon[8].owner, true, "kill role is always available")
 end)
 
-T.Case("Seats: one player holds at most one seat per intent but may span intents", function()
+T.Case("Roles: one player holds at most one role per intent but may span intents", function()
     local plan = {
         [3] = { intent = "BANISH", ordinal = 1 },
         [2] = { intent = "BANISH", ordinal = 2 },
         [7] = { intent = "FEAR", ordinal = 1 },
     }
-    local r = MFD.Seats.Resolve(plan, roster("Nyx", "WARLOCK"))
-    T.Eq(r.byIcon[3].owner, "Nyx", "banish seat 1")
-    T.Eq(r.byIcon[2].owner, false, "only one warlock, so banish seat 2 is unowned")
-    T.Eq(r.byIcon[7].owner, "Nyx", "same warlock also holds fear seat 1")
+    local r = MFD.Roles.Resolve(plan, roster("Nyx", "WARLOCK"))
+    T.Eq(r.byIcon[3].owner, "Nyx", "banish role 1")
+    T.Eq(r.byIcon[2].owner, false, "only one warlock, so banish role 2 is unowned")
+    T.Eq(r.byIcon[7].owner, "Nyx", "same warlock also holds fear role 1")
 end)
 
-T.Case("Seats: byIntent is ordered by ordinal", function()
+T.Case("Roles: byIntent is ordered by ordinal", function()
     local plan = {
         [1] = { intent = "KILL", ordinal = 4 },
         [8] = { intent = "KILL", ordinal = 1 },
         [6] = { intent = "KILL", ordinal = 3 },
         [7] = { intent = "KILL", ordinal = 2 },
     }
-    local r = MFD.Seats.Resolve(plan, roster())
+    local r = MFD.Roles.Resolve(plan, roster())
     T.Eq(r.byIntent.KILL[1].icon, 8, "first is skull")
     T.Eq(r.byIntent.KILL[2].icon, 7, "second is cross")
     T.Eq(r.byIntent.KILL[3].icon, 6, "third is square")
     T.Eq(r.byIntent.KILL[4].icon, 1, "fourth is star")
 end)
 
-T.Case("Seats: the default plan matches the agreed icon bindings", function()
-    local p = MFD.Seats.DEFAULT_PLAN
+T.Case("Roles: the default plan matches the agreed icon bindings", function()
+    local p = MFD.Roles.DEFAULT_PLAN
     T.Eq(p[8].intent, "KILL", "skull")
     T.Eq(p[7].intent, "KILL", "cross")
     T.Eq(p[6].intent, "KILL", "square")
@@ -264,10 +264,10 @@ T.Case("Rules: Reorder is a no-op at the boundaries", function()
     T.Eq(list[2].npcID, 2, "cannot move the last down")
 end)
 
--- Builds the resolved-seat table the allocator consumes, from a plan and a
+-- Builds the resolved-role table the allocator consumes, from a plan and a
 -- roster, so allocator cases read as intent rather than as plumbing.
-local function seatsFor(plan, ...)
-    return MFD.Seats.Resolve(plan, roster(...))
+local function rolesFor(plan, ...)
+    return MFD.Roles.Resolve(plan, roster(...))
 end
 
 local KILL_AND_SHEEP = {
@@ -278,25 +278,25 @@ local KILL_AND_SHEEP = {
     [6] = { intent = "SHEEP", ordinal = 3 },
 }
 
-T.Case("Allocator: duplicates of one mob take successive seats of their intent", function()
-    local seats = seatsFor(KILL_AND_SHEEP, "Alfred", "MAGE", "Grimmtusk", "MAGE", "Zed", "MAGE")
+T.Case("Allocator: duplicates of one mob take successive roles of their intent", function()
+    local roles = rolesFor(KILL_AND_SHEEP, "Alfred", "MAGE", "Grimmtusk", "MAGE", "Zed", "MAGE")
     local out = MFD.Allocator.Compute(
         { { key = "100:AAA", npcID = 100 }, { key = "100:BBB", npcID = 100 }, { key = "100:CCC", npcID = 100 } },
         { [100] = { intent = "SHEEP", rank = 10 } },
-        seats, nil)
-    T.Eq(out.byKey["100:AAA"], 5, "first sheep seat")
-    T.Eq(out.byKey["100:BBB"], 4, "second sheep seat")
-    T.Eq(out.byKey["100:CCC"], 6, "third sheep seat")
+        roles, nil)
+    T.Eq(out.byKey["100:AAA"], 5, "first sheep role")
+    T.Eq(out.byKey["100:BBB"], 4, "second sheep role")
+    T.Eq(out.byKey["100:CCC"], 6, "third sheep role")
 end)
 
 T.Case("Allocator: rank decides which mob gets skull, not sighting order", function()
-    local seats = seatsFor(KILL_AND_SHEEP)
+    local roles = rolesFor(KILL_AND_SHEEP)
     local low = { key = "200:AAA", npcID = 200 }
     local high = { key = "100:BBB", npcID = 100 }
     local rules = { [100] = { intent = "KILL", rank = 10 }, [200] = { intent = "KILL", rank = 90 } }
 
-    local seenLast = MFD.Allocator.Compute({ low, high }, rules, seats, nil)
-    local seenFirst = MFD.Allocator.Compute({ high, low }, rules, seats, nil)
+    local seenLast = MFD.Allocator.Compute({ low, high }, rules, roles, nil)
+    local seenFirst = MFD.Allocator.Compute({ high, low }, rules, roles, nil)
 
     T.Eq(seenLast.byKey["100:BBB"], 8, "rank 10 takes skull however late it was seen")
     T.Eq(seenFirst.byKey["100:BBB"], 8, "and the same when seen first")
@@ -304,97 +304,97 @@ T.Case("Allocator: rank decides which mob gets skull, not sighting order", funct
 end)
 
 T.Case("Allocator: an unowned intent falls through to the rule's fallback", function()
-    local seats = seatsFor(KILL_AND_SHEEP, "Thok", "WARRIOR")
+    local roles = rolesFor(KILL_AND_SHEEP, "Thok", "WARRIOR")
     local out = MFD.Allocator.Compute(
         { { key = "100:AAA", npcID = 100 } },
         { [100] = { intent = "SHEEP", rank = 10, fallback = "KILL" } },
-        seats, nil)
+        roles, nil)
     T.Eq(out.byKey["100:AAA"], 8, "no mage in raid, so the sheep rule becomes a kill")
     T.Eq(out.list[1].intent, "KILL", "and the assignment reports the fallback intent")
 end)
 
 T.Case("Allocator: an unowned intent with no fallback leaves the mob unmarked", function()
-    local seats = seatsFor(KILL_AND_SHEEP, "Thok", "WARRIOR")
+    local roles = rolesFor(KILL_AND_SHEEP, "Thok", "WARRIOR")
     local out = MFD.Allocator.Compute(
         { { key = "100:AAA", npcID = 100 } },
         { [100] = { intent = "SHEEP", rank = 10 } },
-        seats, nil)
+        roles, nil)
     T.Eq(out.byKey["100:AAA"], nil, "unmarked rather than guessed")
 end)
 
 T.Case("Allocator: mobs with no rule are never marked", function()
-    local seats = seatsFor(KILL_AND_SHEEP)
-    local out = MFD.Allocator.Compute({ { key = "999:AAA", npcID = 999 } }, {}, seats, nil)
+    local roles = rolesFor(KILL_AND_SHEEP)
+    local out = MFD.Allocator.Compute({ { key = "999:AAA", npcID = 999 } }, {}, roles, nil)
     T.Eq(out.byKey["999:AAA"], nil, "no rule means no icon")
     T.Eq(#out.list, 0, "and nothing in the list")
 end)
 
-T.Case("Allocator: IGNORE is never marked even with seats free", function()
-    local seats = seatsFor(KILL_AND_SHEEP)
+T.Case("Allocator: IGNORE is never marked even with roles free", function()
+    local roles = rolesFor(KILL_AND_SHEEP)
     local out = MFD.Allocator.Compute(
         { { key = "100:AAA", npcID = 100 } },
         { [100] = { intent = "IGNORE", rank = 10 } },
-        seats, nil)
+        roles, nil)
     T.Eq(out.byKey["100:AAA"], nil, "IGNORE means never")
 end)
 
 T.Case("Allocator: running out of icons leaves the lowest priority mobs unmarked", function()
-    local seats = seatsFor({ [8] = { intent = "KILL", ordinal = 1 } })
+    local roles = rolesFor({ [8] = { intent = "KILL", ordinal = 1 } })
     local out = MFD.Allocator.Compute(
         { { key = "100:AAA", npcID = 100 }, { key = "200:BBB", npcID = 200 } },
         { [100] = { intent = "KILL", rank = 10 }, [200] = { intent = "KILL", rank = 20 } },
-        seats, nil)
+        roles, nil)
     T.Eq(out.byKey["100:AAA"], 8, "highest priority gets the only icon")
     T.Eq(out.byKey["200:BBB"], nil, "the rest go unmarked")
 end)
 
 T.Case("Allocator: maxCount caps how many of one npcID get marked", function()
-    local seats = seatsFor(KILL_AND_SHEEP, "Alfred", "MAGE", "Grimmtusk", "MAGE", "Zed", "MAGE")
+    local roles = rolesFor(KILL_AND_SHEEP, "Alfred", "MAGE", "Grimmtusk", "MAGE", "Zed", "MAGE")
     local out = MFD.Allocator.Compute(
         { { key = "100:AAA", npcID = 100 }, { key = "100:BBB", npcID = 100 }, { key = "100:CCC", npcID = 100 } },
         { [100] = { intent = "SHEEP", rank = 10, maxCount = 2 } },
-        seats, nil)
+        roles, nil)
     T.Eq(out.byKey["100:AAA"], 5, "first allowed")
     T.Eq(out.byKey["100:BBB"], 4, "second allowed")
     T.Eq(out.byKey["100:CCC"], nil, "third capped")
 end)
 
-T.Case("Allocator: a locked assignment keeps its icon and consumes that seat", function()
-    local seats = seatsFor(KILL_AND_SHEEP)
+T.Case("Allocator: a locked assignment keeps its icon and consumes that role", function()
+    local roles = rolesFor(KILL_AND_SHEEP)
     local out = MFD.Allocator.Compute(
         { { key = "200:OLD", npcID = 200 }, { key = "100:NEW", npcID = 100 } },
         { [100] = { intent = "KILL", rank = 10 }, [200] = { intent = "KILL", rank = 90 } },
-        seats, { ["200:OLD"] = 8 })
+        roles, { ["200:OLD"] = 8 })
     T.Eq(out.byKey["200:OLD"], 8, "locked mob keeps skull despite its worse rank")
-    T.Eq(out.byKey["100:NEW"], 7, "the better mob takes the next free seat instead")
+    T.Eq(out.byKey["100:NEW"], 7, "the better mob takes the next free role instead")
 end)
 
 T.Case("Allocator: a lock counts toward maxCount", function()
-    local seats = seatsFor(KILL_AND_SHEEP, "Alfred", "MAGE", "Grimmtusk", "MAGE")
+    local roles = rolesFor(KILL_AND_SHEEP, "Alfred", "MAGE", "Grimmtusk", "MAGE")
     local out = MFD.Allocator.Compute(
         { { key = "100:AAA", npcID = 100 }, { key = "100:BBB", npcID = 100 } },
         { [100] = { intent = "SHEEP", rank = 10, maxCount = 1 } },
-        seats, { ["100:AAA"] = 5 })
+        roles, { ["100:AAA"] = 5 })
     T.Eq(out.byKey["100:AAA"], 5, "locked one holds the single allowed slot")
     T.Eq(out.byKey["100:BBB"], nil, "the other is capped out")
 end)
 
-T.Case("Allocator: assignments carry the seat owner", function()
-    local seats = seatsFor(KILL_AND_SHEEP, "Grimmtusk", "MAGE")
+T.Case("Allocator: assignments carry the role owner", function()
+    local roles = rolesFor(KILL_AND_SHEEP, "Grimmtusk", "MAGE")
     local out = MFD.Allocator.Compute(
         { { key = "100:AAA", npcID = 100 } },
         { [100] = { intent = "SHEEP", rank = 10 } },
-        seats, nil)
-    T.Eq(out.list[1].owner, "Grimmtusk", "owner comes from the seat")
+        roles, nil)
+    T.Eq(out.list[1].owner, "Grimmtusk", "owner comes from the role")
 end)
 
 T.Case("Allocator: kill assignments have no owner", function()
-    local seats = seatsFor(KILL_AND_SHEEP)
+    local roles = rolesFor(KILL_AND_SHEEP)
     local out = MFD.Allocator.Compute(
         { { key = "100:AAA", npcID = 100 } },
         { [100] = { intent = "KILL", rank = 10 } },
-        seats, nil)
-    T.Eq(out.list[1].owner, nil, "kill seats need no owner")
+        roles, nil)
+    T.Eq(out.list[1].owner, nil, "kill roles need no owner")
 end)
 
 T.Case("Candidates: Observe records a unit and clears any prior loss", function()
@@ -542,40 +542,40 @@ T.Case("Marker: someone else's icon is corrected and counts as a defense", funct
     T.Eq(out.actions[1].isDefense, true, "a foreign icon counts as a defense so the brake applies")
 end)
 
-T.Case("Seats: EnsurePlan seeds the default plan into an empty database", function()
-    local db = { seatPlan = {} }
-    MFD.Seats.EnsurePlan(db)
-    T.Eq(db.seatPlan[8].intent, "KILL", "skull seeded")
-    T.Eq(db.seatPlan[5].pin, "Grimmtusk", "pin seeded")
+T.Case("Roles: EnsurePlan seeds the default plan into an empty database", function()
+    local db = { rolePlan = {} }
+    MFD.Roles.EnsurePlan(db)
+    T.Eq(db.rolePlan[8].intent, "KILL", "skull seeded")
+    T.Eq(db.rolePlan[5].pin, "Grimmtusk", "pin seeded")
 end)
 
-T.Case("Seats: EnsurePlan never overwrites a plan the user has edited", function()
-    local db = { seatPlan = { [8] = { intent = "SHEEP", ordinal = 1 } } }
-    MFD.Seats.EnsurePlan(db)
-    T.Eq(db.seatPlan[8].intent, "SHEEP", "user's binding survives")
-    T.Eq(db.seatPlan[5], nil, "and nothing else is injected")
+T.Case("Roles: EnsurePlan never overwrites a plan the user has edited", function()
+    local db = { rolePlan = { [8] = { intent = "SHEEP", ordinal = 1 } } }
+    MFD.Roles.EnsurePlan(db)
+    T.Eq(db.rolePlan[8].intent, "SHEEP", "user's binding survives")
+    T.Eq(db.rolePlan[5], nil, "and nothing else is injected")
 end)
 
-T.Case("Seats: EnsurePlan deep copies, so editing the db cannot corrupt the default", function()
-    local db = { seatPlan = {} }
-    MFD.Seats.EnsurePlan(db)
-    db.seatPlan[8].intent = "IGNORE"
-    T.Eq(MFD.Seats.DEFAULT_PLAN[8].intent, "KILL", "the shared default is untouched")
+T.Case("Roles: EnsurePlan deep copies, so editing the db cannot corrupt the default", function()
+    local db = { rolePlan = {} }
+    MFD.Roles.EnsurePlan(db)
+    db.rolePlan[8].intent = "IGNORE"
+    T.Eq(MFD.Roles.DEFAULT_PLAN[8].intent, "KILL", "the shared default is untouched")
 end)
 
 -- End to end over the pure modules, in the shape the live tick uses them. This
--- is the case that would have caught the empty-seat-plan bug: every unit test
+-- is the case that would have caught the empty-role-plan bug: every unit test
 -- passed while the addon marked nothing, because nothing asserted that the
 -- default configuration actually produces an icon.
-T.Case("Pipeline: default seat plan plus one kill rule puts skull on the mob", function()
-    local db = { seatPlan = {} }
-    MFD.Seats.EnsurePlan(db)
+T.Case("Pipeline: default role plan plus one kill rule puts skull on the mob", function()
+    local db = { rolePlan = {} }
+    MFD.Roles.EnsurePlan(db)
 
-    local seats = MFD.Seats.Resolve(db.seatPlan, roster("Thok", "WARRIOR"))
+    local roles = MFD.Roles.Resolve(db.rolePlan, roster("Thok", "WARRIOR"))
     local candidates = MFD.Candidates.ToList({
         ["100:AAA"] = { key = "100:AAA", npcID = 100, unit = "nameplate1" },
     })
-    local out = MFD.Allocator.Compute(candidates, { [100] = { npcID = 100, intent = "KILL", rank = 10 } }, seats, nil)
+    local out = MFD.Allocator.Compute(candidates, { [100] = { npcID = 100, intent = "KILL", rank = 10 } }, roles, nil)
 
     T.Eq(out.byKey["100:AAA"], 8, "skull, from a default install with one rule")
 
@@ -584,18 +584,18 @@ T.Case("Pipeline: default seat plan plus one kill rule puts skull on the mob", f
     T.Eq(diff.actions[1].icon, 8, "with skull")
 end)
 
-T.Case("Diagnose: an empty seat plan is reported, not silently ignored", function()
+T.Case("Diagnose: an empty role plan is reported, not silently ignored", function()
     local reasons = MFD.Marker.DiagnoseState({
         isMarkingEnabled = true, isAuthority = true, canMark = true,
-        cvarsOk = true, seatCount = 0, candidateCount = 3, ruleCount = 1, desiredCount = 0,
+        cvarsOk = true, roleCount = 0, candidateCount = 3, ruleCount = 1, desiredCount = 0,
     })
-    T.Eq(reasons[1], "no seats are configured, so no icon can be assigned. /mfd config", "names the real cause")
+    T.Eq(reasons[1], "no roles are configured, so no icon can be assigned. /mfd config", "names the real cause")
 end)
 
 T.Case("Diagnose: marking switched off is reported first", function()
     local reasons = MFD.Marker.DiagnoseState({
         isMarkingEnabled = false, isAuthority = true, canMark = true,
-        cvarsOk = true, seatCount = 8, candidateCount = 3, ruleCount = 1, desiredCount = 1,
+        cvarsOk = true, roleCount = 8, candidateCount = 3, ruleCount = 1, desiredCount = 1,
     })
     T.Eq(reasons[1], "marking is switched off", "the most basic cause leads")
 end)
@@ -603,7 +603,7 @@ end)
 T.Case("Diagnose: no visible mobs points at nameplates", function()
     local reasons = MFD.Marker.DiagnoseState({
         isMarkingEnabled = true, isAuthority = true, canMark = true,
-        cvarsOk = true, seatCount = 8, candidateCount = 0, ruleCount = 1, desiredCount = 0,
+        cvarsOk = true, roleCount = 8, candidateCount = 0, ruleCount = 1, desiredCount = 0,
     })
     T.Eq(reasons[1], "no hostile mobs are visible. Are enemy nameplates on?", "actionable")
 end)
@@ -611,7 +611,7 @@ end)
 T.Case("Diagnose: no rules names the instance", function()
     local reasons = MFD.Marker.DiagnoseState({
         isMarkingEnabled = true, isAuthority = true, canMark = true, cvarsOk = true,
-        seatCount = 8, candidateCount = 3, ruleCount = 0, desiredCount = 0, instanceKey = "BLACKTEMPLE",
+        roleCount = 8, candidateCount = 3, ruleCount = 0, desiredCount = 0, instanceKey = "BLACKTEMPLE",
     })
     T.Eq(reasons[1], "no rules are active for BLACKTEMPLE", "says where")
 end)
@@ -619,7 +619,7 @@ end)
 T.Case("Diagnose: rules and mobs but no match is distinguished from having no rules", function()
     local reasons = MFD.Marker.DiagnoseState({
         isMarkingEnabled = true, isAuthority = true, canMark = true, cvarsOk = true,
-        seatCount = 8, candidateCount = 3, ruleCount = 5, desiredCount = 0,
+        roleCount = 8, candidateCount = 3, ruleCount = 5, desiredCount = 0,
     })
     T.Eq(reasons[1], "3 mobs visible but none of them match a rule", "the useful distinction")
 end)
@@ -627,7 +627,7 @@ end)
 T.Case("Diagnose: a healthy state reports what it is doing", function()
     local reasons = MFD.Marker.DiagnoseState({
         isMarkingEnabled = true, isAuthority = true, canMark = true, cvarsOk = true,
-        seatCount = 8, candidateCount = 3, ruleCount = 5, desiredCount = 2,
+        roleCount = 8, candidateCount = 3, ruleCount = 5, desiredCount = 2,
     })
     T.Eq(reasons[1], "marking 2 of 3 visible mobs", "no problem to report")
 end)
@@ -635,7 +635,7 @@ end)
 T.Case("Diagnose: a backup says who the marker is rather than looking broken", function()
     local reasons = MFD.Marker.DiagnoseState({
         isMarkingEnabled = true, isAuthority = false, authority = "Grimmtusk", canMark = true,
-        cvarsOk = true, seatCount = 8, candidateCount = 3, ruleCount = 5, desiredCount = 2,
+        cvarsOk = true, roleCount = 8, candidateCount = 3, ruleCount = 5, desiredCount = 2,
     })
     T.Eq(reasons[1], "Grimmtusk is the marker, you are a backup", "expected, not a fault")
 end)
@@ -762,46 +762,46 @@ T.Case("Learned: a nameless or idless observation is ignored", function()
 end)
 
 T.Case("CreatureType: banish only lands on demons and elementals", function()
-    T.Eq(MFD.Seats.CanIntentApply("BANISH", "Demon"), true, "demon")
-    T.Eq(MFD.Seats.CanIntentApply("BANISH", "Elemental"), true, "elemental")
-    T.Eq(MFD.Seats.CanIntentApply("BANISH", "Humanoid"), false, "humanoid cannot be banished")
+    T.Eq(MFD.Roles.CanIntentApply("BANISH", "Demon"), true, "demon")
+    T.Eq(MFD.Roles.CanIntentApply("BANISH", "Elemental"), true, "elemental")
+    T.Eq(MFD.Roles.CanIntentApply("BANISH", "Humanoid"), false, "humanoid cannot be banished")
 end)
 
 T.Case("CreatureType: the rejection explains itself", function()
-    local _, reason = MFD.Seats.CanIntentApply("BANISH", "Humanoid")
+    local _, reason = MFD.Roles.CanIntentApply("BANISH", "Humanoid")
     T.Eq(reason, "Banish does not work on Humanoid targets", "usable in a warning")
 end)
 
 T.Case("CreatureType: shackle is undead only, sap is humanoid only on TBC", function()
-    T.Eq(MFD.Seats.CanIntentApply("SHACKLE", "Undead"), true, "shackle undead")
-    T.Eq(MFD.Seats.CanIntentApply("SHACKLE", "Humanoid"), false, "not humanoids")
-    T.Eq(MFD.Seats.CanIntentApply("SAP", "Humanoid"), true, "sap humanoid")
-    T.Eq(MFD.Seats.CanIntentApply("SAP", "Beast"), false, "beasts only became sappable after TBC")
+    T.Eq(MFD.Roles.CanIntentApply("SHACKLE", "Undead"), true, "shackle undead")
+    T.Eq(MFD.Roles.CanIntentApply("SHACKLE", "Humanoid"), false, "not humanoids")
+    T.Eq(MFD.Roles.CanIntentApply("SAP", "Humanoid"), true, "sap humanoid")
+    T.Eq(MFD.Roles.CanIntentApply("SAP", "Beast"), false, "beasts only became sappable after TBC")
 end)
 
 T.Case("CreatureType: sheep covers humanoids, beasts and critters", function()
-    T.Eq(MFD.Seats.CanIntentApply("SHEEP", "Humanoid"), true, "humanoid")
-    T.Eq(MFD.Seats.CanIntentApply("SHEEP", "Beast"), true, "beast")
-    T.Eq(MFD.Seats.CanIntentApply("SHEEP", "Undead"), false, "not undead")
+    T.Eq(MFD.Roles.CanIntentApply("SHEEP", "Humanoid"), true, "humanoid")
+    T.Eq(MFD.Roles.CanIntentApply("SHEEP", "Beast"), true, "beast")
+    T.Eq(MFD.Roles.CanIntentApply("SHEEP", "Undead"), false, "not undead")
 end)
 
 T.Case("CreatureType: unrestricted intents accept anything", function()
-    T.Eq(MFD.Seats.CanIntentApply("KILL", "Humanoid"), true, "kill")
-    T.Eq(MFD.Seats.CanIntentApply("TRAP", "Demon"), true, "trap is not type restricted")
-    T.Eq(MFD.Seats.CanIntentApply("IGNORE", "Undead"), true, "ignore")
+    T.Eq(MFD.Roles.CanIntentApply("KILL", "Humanoid"), true, "kill")
+    T.Eq(MFD.Roles.CanIntentApply("TRAP", "Demon"), true, "trap is not type restricted")
+    T.Eq(MFD.Roles.CanIntentApply("IGNORE", "Undead"), true, "ignore")
 end)
 
 -- Fail open, deliberately. UnitCreatureType returns a localised string, so on a
 -- non-English client nothing would match and a strict check would warn about
 -- every single rule. A check that cries wolf gets ignored.
 T.Case("CreatureType: an unknown or missing type never warns", function()
-    T.Eq(MFD.Seats.CanIntentApply("BANISH", nil), true, "not seen yet")
-    T.Eq(MFD.Seats.CanIntentApply("BANISH", "Humanoide"), true, "localised string we do not recognise")
-    T.Eq(MFD.Seats.CanIntentApply("BANISH", ""), true, "empty")
+    T.Eq(MFD.Roles.CanIntentApply("BANISH", nil), true, "not seen yet")
+    T.Eq(MFD.Roles.CanIntentApply("BANISH", "Humanoide"), true, "localised string we do not recognise")
+    T.Eq(MFD.Roles.CanIntentApply("BANISH", ""), true, "empty")
 end)
 
 T.Case("CreatureType: an unknown intent never warns", function()
-    T.Eq(MFD.Seats.CanIntentApply("NONSENSE", "Humanoid"), true, "no opinion")
+    T.Eq(MFD.Roles.CanIntentApply("NONSENSE", "Humanoid"), true, "no opinion")
 end)
 
 T.Case("Learned: the creature type is recorded alongside the name", function()
@@ -1235,7 +1235,7 @@ T.Case("Announce: orders by icon so the line reads the same every pull", functio
         { key = "3:C", icon = 2, intent = "KILL" },
         { key = "1:A", icon = 8, intent = "KILL" },
     })
-    T.Eq(line, "Skull>Kill | Circle>Kill | Moon>Sheep", "kill icons lead, in seat order")
+    T.Eq(line, "Skull>Kill | Circle>Kill | Moon>Sheep", "kill icons lead, in role order")
 end)
 
 T.Case("Announce: an empty assignment list produces nothing", function()
@@ -1718,7 +1718,7 @@ T.Case("Sightings: rubbish yields nothing rather than a bad candidate", function
 end)
 
 -- The tick runs five times a second. Rebuilding the roster and re-resolving
--- every seat on each one is 125 roster API calls a second in a full raid, for
+-- every role on each one is 125 roster API calls a second in a full raid, for
 -- an answer that only changes when somebody joins or leaves.
 T.Case("Roster: the roster is built once and reused until invalidated", function()
     local builds = 0
@@ -1756,7 +1756,7 @@ T.Case("Roster: the cached roster still has the right contents", function()
     MFD.Marker.InvalidateRoster()
 end)
 
-T.Case("Seats: resolution is cached against the roster and the plan", function()
+T.Case("Roles: resolution is cached against the roster and the plan", function()
     local realBuild = MFD.Marker.BuildRoster
     MFD.Marker.BuildRoster = function()
         return { { name = "Grimmtusk", class = "MAGE" } }
@@ -1764,12 +1764,12 @@ T.Case("Seats: resolution is cached against the roster and the plan", function()
     MFD.Marker.InvalidateRoster()
 
     local plan = { [5] = { intent = "SHEEP", ordinal = 1 } }
-    local first = MFD.Marker.ResolvedSeats(plan)
-    T.Eq(first == MFD.Marker.ResolvedSeats(plan), true, "same table returned, not re-resolved")
+    local first = MFD.Marker.ResolvedRoles(plan)
+    T.Eq(first == MFD.Marker.ResolvedRoles(plan), true, "same table returned, not re-resolved")
     T.Eq(first.byIcon[5].owner, "Grimmtusk", "and it is correct")
 
     MFD.Marker.InvalidateRoster()
-    T.Eq(first == MFD.Marker.ResolvedSeats(plan), false, "invalidating re-resolves")
+    T.Eq(first == MFD.Marker.ResolvedRoles(plan), false, "invalidating re-resolves")
 
     MFD.Marker.BuildRoster = realBuild
     MFD.Marker.InvalidateRoster()
@@ -1985,11 +1985,11 @@ T.Case("Search: filtering to an instance narrows bundled results", function()
 end)
 
 -- The exact pack Dillon asked about: two Coilskar Wranglers and one Leviathan,
--- all ruled Kill, against the shipped default seat plan.
+-- all ruled Kill, against the shipped default role plan.
 local function killPack(wranglerRank, leviathanRank)
-    local db = { seatPlan = {} }
-    MFD.Seats.EnsurePlan(db)
-    local seats = MFD.Seats.Resolve(db.seatPlan, roster("Thok", "WARRIOR"))
+    local db = { rolePlan = {} }
+    MFD.Roles.EnsurePlan(db)
+    local roles = MFD.Roles.Resolve(db.rolePlan, roster("Thok", "WARRIOR"))
 
     local candidates = {
         { key = "22877:AAA", npcID = 22877, name = "Coilskar Wrangler" },
@@ -2000,7 +2000,7 @@ local function killPack(wranglerRank, leviathanRank)
         [22877] = { npcID = 22877, intent = "KILL", rank = wranglerRank },
         [22884] = { npcID = 22884, intent = "KILL", rank = leviathanRank },
     }
-    return MFD.Allocator.Compute(candidates, rules, seats, nil).byKey
+    return MFD.Allocator.Compute(candidates, rules, roles, nil).byKey
 end
 
 T.Case("Pack: wranglers above leviathan take skull and cross, leviathan takes square", function()
@@ -2025,29 +2025,29 @@ T.Case("Pack: two copies of one mob get different icons, never the same one", fu
 end)
 
 T.Case("Pack: a fourth kill target takes circle, a fifth goes unmarked", function()
-    local db = { seatPlan = {} }
-    MFD.Seats.EnsurePlan(db)
-    local seats = MFD.Seats.Resolve(db.seatPlan, roster("Thok", "WARRIOR"))
+    local db = { rolePlan = {} }
+    MFD.Roles.EnsurePlan(db)
+    local roles = MFD.Roles.Resolve(db.rolePlan, roster("Thok", "WARRIOR"))
 
     local candidates, rules = {}, { [22877] = { npcID = 22877, intent = "KILL", rank = 10 } }
     for i = 1, 5 do
         candidates[i] = { key = "22877:" .. string.char(64 + i), npcID = 22877, name = "Coilskar Wrangler" }
     end
 
-    local icons = MFD.Allocator.Compute(candidates, rules, seats, nil).byKey
+    local icons = MFD.Allocator.Compute(candidates, rules, roles, nil).byKey
     local placed = 0
     for _ in pairs(icons) do placed = placed + 1 end
-    T.Eq(placed, 4, "four kill seats exist, so the fifth is left alone")
+    T.Eq(placed, 4, "four kill roles exist, so the fifth is left alone")
     T.Eq(icons["22877:D"], 2, "fourth takes circle")
     T.Eq(icons["22877:E"], nil, "fifth unmarked rather than stealing a cc icon")
 end)
 
 -- Spare icon reuse: when no mob needs Moon or Triangle, let kill targets have
 -- them rather than leaving four icons idle on a big pull.
-local function defaultSeats(...)
-    local db = { seatPlan = {} }
-    MFD.Seats.EnsurePlan(db)
-    return MFD.Seats.Resolve(db.seatPlan, roster(...))
+local function defaultRoles(...)
+    local db = { rolePlan = {} }
+    MFD.Roles.EnsurePlan(db)
+    return MFD.Roles.Resolve(db.rolePlan, roster(...))
 end
 
 local function killCandidates(count)
@@ -2061,14 +2061,14 @@ end
 T.Case("Reuse: off by default, a fifth kill target stays unmarked", function()
     local out = MFD.Allocator.Compute(killCandidates(5),
         { [100] = { npcID = 100, intent = "KILL", rank = 10 } },
-        defaultSeats("Thok", "WARRIOR"), nil, false)
+        defaultRoles("Thok", "WARRIOR"), nil, false)
     T.Eq(out.byKey["100:E"], nil, "no spare icons handed out")
 end)
 
 T.Case("Reuse: on, spare crowd control icons go to kill overflow", function()
     local out = MFD.Allocator.Compute(killCandidates(8),
         { [100] = { npcID = 100, intent = "KILL", rank = 10 } },
-        defaultSeats("Thok", "WARRIOR"), nil, true)
+        defaultRoles("Thok", "WARRIOR"), nil, true)
     local placed = 0
     for _ in pairs(out.byKey) do placed = placed + 1 end
     T.Eq(placed, 8, "all eight icons used when nothing needs the cc ones")
@@ -2077,27 +2077,27 @@ end)
 -- The property that matters. Reuse must never take an icon a crowd control
 -- mob is going to need, however low that mob's priority is.
 T.Case("Reuse: a sheep mob still gets Moon even when kill targets outrank it", function()
-    local seats = defaultSeats("Grimmtusk", "MAGE")
+    local roles = defaultRoles("Grimmtusk", "MAGE")
     local candidates = killCandidates(6)
     candidates[7] = { key = "200:Z", npcID = 200, name = "Sheepable" }
 
     local out = MFD.Allocator.Compute(candidates, {
         [100] = { npcID = 100, intent = "KILL", rank = 10 },
         [200] = { npcID = 200, intent = "SHEEP", rank = 99 },
-    }, seats, nil, true)
+    }, roles, nil, true)
 
     T.Eq(out.byKey["200:Z"], 5, "the sheep target holds Moon despite the worst rank")
 end)
 
 T.Case("Reuse: with no mage present the sheep icons are free for kills", function()
-    local seats = defaultSeats("Thok", "WARRIOR")
+    local roles = defaultRoles("Thok", "WARRIOR")
     local candidates = killCandidates(5)
     candidates[6] = { key = "200:Z", npcID = 200, name = "Sheepable" }
 
     local out = MFD.Allocator.Compute(candidates, {
         [100] = { npcID = 100, intent = "KILL", rank = 10 },
         [200] = { npcID = 200, intent = "SHEEP", rank = 20 },
-    }, seats, nil, true)
+    }, roles, nil, true)
 
     local placed = 0
     for _ in pairs(out.byKey) do placed = placed + 1 end
@@ -2107,7 +2107,7 @@ end)
 T.Case("Reuse: reused assignments are reported as kills with no owner", function()
     local out = MFD.Allocator.Compute(killCandidates(5),
         { [100] = { npcID = 100, intent = "KILL", rank = 10 } },
-        defaultSeats("Grimmtusk", "MAGE"), nil, true)
+        defaultRoles("Grimmtusk", "MAGE"), nil, true)
 
     for _, a in ipairs(out.list) do
         if a.key == "100:E" then
@@ -2120,7 +2120,7 @@ end)
 T.Case("Reuse: maxCount is still respected", function()
     local out = MFD.Allocator.Compute(killCandidates(8),
         { [100] = { npcID = 100, intent = "KILL", rank = 10, maxCount = 2 } },
-        defaultSeats("Thok", "WARRIOR"), nil, true)
+        defaultRoles("Thok", "WARRIOR"), nil, true)
     local placed = 0
     for _ in pairs(out.byKey) do placed = placed + 1 end
     T.Eq(placed, 2, "the cap wins over filling icons")
@@ -2129,10 +2129,10 @@ end)
 T.Case("Reuse: is deterministic, so two clients agree", function()
     local a = MFD.Allocator.Compute(killCandidates(8),
         { [100] = { npcID = 100, intent = "KILL", rank = 10 } },
-        defaultSeats("Thok", "WARRIOR"), nil, true).byKey
+        defaultRoles("Thok", "WARRIOR"), nil, true).byKey
     local b = MFD.Allocator.Compute(killCandidates(8),
         { [100] = { npcID = 100, intent = "KILL", rank = 10 } },
-        defaultSeats("Thok", "WARRIOR"), nil, true).byKey
+        defaultRoles("Thok", "WARRIOR"), nil, true).byKey
     for key, icon in pairs(a) do
         T.Eq(b[key], icon, "same icon for " .. key)
     end
@@ -2261,14 +2261,14 @@ end)
 -- Circle is the icon of last resort: spare sheep and banish icons should be
 -- spent on kill targets before it, not after.
 T.Case("LastResort: the default plan marks Circle as last resort", function()
-    T.Eq(MFD.Seats.DEFAULT_PLAN[2].isLastResort, true, "circle")
-    T.Eq(MFD.Seats.DEFAULT_PLAN[8].isLastResort, nil, "skull is not")
+    T.Eq(MFD.Roles.DEFAULT_PLAN[2].isLastResort, true, "circle")
+    T.Eq(MFD.Roles.DEFAULT_PLAN[8].isLastResort, nil, "skull is not")
 end)
 
 T.Case("LastResort: with reuse on, spare cc icons are spent before Circle", function()
     local out = MFD.Allocator.Compute(killCandidates(4),
         { [100] = { npcID = 100, intent = "KILL", rank = 10 } },
-        defaultSeats("Thok", "WARRIOR"), nil, true)
+        defaultRoles("Thok", "WARRIOR"), nil, true)
 
     T.Eq(out.byKey["100:A"], 8, "skull")
     T.Eq(out.byKey["100:B"], 7, "cross")
@@ -2279,20 +2279,20 @@ end)
 T.Case("LastResort: Circle is still used, just last of everything", function()
     local out = MFD.Allocator.Compute(killCandidates(8),
         { [100] = { npcID = 100, intent = "KILL", rank = 10 } },
-        defaultSeats("Thok", "WARRIOR"), nil, true)
+        defaultRoles("Thok", "WARRIOR"), nil, true)
     T.Eq(out.byKey["100:H"], 2, "the eighth and final kill target gets Circle")
 end)
 
-T.Case("LastResort: spare icons come out in seat order, best job first", function()
+T.Case("LastResort: spare icons come out in role order, best job first", function()
     local out = MFD.Allocator.Compute(killCandidates(7),
         { [100] = { npcID = 100, intent = "KILL", rank = 10 } },
-        defaultSeats("Thok", "WARRIOR"), nil, true)
-    -- Seat one before seat two, then the traditional marking order within a
+        defaultRoles("Thok", "WARRIOR"), nil, true)
+    -- Role one before role two, then the traditional marking order within a
     -- rank: moon, triangle, diamond, star.
-    T.Eq(out.byKey["100:D"], 5, "Moon, sheep seat one")
-    T.Eq(out.byKey["100:E"], 4, "Triangle, banish seat one")
-    T.Eq(out.byKey["100:F"], 3, "Diamond, banish seat two")
-    T.Eq(out.byKey["100:G"], 1, "Star, sheep seat two")
+    T.Eq(out.byKey["100:D"], 5, "Moon, sheep role one")
+    T.Eq(out.byKey["100:E"], 4, "Triangle, banish role one")
+    T.Eq(out.byKey["100:F"], 3, "Diamond, banish role two")
+    T.Eq(out.byKey["100:G"], 1, "Star, sheep role two")
 end)
 
 -- With reuse off there are no borrowed icons to come first, so the flag has
@@ -2300,19 +2300,19 @@ end)
 T.Case("LastResort: with reuse off Circle is simply kill four again", function()
     local out = MFD.Allocator.Compute(killCandidates(4),
         { [100] = { npcID = 100, intent = "KILL", rank = 10 } },
-        defaultSeats("Thok", "WARRIOR"), nil, false)
+        defaultRoles("Thok", "WARRIOR"), nil, false)
     T.Eq(out.byKey["100:D"], 2, "circle, as the plan says")
 end)
 
 T.Case("LastResort: a sheep mob still beats a kill target to Moon", function()
-    local seats = defaultSeats("Grimmtusk", "MAGE")
+    local roles = defaultRoles("Grimmtusk", "MAGE")
     local candidates = killCandidates(3)
     candidates[4] = { key = "200:Z", npcID = 200, name = "Sheepable" }
 
     local out = MFD.Allocator.Compute(candidates, {
         [100] = { npcID = 100, intent = "KILL", rank = 10 },
         [200] = { npcID = 200, intent = "SHEEP", rank = 99 },
-    }, seats, nil, true)
+    }, roles, nil, true)
 
     T.Eq(out.byKey["200:Z"], 5, "Moon belongs to the sheep target")
     T.Eq(out.byKey["100:C"], 6, "and the third kill still has Square")

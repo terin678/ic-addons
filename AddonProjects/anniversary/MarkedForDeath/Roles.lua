@@ -1,14 +1,14 @@
--- Seat model. An icon binds to a seat, a seat is a durable job in the raid, and
+-- Role model. An icon binds to a role, a role is a durable job in the raid, and
 -- a mob rule only names an intent. This file must never call a WoW API.
 local MFD = _G.MarkedForDeath or {}
 
-MFD.Seats = MFD.Seats or {}
-local Seats = MFD.Seats
+MFD.Roles = MFD.Roles or {}
+local Roles = MFD.Roles
 
--- classes = nil means the intent needs no owner, so its seats are always
+-- classes = nil means the intent needs no owner, so its roles are always
 -- available. Anything with a class list is skipped entirely when nobody in the
 -- raid can perform it, and its mobs resolve through their rule's fallback.
-Seats.INTENTS = {
+Roles.INTENTS = {
     KILL        = { label = "Kill",          classes = nil },
     SHEEP       = { label = "Sheep",         classes = { "MAGE" } },
     TRAP        = { label = "Trap",          classes = { "HUNTER" } },
@@ -28,7 +28,7 @@ Seats.INTENTS = {
 -- Raid target icon indices, named so the plan below reads as intended.
 local STAR, CIRCLE, DIAMOND, TRIANGLE, MOON, SQUARE, CROSS, SKULL = 1, 2, 3, 4, 5, 6, 7, 8
 
-Seats.DEFAULT_PLAN = {
+Roles.DEFAULT_PLAN = {
     [SKULL]    = { intent = "KILL",   ordinal = 1 },
     [CROSS]    = { intent = "KILL",   ordinal = 2 },
     [SQUARE]   = { intent = "KILL",   ordinal = 3 },
@@ -78,7 +78,7 @@ local INTENT_CREATURE_TYPES = {
 -- this build does not recognise all return true. The check is advisory, so a
 -- false negative costs nothing and a false positive would train the player to
 -- ignore it.
-function Seats.CanIntentApply(intent, creatureType)
+function Roles.CanIntentApply(intent, creatureType)
     local allowed = INTENT_CREATURE_TYPES[intent]
     if not allowed then
         return true
@@ -92,28 +92,28 @@ function Seats.CanIntentApply(intent, creatureType)
         return true
     end
 
-    local label = Seats.INTENTS[intent] and Seats.INTENTS[intent].label or intent
+    local label = Roles.INTENTS[intent] and Roles.INTENTS[intent].label or intent
     return false, label .. " does not work on " .. creatureType .. " targets"
 end
 
--- Seeds the default plan into db.seatPlan when the player has none. Mutates db.
+-- Seeds the default plan into db.rolePlan when the player has none. Mutates db.
 --
--- An empty seat plan is not a neutral starting state: the allocator finds no
--- seat for any intent and silently marks nothing, which looks exactly like the
+-- An empty role plan is not a neutral starting state: the allocator finds no
+-- role for any intent and silently marks nothing, which looks exactly like the
 -- addon being broken. Rules deliberately ship empty, because guessing a guild's
--- kill order produces confidently wrong marks, but a seat plan must not.
+-- kill order produces confidently wrong marks, but a role plan must not.
 --
 -- Deep copied so editing the saved plan cannot mutate the shared default.
-function Seats.EnsurePlan(db)
-    if next(db.seatPlan) then
+function Roles.EnsurePlan(db)
+    if next(db.rolePlan) then
         return
     end
 
-    db.seatPlan = MFD.H.DeepCopy(Seats.DEFAULT_PLAN)
+    db.rolePlan = MFD.H.DeepCopy(Roles.DEFAULT_PLAN)
 end
 
 local function isEligible(intent, class)
-    local classes = Seats.INTENTS[intent] and Seats.INTENTS[intent].classes
+    local classes = Roles.INTENTS[intent] and Roles.INTENTS[intent].classes
     if not classes then
         return false
     end
@@ -125,28 +125,28 @@ local function isEligible(intent, class)
     return false
 end
 
--- Takes a seat plan and a roster array of { name, class }. Returns
+-- Takes a role plan and a roster array of { name, class }. Returns
 -- { byIntent = { [intent] = array of { icon, ordinal, owner } ordered by
 -- ordinal }, byIcon = { [icon] = the same record } }.
 --
--- owner is true when the intent needs no owner, a player name when a seat has
--- one, and false when the seat exists but nobody can fill it. Ordering is by
+-- owner is true when the intent needs no owner, a player name when a role has
+-- one, and false when the role exists but nobody can fill it. Ordering is by
 -- pin first then player name ascending, which is identical on every client and
 -- is why backup markers agree without negotiating.
-function Seats.Resolve(seatPlan, roster)
+function Roles.Resolve(rolePlan, roster)
     local byIntent, byIcon = {}, {}
 
-    for _, icon in ipairs(MFD.H.SortedKeys(seatPlan)) do
-        local seat = seatPlan[icon]
+    for _, icon in ipairs(MFD.H.SortedKeys(rolePlan)) do
+        local role = rolePlan[icon]
         local record = {
             icon = icon,
-            ordinal = seat.ordinal,
-            pin = seat.pin,
-            isLastResort = seat.isLastResort,
+            ordinal = role.ordinal,
+            pin = role.pin,
+            isLastResort = role.isLastResort,
             owner = false,
         }
-        byIntent[seat.intent] = byIntent[seat.intent] or {}
-        table.insert(byIntent[seat.intent], record)
+        byIntent[role.intent] = byIntent[role.intent] or {}
+        table.insert(byIntent[role.intent], record)
         byIcon[icon] = record
     end
 
@@ -168,7 +168,7 @@ function Seats.Resolve(seatPlan, roster)
     table.sort(sortedRoster, function(a, b) return a.name < b.name end)
 
     for intent, records in pairs(byIntent) do
-        if not (Seats.INTENTS[intent] and Seats.INTENTS[intent].classes) then
+        if not (Roles.INTENTS[intent] and Roles.INTENTS[intent].classes) then
             for _, record in ipairs(records) do
                 record.owner = true
             end

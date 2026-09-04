@@ -20,7 +20,7 @@ local files = {
     "Helpers.lua",
     "Data_Mobs.lua",
     "Data_Auras.lua",
-    "Seats.lua",
+    "Roles.lua",
     "Rules.lua",
     "Allocator.lua",
     "Candidates.lua",

@@ -63,7 +63,7 @@ function Candidates.Lose(set, key, now)
 end
 
 -- Removes entries lost longer than grace seconds ago. Mutates set. Returns an
--- array of the removed keys so the caller can release their seats.
+-- array of the removed keys so the caller can release their roles.
 function Candidates.Prune(set, now, grace)
     local removed = {}
 

@@ -1,5 +1,5 @@
 -- The allocator. Given what we can see, what the rules say and who owns which
--- seat, decide which icon goes on which mob.
+-- role, decide which icon goes on which mob.
 --
 -- This function is pure and its result depends only on its arguments, never on
 -- table iteration order or on the order mobs were sighted. That property is
@@ -11,15 +11,15 @@ local MFD = _G.MarkedForDeath or {}
 MFD.Allocator = MFD.Allocator or {}
 local Allocator = MFD.Allocator
 
--- Returns the icon of the lowest-ordinal seat of intent that is both free and
--- owned, or nil. A seat whose owner is false exists but nobody in the raid can
+-- Returns the icon of the lowest-ordinal role of intent that is both free and
+-- owned, or nil. A role whose owner is false exists but nobody in the raid can
 -- perform it, so it is not usable.
--- skipLastResort holds back seats flagged as icons of last resort, so that
+-- skipLastResort holds back roles flagged as icons of last resort, so that
 -- borrowed crowd control icons get spent before them. Only meaningful when
 -- reuse is on; with it off there is nothing to come first and the flag is
--- ignored, leaving a last-resort seat as an ordinary one.
-local function takeSeat(seats, intent, usedIcons, skipLastResort)
-    local records = seats.byIntent[intent]
+-- ignored, leaving a last-resort role as an ordinary one.
+local function takeRole(roles, intent, usedIcons, skipLastResort)
+    local records = roles.byIntent[intent]
     if not records then
         return nil
     end
@@ -37,12 +37,12 @@ end
 -- Takes:
 --   candidates    array of { key, npcID }
 --   rulesByNpcID  { [npcID] = { intent, rank, fallback, maxCount } }
---   seats         the table returned by MFD.Seats.Resolve
+--   roles         the table returned by MFD.Roles.Resolve
 --   locked        { [key] = icon } or nil, assignments frozen at combat start
 --
 -- Returns { list = array of { key, icon, intent, owner }, byKey = { [key] = icon } }.
 -- Has no side effects and does not mutate any argument.
-function Allocator.Compute(candidates, rulesByNpcID, seats, locked, allowIconReuse)
+function Allocator.Compute(candidates, rulesByNpcID, roles, locked, allowIconReuse)
     locked = locked or {}
 
     local usedIcons, countByNpcID = {}, {}
@@ -66,15 +66,15 @@ function Allocator.Compute(candidates, rulesByNpcID, seats, locked, allowIconReu
         }
     end
 
-    -- Locks first, so a frozen assignment keeps its icon and its seat even when
+    -- Locks first, so a frozen assignment keeps its icon and its role even when
     -- a better mob has since walked into range.
     for _, key in ipairs(MFD.H.SortedKeys(locked)) do
         local candidate = byKeyCandidate[key]
         local icon = locked[key]
-        local seat = seats.byIcon[icon]
-        if candidate and seat and not usedIcons[icon] then
+        local role = roles.byIcon[icon]
+        if candidate and role and not usedIcons[icon] then
             local rule = rulesByNpcID[candidate.npcID]
-            record(key, icon, rule and rule.intent or seat.intent, seat.owner, candidate.npcID)
+            record(key, icon, rule and rule.intent or role.intent, role.owner, candidate.npcID)
         end
     end
 
@@ -100,11 +100,11 @@ function Allocator.Compute(candidates, rulesByNpcID, seats, locked, allowIconReu
         local used = countByNpcID[candidate.npcID] or 0
 
         if not rule.maxCount or used < rule.maxCount then
-            local icon, owner = takeSeat(seats, rule.intent, usedIcons, allowIconReuse)
+            local icon, owner = takeRole(roles, rule.intent, usedIcons, allowIconReuse)
             local intent = rule.intent
 
             if not icon and rule.fallback then
-                icon, owner = takeSeat(seats, rule.fallback, usedIcons, allowIconReuse)
+                icon, owner = takeRole(roles, rule.fallback, usedIcons, allowIconReuse)
                 intent = rule.fallback
             end
 
@@ -116,30 +116,30 @@ function Allocator.Compute(candidates, rulesByNpcID, seats, locked, allowIconReu
 
     -- Second pass: hand any icon still unused to a mob that got nothing.
     --
-    -- This runs only after every mob has been offered its proper seat, which
+    -- This runs only after every mob has been offered its proper role, which
     -- is what makes it safe: an icon is only spare here because nothing in
     -- this pack needs it. A crowd control target always wins its own icon in
     -- the pass above, however low its priority, so borrowing can never take
     -- Moon away from a mob somebody is about to sheep.
     if allowIconReuse then
-        -- Ordered so the best-placed spare goes first: sheep seat one before
-        -- sheep seat two, and anything flagged last resort after everything
+        -- Ordered so the best-placed spare goes first: sheep role one before
+        -- sheep role two, and anything flagged last resort after everything
         -- else. That is what puts Circle behind a spare Moon.
         local spare = {}
-        for icon, seat in pairs(seats.byIcon) do
+        for icon, role in pairs(roles.byIcon) do
             if not usedIcons[icon] then
-                spare[#spare + 1] = { icon = icon, seat = seat }
+                spare[#spare + 1] = { icon = icon, role = role }
             end
         end
 
         table.sort(spare, function(a, b)
-            local aLast = a.seat.isLastResort and 1 or 0
-            local bLast = b.seat.isLastResort and 1 or 0
+            local aLast = a.role.isLastResort and 1 or 0
+            local bLast = b.role.isLastResort and 1 or 0
             if aLast ~= bLast then
                 return aLast < bLast
             end
-            if (a.seat.ordinal or 0) ~= (b.seat.ordinal or 0) then
-                return (a.seat.ordinal or 0) < (b.seat.ordinal or 0)
+            if (a.role.ordinal or 0) ~= (b.role.ordinal or 0) then
+                return (a.role.ordinal or 0) < (b.role.ordinal or 0)
             end
             -- Descending icon index is the traditional marking order: skull,
             -- cross, square, moon, triangle, diamond, circle, star. Following
@@ -172,7 +172,7 @@ end
 -- icon, as an array of { key, npcID, intent } sorted by key. Pure.
 --
 -- These are the "we did not know we needed a sheep" cases: a mob that walked
--- in late, or one that was outranked while every seat was taken. The marker
+-- in late, or one that was outranked while every role was taken. The marker
 -- uses this to reclaim a borrowed icon and shout about it.
 function Allocator.UnmetCrowdControl(candidates, rulesByNpcID, byKey)
     local unmet = {}
@@ -181,7 +181,7 @@ function Allocator.UnmetCrowdControl(candidates, rulesByNpcID, byKey)
         if not byKey[candidate.key] then
             local rule = rulesByNpcID[candidate.npcID]
             local intent = rule and rule.intent
-            local def = intent and MFD.Seats.INTENTS[intent]
+            local def = intent and MFD.Roles.INTENTS[intent]
             if def and def.classes then
                 unmet[#unmet + 1] = { key = candidate.key, npcID = candidate.npcID, intent = intent }
             end

@@ -61,7 +61,7 @@ local function paint(view)
             SetRaidTargetIconTexture(row.texture, icon)
 
             local detail = MFD.Marker.publishedDetail[key] or {}
-            local label = MFD.Seats.INTENTS[detail.intent] and MFD.Seats.INTENTS[detail.intent].label or tostring(detail.intent)
+            local label = MFD.Roles.INTENTS[detail.intent] and MFD.Roles.INTENTS[detail.intent].label or tostring(detail.intent)
             local learned = MFD.db.learnedMobs[MFD.H.NpcIDFromKey(key)]
             local mobName = learned and learned.name or ("npc " .. tostring(MFD.H.NpcIDFromKey(key)))
 
@@ -127,7 +127,7 @@ local function build()
         frame:StopMovingOrSizing()
         savePosition()
     end)
-    frame:SetFrameStrata("MEDIUM")
+    frame:SetFrameStrata("FULLSCREEN_DIALOG")
 
     frame.title = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     frame.title:SetPoint("TOP", frame, "TOP", 0, -6)
@@ -166,6 +166,7 @@ function Panel:Toggle()
     end
 
     frame:Show()
+    frame:Raise()
     Panel:Refresh()
 end
 

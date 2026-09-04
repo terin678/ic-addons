@@ -8,13 +8,13 @@ Flavor: anniversary (TBC). Slash command: `/mfd`. Minimap button: the skull.
 
 ## The one idea to understand
 
-**Icons belong to jobs, not to mobs.** Each of the eight icons is bound to a *seat*: a
+**Icons belong to jobs, not to mobs.** Each of the eight icons is bound to a *role*: a
 durable job like "sheep number one" or "kill target number three". A rule for a mob only
 says what should happen to it ("this gets sheeped"). The addon hands the mob the lowest
-free seat for that job, and the seat supplies the icon.
+free role for that job, and the role supplies the icon.
 
-That is why assignments never change under people. If Grimmtusk is pinned to sheep seat
-one, Grimmtusk is always Moon. A second mage inherits sheep seat two and is always Star.
+That is why assignments never change under people. If Grimmtusk is pinned to sheep role
+one, Grimmtusk is always Moon. A second mage inherits sheep role two and is always Star.
 Nobody renegotiates, and it does not matter which mob the raid happened to look at first.
 
 The default plan:
@@ -36,9 +36,9 @@ producing an icon nobody will honour.
 
 ## One window
 
-Everything you configure lives in a single window with tabs: **Seats**, **Rules**,
+Everything you configure lives in a single window with tabs: **Roles**, **Rules**,
 **Raid check** and **Settings**. Open it by left clicking the minimap skull, or `/mfd`.
-Switching tabs never closes anything, so you can jump between the seat plan and the rule
+Switching tabs never closes anything, so you can jump between the role plan and the rule
 list without losing your place.
 
 Right click the minimap button to land straight on Rules. Middle click toggles the
@@ -144,7 +144,7 @@ Every command is in `/mfd help`.
 | `/mfd del <npcid>` | Remove one of your own rules. |
 | `/mfd intents` | Every job a rule can use. |
 | `/mfd rules` | The rule editor: search bundled and learned mobs, reorder, change jobs, delete. |
-| `/mfd config` | The seat editor: which icon means which job, and who is pinned. |
+| `/mfd config` | The role editor: which icon means which job, and who is pinned. |
 | `/mfd lead [name]` | Designate the Raid Lead, or clear it. Raid leader or assistant only. |
 | `/mfd status` | Who is marking and why, who else is running the addon, and how many rules were merged from whom. |
 | `/mfd debug` | If marking is not happening, this says exactly why, most fundamental reason first. |
@@ -155,6 +155,8 @@ Every command is in `/mfd help`.
 | `/mfd export` | A string of your own rules to paste to someone. |
 | `/mfd import` | Paste a rule string. It merges in; nothing of yours is deleted. |
 | `/mfd coverage` | Mobs you have seen that the bundled database does not list. |
+| `/mfd off` | Stop the addon doing anything: no icons, no chat, no warnings. Nothing configured is lost. |
+| `/mfd on` | Resume after `/mfd off`. |
 | `/mfd minimap` | Hide or show the minimap button. |
 | `/mfd sound` | Toggle the sound played when a rule cannot work on its target. |
 | `/mfd bulk` | Paste a whole kill order for a zone, one mob per line. |
@@ -205,7 +207,7 @@ Editing a merged rule copies it into your own set first. From then on it is your
 
 - Before the pull, marks may re-shuffle if a higher priority mob walks into range.
 - The moment combat starts, assignments freeze to their mobs. Nothing moves except by
-  death, which frees the seat for the next mob of that job.
+  death, which frees the role for the next mob of that job.
 - If someone clears or changes an icon the addon placed, it puts it back. After three
   corrections in five seconds it backs off and says so, rather than fighting a person
   who is changing it on purpose.
@@ -270,7 +272,7 @@ Banish only lands on demons and elementals, shackle on undead, sap on humanoids,
 on. When you make a rule the addon checks the target's creature type and warns you, with
 a sound, if that job cannot work on it. The rule is still added, because you may know
 something the table does not. `/mfd list` and the editor re-check every time, since
-rebinding a seat can make a rule wrong later. `/mfd sound` turns the noise off.
+rebinding a role can make a rule wrong later. `/mfd sound` turns the noise off.
 
 ## The mob database
 
@@ -290,7 +292,7 @@ Run `/mfd debug`. It reports the actual reason in order of how fundamental it is
 - marking is switched off
 - someone else is the marker and you are a backup
 - you have no assist, so you cannot place icons
-- no seats are configured
+- no roles are configured
 - enemy nameplates are off, or their range is too short
 - no hostile mobs are visible
 - no rules are active for this zone
