@@ -80,6 +80,36 @@ so a list typed from a guide works the first time the raid walks past. Once the 
 seen a mob it will also appear in the search box, where **Add** files it by npc id, which
 is more precise. Both kinds live in the same list and sort together.
 
+### What the search box already knows
+
+The addon ships with 295 raid creatures, trash included, so most of the time you can just
+type part of a name and click Add:
+
+| Raid | Creatures | Where the list came from |
+| --- | --- | --- |
+| Black Temple | 77 | spawn data |
+| Karazhan | 59 | spawn data |
+| Tempest Keep | 35 | id block (see below) |
+| Sunwell Plateau | 33 | spawn data |
+| Serpentshrine Cavern | 32 | spawn data |
+| Zul'Aman | 29 | spawn data |
+| Hyjal Summit | 19 | wave roster (see below) |
+| Gruul's Lair | 8 | spawn data |
+| Magtheridon's Lair | 3 | spawn data |
+
+Names and ids come from Questie's TBC creature database, which is built for the same
+client, so every name is the name the game reports.
+
+Two raids needed more than spawn data. **Hyjal** summons its waves by script, so none of
+its creatures carry a zone; its roster is taken from DBM's wave module (ghouls,
+abominations, necromancers, banshees, crypt fiends, gargoyles, frost wyrms, fel stalkers,
+infernals) and resolved to ids by name. **Tempest Keep** has no spawn data at all, and its
+Bloodwarder and Sunseeker families are shared with the four five-man wings, so The Eye's
+own trash is taken from the contiguous id block those creatures occupy.
+
+Anything that could not be established either way was left out rather than guessed. A gap
+costs you a search suggestion and nothing else, because you can always type the name.
+
 ## First night
 
 1. Enemy nameplates must be on. The addon can only touch a mob it has a nameplate for.

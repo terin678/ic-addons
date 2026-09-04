@@ -1921,4 +1921,67 @@ T.Case("Bulk: an npcID can be given instead of a name", function()
     T.Eq(rules[2].npcID, nil, "the other stays a name rule")
 end)
 
+-- Guards against the bundled table silently regressing to bosses only, which
+-- is what it was before and which looks fine until someone searches for trash.
+T.Case("Data: the bundled table carries real trash, not just bosses", function()
+    local mobs = MFD.Data.Mobs
+    local function nameOf(id) return mobs[id] and mobs[id][1] end
+
+    T.Eq(nameOf(22855), "Illidari Nightlord", "Black Temple trash")
+    T.Eq(nameOf(22844), "Ashtongue Battlelord", "Black Temple trash")
+    T.Eq(nameOf(22880), "Shadowmoon Champion", "the mob Dillon ruled first")
+    T.Eq(nameOf(17897), "Crypt Fiend", "Hyjal wave trash")
+    T.Eq(nameOf(17907), "Frost Wyrm", "Hyjal wave trash")
+    T.Eq(nameOf(20040), "Crystalcore Devastator", "Tempest Keep trash")
+end)
+
+T.Case("Data: every raid has more creatures than it has bosses", function()
+    local counts = {}
+    for _, entry in pairs(MFD.Data.Mobs) do
+        counts[entry[2]] = (counts[entry[2]] or 0) + 1
+    end
+    -- Every TBC raid has more than a dozen distinct creatures. A key well
+    -- under that means its extraction fell back to bosses.
+    for _, key in ipairs({ "BLACKTEMPLE", "HYJAL", "KARAZHAN", "SERPENTSHRINE",
+                           "TEMPESTKEEP", "ZULAMAN", "SUNWELL" }) do
+        if (counts[key] or 0) < 15 then
+            error(key .. " has only " .. (counts[key] or 0) .. " creatures; extraction regressed")
+        end
+    end
+end)
+
+T.Case("Data: every entry is a name and a known instance key", function()
+    local known = {}
+    for _, key in pairs(MFD.Rules.INSTANCE_KEYS) do known[key] = true end
+
+    for id, entry in pairs(MFD.Data.Mobs) do
+        if type(id) ~= "number" then
+            error("non numeric npc id: " .. tostring(id))
+        end
+        if type(entry[1]) ~= "string" or entry[1] == "" then
+            error("id " .. id .. " has no name")
+        end
+        if not known[entry[2]] then
+            error("id " .. id .. " has unknown instance key " .. tostring(entry[2]))
+        end
+    end
+end)
+
+T.Case("Search: bundled trash is findable by a partial name", function()
+    local results = MFD.Search("nightlord", nil, MFD.Data.Mobs, {})
+    T.Eq(#results, 1, "one hit")
+    T.Eq(results[1].name, "Illidari Nightlord", "the right one")
+    T.Eq(results[1].source, "bundled", "from the bundled table")
+end)
+
+T.Case("Search: filtering to an instance narrows bundled results", function()
+    local all = MFD.Search("ashtongue", nil, MFD.Data.Mobs, {})
+    local bt = MFD.Search("ashtongue", "BLACKTEMPLE", MFD.Data.Mobs, {})
+    if #all == 0 then
+        error("expected Ashtongue mobs in the bundled table")
+    end
+    T.Eq(#bt, #all, "all of them are Black Temple")
+    T.Eq(#MFD.Search("ashtongue", "HYJAL", MFD.Data.Mobs, {}), 0, "and none are Hyjal")
+end)
+
 _G.MarkedForDeath = MFD
