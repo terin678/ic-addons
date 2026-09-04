@@ -1,8 +1,5 @@
 local addonName, ns = ...
 
-ns.Probe = ns.Probe or {}
-local Probe = ns.Probe
-
 --[[
 "Does this client have X", and then "does it actually work".
 
@@ -11,9 +8,9 @@ before this addon, so neither is in
 .claude/skills/wow-addon-dev/client-api.md. Everything the code is unsure about
 gets asked here, and whatever the answer turns out to be gets written down there.
 
-The existence checks are the easy half. The loopback at the end is the one that
-matters: it sends a real message to the guild channel and waits to hear it come
-back, which is the only thing that proves the channel works.
+The existence checks are the easy half, and LibICCore does them. The loopback at
+the end is the one that matters: it sends a real message to the guild channel and
+waits to hear it come back, which is the only thing that proves the channel works.
 ]]
 
 local LOOPBACK_TIMEOUT = 5      -- seconds to wait for our own message to return
@@ -42,30 +39,7 @@ local CHECKS = {
     { "GetServerTime", "one clock for every officer, which the merge rule leans on" },
 }
 
--- Pure. Walks a dotted path without indexing a nil on the way.
-function Probe.Resolve(root, path)
-    local node = root
-    for part in tostring(path or ""):gmatch("[^%.]+") do
-        if type(node) ~= "table" then return nil end
-        node = node[part]
-    end
-    return node
-end
-
--- Pure.
-function Probe.Describe(value)
-    if value == nil then return false, "missing" end
-    return true, type(value)
-end
-
-function Probe.Rows()
-    local out = {}
-    for _, check in ipairs(CHECKS) do
-        local ok, kind = Probe.Describe(Probe.Resolve(_G, check[1]))
-        out[#out + 1] = { name = check[1], present = ok, kind = kind, why = check[2] }
-    end
-    return out
-end
+local Probe = ns.Core:Probe(ns, CHECKS)
 
 --[[
 Sends one message to the guild and waits to hear it back.
@@ -141,16 +115,7 @@ function Probe.Run(arg)
         return
     end
 
-    ns.Printf("client probe, interface %s:", (select(4, GetBuildInfo())) or "?")
-    local present, absent = 0, 0
-    for _, row in ipairs(Probe.Rows()) do
-        if row.present then present = present + 1 else absent = absent + 1 end
-        ns.Printf("  %s %-42s |cff888888%s|r",
-            row.present and "|cff44ff44yes|r" or "|cffff4444no |r",
-            row.name, row.present and row.kind or row.why)
-    end
-    ns.Printf("%d present, %s%d missing|r.", present,
-        absent > 0 and "|cffffcc00" or "|cff44ff44", absent)
+    Probe.PrintChecks()
 
     ns.Printf("sending via |cffffcc00%s|r, prefix registration %s.",
         ns.Comm.sendHow or "nothing",

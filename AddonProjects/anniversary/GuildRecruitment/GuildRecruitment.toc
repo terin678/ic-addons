@@ -2,7 +2,7 @@
 ## Title: Guild Recruitment
 ## Notes: One recruitment message the raid leaders set and every officer sends, kept in step across the guild, with a log of who barked when.
 ## Author: Malexis
-## Version: 0.2.1
+## Version: 0.3.0
 ## IconTexture: Interface\AddOns\GuildRecruitment\GuildRecruitment.tga
 ## Group: ICLibs
 ## Category: Impulse Control
@@ -10,14 +10,7 @@
 ## SavedVariablesPerCharacter: GuildRecruitmentCharDB
 ## Dependencies: ICLibs
 
-Libs\LibStub\LibStub.lua
-Libs\CallbackHandler-1.0\CallbackHandler-1.0.lua
-Libs\LibDataBroker-1.1\LibDataBroker-1.1.lua
-Libs\LibDBIcon-1.0\LibDBIcon-1.0.lua
-
 Core.lua
-Util.lua
-Log.lua
 Roster.lua
 Teams.lua
 Doc.lua
