@@ -383,10 +383,13 @@ UI.RegisterPage(90, "Settings", function(page)
 
         local list = {}
         if type(GetChannelList) == "function" then list = { GetChannelList() } end
-        local _, name = ns.Bark.Channel(list, s.channel)
+        -- s is settings, and the channel lives on settings.bark. The two rank
+        -- thresholds beside it really are top level, which is what made reading
+        -- s.channel look right.
+        local _, name = ns.Bark.Channel(list, s.bark.channel)
         channelLabel:SetText(string.format("Channel: |cffffcc00%s|r  |cff888888%s|r",
-            s.channel, name and ("currently " .. name) or "|cffff4444none joined|r"))
-        if not channel:HasFocus() then channel:SetText(s.channel) end
+            s.bark.channel, name and ("currently " .. name) or "|cffff4444none joined|r"))
+        if not channel:HasFocus() then channel:SetText(s.bark.channel) end
 
         -- Only the guild master should be moving thresholds around, and a greyed
         -- button that says why is better than one that silently does nothing.

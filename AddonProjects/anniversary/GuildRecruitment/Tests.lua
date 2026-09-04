@@ -757,3 +757,23 @@ T.Case("Util: how long ago, and how long left", function()
     T.Eq(ns.Util.Freshness(nil, now, 60), "never", "nothing recorded")
     T.Eq(ns.Util.Freshness(now - 90, now, 60), "1m", "and something that was")
 end)
+
+T.Case("UI: every page draws without erroring", function()
+    -- The Settings page read settings.channel for a field that lives on
+    -- settings.bark, and nothing caught it until somebody opened the tab. A page
+    -- refresher is not pure, so no other case in this file reaches one; building
+    -- the window and calling each one is the cheapest thing that does.
+    --
+    -- It is a smoke test, not a check of what is drawn. It catches the nil index,
+    -- the bad format argument and the renamed field -- which is most of what goes
+    -- wrong in a refresher.
+    local frame = ns.UI.Create()
+    T.Eq(type(frame), "table", "the window builds")
+    T.Eq(#ns.UI.Pages > 0, true, "and it has pages")
+
+    for _, page in ipairs(ns.UI.Pages) do
+        T.Eq(type(page.refresh), "function", page.name .. " built a refresher")
+        local ok, err = pcall(page.refresh)
+        T.Eq(ok, true, page.name .. " draws => " .. tostring(err))
+    end
+end)

@@ -10,7 +10,7 @@ officer's copy converges on it, and a log of who barked when means the second
 officer does not add a second line four minutes after the first.
 ]]
 
-local VERSION = "0.1.1"
+local VERSION = "0.1.2"
 ns.VERSION = VERSION
 
 ns.SCHEMA = 1
