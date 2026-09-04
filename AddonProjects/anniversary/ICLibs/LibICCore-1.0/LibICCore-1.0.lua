@@ -19,7 +19,8 @@ One call in Core.lua installs it onto the addon's namespace:
         onLoad = function(info) end,    -- after the tables exist; info.sawFile, info.firstRun
         onToggle = function(on) end,    -- after /x enable or disable
         onReset = function(what) end,   -- after /x reset
-        loadedHint = "/gr opens the window, /gr help lists commands.",
+        loadedHint = "/gr opens the window, /gr help lists commands.",  -- or a function
+        log = false,                    -- the addon has a Log of its own shape
     })
 
 Everything lands on `ns` under the names the addons already use -- ns.Print, ns.Util.Trim,
@@ -222,6 +223,9 @@ local function BuildLog(ns, kinds)
     local Log = ns.Log or {}
     local MAX_ENTRIES, MAX_CAPTURE, WINDOW = 100, 500, 300
     Log.MAX_ENTRIES, Log.MAX_CAPTURE, Log.WINDOW = MAX_ENTRIES, MAX_CAPTURE, WINDOW
+    -- An addon with its own Log of a different shape (TradeMaster keys entries on
+    -- player and verdict) passes log = false; this is how the bootstrap tells the two apart.
+    Log.icCore = true
 
     -- One colour per kind everywhere: green happened, amber waiting, red failed, grey noted.
     Log.KIND_COLOR = Log.KIND_COLOR or {}
@@ -767,7 +771,7 @@ local function OnAddonLoaded(ns, opts)
             ran, ran == 1 and "step" or "steps")
     end
 
-    if ns.Log then
+    if ns.Log and ns.Log.icCore then
         ns.Log.Add("info", "Core",
             string.format("loaded v%s, schema %s", tostring(ns.VERSION), tostring(ns.db.schema)),
             sawFile and "saved variables were present" or "SAVED VARIABLES WERE EMPTY")
@@ -793,7 +797,9 @@ local function OnAddonLoaded(ns, opts)
     end
 
     local slash = opts.slash and opts.slash[1] or ("/" .. opts.name:lower())
-    ns.Printf("v%s loaded. %s", tostring(ns.VERSION), opts.loadedHint
+    local hint = opts.loadedHint
+    if type(hint) == "function" then hint = hint() end
+    ns.Printf("v%s loaded. %s", tostring(ns.VERSION), hint
         or string.format("%s opens the window, %s help lists commands.", slash, slash))
 end
 

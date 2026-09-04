@@ -3,6 +3,9 @@ local addonName, ns = ...
 ns.Minimap = ns.Minimap or {}
 local M = ns.Minimap
 
+-- The minimap launcher. LibICCore does the LibDataBroker and LibDBIcon work and checks
+-- both are there first. The icon follows the active profession.
+
 local DEFAULT_ICON = "Interface\\AddOns\\TradeMaster\\TradeMaster.tga"
 
 local function CurrentIcon()
@@ -11,14 +14,10 @@ local function CurrentIcon()
 end
 
 function M.Init()
-    local LDB = LibStub and LibStub:GetLibrary("LibDataBroker-1.1", true)
-    local Icon = LibStub and LibStub:GetLibrary("LibDBIcon-1.0", true)
-    if not LDB or not Icon then return end
-
-    local obj = LDB:NewDataObject("TradeMaster", {
-        type = "launcher",
+    M.obj, M.icon = ns.Core:MinimapButton(ns, {
+        name = "TradeMaster",
         icon = CurrentIcon(),
-        OnClick = function(_, button)
+        onClick = function(button)
             if button == "MiddleButton" then
                 ns.Tracker.Toggle()
             elseif button == "RightButton" then
@@ -28,11 +27,11 @@ function M.Init()
                 ns.UI.Toggle()
             end
         end,
-        OnTooltipShow = function(tt)
+        tooltip = function(tt)
             local s = ns.PS()
             local profile = ns.Prof.Current()
             local n, products, noun = ns.Prof.BookCounts(profile, ns.Book())
-            tt:AddLine("TradeMaster")
+            tt:AddLine("TradeMaster " .. ns.VERSION)
             if not ns.Enabled() then tt:AddLine("|cffff4444DISABLED|r") end
             tt:AddLine(string.format("active: |cffffffff%s|r",
                 profile.key ~= "generic" and profile.name or "none"))
@@ -57,11 +56,6 @@ function M.Init()
             tt:AddLine("|cff888888Middle click: toggle the order tracker|r")
         end,
     })
-
-    ns.db.settings.minimap = ns.db.settings.minimap or {}
-    Icon:Register("TradeMaster", obj, ns.db.settings.minimap)
-    M.obj = obj
-    M.icon = Icon
 end
 
 -- The icon follows the active profession.

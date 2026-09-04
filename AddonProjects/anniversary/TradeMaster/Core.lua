@@ -1,28 +1,28 @@
 local addonName, ns = ...
 
-ns.Util = ns.Util or {}
+--[[
+TradeMaster: a crafting business assistant for any profession. Generalised from
+CutMaster, which belongs to Dezedin and is never edited from here.
 
-local VERSION = "1.13.1"
+The plumbing -- Print, the saved-variable bootstrap, the shared Util, the test harness,
+the slash dispatcher -- is LibICCore's. This file is the version, the defaults, the
+migrations, the one-time CutMaster import, the commands that are this addon's own, and
+the events it listens to. Log.lua is this addon's own too: its entries are keyed on
+player and verdict, not on kind and source, so the library's Log is switched off.
+]]
 
--- Output goes straight into a chat frame rather than through the chat event
--- system, so it has no message type and the chat settings UI cannot route it.
--- Picking the target frame here is the only way to move it. See /tm out.
-function ns.Print(msg)
-    local frame = DEFAULT_CHAT_FRAME
-    local idx = ns.db and ns.db.settings and ns.db.settings.outputFrame
-    if idx and idx > 1 then
-        local f = _G["ChatFrame" .. idx]
-        if f and f.AddMessage then frame = f end
-    end
-    frame:AddMessage("|cff33ff99TradeMaster|r: " .. tostring(msg))
-end
+local Core = LibStub("LibICCore-1.0")
 
--- Master switch. False means TradeMaster takes no action of its own: no
--- invites, no whispers, no barking, no order creation, no filling trades.
--- Reading the UI, scanning, and the /tm try commands still work.
-function ns.Enabled()
-    return not ns.db or ns.db.settings.enabled ~= false
-end
+local VERSION = "1.14.0"
+
+-- Bumped when a saved-variable change needs code to read the old shape. Every table
+-- saved before 1.14.0 has no schema stamp at all and is treated as schema 1, so the
+-- step below runs once on each of them; it is idempotent, which is what makes that safe.
+local SCHEMA = 2
+
+--------------------------------------------------------------------------------
+-- Switches
+--------------------------------------------------------------------------------
 
 -- Invites are one switch for every scanned book. Barking stays with the
 -- active profession (see ns.SetBark).
@@ -30,52 +30,29 @@ function ns.InvitesOn()
     return ns.Enabled() and (not ns.db or ns.db.settings.invites ~= false)
 end
 
-local function onoffText(v) return v and "|cff44ff44on|r" or "|cffff4444off|r" end
-
 function ns.SetBark(on)
     local s = ns.PS().bark
     s.enabled = on and true or false
     if s.enabled then ns.Barker.Start(true) else ns.Barker.Stop() end
     local p = ns.Prof.Current()
-    ns.Print("barking " .. onoffText(s.enabled)
+    ns.Print("barking " .. ns.Util.OnOff(s.enabled)
         .. (p.key ~= "generic" and (" for " .. p.name) or ""))
     if ns.UI and ns.UI.Refresh then ns.UI.Refresh() end
 end
 
 function ns.SetInvites(on)
     ns.db.settings.invites = on and true or false
-    ns.Print("invites " .. onoffText(on) .. " for every scanned profession")
+    ns.Print("invites " .. ns.Util.OnOff(on) .. " for every scanned profession")
     if ns.UI and ns.UI.Refresh then ns.UI.Refresh() end
 end
 
-function ns.DeepCopy(t)
-    if type(t) ~= "table" then return t end
-    local out = {}
-    for k, v in pairs(t) do
-        out[k] = ns.DeepCopy(v)
-    end
-    return out
-end
-
-function ns.ApplyDefaults(target, defaults)
-    for k, v in pairs(defaults) do
-        if type(v) == "table" then
-            if type(target[k]) ~= "table" then target[k] = {} end
-            ns.ApplyDefaults(target[k], v)
-        elseif target[k] == nil then
-            target[k] = v
-        end
-    end
-    return target
-end
-
-function ns.Now()
-    return GetServerTime and GetServerTime() or time()
-end
+--------------------------------------------------------------------------------
+-- Saved variables
+--------------------------------------------------------------------------------
 
 -- Global (cross-profession) defaults. Per-profession settings live under
 -- db.professions[key].settings and come from Professions.lua.
-ns.Defaults = {
+local Defaults = {
     version = 2,
     activeProfession = nil,
     professions = {},
@@ -116,6 +93,37 @@ ns.Defaults = {
     },
 }
 
+--[[
+Keyed by the schema each step upgrades FROM. These three used to run inline on every
+load; as a step they run once per saved table and are stamped as done. Migrate runs
+BEFORE ApplyDefaults, so `professions` may be missing on a table that never scanned.
+]]
+local Migrations = {
+    [1] = function(db)
+        for key, pd in pairs(db.professions or {}) do
+            if pd.settings then ns.Prof.MigratePlaceholders(pd.settings) end
+            -- 1.2.0 changed the default bark wording; a saved copy of the old
+            -- default follows it, a customised template is left alone.
+            local p = ns.Prof.ByKey(key)
+            if p and pd.settings and pd.settings.bark
+                and pd.settings.bark.template == ns.Prof.LegacyBarkTemplate(p) then
+                pd.settings.bark.template = p.templates.bark
+            end
+        end
+        -- Invites used to be switched per profession. One switch now covers
+        -- every book; a profession that had it off turns the whole thing off.
+        db.settings = db.settings or {}
+        if db.settings.invites == nil then db.settings.invites = true end
+        for _, pd in pairs(db.professions or {}) do
+            local inv = pd.settings and pd.settings.invite
+            if inv and inv.enabled == false then
+                db.settings.invites = false
+                inv.enabled = true
+            end
+        end
+    end,
+}
+
 --------------------------------------------------------------------------------
 -- One-time import from CutMaster, so a jewelcrafter switching over keeps their
 -- book, choices, orders and ledger. Never writes back to CutMasterDB.
@@ -154,7 +162,7 @@ local function ImportCutMaster()
         end
     end
     for _, k in ipairs({ "orders", "captureAll", "outputFrame", "tracker", "debug" }) do
-        if s[k] ~= nil and ns.db.settings[k] == ns.Defaults.settings[k] then
+        if s[k] ~= nil and ns.db.settings[k] == Defaults.settings[k] then
             ns.db.settings[k] = ns.DeepCopy(s[k])
         end
     end
@@ -165,11 +173,460 @@ local function ImportCutMaster()
 end
 
 --------------------------------------------------------------------------------
--- Events
+-- Key bindings
+--------------------------------------------------------------------------------
+
+Core:Bindings("TRADEMASTER", "TradeMaster", {
+    BARK = "Send bark to Trade",
+    TOGGLE = "Toggle TradeMaster window",
+})
+
+-- Called from a key binding, which IS a hardware event, so the protected
+-- SendChatMessage is allowed here where a timer callback would be blocked.
+function TradeMaster_BarkNow()
+    local ok, info = ns.Barker.Tick(true)
+    if not ok then ns.Print("bark skipped: " .. tostring(info)) end
+end
+
+function TradeMaster_Toggle()
+    if ns.UI and ns.UI.Toggle then ns.UI.Toggle() else ns.Print("UI not loaded.") end
+end
+
+--------------------------------------------------------------------------------
+-- Slash commands
+--------------------------------------------------------------------------------
+
+local HELP = {
+    { "", "open the window" },
+    { "prof [name]", "list scanned professions, or make one active" },
+    { "scan", "scan the open profession window into the book" },
+    { "book", "how many recipes the active book holds" },
+    { "match <text or link>", "what the classifier would match this to" },
+    { "try | trywhisper | tryparty <msg>", "dry-run a Trade, whisper or party line" },
+    { "bark [secs]", "toggle barking, or set its interval and start it" },
+    { "send", "send a bark now" },
+    { "preview", "print the next bark" },
+    { "adv epic|rare|all|none|+text|-text", "what gets advertised" },
+    { "invite", "toggle invites for every scanned profession" },
+    { "orders", "list open orders" },
+    { "order add|done|cancel|reopen|removeitem", "manage one order" },
+    { "craft", "focus the profession window on the current order" },
+    { "spec [auto|none|off|<name>]", "the active profession's specialization" },
+    { "tracker", "toggle the order tracker" },
+    { "income", "the ledger report" },
+    { "market", "trade chat supply and demand" },
+    { "annotate", "toggle the profession window annotations" },
+    { "probe", "report which crafting APIs this build has" },
+    { "log", "the last ten classified lines" },
+    { "capture", "toggle recording every Trade message" },
+    { "clearcapture", "drop the recording" },
+    { "clearflags", "clear the auto seller flag on every player" },
+    { "debug", "toggle debug output" },
+    { "status", "one line per part of the addon" },
+    { "test", "run the test suite" },
+    { "enable | disable", "master switch" },
+    { "out [n]", "print to ChatFrame n; bare, list the windows" },
+    { "version", "addon and library versions" },
+    { "help", "this list" },
+}
+
+local COMMANDS = {}
+
+COMMANDS.config = function() ns.UI.Toggle() end
+
+local function Profession(rest)
+    local known = ns.Prof.Known()
+    if rest == "" then
+        if #known == 0 then
+            ns.Print("no professions scanned yet. Open a profession window and it will be picked up.")
+        end
+        for _, key in ipairs(known) do
+            local p = ns.Prof.ByKey(key)
+            local n, products = ns.Prof.BookCounts(p, ns.Prof.DB(key).book)
+            ns.Print(string.format("  %s%s|r  %d recipes, %d %s",
+                key == ns.db.activeProfession and "|cff44ff44" or "|cffffffff",
+                p.name, n, products, p.craftNoun[2]))
+        end
+        ns.Print("usage: /tm prof <name> to make one active")
+        return
+    end
+    local want = rest:lower()
+    for _, key in ipairs(known) do
+        local p = ns.Prof.ByKey(key)
+        if key == want or p.name:lower() == want or (p.abbrevs[1] == want) then
+            ns.Prof.SetActive(key)
+            ns.Print("active profession is now " .. p.name .. ".")
+            if ns.UI and ns.UI.Refresh then ns.UI.Refresh() end
+            return
+        end
+    end
+    ns.Print("no scanned profession called '" .. rest .. "'. /tm prof lists them.")
+end
+COMMANDS.prof, COMMANDS.profession = Profession, Profession
+
+COMMANDS.scan = function() ns.Scanner.Scan() end
+COMMANDS.craft = function() ns.Crafter.Focus({ manual = true }) end
+COMMANDS.probe = function() ns.Crafter.Probe() end
+
+COMMANDS.spec = function(rest)
+    local want = ns.Util.Trim(rest or ""):lower()
+    local key = ns.db.activeProfession
+    local p = key and ns.Prof.ByKey(key)
+    if not p or not p.specs or #p.specs == 0 then
+        ns.Print("no specializations for " .. (p and p.name or "this profession") .. ".")
+    elseif want == "" then
+        ns.Print(string.format("%s: %s", p.name, ns.Prof.DescribeSpecs(key)))
+        ns.Print("  /tm spec " .. table.concat(ns.Prof.SpecChoices(p), "|")
+            .. "   (none = you have none, off = stop refusing on this)")
+    else
+        local pd = ns.Prof.DB(key)
+        local ok = false
+        for _, choice in ipairs(ns.Prof.SpecChoices(p)) do
+            if choice == want then ok = true end
+        end
+        if not ok then
+            ns.Print("|cffff4444no such specialization.|r /tm spec lists them.")
+            return
+        end
+        pd.settings.specialization = (want ~= "auto") and want or nil
+        ns.Print(string.format("%s: %s", p.name, ns.Prof.DescribeSpecs(key)))
+        if ns.UI then ns.UI.Refresh() end
+    end
+end
+
+COMMANDS.book = function()
+    local profile, book = ns.Prof.Current(), ns.Book()
+    local n, products, noun = ns.Prof.BookCounts(profile, book)
+    ns.Print(string.format("%s book holds %d recipes (%d %s).", profile.name, n, products, noun))
+end
+
+COMMANDS.match = function(rest)
+    if rest == "" then
+        ns.Print("usage: /tm match <text or linked item>")
+        return
+    end
+    local profile, book = ns.Prof.Current(), ns.Book()
+    local index = ns.Matcher.BuildIndex(book, profile)
+    local hits = ns.Matcher.Match(rest, ns.Util.Normalize(rest), index)
+    if #hits == 0 then ns.Print("no item matched.") end
+    for _, h in ipairs(hits) do
+        local e = book[h.itemID]
+        ns.Print(string.format("  %s  |cff888888[%s%s]|r",
+            e and (e.link or e.name) or h.itemID, h.tier,
+            h.qtyHint and (", qty " .. h.qtyHint) or ""))
+    end
+end
+
+COMMANDS.invite = function() ns.SetInvites(ns.db.settings.invites == false) end
+
+COMMANDS.bark = function(rest)
+    local s = ns.PS().bark
+    local secs = tonumber(rest)
+    if secs then
+        s.intervalSec = math.max(30, math.min(600, secs))
+        s.enabled = true
+        if secs ~= s.intervalSec then
+            ns.Print(string.format("|cffff9900%d is outside the allowed 30 to 600 range, using %d.|r",
+                secs, s.intervalSec))
+        end
+        ns.Print(string.format("barking every %d seconds.", s.intervalSec))
+        ns.Barker.Start(true)
+    else
+        ns.SetBark(not s.enabled)
+    end
+end
+
+-- Over the library's: this addon's switch has more to say about what it turns off.
+local function Disable()
+    ns.db.settings.enabled = false
+    ns.Barker.Stop()
+    ns.Print("|cffff4444disabled.|r No invites, whispers, barks or trade filling until /tm enable.")
+    if ns.UI and ns.UI.Refresh then ns.UI.Refresh() end
+end
+local function Enable()
+    local ps = ns.PS()
+    local onoff = ns.Util.OnOff
+    ns.db.settings.enabled = true
+    if ps.bark.enabled then ns.Barker.Start() end
+    ns.Print("|cff44ff44enabled.|r Back to: invites " .. onoff(ns.db.settings.invites ~= false)
+        .. ", whisper invites " .. onoff(ps.invite.fromWhisper)
+        .. ", barking " .. (ps.bark.enabled and ("|cff44ff44on|r every " .. ps.bark.intervalSec .. "s") or "|cffff4444off|r")
+        .. ", trade fill " .. onoff(ns.db.settings.orders.autoFillTrade))
+    if ns.UI and ns.UI.Refresh then ns.UI.Refresh() end
+end
+COMMANDS.disable, COMMANDS.off = Disable, Disable
+COMMANDS.enable, COMMANDS.on = Enable, Enable
+
+COMMANDS.market = function()
+    local now = ns.Now()
+    local profile, ps = ns.Prof.Current(), ns.PS()
+    ns.Print(ns.Market.Summary(ns.db, now, profile.key ~= "generic" and profile.key or nil,
+        ps.bark.intervalSec))
+    for _, key in ipairs(ns.Professions.Order) do
+        local s15 = { ns.Market.Counts(ns.db, now, key, 900) }
+        local h1 = { ns.Market.Counts(ns.db, now, key, 3600) }
+        local day = { ns.Market.Counts(ns.db, now, key, 86400) }
+        if day[1] > 0 or day[2] > 0 then
+            local label = ns.Market.Label(h1[1], h1[2])
+            ns.Print(string.format("  %-16s 15m %dS/%dB   1h %dS/%dB   today %dS/%dB   %s%s|r",
+                ns.Prof.ByKey(key).name, s15[1], s15[2], h1[1], h1[2], day[1], day[2],
+                ns.Market.LabelColor(label), label))
+        end
+    end
+end
+
+COMMANDS.stats = function() ns.Annotators.Toggle() end
+COMMANDS.annotate = COMMANDS.stats
+COMMANDS.tracker = function() ns.Tracker.Toggle() end
+
+COMMANDS.orders = function()
+    local open = ns.Orders.ActiveList()
+    local _, finished = ns.Orders.Visible(ns.db.orders, false)
+    if #open == 0 then
+        ns.Print(finished > 0
+            and string.format("no open orders. %d finished %s still saved: the Orders tab's "
+                .. "Finished button shows them.", finished, finished == 1 and "order is" or "orders are")
+            or "no open orders.")
+    end
+    for _, o in ipairs(open) do
+        ns.Print(string.format("|cffffffff#%d|r %s [%s]%s  %s",
+            o.id, o.player, o.status,
+            o.needsSplit and " |cffff9900SPLIT?|r" or "",
+            ns.Orders.Summarise(o)))
+        if (o.copperIn or 0) > 0 then
+            ns.Print("    paid " .. ns.Ledger.Money(o.copperIn))
+        end
+    end
+end
+
+COMMANDS.order = function(rest)
+    local sub, arg = rest:match("^(%S*)%s*(.*)$")
+    sub = (sub or ""):lower()
+    local now = ns.Now()
+    if sub == "add" and arg ~= "" then
+        local o = ns.Orders.Create(arg, "manual", "", {}, now, "grouped")
+        ns.Print(string.format("order #%d opened for %s. Trade them the mats and it will fill itself in.", o.id, arg))
+    elseif sub == "removeitem" then
+        local id, name = arg:match("^(%S+)%s+(.+)$")
+        local o = id and ns.Orders.ByID(tonumber(id))
+        if not id then
+            ns.Print("usage: /tm order removeitem <id> <item name>")
+        elseif not o then
+            ns.Print("no order with that id.")
+        else
+            local itemID = ns.Orders.FindItemByName(o, name)
+            local index = itemID and ns.Orders.IndexOfItem(o, itemID)
+            if not index then
+                ns.Print(string.format("no item matching '%s' on order #%d. It has: %s",
+                    name, o.id, ns.Orders.Summarise(o)))
+            else
+                local e = ns.Orders.BookFor(o)[itemID]
+                ns.Orders.RemoveItem(o, index, ns.Now())
+                ns.Print(string.format("removed %s from order #%d.",
+                    e and (e.link or e.name) or tostring(itemID), o.id))
+                if ns.Tracker then ns.Tracker.Refresh() end
+            end
+        end
+    elseif sub == "done" or sub == "cancel" or sub == "reopen" then
+        local o = ns.Orders.ByID(tonumber(arg))
+        if not o then ns.Print("no order with that id.") return end
+        local status = (sub == "done" and "done") or (sub == "cancel" and "cancelled") or "grouped"
+        ns.Orders.SetStatus(o, status, now)
+        ns.Print(string.format("order #%d %s.", o.id, sub == "reopen" and "reopened" or (sub == "done" and "closed" or "cancelled")))
+    else
+        ns.Print("usage: /tm order add <player> | done <id> | cancel <id> "
+            .. "| reopen <id> | removeitem <id> <item name>")
+    end
+end
+
+COMMANDS.income = function() ns.Ledger.Report() end
+
+COMMANDS.adv = function(rest)
+    local profile, book = ns.Prof.Current(), ns.Book()
+    local sub = rest:lower()
+    if sub == "all" or sub == "none" or sub == "rare" or sub == "epic" then
+        local n = ns.Barker.ApplyAdvertiseFilter(book, sub, profile)
+        ns.Print(string.format("advertising %d recipes (%s).", n, sub))
+    elseif sub:sub(1, 1) == "+" or sub:sub(1, 1) == "-" then
+        local on = sub:sub(1, 1) == "+"
+        local n = ns.Barker.SetAdvertiseMatching(book, rest:sub(2), on)
+        ns.Print(string.format("%s %d recipes matching '%s'.", on and "added" or "removed", n, rest:sub(2)))
+    else
+        local list = ns.Barker.AdvertisedEntries()
+        ns.Print(string.format("advertising %d recipes:", #list))
+        for i = 1, math.min(#list, 40) do
+            ns.Print("  " .. (book[list[i].itemID].link or list[i].name))
+        end
+        if #list > 40 then ns.Print(string.format("  ...and %d more", #list - 40)) end
+        ns.Print("usage: /tm adv epic | rare | all | none | +<text> | -<text>")
+    end
+end
+
+COMMANDS.send = function()
+    local ok, info = ns.Barker.Tick(true)
+    if not ok then ns.Print("bark skipped: " .. tostring(info)) end
+end
+
+COMMANDS.preview = function()
+    local profile = ns.Prof.Current()
+    local msg, _, used = ns.Barker.Preview()
+    if not msg then
+        ns.Print("nothing to advertise. Scan your book first.")
+    else
+        ns.Print(string.format("next bark (%d %s, %d chars):", used, profile.craftNoun[2], #msg))
+        ns.Print("  " .. msg)
+    end
+end
+
+local function Try(rest, cmd)
+    if rest == "" then
+        ns.Print("usage: /tm " .. cmd .. " <message>")
+        return
+    end
+    local fn = (cmd == "try" and ns.Events.OnTradeMessage)
+        or (cmd == "trywhisper" and ns.Events.OnWhisper) or ns.Events.OnParty
+    local r = fn(rest, "TestDummy", { dryRun = true })
+    if r then
+        ns.Print(string.format("verdict |cffffffff%s|r (%s), seller %d buyer %d net %d",
+            r.verdict, r.reason, r.sellerScore or 0, r.buyerScore or 0, r.netScore or 0))
+        ns.Print(ns.Log.DescribeHits(r))
+    end
+end
+COMMANDS.try, COMMANDS.trywhisper, COMMANDS.tryparty = Try, Try, Try
+
+COMMANDS.debug = function()
+    ns.db.settings.debug = not ns.db.settings.debug
+    ns.Print("debug " .. ns.Util.OnOff(ns.db.settings.debug))
+end
+
+COMMANDS.capture = function()
+    local s = ns.db.settings
+    s.captureAll = not s.captureAll
+    if s.captureAll then
+        ns.Print("capture |cff44ff44on|r. Recording every Trade message, matched or not. Run /reload to flush it to disk.")
+    else
+        ns.Print(string.format("capture |cffff4444off|r. %d messages held.", #(ns.db.capture or {})))
+    end
+end
+
+COMMANDS.status = function()
+    local onoff = ns.Util.OnOff
+    local s = ns.db.settings
+    local profile, book, ps = ns.Prof.Current(), ns.Book(), ns.PS()
+    local pd = ns.Prof.Active()
+    local n, products, noun = ns.Prof.BookCounts(profile, book)
+    local age = pd and pd.bookScannedAt > 0 and math.floor((ns.Now() - pd.bookScannedAt) / 60) or -1
+    if not ns.Enabled() then
+        ns.Print("|cffff4444TradeMaster is disabled.|r /tm enable to switch it on.")
+    end
+    ns.Print(string.format("active profession: %s   known: %s",
+        profile.key ~= "generic" and profile.name or "none", table.concat(ns.Prof.Known(), ", ")))
+    ns.Print(string.format("invites %s (all scanned)   barking %s (%ds, timer %s, active only)   capture %s   debug %s",
+        onoff(ns.db.settings.invites ~= false), onoff(ps.bark.enabled), ps.bark.intervalSec,
+        ns.Barker.ticker and ("next in " .. ns.Barker.SecondsUntilDue() .. "s") or "stopped",
+        onoff(s.captureAll), onoff(s.debug)))
+    ns.Print(string.format("advertising %d recipes", #ns.Barker.AdvertisedEntries()))
+    ns.Print(string.format("book: %d recipes (%d %s), scanned %s",
+        n, products, noun, age >= 0 and (age .. " min ago") or "never"))
+    ns.Print(string.format("log: %d entries   capture: %d messages", #ns.db.log, #(ns.db.capture or {})))
+end
+
+-- Over the library's: this one lists the chat windows by name.
+COMMANDS.out = function(rest)
+    if rest == "" then
+        ns.Print("chat windows:")
+        for i = 1, NUM_CHAT_WINDOWS do
+            local name = GetChatWindowInfo(i)
+            if name and name ~= "" then
+                ns.Print(string.format("  %d = %s%s", i, name,
+                    ns.db.settings.outputFrame == i and "  |cff44ff44(current)|r" or ""))
+            end
+        end
+        ns.Print("usage: /tm out <number>")
+        return
+    end
+    local n = tonumber(rest)
+    if n and _G["ChatFrame" .. n] then
+        ns.db.settings.outputFrame = n
+        ns.Print("TradeMaster output now prints here.")
+    else
+        ns.Print("no such chat window. Run /tm out to list them.")
+    end
+end
+
+COMMANDS.clearcapture = function()
+    ns.db.capture = {}
+    ns.Print("capture cleared.")
+end
+
+COMMANDS.clearflags = function()
+    local n = 0
+    for _, st in pairs(ns.db.players) do
+        if st.flaggedSeller then st.flaggedSeller = nil; n = n + 1 end
+    end
+    ns.Print(string.format("cleared the auto seller flag on %d players.", n))
+end
+
+-- Over the library's: this addon's log entries carry the classifier's hits.
+COMMANDS.log = function()
+    local entries = ns.Log.Recent(10)
+    if #entries == 0 then ns.Print("log is empty.") end
+    for i = #entries, 1, -1 do
+        ns.Print(ns.Log.Describe(entries[i]))
+        ns.Print(ns.Log.DescribeHits(entries[i]))
+    end
+end
+
+--------------------------------------------------------------------------------
+-- Attach
+--------------------------------------------------------------------------------
+
+Core:Attach(ns, {
+    name = addonName,
+    prefix = "TradeMaster",
+    version = VERSION,
+    db = "TradeMasterDB",           -- per character; there is no account-wide table
+    defaults = Defaults,
+    schema = SCHEMA,
+    migrations = Migrations,
+    log = false,                    -- Log.lua is this addon's own shape
+    slash = { "/tm", "/trademaster" },
+    slashKey = "TRADEMASTER",
+    help = HELP,
+    commands = COMMANDS,
+    loadedHint = function()
+        local active = ns.Prof.Current()
+        return string.format("Active profession: %s. /tm opens the window, /tm help lists commands.",
+            active.key ~= "generic" and active.name or "none yet (open a profession window)")
+    end,
+
+    onLoad = function()
+        local imported = ImportCutMaster()
+        if not ns.db.activeProfession then
+            local known = ns.Prof.Known()
+            if known[1] then ns.db.activeProfession = known[1] end
+        end
+        if ns.PS().bark.enabled and ns.Enabled() then ns.Barker.Start() end
+        ns.Orders.StartExpiryTicker()
+        if not ns.Enabled() then
+            ns.Print("|cffff9900currently disabled.|r /tm enable to switch back on.")
+        end
+        if ns.Market then ns.Market.Prune(ns.db, ns.Now()) end
+        if ns.Minimap and ns.Minimap.Init then ns.Minimap.Init() end
+        if ns.db.settings.tracker.shown then
+            C_Timer.After(1, function() ns.Tracker.Show() end)
+        end
+        if imported then
+            ns.Print("|cff44ff44imported your CutMaster book, orders and income.|r CutMasterDB was left untouched.")
+        end
+    end,
+})
+
+--------------------------------------------------------------------------------
+-- Events that are this addon's own
 --------------------------------------------------------------------------------
 
 local frame = CreateFrame("Frame")
-frame:RegisterEvent("ADDON_LOADED")
 frame:RegisterEvent("PLAYER_LOGIN")
 frame:RegisterEvent("SKILL_LINES_CHANGED")
 frame:RegisterEvent("TRADE_SKILL_SHOW")
@@ -188,56 +645,7 @@ frame:RegisterEvent("TRADE_CLOSED")
 frame:RegisterEvent("TRADE_ACCEPT_UPDATE")
 frame:RegisterEvent("TRADE_SHOW")
 frame:SetScript("OnEvent", function(self, event, ...)
-    local arg1 = ...
-    if event == "ADDON_LOADED" and arg1 == addonName then
-        TradeMasterDB = TradeMasterDB or {}
-        ns.ApplyDefaults(TradeMasterDB, ns.Defaults)
-        ns.db = TradeMasterDB
-        for key in pairs(ns.db.professions) do
-            local pd = ns.Prof.DB(key)
-            if pd then ns.Prof.MigratePlaceholders(pd.settings) end
-        end
-        -- 1.2.0 changed the default bark wording; a saved copy of the old
-        -- default follows it, a customised template is left alone.
-        for key, pd in pairs(ns.db.professions) do
-            local p = ns.Prof.ByKey(key)
-            if p and pd.settings and pd.settings.bark
-                and pd.settings.bark.template == ns.Prof.LegacyBarkTemplate(p) then
-                pd.settings.bark.template = p.templates.bark
-            end
-        end
-        -- Invites used to be switched per profession. One switch now covers
-        -- every book; a profession that had it off turns the whole thing off.
-        if ns.db.settings.invites == nil then ns.db.settings.invites = true end
-        for _, pd in pairs(ns.db.professions) do
-            local inv = pd.settings and pd.settings.invite
-            if inv and inv.enabled == false then
-                ns.db.settings.invites = false
-                inv.enabled = true
-            end
-        end
-        local imported = ImportCutMaster()
-        if not ns.db.activeProfession then
-            local known = ns.Prof.Known()
-            if known[1] then ns.db.activeProfession = known[1] end
-        end
-        if ns.PS().bark.enabled and ns.Enabled() then ns.Barker.Start() end
-        ns.Orders.StartExpiryTicker()
-        if not ns.Enabled() then
-            ns.Print("|cffff9900currently disabled.|r /tm enable to switch back on.")
-        end
-        if ns.Market then ns.Market.Prune(ns.db, ns.Now()) end
-        if ns.Minimap and ns.Minimap.Init then ns.Minimap.Init() end
-        if ns.db.settings.tracker.shown then
-            C_Timer.After(1, function() ns.Tracker.Show() end)
-        end
-        local active = ns.Prof.Current()
-        ns.Print(string.format("v%s loaded. Active profession: %s. /tm opens the window, /tm help lists commands.",
-            VERSION, active.key ~= "generic" and active.name or "none yet (open a profession window)"))
-        if imported then
-            ns.Print("|cff44ff44imported your CutMaster book, orders and income.|r CutMasterDB was left untouched.")
-        end
-    elseif event == "PLAYER_LOGIN" then
+    if event == "PLAYER_LOGIN" then
         local loaded = (C_AddOns and C_AddOns.IsAddOnLoaded) or IsAddOnLoaded
         if loaded and loaded("CutMaster") then
             ns.Print("|cffff9900CutMaster is also loaded.|r Both watch Trade chat and both will invite. "
@@ -309,343 +717,3 @@ frame:SetScript("OnEvent", function(self, event, ...)
         ns.Trade.OnEvent(event, ...)
     end
 end)
-ns.frame = frame
-
---------------------------------------------------------------------------------
--- Slash commands
---------------------------------------------------------------------------------
-
-local function onoff(v)
-    return v and "|cff44ff44on|r" or "|cffff4444off|r"
-end
-
-local function HandleSlash(input)
-    local raw = ns.Util.Trim(input or "")
-    local cmd, rest = raw:match("^(%S*)%s*(.*)$")
-    cmd = (cmd or ""):lower()
-    local profile = ns.Prof.Current()
-    local book = ns.Book()
-    local ps = ns.PS()
-
-    if cmd == "" or cmd == "config" then
-        ns.UI.Toggle()
-    elseif cmd == "test" then
-        ns.Tests.Run()
-    elseif cmd == "prof" or cmd == "profession" then
-        local known = ns.Prof.Known()
-        if rest == "" then
-            if #known == 0 then
-                ns.Print("no professions scanned yet. Open a profession window and it will be picked up.")
-            end
-            for _, key in ipairs(known) do
-                local p = ns.Prof.ByKey(key)
-                local n, products = ns.Prof.BookCounts(p, ns.Prof.DB(key).book)
-                ns.Print(string.format("  %s%s|r  %d recipes, %d %s",
-                    key == ns.db.activeProfession and "|cff44ff44" or "|cffffffff",
-                    p.name, n, products, p.craftNoun[2]))
-            end
-            ns.Print("usage: /tm prof <name> to make one active")
-        else
-            local want = rest:lower()
-            for _, key in ipairs(known) do
-                local p = ns.Prof.ByKey(key)
-                if key == want or p.name:lower() == want or (p.abbrevs[1] == want) then
-                    ns.Prof.SetActive(key)
-                    ns.Print("active profession is now " .. p.name .. ".")
-                    if ns.UI and ns.UI.Refresh then ns.UI.Refresh() end
-                    return
-                end
-            end
-            ns.Print("no scanned profession called '" .. rest .. "'. /tm prof lists them.")
-        end
-    elseif cmd == "scan" then
-        ns.Scanner.Scan()
-    elseif cmd == "craft" then
-        ns.Crafter.Focus({ manual = true })
-    elseif cmd == "spec" then
-        local want = ns.Util.Trim(rest or ""):lower()
-        local key = ns.db.activeProfession
-        local p = key and ns.Prof.ByKey(key)
-        if not p or not p.specs or #p.specs == 0 then
-            ns.Print("no specializations for " .. (p and p.name or "this profession") .. ".")
-        elseif want == "" then
-            ns.Print(string.format("%s: %s", p.name, ns.Prof.DescribeSpecs(key)))
-            ns.Print("  /tm spec " .. table.concat(ns.Prof.SpecChoices(p), "|")
-                .. "   (none = you have none, off = stop refusing on this)")
-        else
-            local pd = ns.Prof.DB(key)
-            local ok = false
-            for _, choice in ipairs(ns.Prof.SpecChoices(p)) do
-                if choice == want then ok = true end
-            end
-            if not ok then
-                ns.Print("|cffff4444no such specialization.|r /tm spec lists them.")
-                return
-            end
-            pd.settings.specialization = (want ~= "auto") and want or nil
-            ns.Print(string.format("%s: %s", p.name, ns.Prof.DescribeSpecs(key)))
-            if ns.UI then ns.UI.Refresh() end
-        end
-    elseif cmd == "probe" then
-        ns.Crafter.Probe()
-    elseif cmd == "book" then
-        local n, products, noun = ns.Prof.BookCounts(profile, book)
-        ns.Print(string.format("%s book holds %d recipes (%d %s).", profile.name, n, products, noun))
-    elseif cmd == "match" then
-        if rest == "" then
-            ns.Print("usage: /tm match <text or linked item>")
-            return
-        end
-        local index = ns.Matcher.BuildIndex(book, profile)
-        local hits = ns.Matcher.Match(rest, ns.Util.Normalize(rest), index)
-        if #hits == 0 then ns.Print("no item matched.") end
-        for _, h in ipairs(hits) do
-            local e = book[h.itemID]
-            ns.Print(string.format("  %s  |cff888888[%s%s]|r",
-                e and (e.link or e.name) or h.itemID, h.tier,
-                h.qtyHint and (", qty " .. h.qtyHint) or ""))
-        end
-    elseif cmd == "invite" then
-        ns.SetInvites(ns.db.settings.invites == false)
-    elseif cmd == "bark" then
-        local s = ps.bark
-        local secs = tonumber(rest)
-        if secs then
-            s.intervalSec = math.max(30, math.min(600, secs))
-            s.enabled = true
-            if secs ~= s.intervalSec then
-                ns.Print(string.format("|cffff9900%d is outside the allowed 30 to 600 range, using %d.|r",
-                    secs, s.intervalSec))
-            end
-            ns.Print(string.format("barking every %d seconds.", s.intervalSec))
-            ns.Barker.Start(true)
-        else
-            ns.SetBark(not s.enabled)
-        end
-    elseif cmd == "disable" or cmd == "off" then
-        ns.db.settings.enabled = false
-        ns.Barker.Stop()
-        ns.Print("|cffff4444disabled.|r No invites, whispers, barks or trade filling until /tm enable.")
-    elseif cmd == "enable" or cmd == "on" then
-        ns.db.settings.enabled = true
-        if ps.bark.enabled then ns.Barker.Start() end
-        ns.Print("|cff44ff44enabled.|r Back to: invites " .. onoff(ns.db.settings.invites ~= false)
-            .. ", whisper invites " .. onoff(ps.invite.fromWhisper)
-            .. ", barking " .. (ps.bark.enabled and ("|cff44ff44on|r every " .. ps.bark.intervalSec .. "s") or "|cffff4444off|r")
-            .. ", trade fill " .. onoff(ns.db.settings.orders.autoFillTrade))
-    elseif cmd == "market" then
-        local now = ns.Now()
-        ns.Print(ns.Market.Summary(ns.db, now, profile.key ~= "generic" and profile.key or nil,
-            ps.bark.intervalSec))
-        for _, key in ipairs(ns.Professions.Order) do
-            local s15 = { ns.Market.Counts(ns.db, now, key, 900) }
-            local h1 = { ns.Market.Counts(ns.db, now, key, 3600) }
-            local day = { ns.Market.Counts(ns.db, now, key, 86400) }
-            if day[1] > 0 or day[2] > 0 then
-                local label = ns.Market.Label(h1[1], h1[2])
-                ns.Print(string.format("  %-16s 15m %dS/%dB   1h %dS/%dB   today %dS/%dB   %s%s|r",
-                    ns.Prof.ByKey(key).name, s15[1], s15[2], h1[1], h1[2], day[1], day[2],
-                    ns.Market.LabelColor(label), label))
-            end
-        end
-    elseif cmd == "stats" or cmd == "annotate" then
-        ns.Annotators.Toggle()
-    elseif cmd == "tracker" then
-        ns.Tracker.Toggle()
-    elseif cmd == "orders" then
-        local open = ns.Orders.ActiveList()
-        local _, finished = ns.Orders.Visible(ns.db.orders, false)
-        if #open == 0 then
-            ns.Print(finished > 0
-                and string.format("no open orders. %d finished %s still saved: the Orders tab's "
-                    .. "Finished button shows them.", finished, finished == 1 and "order is" or "orders are")
-                or "no open orders.")
-        end
-        for _, o in ipairs(open) do
-            ns.Print(string.format("|cffffffff#%d|r %s [%s]%s  %s",
-                o.id, o.player, o.status,
-                o.needsSplit and " |cffff9900SPLIT?|r" or "",
-                ns.Orders.Summarise(o)))
-            if (o.copperIn or 0) > 0 then
-                ns.Print("    paid " .. ns.Ledger.Money(o.copperIn))
-            end
-        end
-    elseif cmd == "order" then
-        local sub, arg = rest:match("^(%S*)%s*(.*)$")
-        sub = (sub or ""):lower()
-        local now = ns.Now()
-        if sub == "add" and arg ~= "" then
-            local o = ns.Orders.Create(arg, "manual", "", {}, now, "grouped")
-            ns.Print(string.format("order #%d opened for %s. Trade them the mats and it will fill itself in.", o.id, arg))
-        elseif sub == "removeitem" then
-            local id, name = arg:match("^(%S+)%s+(.+)$")
-            local o = id and ns.Orders.ByID(tonumber(id))
-            if not id then
-                ns.Print("usage: /tm order removeitem <id> <item name>")
-            elseif not o then
-                ns.Print("no order with that id.")
-            else
-                local itemID = ns.Orders.FindItemByName(o, name)
-                local index = itemID and ns.Orders.IndexOfItem(o, itemID)
-                if not index then
-                    ns.Print(string.format("no item matching '%s' on order #%d. It has: %s",
-                        name, o.id, ns.Orders.Summarise(o)))
-                else
-                    local e = ns.Orders.BookFor(o)[itemID]
-                    ns.Orders.RemoveItem(o, index, ns.Now())
-                    ns.Print(string.format("removed %s from order #%d.",
-                        e and (e.link or e.name) or tostring(itemID), o.id))
-                    if ns.Tracker then ns.Tracker.Refresh() end
-                end
-            end
-        elseif sub == "done" or sub == "cancel" or sub == "reopen" then
-            local o = ns.Orders.ByID(tonumber(arg))
-            if not o then ns.Print("no order with that id.") return end
-            local status = (sub == "done" and "done") or (sub == "cancel" and "cancelled") or "grouped"
-            ns.Orders.SetStatus(o, status, now)
-            ns.Print(string.format("order #%d %s.", o.id, sub == "reopen" and "reopened" or (sub == "done" and "closed" or "cancelled")))
-        else
-            ns.Print("usage: /tm order add <player> | done <id> | cancel <id> "
-                .. "| reopen <id> | removeitem <id> <item name>")
-        end
-    elseif cmd == "income" then
-        ns.Ledger.Report()
-    elseif cmd == "adv" then
-        local sub = rest:lower()
-        if sub == "all" or sub == "none" or sub == "rare" or sub == "epic" then
-            local n = ns.Barker.ApplyAdvertiseFilter(book, sub, profile)
-            ns.Print(string.format("advertising %d recipes (%s).", n, sub))
-        elseif sub:sub(1, 1) == "+" or sub:sub(1, 1) == "-" then
-            local on = sub:sub(1, 1) == "+"
-            local n = ns.Barker.SetAdvertiseMatching(book, rest:sub(2), on)
-            ns.Print(string.format("%s %d recipes matching '%s'.", on and "added" or "removed", n, rest:sub(2)))
-        else
-            local list = ns.Barker.AdvertisedEntries()
-            ns.Print(string.format("advertising %d recipes:", #list))
-            for i = 1, math.min(#list, 40) do
-                ns.Print("  " .. (book[list[i].itemID].link or list[i].name))
-            end
-            if #list > 40 then ns.Print(string.format("  ...and %d more", #list - 40)) end
-            ns.Print("usage: /tm adv epic | rare | all | none | +<text> | -<text>")
-        end
-    elseif cmd == "send" then
-        local ok, info = ns.Barker.Tick(true)
-        if not ok then ns.Print("bark skipped: " .. tostring(info)) end
-    elseif cmd == "preview" then
-        local msg, _, used = ns.Barker.Preview()
-        if not msg then
-            ns.Print("nothing to advertise. Scan your book first.")
-        else
-            ns.Print(string.format("next bark (%d %s, %d chars):", used, profile.craftNoun[2], #msg))
-            ns.Print("  " .. msg)
-        end
-    elseif cmd == "try" or cmd == "trywhisper" or cmd == "tryparty" then
-        if rest == "" then
-            ns.Print("usage: /tm " .. cmd .. " <message>")
-            return
-        end
-        local fn = (cmd == "try" and ns.Events.OnTradeMessage)
-            or (cmd == "trywhisper" and ns.Events.OnWhisper) or ns.Events.OnParty
-        local r = fn(rest, "TestDummy", { dryRun = true })
-        if r then
-            ns.Print(string.format("verdict |cffffffff%s|r (%s), seller %d buyer %d net %d",
-                r.verdict, r.reason, r.sellerScore or 0, r.buyerScore or 0, r.netScore or 0))
-            ns.Print(ns.Log.DescribeHits(r))
-        end
-    elseif cmd == "debug" then
-        ns.db.settings.debug = not ns.db.settings.debug
-        ns.Print("debug " .. onoff(ns.db.settings.debug))
-    elseif cmd == "capture" then
-        local s = ns.db.settings
-        s.captureAll = not s.captureAll
-        if s.captureAll then
-            ns.Print("capture |cff44ff44on|r. Recording every Trade message, matched or not. Run /reload to flush it to disk.")
-        else
-            ns.Print(string.format("capture |cffff4444off|r. %d messages held.", #(ns.db.capture or {})))
-        end
-    elseif cmd == "status" then
-        local s = ns.db.settings
-        local pd = ns.Prof.Active()
-        local n, products, noun = ns.Prof.BookCounts(profile, book)
-        local age = pd and pd.bookScannedAt > 0 and math.floor((ns.Now() - pd.bookScannedAt) / 60) or -1
-        if not ns.Enabled() then
-            ns.Print("|cffff4444TradeMaster is disabled.|r /tm enable to switch it on.")
-        end
-        ns.Print(string.format("active profession: %s   known: %s",
-            profile.key ~= "generic" and profile.name or "none", table.concat(ns.Prof.Known(), ", ")))
-        ns.Print(string.format("invites %s (all scanned)   barking %s (%ds, timer %s, active only)   capture %s   debug %s",
-            onoff(ns.db.settings.invites ~= false), onoff(ps.bark.enabled), ps.bark.intervalSec,
-            ns.Barker.ticker and ("next in " .. ns.Barker.SecondsUntilDue() .. "s") or "stopped",
-            onoff(s.captureAll), onoff(s.debug)))
-        ns.Print(string.format("advertising %d recipes", #ns.Barker.AdvertisedEntries()))
-        ns.Print(string.format("book: %d recipes (%d %s), scanned %s",
-            n, products, noun, age >= 0 and (age .. " min ago") or "never"))
-        ns.Print(string.format("log: %d entries   capture: %d messages", #ns.db.log, #(ns.db.capture or {})))
-    elseif cmd == "out" then
-        if rest == "" then
-            ns.Print("chat windows:")
-            for i = 1, NUM_CHAT_WINDOWS do
-                local name = GetChatWindowInfo(i)
-                if name and name ~= "" then
-                    ns.Print(string.format("  %d = %s%s", i, name,
-                        ns.db.settings.outputFrame == i and "  |cff44ff44(current)|r" or ""))
-                end
-            end
-            ns.Print("usage: /tm out <number>")
-        else
-            local n = tonumber(rest)
-            if n and _G["ChatFrame" .. n] then
-                ns.db.settings.outputFrame = n
-                ns.Print("TradeMaster output now prints here.")
-            else
-                ns.Print("no such chat window. Run /tm out to list them.")
-            end
-        end
-    elseif cmd == "clearcapture" then
-        ns.db.capture = {}
-        ns.Print("capture cleared.")
-    elseif cmd == "clearflags" then
-        local n = 0
-        for _, st in pairs(ns.db.players) do
-            if st.flaggedSeller then st.flaggedSeller = nil; n = n + 1 end
-        end
-        ns.Print(string.format("cleared the auto seller flag on %d players.", n))
-    elseif cmd == "log" then
-        local entries = ns.Log.Recent(10)
-        if #entries == 0 then ns.Print("log is empty.") end
-        for i = #entries, 1, -1 do
-            ns.Print(ns.Log.Describe(entries[i]))
-            ns.Print(ns.Log.DescribeHits(entries[i]))
-        end
-    else
-        ns.Print("Commands: /tm (open window), /tm prof [name], /tm scan, /tm book, /tm match <text>,")
-        ns.Print("  /tm try <msg>, /tm trywhisper <msg>, /tm tryparty <msg>, /tm bark [secs],")
-        ns.Print("  /tm send, /tm preview, /tm adv epic|rare|all|none|+text|-text,")
-        ns.Print("  /tm invite, /tm log, /tm debug, /tm capture, /tm clearcapture,")
-        ns.Print("  /tm orders, /tm order add|done|cancel|reopen|removeitem, /tm craft,")
-        ns.Print("  /tm probe, /tm spec [auto|none|off|<name>],")
-        ns.Print("  /tm tracker,")
-        ns.Print("  /tm income, /tm market, /tm annotate, /tm clearflags, /tm out [n],")
-        ns.Print("  /tm status, /tm test, /tm disable, /tm enable")
-    end
-end
-
--- Key binding names shown in the game's Key Bindings menu.
-BINDING_HEADER_TRADEMASTER = "TradeMaster"
-BINDING_NAME_TRADEMASTER_BARK = "Send bark to Trade"
-BINDING_NAME_TRADEMASTER_TOGGLE = "Toggle TradeMaster window"
-
--- Called from a key binding, which IS a hardware event, so the protected
--- SendChatMessage is allowed here where a timer callback would be blocked.
-function TradeMaster_BarkNow()
-    local ok, info = ns.Barker.Tick(true)
-    if not ok then ns.Print("bark skipped: " .. tostring(info)) end
-end
-
-function TradeMaster_Toggle()
-    if ns.UI and ns.UI.Toggle then ns.UI.Toggle() else ns.Print("UI not loaded.") end
-end
-
-SLASH_TRADEMASTER1 = "/tm"
-SLASH_TRADEMASTER2 = "/trademaster"
-SlashCmdList["TRADEMASTER"] = HandleSlash
