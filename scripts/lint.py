@@ -95,6 +95,72 @@ def check_self_reference(path, src):
                  % (name, name))
 
 
+def check_unfinished_strings(path, src):
+    """A quoted string that runs past the end of its line.
+
+    Lua does not allow a raw newline inside "..." or '...'; the client refuses to
+    load the file with "unfinished string near ...". luaparser ACCEPTS it, so
+    check_parses above does not catch this and it reaches the game. It got there
+    once, from an editing script that turned an escaped \\n into a real one.
+
+    Long strings and long comments are skipped, because those may span lines.
+    """
+    i, n, line = 0, len(src), 1
+    while i < n:
+        c = src[i]
+
+        if c == "\n":
+            line += 1
+            i += 1
+            continue
+
+        # -- line comment, or --[[ long comment ]]
+        if src.startswith("--", i):
+            m = re.match(r"--\[(=*)\[", src[i:])
+            if m:
+                close = "]" + m.group(1) + "]"
+                end = src.find(close, i + m.end())
+                end = n if end < 0 else end + len(close)
+                line += src.count("\n", i, end)
+                i = end
+                continue
+            end = src.find("\n", i)
+            i = n if end < 0 else end
+            continue
+
+        # [[ long string ]], which is allowed to span lines
+        m = re.match(r"\[(=*)\[", src[i:])
+        if m:
+            close = "]" + m.group(1) + "]"
+            end = src.find(close, i + m.end())
+            end = n if end < 0 else end + len(close)
+            line += src.count("\n", i, end)
+            i = end
+            continue
+
+        if c in "\"'":
+            j = i + 1
+            while j < n:
+                if src[j] == "\\":
+                    # An escaped newline is a legal continuation; anything else
+                    # escaped is one character we simply step over.
+                    if j + 1 < n and src[j + 1] == "\n":
+                        line += 1
+                    j += 2
+                    continue
+                if src[j] == c or src[j] == "\n":
+                    break
+                j += 1
+            if j >= n or src[j] == "\n":
+                note(path, line,
+                     "a quoted string runs past the end of its line; Lua reports this "
+                     "as an unfinished string and refuses to load the file")
+            i = j + 1
+            continue
+
+        i += 1
+
+
 def check_textures(path, src):
     for pattern in BAD_TEXTURES:
         for m in re.finditer(pattern, src):
@@ -197,6 +263,7 @@ def main(argv):
                     path = os.path.join(root, name)
                     src = io.open(path, encoding="utf-8", errors="replace").read()
                     check_parses(path, src)
+                    check_unfinished_strings(path, src)
                     check_self_reference(path, src)
                     check_textures(path, src)
 

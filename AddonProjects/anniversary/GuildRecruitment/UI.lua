@@ -265,8 +265,7 @@ UI.RegisterPage(90, "Settings", function(page)
     local rankNote = Label(page, "The guild window numbers ranks from 1; the game reports "
         .. "them from 0, and this uses the game's numbering, so the guild master is 0 here "
         .. "and 1 there. A lower number is a higher rank, and each name below is read off "
-        .. "your own roster.
-Everyone sets this for themselves, so an officer whose copy "
+        .. "your own roster.\nEveryone sets this for themselves, so an officer whose copy "
         .. "disagrees with yours will accept messages yours ignores. The Officers tab shows "
         .. "who is out of step.",
         "GameFontDisableSmall")

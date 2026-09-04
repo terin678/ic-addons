@@ -43,6 +43,9 @@ with colon methods. That is the old shape; do not copy it into anything new.
 - Comments say why, not what. A comment above a function states what it takes, what it
   returns, and any side effects the caller must know about.
 - No trailing whitespace. Files end with a newline. Unix line endings.
+- A quoted string stays on one line. Lua has no multi-line `"..."`, the client
+  refuses to load a file containing one, and `luaparser` does not notice -- so
+  `scripts/lint.py` checks for it separately. Break long text with `..` instead.
 
 ## Client API rules
 
