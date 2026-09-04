@@ -58,7 +58,8 @@ local DECLINED_MAX = 12
 --
 -- Pure. names are the bracketed names off the line; norm is the whole line, for
 -- the case where they typed it out rather than linking it.
-function Players.Decline(state, norm, names)
+function Players.Decline(state, norm, names, now)
+    state.declinedAt = now or state.declinedAt
     state.declined = state.declined or {}
     local function remember(key)
         key = ns.Util.Normalize(key or "")
@@ -88,7 +89,7 @@ end
 
 function Players.ClearDeclined(state)
     local n = state.declinedOrder and #state.declinedOrder or 0
-    state.declined, state.declinedOrder = nil, nil
+    state.declined, state.declinedOrder, state.declinedAt = nil, nil, nil
     return n
 end
 

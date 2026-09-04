@@ -525,6 +525,10 @@ function Prof.DefaultSettings(profile)
             -- We asked what they needed, they named something we cannot make:
             -- give the group slot back rather than holding it. (1.12.0)
             dropOnNoMatch = true,
+            -- And do not invite them again for a day. They repost the same bare
+            -- request without the item in it, so nothing tells us they have
+            -- stopped wanting the thing we do not have. 0 switches it off.
+            declinedCooldownSec = 86400,
             -- "unsure" shows the message first when we cannot name what they
             -- asked for; "never" trusts the templates, "always" reviews everything.
             confirm = "unsure",

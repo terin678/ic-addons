@@ -428,10 +428,15 @@ function Events.Process(text, author, source, opts)
                     -- Nothing we can offer, so remember the answer and give the
                     -- group slot back. A repost is then blocked rather than
                     -- invited into the same conversation again.
-                    ns.Players.Decline(state, norm, ns.Util.BracketNames(text))
+                    ns.Players.Decline(state, norm, ns.Util.BracketNames(text), now)
+                    local hours = math.floor((ps.invite.declinedCooldownSec or 86400) / 3600)
                     if ps.invite.dropOnNoMatch ~= false and ns.Inviter.Drop(short) then
                         ns.Print(string.format("|cff888888removed %s from the group.|r "
-                            .. "They will not be invited for this again.", short))
+                            .. "No invites for %dh; Clear Flags on the Log tab undoes it.",
+                            short, hours))
+                    else
+                        ns.Print(string.format("|cff888888%s asked for something you do not "
+                            .. "have.|r No invites for %dh.", short, hours))
                     end
                 end
                 state.awaitingItem = nil

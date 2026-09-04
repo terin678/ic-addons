@@ -8,10 +8,25 @@ Inviter.whisperCount = 0
 local WHISPER_WARN_AT = 60
 local WHISPER_DELAY = 1.5
 
+local DAY = 86400
+
 -- Pure. Reasons the invite cannot happen regardless of message content.
 function Inviter.BlockReason(playerState, now, groupSize, settings)
     if settings.enabled == false then return "invites disabled" end
     if groupSize >= settings.maxParty then return "group full" end
+
+    -- We have already told this player we cannot make what they came for. They
+    -- repost the bare "LF LW" without the item in it, so nothing in the new line
+    -- says what they are still after -- but they are, and inviting them again
+    -- plays out the same conversation and ends the same way.
+    if playerState and playerState.declinedAt then
+        local since = now - playerState.declinedAt
+        local window = settings.declinedCooldownSec or DAY
+        if window > 0 and since < window then
+            if since < 3600 then return "told them no just now" end
+            return string.format("told them no %dh ago", math.floor(since / 3600))
+        end
+    end
     if playerState and playerState.lastInviteAt
         and (now - playerState.lastInviteAt) < settings.playerCooldownSec then
         return "cooldown"

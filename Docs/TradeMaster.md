@@ -229,12 +229,19 @@ this reply goes out whether or not "suggest alternatives" is on. If there is not
 offer either, it also gives the group slot back — `UninviteUnit`, never in combat, off with
 `invite.dropOnNoMatch` — and remembers the answer.
 
-**Remembering** means the item, not the person. The next time they name that item, in any
-channel and with any wrapping around it, the invite is blocked with "already told them no"
-in the Log. A bare `LF LW` from them is still a fresh ask, because next week they may want
-something you do have. Twelve items are remembered per player, oldest dropped first; **Clear
-Flags** on the Log tab forgets all of them. That is separate from **Never invite**, which you
-set by hand and which nothing clears for you.
+**Remembering** works two ways, because one of them is not enough on its own.
+
+The **person** is left alone for a day (`invite.declinedCooldownSec`, 0 to switch it off).
+This is the one that matters: someone told no goes back to Trade and reposts the bare
+`LF LW`, without the item in it, several times over. Nothing in those lines says what they
+still want, and they still want it, so only the clock can answer. The Log shows the invite
+blocked as "told them no 4h ago".
+
+The **item** is remembered for longer. Naming it again, in any channel and with any wrapping,
+is blocked even after the day is up. Twelve items per player, oldest dropped first.
+
+**Clear Flags** on the Log tab forgets both, for everyone. That is separate from **Never
+invite**, which you set by hand, has no expiry, and nothing here touches.
 
 ### Knows which specialist you are
 

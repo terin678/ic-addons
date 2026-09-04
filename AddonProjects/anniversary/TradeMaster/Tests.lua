@@ -1629,3 +1629,38 @@ T.Case("Players: the memory is capped and does not grow forever", function()
     ns.Players.Decline(dup, "same thing", {})
     T.Eq(#dup.declinedOrder, 1, "no duplicates")
 end)
+
+T.Case("Invites: someone we told no is left alone for a day", function()
+    -- Remyy reposted "LF LW" four more times with the item left out. Nothing in
+    -- those lines says what they still want, so only the clock can answer.
+    local settings = { enabled = true, maxParty = 5, playerCooldownSec = 600,
+                       declinedCooldownSec = 86400 }
+    local state = { declinedAt = 1000 }
+
+    T.Eq(ns.Inviter.BlockReason(state, 1000, 1, settings), "told them no just now", "at once")
+    T.Eq(ns.Inviter.BlockReason(state, 1000 + 3600 * 4, 1, settings), "told them no 4h ago",
+        "and four hours later")
+    T.Eq(ns.Inviter.BlockReason(state, 1000 + 86400, 1, settings), nil, "a day out, invite away")
+
+    -- Off means off, and someone we never declined is unaffected.
+    local off = { enabled = true, maxParty = 5, playerCooldownSec = 600, declinedCooldownSec = 0 }
+    T.Eq(ns.Inviter.BlockReason(state, 1100, 1, off), nil, "zero switches it off")
+    T.Eq(ns.Inviter.BlockReason({}, 1100, 1, settings), nil, "nobody was told anything")
+
+    -- The operational blocks still come first: a full group is a full group.
+    T.Eq(ns.Inviter.BlockReason(state, 1100, 5, settings), "group full", "order kept")
+end)
+
+T.Case("Players: declining stamps the clock, clearing unstamps it", function()
+    local state = {}
+    ns.Players.Decline(state, "fel leather gloves", { "Fel Leather Gloves" }, 500)
+    T.Eq(state.declinedAt, 500, "stamped")
+
+    -- A later decline moves it on; the memory of what was asked keeps building.
+    ns.Players.Decline(state, "felstalker belt", { "Felstalker Belt" }, 900)
+    T.Eq(state.declinedAt, 900, "the clock restarts on the newest no")
+    T.Eq(ns.Players.WasDeclined(state, "fel leather gloves", {}), true, "the older one is kept")
+
+    ns.Players.ClearDeclined(state)
+    T.Eq(state.declinedAt, nil, "Clear Flags lets them back in")
+end)
