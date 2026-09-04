@@ -53,11 +53,11 @@ Marker.BACKUP_DELAY_SECONDS = 1.5
 function Marker.ApplyPublished(payload, now)
     local published, detail = {}, {}
 
-    for key, icon, intent, owner in string.gmatch(payload or "", "([^=,]+)=(%d+)=(%u+)=([^,]*)") do
-        published[key] = tonumber(icon)
-        detail[key] = { intent = intent, owner = owner ~= "" and owner or nil }
-        if not Marker.firstPublishedAt[key] then
-            Marker.firstPublishedAt[key] = now
+    for _, a in ipairs(Marker.DecodeAssignments(payload)) do
+        published[a.key] = a.icon
+        detail[a.key] = { intent = a.intent, owner = a.owner }
+        if not Marker.firstPublishedAt[a.key] then
+            Marker.firstPublishedAt[a.key] = now
         end
     end
 
@@ -195,6 +195,41 @@ function Marker.DiagnoseState(state)
 
     reasons[#reasons + 1] = "marking " .. state.desiredCount .. " of " .. state.candidateCount .. " visible mobs"
     return reasons
+end
+
+-- Assignment payload: "key=icon=INTENT=owner" entries joined by commas, with
+-- an empty owner for intents that need none. Pure.
+--
+-- Kept as one string rather than one message per assignment because the whole
+-- map has to arrive together: a half-applied map marks some mobs and not
+-- others, which is worse than marking none.
+function Marker.EncodeAssignments(list)
+    local parts = {}
+    for _, a in ipairs(list) do
+        parts[#parts + 1] = string.format("%s=%d=%s=%s", a.key, a.icon, a.intent, a.owner or "")
+    end
+    return table.concat(parts, ",")
+end
+
+-- Takes an assignment payload. Returns an array of { key, icon, intent, owner }.
+-- Entries that do not match in full are dropped rather than half-read, because
+-- a truncated transfer must not produce an assignment with a missing icon. Pure.
+function Marker.DecodeAssignments(payload)
+    local list = {}
+    if type(payload) ~= "string" then
+        return list
+    end
+
+    for key, icon, intent, owner in string.gmatch(payload, "([%d]+:%x+)=(%d+)=(%u+)=([^,]*)") do
+        list[#list + 1] = {
+            key = key,
+            icon = tonumber(icon),
+            intent = intent,
+            owner = owner ~= "" and owner or nil,
+        }
+    end
+
+    return list
 end
 
 -- Returns whether the player may place raid icons, and a reason when they may
@@ -371,7 +406,7 @@ function Marker:Tick(elapsed)
                 function(npcID) return MFD.Comms:IsRuled(npcID) end,
                 MFD.Comms.SIGHTINGS_PER_MESSAGE, now, MFD.Comms.SIGHTING_REFRESH_SECONDS)
             if #pending > 0 then
-                MFD.Comms:Send("S", { table.concat(pending, ",") })
+                MFD.Comms:Send("S", { MFD.Comms.EncodeSightings(pending) })
             end
         end
 
@@ -423,11 +458,7 @@ function Marker:Tick(elapsed)
 
     -- Publish only when the map actually changed. The tick runs five times a
     -- second; publishing every time would consume the entire channel budget.
-    local parts = {}
-    for _, a in ipairs(desired.list) do
-        parts[#parts + 1] = string.format("%s=%d=%s=%s", a.key, a.icon, a.intent, a.owner or "")
-    end
-    local payload = table.concat(parts, ",")
+    local payload = Marker.EncodeAssignments(desired.list)
 
     if payload ~= Marker.lastPublishedPayload then
         Marker.lastPublishedPayload = payload

@@ -165,6 +165,28 @@ function Comms.ResolveAuthority(peers, designation, now)
     return best.peer.name, "elected", reason
 end
 
+-- Sighting payload: "key:npcID" entries joined by commas. Pure.
+function Comms.EncodeSightings(entries)
+    return table.concat(entries or {}, ",")
+end
+
+-- Takes a sighting payload. Returns an array of { key, npcID }. Anything that
+-- does not match in full is ignored, so a corrupt batch cannot inject a
+-- candidate with a nil npcID that the allocator would then have to guess at.
+-- Pure.
+function Comms.DecodeSightings(payload)
+    local list = {}
+    if type(payload) ~= "string" then
+        return list
+    end
+
+    for key, npcID in string.gmatch(payload, "([%d]+:%x+):(%d+)") do
+        list[#list + 1] = { key = key, npcID = tonumber(npcID) }
+    end
+
+    return list
+end
+
 local queue = {}
 local peers = {}
 local sendAccumulator = 0
@@ -572,9 +594,9 @@ function Comms:HandleRuleMessage(msgType, fields, sender)
         -- grace window unless the backup keeps re-reporting them.
         if Comms:IsAuthority() then
             local now = GetTime()
-            for key, npcID in string.gmatch(fields[1] or "", "(%d+:%x+):(%d+)") do
-                MFD.Candidates.Observe(MFD.Candidates.set, key, tonumber(npcID), nil, now)
-                local entry = MFD.Candidates.set[key]
+            for _, sighting in ipairs(Comms.DecodeSightings(fields[1])) do
+                MFD.Candidates.Observe(MFD.Candidates.set, sighting.key, sighting.npcID, nil, now)
+                local entry = MFD.Candidates.set[sighting.key]
                 if entry and not entry.unit then
                     entry.lostAt = now
                 end

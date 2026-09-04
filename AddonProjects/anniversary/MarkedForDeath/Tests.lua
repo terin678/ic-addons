@@ -1668,4 +1668,53 @@ T.Case("Comms: a type with no fields still decodes", function()
     T.Eq(#fields, 0, "no fields")
 end)
 
+-- The assignment and sighting payloads are the two messages that have never
+-- been exercised with a second client, and they carry the coverage feature.
+T.Case("Assignments: encode and decode round-trip", function()
+    local list = {
+        { key = "22890:1A2B", icon = 8, intent = "KILL" },
+        { key = "22880:3C4D", icon = 5, intent = "SHEEP", owner = "Grimmtusk" },
+    }
+    local decoded = MFD.Marker.DecodeAssignments(MFD.Marker.EncodeAssignments(list))
+    T.Eq(#decoded, 2, "both")
+    T.Eq(decoded[1].key, "22890:1A2B", "key")
+    T.Eq(decoded[1].icon, 8, "icon as a number")
+    T.Eq(decoded[1].intent, "KILL", "intent")
+    T.Eq(decoded[1].owner, nil, "no owner stays nil, not empty string")
+    T.Eq(decoded[2].owner, "Grimmtusk", "owner")
+end)
+
+T.Case("Assignments: an empty list round-trips to nothing", function()
+    T.Eq(MFD.Marker.EncodeAssignments({}), "", "empty payload")
+    T.Eq(#MFD.Marker.DecodeAssignments(""), 0, "decodes to no assignments")
+end)
+
+T.Case("Assignments: a truncated or corrupt payload yields only whole entries", function()
+    local decoded = MFD.Marker.DecodeAssignments("22890:1A2B=8=KILL=,22880:3C")
+    T.Eq(#decoded, 1, "the complete one survives, the fragment is dropped")
+    T.Eq(decoded[1].key, "22890:1A2B", "the whole entry")
+end)
+
+T.Case("Assignments: encoding is stable so an unchanged map is not republished", function()
+    local list = {
+        { key = "22880:3C4D", icon = 5, intent = "SHEEP", owner = "Grimmtusk" },
+        { key = "22890:1A2B", icon = 8, intent = "KILL" },
+    }
+    T.Eq(MFD.Marker.EncodeAssignments(list), MFD.Marker.EncodeAssignments(list), "same input, same bytes")
+end)
+
+T.Case("Sightings: encode and decode round-trip", function()
+    local decoded = MFD.Comms.DecodeSightings(MFD.Comms.EncodeSightings({ "100:AAA:100", "200:BBB:200" }))
+    T.Eq(#decoded, 2, "both")
+    T.Eq(decoded[1].key, "100:AAA", "key")
+    T.Eq(decoded[1].npcID, 100, "npcID as a number")
+    T.Eq(decoded[2].key, "200:BBB", "second")
+end)
+
+T.Case("Sightings: rubbish yields nothing rather than a bad candidate", function()
+    T.Eq(#MFD.Comms.DecodeSightings(""), 0, "empty")
+    T.Eq(#MFD.Comms.DecodeSightings("not a sighting"), 0, "rubbish")
+    T.Eq(#MFD.Comms.DecodeSightings(nil), 0, "nil")
+end)
+
 _G.MarkedForDeath = MFD
