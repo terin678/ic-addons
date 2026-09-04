@@ -209,7 +209,9 @@ for _, raid in ipairs(RAIDS) do
 end
 print("total: " .. total)
 
-local out = assert(io.open(outPath, "w"))
+-- Binary mode: text mode on Windows would write CRLF, and the repo requires
+-- Unix line endings for Lua.
+local out = assert(io.open(outPath, "wb"))
 out:write([[
 -- Bundled TBC raid creature table. Pure data, no logic.
 --
