@@ -83,8 +83,12 @@ mid-fight cannot shove it across the screen.
 the bar is just a box sitting on your screen while you post auctions. It comes back on its
 own when you zone in. Turn that off in Settings to keep it up everywhere.
 
-It is on by default. `/mfd bar` hides and shows it, `/mfd bar lock` locks it, and
-`/mfd bar reset` puts it back in the middle if it ends up somewhere unreachable.
+**To get rid of it**, click the button in its top right corner. `/mfd bar` brings it back,
+as do the minimap shift-click menu, the Settings checkbox and its keybind. It is on by
+default. `/mfd bar lock` locks it in place, which hides both the close button and the
+resize grip so neither can be hit by accident mid-fight; the command still works, so
+locking can never strand it. `/mfd bar reset` puts it back in the middle if it ends up
+somewhere unreachable.
 
 **Every button is also bindable.** Key Bindings, Marked For Death: put Clear and Re-mark
 on spare mouse buttons and you never reach for the bar at all. That is the better answer

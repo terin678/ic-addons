@@ -93,6 +93,33 @@ local function build()
         saveGeometry()
     end)
 
+    -- A way to dismiss it from the bar itself. There were already four ways to
+    -- hide this thing and not one of them was on the thing, which is the first
+    -- place anybody looks.
+    frame.close = CreateFrame("Button", nil, frame)
+    frame.close:SetSize(14, 14)
+    frame.close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -3, -1)
+    frame.close:SetNormalTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Up")
+    frame.close:SetPushedTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Down")
+    frame.close:SetHighlightTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Highlight")
+
+    frame.close:SetScript("OnClick", function()
+        Bar:SetShown(false)
+        -- Say how to get it back in the same breath. A window that vanishes
+        -- with no way back visible is a window you have lost.
+        MFD.Print("action bar hidden. |cffffd100/mfd bar|r brings it back, "
+            .. "or the minimap menu, or its keybind.")
+    end)
+
+    frame.close:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        GameTooltip:AddLine("Hide the action bar")
+        GameTooltip:AddLine("/mfd bar brings it back, as does the minimap shift-click menu "
+            .. "and its keybind under Key Bindings, Marked For Death.", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    frame.close:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
     MFD.Actions.BuildBar(frame)
 
     -- The resize grip. Dragging it sets the width; the buttons rewrap to suit
@@ -159,8 +186,12 @@ function Bar:UpdateLock()
         return
     end
 
+    -- Locked means the bar is furniture: nothing on its chrome can be clicked
+    -- by accident mid-fight, the close button included. The command still works
+    -- either way, so locking can never strand it on screen.
     local isLocked = settings().isLocked
     frame.grip:SetShown(not isLocked)
+    frame.close:SetShown(not isLocked)
     frame.title:SetText(isLocked and "" or "Marked For Death")
     frame.bg:SetColorTexture(0, 0, 0, isLocked and 0.3 or 0.55)
 end

@@ -138,7 +138,7 @@ local TOGGLES = {
     },
     {
         label = "Lock the action bar",
-        tip = "Hides its resize grip and refuses drags, so a stray click mid-fight cannot shove it across the screen. /mfd bar reset puts it back in the middle.",
+        tip = "Hides its resize grip and close button and refuses drags, so a stray click mid-fight cannot shove it across the screen or dismiss it. /mfd bar still works, so locking can never strand it. /mfd bar reset puts it back in the middle.",
         get = function() return MFD.db.settings.actionBar.isLocked end,
         set = function(v)
             MFD.db.settings.actionBar.isLocked = v
