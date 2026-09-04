@@ -357,8 +357,11 @@ end
 -- Recomputes the desired map from the current candidates, rules and seats.
 function Marker:Desired()
     local seats = Marker.ResolvedSeats(MFD.db.seatPlan)
-    local rules = MFD.Rules.Active and MFD.Rules.Active() or {}
-    return MFD.Allocator.Compute(MFD.Candidates.ToList(MFD.Candidates.set), rules, seats, Marker.locked)
+    local candidates = MFD.Candidates.ToList(MFD.Candidates.set)
+    -- Rules may be filed by npcID or by name; the allocator only thinks in
+    -- ids, so name rules are matched onto the mobs actually on screen first.
+    local rules = MFD.Rules.ResolveForCandidates(MFD.Rules.Active(), candidates)
+    return MFD.Allocator.Compute(candidates, rules, seats, Marker.locked)
 end
 
 -- Gathers the live pipeline state and runs it through DiagnoseState. Returns

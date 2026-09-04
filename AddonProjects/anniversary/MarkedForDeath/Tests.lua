@@ -1793,4 +1793,132 @@ T.Case("Durability: zero broken is reported as zero, not dropped", function()
     T.Eq(row.state.brokenItems, 0, "known to be none")
 end)
 
+-- Rules typed by name, for planning a raid you have not walked yet. A rule
+-- with no npcID matches any mob whose name matches, so a whole instance can be
+-- written out from a guide before the addon has ever seen the place.
+T.Case("Rules: a name-only rule gets a stable merge key", function()
+    T.Eq(MFD.Rules.MergeKey({ npcID = 22890, name = "Illidari Nightlord" }), 22890, "id wins when present")
+    T.Eq(MFD.Rules.MergeKey({ name = "Illidari Nightlord" }), "name:illidari nightlord", "else the lowercased name")
+    T.Eq(MFD.Rules.MergeKey({ name = "ILLIDARI NIGHTLORD" }), "name:illidari nightlord", "case does not fork the key")
+    T.Eq(MFD.Rules.MergeKey({}), nil, "a rule with neither is not a rule")
+end)
+
+T.Case("Rules: name-only rules from two contributors still resolve lead-first", function()
+    local merged = MFD.Rules.Merge({
+        { owner = "Grimmtusk", rules = { BT = { { name = "Illidari Nightlord", intent = "BANISH", rank = 5 } } } },
+        { owner = "Dillon", rules = { BT = { { name = "Illidari Nightlord", intent = "SHEEP", rank = 40 } } } },
+    }, "Dillon")
+    T.Eq(merged.BT["name:illidari nightlord"].intent, "SHEEP", "the lead's version wins")
+    T.Eq(merged.BT["name:illidari nightlord"].owner, "Dillon", "and carries their name")
+end)
+
+T.Case("Resolve: an id rule matches the candidate carrying that id", function()
+    local active = { [22890] = { npcID = 22890, intent = "SHEEP", rank = 10 } }
+    local resolved = MFD.Rules.ResolveForCandidates(active, {
+        { key = "22890:A", npcID = 22890, name = "Illidari Nightlord" },
+    })
+    T.Eq(resolved[22890].intent, "SHEEP", "matched by id")
+end)
+
+T.Case("Resolve: a name-only rule matches by name, case insensitively", function()
+    local active = { ["name:illidari nightlord"] = { name = "Illidari Nightlord", intent = "SHEEP", rank = 10 } }
+    local resolved = MFD.Rules.ResolveForCandidates(active, {
+        { key = "22890:A", npcID = 22890, name = "illidari nightlord" },
+    })
+    T.Eq(resolved[22890].intent, "SHEEP", "matched by name onto the live id")
+end)
+
+T.Case("Resolve: one name rule covers every id sharing that name", function()
+    local active = { ["name:shadowmoon champion"] = { name = "Shadowmoon Champion", intent = "KILL", rank = 10 } }
+    local resolved = MFD.Rules.ResolveForCandidates(active, {
+        { key = "100:A", npcID = 100, name = "Shadowmoon Champion" },
+        { key = "200:B", npcID = 200, name = "Shadowmoon Champion" },
+    })
+    T.Eq(resolved[100].intent, "KILL", "first id")
+    T.Eq(resolved[200].intent, "KILL", "second id, same rule")
+end)
+
+T.Case("Resolve: an id rule beats a name rule for the same mob", function()
+    local active = {
+        [22890] = { npcID = 22890, intent = "BANISH", rank = 5 },
+        ["name:illidari nightlord"] = { name = "Illidari Nightlord", intent = "SHEEP", rank = 10 },
+    }
+    local resolved = MFD.Rules.ResolveForCandidates(active, {
+        { key = "22890:A", npcID = 22890, name = "Illidari Nightlord" },
+    })
+    T.Eq(resolved[22890].intent, "BANISH", "the more specific rule wins")
+end)
+
+T.Case("Resolve: a name rule with nothing on screen matching it is simply absent", function()
+    local active = { ["name:illidari nightlord"] = { name = "Illidari Nightlord", intent = "SHEEP", rank = 10 } }
+    T.Eq(next(MFD.Rules.ResolveForCandidates(active, {})), nil, "no candidates")
+    T.Eq(next(MFD.Rules.ResolveForCandidates(active, { { key = "1:A", npcID = 1, name = "Something Else" } })), nil, "no match")
+end)
+
+T.Case("Resolve: a candidate with no name still matches its id rule", function()
+    local active = { [22890] = { npcID = 22890, intent = "KILL", rank = 10 } }
+    local resolved = MFD.Rules.ResolveForCandidates(active, { { key = "22890:A", npcID = 22890 } })
+    T.Eq(resolved[22890].intent, "KILL", "a peer sighting carries no name and must still work")
+end)
+
+T.Case("Ranked: name-only and id rules sort together by rank", function()
+    local ranked = MFD.Rules.Ranked({
+        ["name:b mob"] = { name = "B Mob", rank = 20 },
+        [100] = { npcID = 100, name = "A Mob", rank = 10 },
+    })
+    T.Eq(ranked[1].name, "A Mob", "lowest rank first regardless of key shape")
+    T.Eq(ranked[2].name, "B Mob", "second")
+end)
+
+-- Bulk entry: paste a kill order straight out of a guide, one mob per line,
+-- top line highest priority.
+T.Case("Bulk: one name per line becomes rules in the order given", function()
+    local rules = MFD.Rules.ParseBulk("Illidari Nightlord\nShadowmoon Champion\nIllidari Fearbringer")
+    T.Eq(#rules, 3, "three rules")
+    T.Eq(rules[1].name, "Illidari Nightlord", "first line")
+    T.Eq(rules[1].rank, 10, "highest priority")
+    T.Eq(rules[2].rank, 20, "then the next")
+    T.Eq(rules[3].rank, 30, "spaced by the rank step")
+    T.Eq(rules[1].intent, "KILL", "kill unless told otherwise")
+end)
+
+T.Case("Bulk: an intent can follow the name after an equals sign", function()
+    local rules = MFD.Rules.ParseBulk("Illidari Nightlord = sheep\nSummoner = banish")
+    T.Eq(rules[1].intent, "SHEEP", "case insensitive")
+    T.Eq(rules[1].name, "Illidari Nightlord", "name is trimmed")
+    T.Eq(rules[2].intent, "BANISH", "second")
+end)
+
+T.Case("Bulk: blank lines and comments are skipped without shifting priority", function()
+    local rules = MFD.Rules.ParseBulk("-- first pack\nIllidari Nightlord\n\n   \n# second pack\nShadowmoon Champion")
+    T.Eq(#rules, 2, "only the two mobs")
+    T.Eq(rules[1].rank, 10, "priority counts mobs, not lines")
+    T.Eq(rules[2].rank, 20, "second mob")
+end)
+
+T.Case("Bulk: an unknown intent fails the whole paste rather than importing half", function()
+    local rules, err = MFD.Rules.ParseBulk("Good Mob = sheep\nBad Mob = frobnicate")
+    T.Eq(rules, nil, "nothing imported")
+    T.Eq(err, "line 2: unknown job 'frobnicate'", "and it says which line")
+end)
+
+T.Case("Bulk: an empty paste is an error, not an empty rule set", function()
+    local rules, err = MFD.Rules.ParseBulk("\n\n  \n")
+    T.Eq(rules, nil, "nothing to import")
+    T.Eq(type(err), "string", "with a reason")
+end)
+
+T.Case("Bulk: a duplicate name is rejected so the paste cannot fight itself", function()
+    local rules, err = MFD.Rules.ParseBulk("Illidari Nightlord\nillidari nightlord = sheep")
+    T.Eq(rules, nil, "rejected")
+    T.Eq(err, "line 2: 'illidari nightlord' is already in this list", "naming the collision")
+end)
+
+T.Case("Bulk: an npcID can be given instead of a name", function()
+    local rules = MFD.Rules.ParseBulk("22890 = sheep\nIllidari Fearbringer")
+    T.Eq(rules[1].npcID, 22890, "numeric lines are ids")
+    T.Eq(rules[1].name, nil, "and carry no name")
+    T.Eq(rules[2].npcID, nil, "the other stays a name rule")
+end)
+
 _G.MarkedForDeath = MFD

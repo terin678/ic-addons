@@ -48,6 +48,38 @@ and the minimap button itself.
 
 `/mfd minimap` brings the button back if you hide it.
 
+## Planning a raid before you walk in
+
+You do not have to be standing in an instance, and the addon does not have to know the mob.
+
+Open `/mfd rules`, click the filter button until it reads the instance you are planning
+(Black Temple, Hyjal, whichever), and build the list from the bank in Shattrath if you
+like. Rules go to the zone the filter names, not to wherever you are standing.
+
+For a whole instance at once, click **Paste list** (or `/mfd bulk`) and paste a kill
+order, best target first:
+
+```
+-- first pull
+Illidari Nightlord = sheep
+Shadowmoon Champion
+Illidari Fearbringer = banish
+
+-- second pull
+Shadowmoon Houndmaster
+22890 = trap
+```
+
+One mob per line. Add `= sheep`, `= banish`, `= trap` and so on for a job; anything without
+one is a kill target. Blank lines and lines starting with `--` or `#` are ignored, so you
+can annotate by pack. Line order is priority order: the first line gets Skull. A line the
+addon cannot understand fails the whole paste rather than importing half a plan.
+
+Mobs you have never seen are fine. A rule with just a name matches any mob with that name,
+so a list typed from a guide works the first time the raid walks past. Once the addon has
+seen a mob it will also appear in the search box, where **Add** files it by npc id, which
+is more precise. Both kinds live in the same list and sort together.
+
 ## First night
 
 1. Enemy nameplates must be on. The addon can only touch a mob it has a nameplate for.
@@ -90,6 +122,8 @@ Every command is in `/mfd help`.
 | `/mfd coverage` | Mobs you have seen that the bundled database does not list. |
 | `/mfd minimap` | Hide or show the minimap button. |
 | `/mfd sound` | Toggle the sound played when a rule cannot work on its target. |
+| `/mfd bulk` | Paste a whole kill order for a zone, one mob per line. |
+| `/mfd addname <name>` | Add a rule by typing a mob name, for a mob the addon has never seen. |
 | `/mfd options` | Settings: every toggle the addon has, and buttons to every window. |
 | `/mfd check` | The full raid check grid: consumables, raid buffs, blessings, durability, spec and addon version for everyone. |
 | `/mfd buffs` | The quick buff board: only the people missing something. Works in a pug, no ready check needed. |

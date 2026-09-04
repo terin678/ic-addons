@@ -22,12 +22,17 @@ Candidates.set = {}
 -- Records or refreshes a unit in set. Mutates set. Reobserving a unit that had
 -- been lost restores its unit token and clears the loss stamp, so it will not
 -- be pruned.
-function Candidates.Observe(set, key, npcID, unit, now)
+-- name is optional: a mob known only from a peer sighting arrives without one
+-- and matches its rules by npcID alone. A name once learned is never cleared,
+-- because a later sighting with no name must not lose it.
+function Candidates.Observe(set, key, npcID, unit, now, name)
     local entry = set[key]
     if not entry then
         entry = { key = key, npcID = npcID }
         set[key] = entry
     end
+
+    entry.name = name or entry.name
 
     -- A nameplate token is the only durable handle on a mob. Targeting one
     -- must not downgrade it to "target", which stops meaning that mob the
@@ -80,7 +85,7 @@ function Candidates.ToList(set)
     local list = {}
 
     for _, key in ipairs(MFD.H.SortedKeys(set)) do
-        list[#list + 1] = { key = key, npcID = set[key].npcID }
+        list[#list + 1] = { key = key, npcID = set[key].npcID, name = set[key].name }
     end
 
     return list
@@ -138,7 +143,8 @@ function Candidates.ObserveUnit(unit, now)
     end
 
     local npcID = MFD.H.NpcIDFromKey(key)
-    Candidates.Observe(Candidates.set, key, npcID, unit, now)
+    local name = UnitName(unit)
+    Candidates.Observe(Candidates.set, key, npcID, unit, now, name)
 
     -- Learn the mob the first time it is seen, so anything the bundled
     -- database missed becomes searchable rather than being unreachable forever.

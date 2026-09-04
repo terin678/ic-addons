@@ -22,6 +22,23 @@ Rules.RANK_STEP = 10
 -- Otherwise the lowest contributor name ascending wins. Both are deterministic,
 -- so every client computes the same table from the same inputs regardless of
 -- the order contributions arrived in.
+-- The key a rule is filed under. An npcID when the rule names one, otherwise
+-- the lowercased mob name, so a rule can be written for a mob the addon has
+-- never seen. Returns nil for a rule that names neither. Pure.
+--
+-- Name rules exist so a whole instance can be planned from a guide before ever
+-- walking in. Requiring an npcID would mean you can only make a rule for a mob
+-- you have already stood next to, which is exactly backwards for raid prep.
+function Rules.MergeKey(rule)
+    if rule.npcID then
+        return rule.npcID
+    end
+    if type(rule.name) == "string" and rule.name ~= "" then
+        return "name:" .. string.lower(rule.name)
+    end
+    return nil
+end
+
 function Rules.Merge(contributions, leadName)
     local byOwner = {}
     for _, c in ipairs(contributions) do
@@ -35,10 +52,11 @@ function Rules.Merge(contributions, leadName)
         for _, instanceKey in ipairs(MFD.H.SortedKeys(contribution.rules)) do
             merged[instanceKey] = merged[instanceKey] or {}
             for _, rule in ipairs(contribution.rules[instanceKey]) do
-                if merged[instanceKey][rule.npcID] == nil then
+                local mergeKey = Rules.MergeKey(rule)
+                if mergeKey ~= nil and merged[instanceKey][mergeKey] == nil then
                     local copy = MFD.H.DeepCopy(rule)
                     copy.owner = contribution.owner
-                    merged[instanceKey][rule.npcID] = copy
+                    merged[instanceKey][mergeKey] = copy
                 end
             end
         end
@@ -68,14 +86,113 @@ function Rules.Ranked(byNpcID)
         list[#list + 1] = byNpcID[npcID]
     end
 
+    -- The tiebreak compares merge keys as strings because a rule written by
+    -- name has no npcID to compare, and a nil comparison would error.
     table.sort(list, function(a, b)
         if a.rank ~= b.rank then
             return a.rank < b.rank
         end
-        return a.npcID < b.npcID
+        return tostring(Rules.MergeKey(a)) < tostring(Rules.MergeKey(b))
     end)
 
     return list
+end
+
+-- Parses a pasted kill order. One mob per line, highest priority first, with
+-- an optional job after an equals sign:
+--
+--     Illidari Nightlord = sheep
+--     Shadowmoon Champion
+--     22890 = banish
+--
+-- Blank lines and lines starting with -- or # are ignored, so a list can be
+-- annotated by pack. Returns an array of rules ready to file, or nil and a
+-- reason naming the offending line. Pure.
+--
+-- A bad line fails the whole paste rather than importing what parsed, because
+-- a half-imported kill order is worse than none: it looks complete and is not.
+function Rules.ParseBulk(text)
+    if type(text) ~= "string" then
+        return nil, "nothing to import"
+    end
+
+    local rules, seen = {}, {}
+    local lineNumber = 0
+
+    for line in string.gmatch(text .. "\n", "([^\n]*)\n") do
+        lineNumber = lineNumber + 1
+        local trimmed = string.match(line, "^%s*(.-)%s*$")
+
+        local isComment = string.sub(trimmed, 1, 2) == "--" or string.sub(trimmed, 1, 1) == "#"
+        if trimmed ~= "" and not isComment then
+            local subject, job = string.match(trimmed, "^(.-)%s*=%s*(.-)$")
+            if not subject or subject == "" then
+                subject, job = trimmed, nil
+            end
+
+            local intent = "KILL"
+            if job and job ~= "" then
+                intent = string.upper(job)
+                if not MFD.Seats.INTENTS[intent] then
+                    return nil, "line " .. lineNumber .. ": unknown job '" .. job .. "'"
+                end
+            end
+
+            local dedupeKey = string.lower(subject)
+            if seen[dedupeKey] then
+                return nil, "line " .. lineNumber .. ": '" .. dedupeKey .. "' is already in this list"
+            end
+            seen[dedupeKey] = true
+
+            local npcID = tonumber(subject)
+            rules[#rules + 1] = {
+                npcID = npcID,
+                name = (not npcID) and subject or nil,
+                intent = intent,
+                rank = (#rules + 1) * Rules.RANK_STEP,
+            }
+        end
+    end
+
+    if #rules == 0 then
+        return nil, "nothing to import: no mob names found"
+    end
+
+    return rules
+end
+
+-- Takes the merged rules for a zone and the live candidate list. Returns
+-- { [npcID] = rule } for the allocator, which only ever thinks in npc ids.
+-- Pure.
+--
+-- Rules filed by npcID map straight across. Rules filed by name are matched
+-- against the names of the mobs actually on screen, so one typed rule covers
+-- every id that shares that name. An npcID rule always wins over a name rule
+-- for the same mob, because it is the more specific statement.
+function Rules.ResolveForCandidates(activeRules, candidates)
+    local byName = {}
+    for _, key in ipairs(MFD.H.SortedKeys(activeRules)) do
+        local rule = activeRules[key]
+        if not rule.npcID and type(rule.name) == "string" then
+            byName[string.lower(rule.name)] = rule
+        end
+    end
+
+    local resolved = {}
+
+    for _, candidate in ipairs(candidates) do
+        if candidate.npcID and resolved[candidate.npcID] == nil then
+            local rule = activeRules[candidate.npcID]
+            if not rule and candidate.name then
+                rule = byName[string.lower(candidate.name)]
+            end
+            if rule then
+                resolved[candidate.npcID] = rule
+            end
+        end
+    end
+
+    return resolved
 end
 
 -- Returns the rank a newly appended rule should take.

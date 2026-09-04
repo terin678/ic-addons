@@ -2,7 +2,7 @@
 local MFD = _G.MarkedForDeath or {}
 
 -- Must match ## Version: in the toc and the packaged zip name.
-MFD.VERSION = "1.2.0"
+MFD.VERSION = "1.3.0"
 
 -- Bumped only when the saved-variable shape changes in a way that needs a
 -- migration. See MFD:MigrateDB.
@@ -283,6 +283,25 @@ commands.callout = {
     desc = "post who is missing what to raid chat, grouped by fix",
     run = function()
         MFD.RaidCheck:PostCallout()
+    end,
+}
+
+commands.bulk = {
+    desc = "paste a whole kill order for a zone, one mob per line",
+    run = function()
+        MFD.UI.Rules:ShowTransferBox("", "bulk")
+    end,
+}
+
+commands.addname = {
+    desc = "add a rule by typing a mob name, e.g. /mfd addname Illidari Nightlord",
+    run = function(rest)
+        local name = string.match(rest or "", "^%s*(.-)%s*$")
+        if name == "" then
+            MFD.Error("give a mob name. /mfd addname Illidari Nightlord")
+            return
+        end
+        MFD.UI.Rules:AddRule({ name = name })
     end,
 }
 

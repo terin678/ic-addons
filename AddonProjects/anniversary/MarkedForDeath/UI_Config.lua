@@ -324,9 +324,16 @@ local function localList(key)
     return MFD.db.rules[key]
 end
 
-local function localIndexOf(list, npcID)
-    for i, rule in ipairs(list) do
-        if rule.npcID == npcID then
+-- Finds a rule by its merge key rather than its npcID, because a rule typed
+-- by name has no id: matching on a nil npcID would return whichever name rule
+-- happened to come first and quietly edit the wrong one.
+local function localIndexOf(list, rule)
+    local wanted = rule and MFD.Rules.MergeKey(rule)
+    if not wanted then
+        return nil
+    end
+    for i, candidate in ipairs(list) do
+        if MFD.Rules.MergeKey(candidate) == wanted then
             return i
         end
     end
@@ -339,7 +346,7 @@ end
 -- the Raid Lead, and shows as a divergence otherwise.
 local function ownedRule(key, merged)
     local list = localList(key)
-    local index = localIndexOf(list, merged.npcID)
+    local index = localIndexOf(list, merged)
     if index then
         return list[index], index
     end
@@ -398,7 +405,9 @@ local function buildResultRow(row)
     row.add:SetText("Add")
     row.add:SetScript("OnClick", function()
         if row.result then
-            RulesUI:OpenFor(row.result.npcID, row.result.name)
+            -- AddRule, not OpenFor: adding from search must file into the
+            -- filtered zone so a list can be built from outside the instance.
+            RulesUI:AddRule({ npcID = row.result.npcID, name = row.result.name })
         end
     end)
 end
@@ -470,7 +479,7 @@ local function buildRuleRow(row)
             return
         end
         local list = localList(row.instanceKey)
-        local index = localIndexOf(list, row.rule.npcID)
+        local index = localIndexOf(list, row.rule)
         if index then
             table.remove(list, index)
             commitRules()
@@ -497,8 +506,27 @@ local function paintResults()
 
     MFD.UI.ReleaseRows(resultRows, shown + 1)
 
+    -- A mob the addon has never seen is not in either table, which is the
+    -- normal case when planning a raid you have not walked yet. Offer to make
+    -- a rule from the typed name rather than dead-ending on "no mobs match".
+    local typed = string.match(rulesFrame.search:GetText() or "", "^%s*(.-)%s*$")
+    local hasExact = false
+    for _, result in ipairs(lastResults) do
+        if string.lower(result.name) == string.lower(typed) then
+            hasExact = true
+            break
+        end
+    end
+
+    if typed ~= "" and not hasExact then
+        rulesFrame.typedAdd:SetText('Add "' .. typed .. '"')
+        rulesFrame.typedAdd:Show()
+    else
+        rulesFrame.typedAdd:Hide()
+    end
+
     if #lastResults == 0 then
-        rulesFrame.resultsNote:SetText("|cff999999no mobs match. Target one and press the add key.|r")
+        rulesFrame.resultsNote:SetText("|cff999999not seen yet. Type the exact name and use the button above.|r")
     elseif #lastResults > RESULT_ROWS then
         rulesFrame.resultsNote:SetText(string.format("|cff999999showing %d of %d, keep typing|r", RESULT_ROWS, #lastResults))
     else
@@ -532,7 +560,17 @@ local function paintRules()
         row.name:SetText(color .. (rule.name or ("npc " .. rule.npcID)) .. suffix .. "|r")
 
         local label = MFD.Seats.INTENTS[rule.intent] and MFD.Seats.INTENTS[rule.intent].label or rule.intent
-        local learned = MFD.db.learnedMobs[rule.npcID]
+        -- A rule typed by name has no id to look up, so find the creature type
+        -- by name instead; that is the whole population of pre-planned rules.
+        local learned = rule.npcID and MFD.db.learnedMobs[rule.npcID] or nil
+        if not learned and rule.name then
+            for _, entry in pairs(MFD.db.learnedMobs) do
+                if entry.name and string.lower(entry.name) == string.lower(rule.name) then
+                    learned = entry
+                    break
+                end
+            end
+        end
         local canApply = MFD.Seats.CanIntentApply(rule.intent, learned and learned.creatureType)
         row.intent:SetText((canApply and "" or "|cffff4444") .. label .. "|r")
         if not canApply then
@@ -585,7 +623,7 @@ function RulesUI:OpenFor(npcID, name, unit)
     filterKey = nil
 
     local list = localList(key)
-    if not localIndexOf(list, npcID) then
+    if not localIndexOf(list, { npcID = npcID, name = name }) then
         list[#list + 1] = {
             npcID = npcID,
             name = name,
@@ -595,6 +633,47 @@ function RulesUI:OpenFor(npcID, name, unit)
         MFD.Print(string.format("%s added as Kill, priority %d in %s. Click its intent to change it.",
             tostring(name), list[#list].rank, key))
     end
+
+    commitRules()
+end
+
+-- Adds one rule to the zone the filter is pointing at, which may be nowhere
+-- near the player. spec is { npcID } or { name } or both.
+--
+-- Separate from OpenFor because that one is the keybind path: it means "the
+-- mob in front of me", so it clears the filter and files into the current
+-- zone. This one means "the mob I just typed", and must not move the filter
+-- out from under someone building a list for another instance.
+function RulesUI:AddRule(spec)
+    local key = RulesUI:TargetKey()
+    if not key then
+        MFD.Error("pick a zone with the filter button first, or walk into one")
+        return
+    end
+
+    local list = localList(key)
+    local wanted = MFD.Rules.MergeKey(spec)
+    if not wanted then
+        MFD.Error("that needs a name or an npc id")
+        return
+    end
+
+    for _, rule in ipairs(list) do
+        if MFD.Rules.MergeKey(rule) == wanted then
+            MFD.Print(tostring(spec.name or spec.npcID) .. " is already in the " .. key .. " list")
+            return
+        end
+    end
+
+    list[#list + 1] = {
+        npcID = spec.npcID,
+        name = spec.name,
+        intent = "KILL",
+        rank = MFD.Rules.NextRank(list),
+    }
+
+    MFD.Print(string.format("%s added as Kill, priority %d in %s. Click its job to change it.",
+        tostring(spec.name or spec.npcID), list[#list].rank, key))
 
     commitRules()
 end
@@ -624,6 +703,29 @@ local function buildRulesFrame()
     end)
     rulesFrame.search:SetScript("OnEscapePressed", function(box)
         box:ClearFocus()
+    end)
+
+    -- Adds a rule for a name the addon has never seen, which is the whole
+    -- point of planning ahead. Matching happens on the name until an id is
+    -- known, so the rule works the first time the raid walks past the mob.
+    rulesFrame.typedAdd = CreateFrame("Button", nil, rulesFrame, "UIPanelButtonTemplate")
+    rulesFrame.typedAdd:SetSize(220, 20)
+    rulesFrame.typedAdd:SetPoint("TOPLEFT", rulesFrame.search, "BOTTOMLEFT", 0, -4)
+    rulesFrame.typedAdd:Hide()
+    rulesFrame.typedAdd:SetScript("OnClick", function()
+        local typed = string.match(rulesFrame.search:GetText() or "", "^%s*(.-)%s*$")
+        if typed == "" then
+            return
+        end
+        RulesUI:AddRule({ name = typed })
+    end)
+
+    rulesFrame.bulk = CreateFrame("Button", nil, rulesFrame, "UIPanelButtonTemplate")
+    rulesFrame.bulk:SetSize(90, 20)
+    rulesFrame.bulk:SetPoint("LEFT", rulesFrame.typedAdd, "RIGHT", 6, 0)
+    rulesFrame.bulk:SetText("Paste list")
+    rulesFrame.bulk:SetScript("OnClick", function()
+        RulesUI:ShowTransferBox("", "bulk")
     end)
 
     rulesFrame.filter = CreateFrame("Button", nil, rulesFrame, "UIPanelButtonTemplate")
@@ -725,6 +827,8 @@ local function buildTransferFrame()
     transferFrame.action:SetScript("OnClick", function()
         if transferFrame.mode == "import" then
             runImport()
+        elseif transferFrame.mode == "bulk" then
+            RulesUI:RunBulkAdd()
         else
             transferFrame:Hide()
         end
@@ -735,6 +839,80 @@ end
 
 -- Shows the transfer window. mode is "export" (text is shown, selected, and
 -- the button closes) or "import" (text is editable and the button imports).
+-- The zone a rule typed right now would be filed under: the filter when one
+-- is set, otherwise wherever the player is standing. This is what lets a whole
+-- instance be planned from the bank in Shattrath.
+function RulesUI:TargetKey()
+    return filterKey or MFD.Rules.currentInstanceKey
+end
+
+-- Applies a pasted kill order to the targeted zone. Existing rules for the
+-- same mob are replaced; rules not named in the paste are left alone, so a
+-- paste can extend a list rather than only replace it.
+function RulesUI:RunBulkAdd()
+    local key = RulesUI:TargetKey()
+    if not key then
+        MFD.Error("pick a zone with the filter button first")
+        return
+    end
+
+    local parsed, err = MFD.Rules.ParseBulk(transferFrame.edit:GetText())
+    if not parsed then
+        MFD.Error(err)
+        return
+    end
+
+    MFD.db.rules[key] = MFD.db.rules[key] or {}
+    local list = MFD.db.rules[key]
+
+    local replaced, added = 0, 0
+    for _, incoming in ipairs(parsed) do
+        local incomingKey = MFD.Rules.MergeKey(incoming)
+        local existing
+        for _, rule in ipairs(list) do
+            if MFD.Rules.MergeKey(rule) == incomingKey then
+                existing = rule
+                break
+            end
+        end
+
+        if existing then
+            existing.intent = incoming.intent
+            existing.rank = incoming.rank
+            replaced = replaced + 1
+        else
+            list[#list + 1] = incoming
+            added = added + 1
+        end
+    end
+
+    -- Anything already in the zone that the paste did not mention keeps its
+    -- rule but sorts below the pasted order, so the paste reads as the plan.
+    local pastedCount = #parsed
+    for _, rule in ipairs(list) do
+        local isPasted = false
+        for _, incoming in ipairs(parsed) do
+            if MFD.Rules.MergeKey(rule) == MFD.Rules.MergeKey(incoming) then
+                isPasted = true
+                break
+            end
+        end
+        if not isPasted then
+            rule.rank = rule.rank + pastedCount * MFD.Rules.RANK_STEP
+        end
+    end
+
+    MFD.Rules.BumpVersion(MFD.db)
+    MFD.Rules.RefreshLocal(MFD.db, UnitName("player"))
+    if MFD.Comms and MFD.Comms.Republish then
+        MFD.Comms.Republish()
+    end
+
+    transferFrame:Hide()
+    MFD.Print(string.format("%s: %d added, %d updated", key, added, replaced))
+    RulesUI:Refresh()
+end
+
 function RulesUI:ShowTransferBox(text, mode)
     if not transferFrame then
         buildTransferFrame()
@@ -742,6 +920,15 @@ function RulesUI:ShowTransferBox(text, mode)
 
     transferFrame.mode = mode
     transferFrame.edit:SetText(text or "")
+
+    if mode == "bulk" then
+        transferFrame.title:SetText("Paste a kill order for " .. tostring(RulesUI:TargetKey() or "no zone"))
+        transferFrame.hint:SetText("One mob per line, best target first. Add \"= sheep\", \"= banish\" and so on for jobs. -- comments and blank lines are ignored.")
+        transferFrame.action:SetText("Add all")
+        transferFrame:Show()
+        transferFrame.edit:SetFocus()
+        return
+    end
 
     if mode == "import" then
         transferFrame.title:SetText("Import rules")
