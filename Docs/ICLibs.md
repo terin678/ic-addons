@@ -26,7 +26,7 @@ carries neither directive and sits on its own in the alphabetical list.
 | --- | --- | --- |
 | LibStub | — | Standard library loader |
 | LibICTradeSkill-1.0 | 2 | Reads the open profession window into plain tables, merges scans into a per-profession book, and checks Bind on Pickup reagents |
-| LibICUI-1.0 | 5 | Windows, tabs, buttons, lists and toolbars in the guild palette, plus relative ages and the brand itself |
+| LibICUI-1.0 | 6 | Windows, tabs, buttons, lists and toolbars in the guild palette, plus relative ages and the brand itself |
 
 The MINOR goes up whenever a library's API changes, and LibStub hands every caller the
 highest one loaded. Bump it in the library source and in this table together, or a reader
@@ -66,7 +66,7 @@ local UI = LibStub("LibICUI-1.0")
 | --- | --- |
 | `UI:Age(seconds)` | Relative age for a list cell: `now`, `42s`, `7m`, `3h`, `2d`. |
 | `UI:Style(name, style)` | Registers an addon's look (row height, fonts, colours) and fills in the rest from the default. Pass the name or the table as `opts.style`. |
-| `UI:Window(name, opts)` | A movable, escapable window wearing the guild mark. `f.body` is the area under the title bar, plus `f.title` and `f.status`. |
+| `UI:Window(name, opts)` | A movable, escapable window wearing the guild mark. `f.body` is the area under the title bar, plus `f.title` and `f.status`. `opts.scalable` puts a drag grip in the bottom-right corner; with it come `f:SetWindowScale(s)`, `f:GetWindowScale()`, `f:FitToScreen()` and `opts.onScaleChanged(f, s)` for saving what the player chose. `opts.minScale`/`maxScale` default to 0.5 and 1.25. |
 | `UI:TabStrip(parent, opts)` | A row of tab buttons; the live one goes gold. `strip:Select(name or index)` calls `onSelect`. |
 | `UI:Button(parent, text, w, h, opts)` | A palette button. A disabled one still shows its tooltip, so a greyed control can say why. `opts.kind` is `"normal"`, `"accent"` or `"danger"`; `opts.template` adds a frame template such as `SecureActionButtonTemplate`. `SetText`, `Enable`, `Disable` and `SetEnabled` work as on a Blizzard button, and `b:SetActive(on)` shows a toggle's state. |
 | `UI:EditBox(parent, w, h, opts)` | A single-line text box in the palette. |
@@ -114,7 +114,8 @@ not depend on ICLibs, so carrying its own copy is the only way it can reach the 
 
 - MalexisAuctionWatcher: scans every profession window into a per-character book and adds
   recipes from it (Recipes tab, Presets, "From your recipe book..."), and builds its
-  window, its six tabs, every list and its dialogs on LibICUI.
+  window, its six tabs, every list and its dialogs on LibICUI. It is also the first user of
+  `opts.scalable`: its window is 1024x700, which covers most of a smaller monitor.
 - TradeMaster: the book scanner behind every tab, and LibICUI for the window, the tabs,
   every list and every button.
 - ICTemplate: LibICUI only, and all of it — its window is a live gallery of every widget

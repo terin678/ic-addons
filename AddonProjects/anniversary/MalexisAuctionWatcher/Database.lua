@@ -80,6 +80,8 @@ function MAW:InitializeDB()
     if MalexisAuctionWatcherDB.settings.characterSpecific == nil then
         MalexisAuctionWatcherDB.settings.characterSpecific = false
     end
+    -- Left nil on purpose: the window shrinks to fit the screen on its first open and
+    -- stores what it chose. A default of 1 here would skip that and open oversized.
 
     -- Ensure cache exists (account-wide)
     if not MalexisAuctionWatcherDB.cache then

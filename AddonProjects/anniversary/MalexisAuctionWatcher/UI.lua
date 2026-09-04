@@ -1035,7 +1035,9 @@ local function BuildHistoryPage(page)
 
     -- Docked over the auction house the window is only as tall as its host, so the
     -- panel scrolls rather than running off the bottom.
-    local scroll, panel = ICUI:ScrollList(page, 0, 0)
+    -- bottom 20 keeps the scrollbar's down-arrow clear of the window's resize grip,
+    -- which sits in the bottom-right corner and would otherwise eat those clicks.
+    local scroll, panel = ICUI:ScrollList(page, 0, 20)
     panel:SetSize(chartWidth, HISTORY_PANEL_H)
     view.scroll = scroll
     page = panel
@@ -1670,6 +1672,8 @@ local function BuildMoversPage(page)
     -- Buy and List clear the attributes and run an ordinary script.
     local t = Table(page, {
         top = -MOVER_HINT_H,
+        -- Clear of the window's resize grip in the bottom-right corner.
+        bottom = 20,
         columns = {
             { key = "badge",  label = "",        width = 70 },
             { key = "name",   label = "Item",    width = 260, hit = true },
@@ -1801,12 +1805,43 @@ function MAWUI:CreateUI()
         return mainFrame
     end
 
+    -- 1024x700 is chosen so the Recipes tab fits both TSM profit columns; on a smaller
+    -- monitor that covers most of the screen. The window scales rather than resizes:
+    -- see the note above AddScaling in LibICUI.
     mainFrame = ICUI:Window("MalexisAuctionWatcherFrame", {
         style = STYLE,
         width = WINDOW_WIDTH,
         height = WINDOW_HEIGHT,
         title = windowTitle,
+        scalable = true,
+        minScale = 0.5,
+        maxScale = 1.25,
+        onScaleChanged = function(_, scale)
+            local settings = MalexisAuctionWatcherDB and MalexisAuctionWatcherDB.settings
+            if settings then settings.windowScale = scale end
+        end,
     })
+
+    local saved = MalexisAuctionWatcherDB and MalexisAuctionWatcherDB.settings
+        and MalexisAuctionWatcherDB.settings.windowScale
+    -- Guarded like any other optional dependency: a stale ICLibs bundled inside some other
+    -- addon can win the LibStub race at an older MINOR, and an unguarded call would take
+    -- the whole window down rather than just costing us the scaling.
+    if not mainFrame.SetWindowScale then
+        print("Malexis Auction Watcher: an older ICLibs is loaded, so the window cannot be "
+            .. "resized. Update ICLibs to 1.6.0 or later.")
+    elseif saved then
+        mainFrame:SetWindowScale(saved, true)
+    else
+        --[[
+        First open on this account. 0.80, not the 0.95 the library defaults to: UIParent is
+        about 1024x768 UI units whatever the monitor's pixel resolution is, and this window
+        is 1024 wide, so at 0.95 it still covers 86% of the height and the complaint that
+        it blankets the screen is unanswered. 0.80 opens it at 819x560. Whatever the player
+        drags it to afterwards is saved and this never runs again.
+        ]]
+        mainFrame:FitToScreen(0.80)
+    end
     mainFrame:SetFrameLevel(100)
 
     -- Closing while docked in the auction house goes back to the Browse tab
@@ -2041,11 +2076,18 @@ function MAWUI:Dock(host)
         self:CreateUI()
     end
     if not mainFrame.docked then
-        -- Remember where the floating window was
+        -- Remember where the floating window was, and at what scale
         mainFrame.floatLeft, mainFrame.floatTop = mainFrame:GetLeft(), mainFrame:GetTop()
+        mainFrame.floatScale = mainFrame:GetScale()
     end
     mainFrame.docked = true
     mainFrame.dockHost = host
+    -- Docked, the window matches the auction house frame exactly. A scale of its own would
+    -- put it out of register with the host it is pinned to, so the grip goes away and comes
+    -- back on undock with whatever scale it had before.
+    if mainFrame.StopSizing then mainFrame.StopSizing() end
+    mainFrame:SetScale(1)
+    if mainFrame.sizeGrip then mainFrame.sizeGrip:Hide() end
     mainFrame:SetParent(host)
     mainFrame:ClearAllPoints()
     mainFrame:SetPoint("TOPLEFT", host, "TOPLEFT", 0, 0)
@@ -2064,10 +2106,16 @@ function MAWUI:Undock()
     mainFrame.dockHost = nil
     mainFrame:Hide()
     mainFrame:SetParent(UIParent)
+    mainFrame:SetScale(mainFrame.floatScale or 1)
+    if mainFrame.sizeGrip then mainFrame.sizeGrip:Show() end
     mainFrame:ClearAllPoints()
     if mainFrame.floatLeft and mainFrame.floatTop then
-        local scale = mainFrame:GetEffectiveScale() / UIParent:GetEffectiveScale()
-        mainFrame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", mainFrame.floatLeft / scale, mainFrame.floatTop / scale)
+        -- floatLeft/floatTop came from GetLeft()/GetTop() at Dock time, and SetPoint offsets
+        -- are in the same space, so they go back in unchanged. This used to divide by the
+        -- frame's scale, which was harmless only while that scale was always 1: once the
+        -- window could be scaled, every dock/undock cycle moved it further up and right.
+        mainFrame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT",
+            mainFrame.floatLeft, mainFrame.floatTop)
     else
         mainFrame:SetPoint("CENTER")
     end
@@ -2076,6 +2124,55 @@ end
 
 function MAWUI:IsDocked()
     return mainFrame ~= nil and mainFrame.docked == true
+end
+
+--[[
+Window scale, for /maw scale. Returns the scale actually applied after clamping, or
+nil plus a reason. Setting it before the window has ever been opened is allowed and is
+remembered for the first open, so the command works without making a window appear.
+
+Docked in the auction house the window is pinned to the host frame and sized from it, so a
+scale of its own would put the two out of register. That is refused with a reason rather
+than quietly ignored.
+]]
+--[[
+Pure. Anything unusable comes back nil rather than as a window nobody can read: a typo'd
+"/maw scale 8" must not shrink the thing to a smear, and 800 must not fill the screen.
+
+The bounds come off the window when there is one, so this and the library's own clamp
+cannot drift apart; MIN_SCALE/MAX_SCALE are the same numbers passed to ICUI:Window above
+and are only the fallback for a check made before the window exists.
+]]
+local MIN_SCALE, MAX_SCALE = 0.5, 1.25
+
+function MAWUI.ClampScale(scale)
+    scale = tonumber(scale)
+    if not scale or scale ~= scale then return nil end
+    local low = (mainFrame and mainFrame.minScale) or MIN_SCALE
+    local high = (mainFrame and mainFrame.maxScale) or MAX_SCALE
+    return math.max(low, math.min(high, scale))
+end
+
+function MAWUI:SetScale(scale)
+    scale = MAWUI.ClampScale(scale)
+    if not scale then return nil, "give a percentage, for example /maw scale 75" end
+
+    if mainFrame and mainFrame.docked then
+        return nil, "the window is docked in the auction house and follows its size there"
+    end
+    if mainFrame then return mainFrame:SetWindowScale(scale) end
+
+    -- No window yet: remember it for the first open.
+    local settings = MalexisAuctionWatcherDB and MalexisAuctionWatcherDB.settings
+    if not settings then return nil, "saved settings are not loaded yet" end
+    settings.windowScale = scale
+    return scale
+end
+
+function MAWUI:GetScale()
+    if mainFrame and not mainFrame.docked then return mainFrame:GetWindowScale() end
+    local settings = MalexisAuctionWatcherDB and MalexisAuctionWatcherDB.settings
+    return (settings and settings.windowScale) or 1
 end
 
 -- Open the window on a given tab
