@@ -129,18 +129,14 @@ function Tanks:OnDeath(name, now)
         return
     end
 
-    local canWarn = UnitIsGroupLeader("player")
-        or (UnitIsGroupAssistant and UnitIsGroupAssistant("player"))
-    local channel = (IsInRaid and IsInRaid() and canWarn and "RAID_WARNING")
-        or (IsInRaid and IsInRaid() and "RAID")
-        or (IsInGroup and IsInGroup() and "PARTY")
-        or nil
-
+    local channel = MFD.Chatter.GroupChannel(true)
     if not channel then
         return
     end
 
-    pcall(SendChatMessage, Tanks.FormatDeath(name), channel)
+    -- Forced: rare, already guarded per name, and the one line nobody can
+    -- afford to lose to an announcement about a trash pack.
+    MFD.Chatter.Say(Tanks.FormatDeath(name), channel, true)
 end
 
 MFD.RegisterInit(function()

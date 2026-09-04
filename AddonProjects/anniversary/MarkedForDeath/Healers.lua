@@ -120,18 +120,14 @@ function Healers:OnDeath(name, now)
         return
     end
 
-    local canWarn = UnitIsGroupLeader("player")
-        or (UnitIsGroupAssistant and UnitIsGroupAssistant("player"))
-    local channel = (IsInRaid and IsInRaid() and canWarn and "RAID_WARNING")
-        or (IsInRaid and IsInRaid() and "RAID")
-        or (IsInGroup and IsInGroup() and "PARTY")
-        or nil
-
+    local channel = MFD.Chatter.GroupChannel(true)
     if not channel then
         return
     end
 
-    pcall(SendChatMessage, Healers.FormatDeath(name), channel)
+    -- Forced: rare, already guarded per name, and the one line nobody can
+    -- afford to lose to an announcement about a trash pack.
+    MFD.Chatter.Say(Healers.FormatDeath(name), channel, true)
 end
 
 MFD.RegisterInit(function()

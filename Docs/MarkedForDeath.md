@@ -378,10 +378,28 @@ Editing a merged rule copies it into your own set first. From then on it is your
   crowd control that turns up late still gets told either way, which is the part that
   actually needs acting on.
 - **Late crowd control alerts are once per mob**, at most one every three seconds, and only
-  for mobs that were not there at the pull. The raid warning half is budgeted to three per
-  pull: past that only the person who has to sheep it is whispered. In a fight that feeds
-  mobs in continuously the roles get handed to new mobs over and over, and twenty raid
-  warnings a minute across twenty five screens stops being a warning.
+  for mobs that were not there at the pull.
+
+## How much it talks
+
+Everything the addon says to anybody goes through one limiter, so the answer to "how loud
+can this get in a bad minute" is a single number rather than six features each with their
+own opinion. In any twenty seconds it will send at most five lines to the group, of which
+at most three are raid warnings, and never two closer together than a second and a half.
+
+**Whispers are not spent from that budget.** A raid message interrupts twenty five people
+and a raid warning writes across the middle of their screens; a whisper costs one person
+who is being told something they have to act on. The addon can go quiet on the raid
+without ever going quiet on the person who has to sheep something.
+
+**Two things are never dropped.** Anything you pressed a button for, because swallowing a
+button press is worse than a crowded chat frame. And a death, which is rare, already
+guarded per name, and the one line nobody can afford to lose to an announcement about a
+trash pack. What the budget is actually there for is the two things that can run away on
+their own: pack announcements and late crowd control.
+
+When it does hold something back it says so once in your own chat frame, so a quiet addon
+never looks like a broken one.
 - The pull is detected from the pack, not from you. The marking lead is often at range and
   enters combat seconds after the tank, and reading only their own combat flag would leave
   their client announcing into a fight that had already started.

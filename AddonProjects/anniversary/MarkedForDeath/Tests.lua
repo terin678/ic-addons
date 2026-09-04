@@ -3292,15 +3292,83 @@ T.Case("Announce: adds can be switched off entirely for a Hyjal night", function
         pullOpts({ allowAdds = false })), false, "silent whatever arrives")
 end)
 
-T.Case("Announce: late crowd control stops shouting at the raid after a few", function()
-    -- A fight that feeds mobs in for eight minutes hands the crowd control
-    -- roles to new mobs over and over, and each one is legitimately new. The
-    -- raid warning is the half that interrupts everybody; the whisper is the
-    -- half that reaches whoever has to act, and that one is never budgeted.
-    T.Eq(Ann.AllowsRaidWarning(0, 3), true, "first")
-    T.Eq(Ann.AllowsRaidWarning(2, 3), true, "third")
-    T.Eq(Ann.AllowsRaidWarning(3, 3), false, "fourth goes to the owner only")
-    T.Eq(Ann.AllowsRaidWarning(nil, 3), true, "nothing spent yet")
+-- One limiter owns every outbound message. Before it there was a throttle per
+-- feature and no single place knew the total.
+local C = MFD.Chatter
+
+local function limits(fields)
+    local out = { window = 20, perWindow = 5, warningsPerWindow = 3, minGap = 1.5, whispersPerWindow = 12 }
+    for key, value in pairs(fields or {}) do
+        out[key] = value
+    end
+    return out
+end
+
+T.Case("Chatter: two lines cannot land on the same frame", function()
+    local state = C.NewState()
+    T.Eq(C.Allow(state, "RAID", 100, limits()), true, "first")
+    T.Eq(C.Allow(state, "RAID", 100.5, limits()), false, "too soon after it")
+    T.Eq(C.Allow(state, "RAID", 102, limits()), true, "far enough apart")
+end)
+
+T.Case("Chatter: the group budget runs out and then refills", function()
+    local state = C.NewState()
+    local at = 100
+    for index = 1, 5 do
+        T.Eq(C.Allow(state, "RAID", at, limits()), true, "line " .. index)
+        at = at + 2
+    end
+    T.Eq(C.Allow(state, "RAID", at, limits()), false, "five in the window is the lot")
+
+    -- The window is rolling, so it opens again rather than staying shut.
+    T.Eq(C.Allow(state, "RAID", 121, limits()), true, "the first line has aged out")
+end)
+
+T.Case("Chatter: raid warnings run out before ordinary lines do", function()
+    local state = C.NewState()
+    T.Eq(C.Allow(state, "RAID_WARNING", 100, limits()), true, "one")
+    T.Eq(C.Allow(state, "RAID_WARNING", 102, limits()), true, "two")
+    T.Eq(C.Allow(state, "RAID_WARNING", 104, limits()), true, "three")
+    T.Eq(C.Allow(state, "RAID_WARNING", 106, limits()), false, "no more yellow text")
+    T.Eq(C.Allow(state, "RAID", 108, limits()), true, "but the raid can still be spoken to")
+end)
+
+T.Case("Chatter: whispers are not spent from the raid budget", function()
+    -- The rule the whole file exists to encode: go quiet on the raid without
+    -- ever going quiet on the person who has to sheep something.
+    local state = C.NewState()
+    for at = 100, 108, 2 do
+        C.Allow(state, "RAID", at, limits())
+    end
+    T.Eq(C.Allow(state, "RAID", 110, limits()), false, "the raid budget is gone")
+    T.Eq(C.Allow(state, "WHISPER", 110, limits()), true, "the owner is still told")
+end)
+
+T.Case("Chatter: whispers have a ceiling of their own", function()
+    local state = C.NewState()
+    for index = 1, 12 do
+        T.Eq(C.Allow(state, "WHISPER", 100, limits()), true, "whisper " .. index)
+    end
+    T.Eq(C.Allow(state, "WHISPER", 100, limits()), false, "not unlimited either")
+end)
+
+T.Case("Chatter: a forced line is never dropped, and still counts", function()
+    local state = C.NewState()
+    for at = 100, 108, 2 do
+        C.Allow(state, "RAID", at, limits())
+    end
+    T.Eq(C.Allow(state, "RAID", 110, limits()), false, "budget gone")
+    T.Eq(C.Allow(state, "RAID", 110, limits(), true), true, "a button press goes out anyway")
+
+    -- Recorded, so forcing does not hide how loud the addon is being.
+    T.Eq(#state.group, 6, "still counted against the window")
+end)
+
+T.Case("Chatter: going quiet is reported once, not every dropped line", function()
+    local state = C.NewState()
+    T.Eq(C.ShouldReportDrop(state, 100, 20), true, "say it once")
+    T.Eq(C.ShouldReportDrop(state, 105, 20), false, "not again straight away")
+    T.Eq(C.ShouldReportDrop(state, 121, 20), true, "a window later is fair")
 end)
 
 T.Case("Announce: keys come out sorted, so the same pack reads the same", function()

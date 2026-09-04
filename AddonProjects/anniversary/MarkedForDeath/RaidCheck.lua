@@ -709,7 +709,9 @@ function RC:PostCallout()
 
     lastCalloutAt = now
     for _, line in ipairs(lines) do
-        pcall(SendChatMessage, "[MFD] " .. line, target)
+        -- Forced: this is a button press, it is already held to one per ten
+        -- seconds, and half a callout is worse than none.
+        MFD.Chatter.Say("[MFD] " .. line, target, true)
     end
 end
 
@@ -721,7 +723,7 @@ function RC:Whisper(name)
         MFD.Print(tostring(name) .. " is not missing anything")
         return
     end
-    pcall(SendChatMessage, "[MFD] " .. text, "WHISPER", nil, name)
+    MFD.Chatter.Say("[MFD] " .. text, "WHISPER", name, true)
 end
 
 -- Durability learned through LibDurability, { [name] = { percent, broken, at } }.

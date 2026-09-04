@@ -38,6 +38,7 @@ local files = {
     "Candidates.lua",
     "Marker.lua",
     "Conflicts.lua",
+    "Chatter.lua",
     "Comms.lua",
     "RaidCheck.lua",
     "Encounters.lua",
