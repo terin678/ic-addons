@@ -20,63 +20,65 @@ local views = {}
 local frame
 local accumulator = 0
 
-local function addView(container)
-    container.rows = container.rows or {}
+-- Each view owns a table of its own, because a table's column geometry is
+-- computed once against the frame it is built in and the floating panel and the
+-- tab are different widths.
+local function addView(container, top)
+    container.table = MFD.UI.Table(container, {
+        top = top or 0,
+        bottom = 0,
+        rowHeight = ROW_HEIGHT,
+        columns = {
+            { key = "icon", label = "", width = 22, type = "texture" },
+            { key = "job", label = "Job", width = 62 },
+            { key = "mob", label = "Mob", width = "flex" },
+            { key = "owner", label = "Who", width = 84 },
+        },
+    })
     views[#views + 1] = container
     return container
 end
 
-local function buildRow(row)
-    if row.isBuilt then
-        return
-    end
-    row.isBuilt = true
-
-    row.texture = row:CreateTexture(nil, "ARTWORK")
-    row.texture:SetSize(16, 16)
-    row.texture:SetPoint("LEFT", row, "LEFT", 0, 0)
-    row.texture:SetTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcons")
-
-    row.text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    row.text:SetPoint("LEFT", row.texture, "RIGHT", 6, 0)
-    row.text:SetPoint("RIGHT", row, "RIGHT", 0, 0)
-    row.text:SetJustifyH("LEFT")
-end
-
--- Repaints from the published map. Sorted by icon display order, so the
--- panel reads the same way every pull regardless of which mob was seen first.
-local function paint(view)
+-- The published map as a list, in icon display order, so the panel reads the
+-- same way every pull regardless of which mob was seen first. Pure.
+local function assignmentList()
     local byIcon = {}
     for key, icon in pairs(MFD.Marker.published) do
         byIcon[icon] = key
     end
 
-    local index = 0
+    local list = {}
     for _, icon in ipairs(ICON_ORDER) do
         local key = byIcon[icon]
         if key then
-            index = index + 1
-            local row = MFD.UI.AcquireRow(view.body, view.rows, index, ROW_HEIGHT)
-            buildRow(row)
-            SetRaidTargetIconTexture(row.texture, icon)
-
             local detail = MFD.Marker.publishedDetail[key] or {}
-            local label = MFD.Roles.INTENTS[detail.intent] and MFD.Roles.INTENTS[detail.intent].label or tostring(detail.intent)
-            local learned = MFD.db.learnedMobs[MFD.H.NpcIDFromKey(key)]
-            local mobName = learned and learned.name or ("npc " .. tostring(MFD.H.NpcIDFromKey(key)))
+            local npcID = MFD.H.NpcIDFromKey(key)
+            local learned = MFD.db.learnedMobs[npcID]
+            local def = MFD.Roles.INTENTS[detail.intent]
 
-            row.text:SetText(string.format("%s  |cff999999%s|r%s",
-                label, mobName, detail.owner and ("  |cff66ff66" .. detail.owner .. "|r") or ""))
+            list[#list + 1] = {
+                icon = icon,
+                job = (def and def.label) or tostring(detail.intent),
+                mob = learned and learned.name or ("npc " .. tostring(npcID)),
+                owner = detail.owner,
+            }
         end
     end
 
-    MFD.UI.ReleaseRows(view.rows, index + 1)
+    return list
+end
 
-    if index == 0 then
-        view.empty:SetText("|cff999999nothing assigned|r")
-    else
-        view.empty:SetText("")
-    end
+local function paint(view)
+    local list = assignmentList()
+
+    view.table:Render(list, function(row, item)
+        SetRaidTargetIconTexture(row.cells.icon, item.icon)
+        view.table:Set(row, "job", item.job)
+        view.table:Set(row, "mob", item.mob, { r = 0.6, g = 0.6, b = 0.6 })
+        view.table:Set(row, "owner", item.owner or "", { r = 0.4, g = 1, b = 0.4 })
+    end)
+
+    view.empty:SetText(#list == 0 and "|cff999999nothing assigned|r" or "")
 end
 
 -- Repaints every view that is actually on screen.
@@ -91,14 +93,10 @@ end
 -- Builds the panel into a container the main window owns, alongside the
 -- floating one rather than instead of it.
 function Panel:BuildInto(container)
-    container.body = CreateFrame("Frame", nil, container)
-    container.body:SetPoint("TOPLEFT", container, "TOPLEFT", 6, -6)
-    container.body:SetPoint("BOTTOMRIGHT", container, "BOTTOMRIGHT", -6, 6)
+    container.empty = MFD.UI.Label(container, "")
+    container.empty:SetPoint("TOPLEFT", container, "TOPLEFT", 8, -24)
 
-    container.empty = container:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    container.empty:SetPoint("TOPLEFT", container.body, "TOPLEFT", 8, -8)
-
-    addView(container)
+    addView(container, 0)
 end
 
 local function savePosition()
@@ -137,8 +135,8 @@ local function build()
         savePosition()
     end)
 
-    frame.empty = MFD.UI.Label(frame.body, "")
-    frame.empty:SetPoint("TOPLEFT", frame.body, "TOPLEFT", 8, -8)
+    frame.empty = MFD.UI.Label(frame, "")
+    frame.empty:SetPoint("TOPLEFT", frame, "TOPLEFT", 14, -54)
 
     local saved = MFD.charDb.windows.assignments
     if frame.SetWindowScale and saved and saved.scale then
@@ -146,7 +144,8 @@ local function build()
     end
 
     restorePosition()
-    addView(frame)
+    -- Below the library's title bar, which owns the top of the window.
+    addView(frame, -34)
     tinsert(UISpecialFrames, "MarkedForDeathAssignmentsFrame")
 end
 

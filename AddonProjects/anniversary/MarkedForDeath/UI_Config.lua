@@ -362,7 +362,6 @@ local RULE_ROWS = 14       -- visible rules
 local RULE_ROW_HEIGHT = 24 -- pixels
 
 local rulesFrame
-local resultRows = {}
 local ruleRows = {}
 local filterKey = nil
 local lastResults = {}
@@ -448,29 +447,6 @@ local function cycleFilter()
 end
 
 
-
-local function buildResultRow(row)
-    if row.isBuilt then
-        return
-    end
-    row.isBuilt = true
-
-    row.name = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    row.name:SetPoint("LEFT", row, "LEFT", 0, 0)
-    row.name:SetPoint("RIGHT", row, "RIGHT", -50, 0)
-    row.name:SetJustifyH("LEFT")
-
-    row.add = MFD.UI.Button(row, "", 44, 20)
-    row.add:SetPoint("RIGHT", row, "RIGHT", 0, 0)
-    row.add:SetText("Add")
-    row.add:SetScript("OnClick", function()
-        if row.result then
-            -- AddRule, not OpenFor: adding from search must file into the
-            -- filtered zone so a list can be built from outside the instance.
-            RulesUI:AddRule({ npcID = row.result.npcID, name = row.result.name })
-        end
-    end)
-end
 
 -- Which row is being dragged, and the highlight showing where it would land.
 local dragIndex
@@ -700,20 +676,29 @@ local function paintResults()
     local bundled = MFD.Data and MFD.Data.Mobs or {}
     lastResults = MFD.Search(rulesFrame.search:GetText(), filterKey, bundled, MFD.db.learnedMobs)
 
-    local shown = 0
+    local shown = {}
     for index, result in ipairs(lastResults) do
         if index > RESULT_ROWS then
             break
         end
-        local row = MFD.UI.AcquireRow(rulesFrame.results, resultRows, index, RULE_ROW_HEIGHT)
-        buildResultRow(row)
-        row.result = result
-        local color = result.source == "learned" and "|cffffcc66" or ""
-        row.name:SetText(color .. result.name .. "|r  |cff666666" .. result.npcID .. "|r")
-        shown = index
+        shown[index] = result
     end
 
-    MFD.UI.ReleaseRows(resultRows, shown + 1)
+    rulesFrame.resultTable:Render(shown, function(row, result)
+        -- Amber for a mob this client learned by seeing it, plain for one that
+        -- shipped in the bundled table: the addon's colour for derived values.
+        local color = result.source == "learned"
+            and { r = 1, g = 0.8, b = 0.4 } or nil
+        rulesFrame.resultTable:Set(row, "name", result.name, color)
+        rulesFrame.resultTable:Set(row, "npcID", tostring(result.npcID),
+            { r = 0.5, g = 0.5, b = 0.5 })
+
+        row.buttons.add:SetScript("OnClick", function()
+            -- AddRule, not OpenFor: adding from search must file into the
+            -- filtered zone so a list can be built from outside the instance.
+            RulesUI:AddRule({ npcID = result.npcID, name = result.name })
+        end)
+    end)
 
     -- A mob the addon has never seen is not in either table, which is the
     -- normal case when planning a raid you have not walked yet. Offer to make
@@ -960,6 +945,21 @@ local function buildRulesFrame()
     rulesFrame.results = CreateFrame("Frame", nil, rulesFrame)
     rulesFrame.results:SetPoint("TOPLEFT", rulesFrame, "TOPLEFT", 6, -76)
     rulesFrame.results:SetPoint("BOTTOMRIGHT", rulesFrame, "BOTTOMLEFT", 336, 6)
+
+    -- The Add button is a trailing button column rather than a widget the row
+    -- builds for itself, which is what keeps every list in the addon the same
+    -- shape.
+    rulesFrame.resultTable = MFD.UI.Table(rulesFrame.results, {
+        width = 322,
+        rowHeight = RULE_ROW_HEIGHT,
+        columns = {
+            { key = "name", label = "Mob", width = "flex" },
+            { key = "npcID", label = "id", width = 54, justify = "RIGHT" },
+        },
+        buttons = {
+            { key = "add", label = "Add", width = 44 },
+        },
+    })
 
     -- Right pane: rules.
     rulesFrame.ruleHeader = rulesFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
