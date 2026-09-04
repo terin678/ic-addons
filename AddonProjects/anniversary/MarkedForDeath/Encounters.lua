@@ -212,22 +212,15 @@ end
 -- suggests. Boss lists are small, so this walks up from that average until the
 -- packing actually fits rather than trying to be clever about it.
 function Encounters.PackColumns(sizes, maxColumns)
-    local total = 0
-    for _, size in ipairs(sizes) do
-        total = total + size
-        -- A single group taller than a whole column can never be split, so the
-        -- column has to be at least that tall.
-        if size > total then
-            total = size
-        end
-    end
-
     if maxColumns < 1 then
         maxColumns = 1
     end
 
-    local largest = 0
+    -- The largest group is a floor on the column height all by itself: a group
+    -- is never split, so a column has to be at least as tall as the tallest one.
+    local total, largest = 0, 0
     for _, size in ipairs(sizes) do
+        total = total + size
         if size > largest then
             largest = size
         end

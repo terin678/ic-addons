@@ -3574,6 +3574,35 @@ T.Case("Drag: dropping upward lands in the gap the line was drawn in", function(
     T.Eq(drag({ "A", "B", "C", "D" }, 4, 1), "ADBC", "D between A and B")
 end)
 
+T.Case("Drag: a gap in the displayed list becomes a local index", function()
+    -- The displayed list holds rules merged from other players; the list that
+    -- gets reordered holds only your own. Dropping into a displayed gap means
+    -- "after this many of mine", and counting the wrong list moved somebody
+    -- else's rule or silently did nothing.
+    local displayed = {
+        { isMine = false },   -- theirs
+        { isMine = true },    -- mine 1
+        { isMine = false },   -- theirs
+        { isMine = true },    -- mine 2
+    }
+
+    local function localBoundary(boundary)
+        local count = 0
+        for index = 1, math.min(boundary, #displayed) do
+            if displayed[index].isMine then
+                count = count + 1
+            end
+        end
+        return count
+    end
+
+    T.Eq(localBoundary(0), 0, "above everything is above your first")
+    T.Eq(localBoundary(1), 0, "past one of theirs is still above your first")
+    T.Eq(localBoundary(2), 1, "past your first")
+    T.Eq(localBoundary(4), 2, "past both of yours")
+    T.Eq(localBoundary(99), 2, "never more than you have")
+end)
+
 T.Case("Drag: a move renumbers every rank, so priority still reads top down", function()
     local list = ruleList({ "A", "B", "C" })
     MFD.Rules.MoveTo(list, 1, MFD.Rules.DropIndex(1, 3))

@@ -12,57 +12,6 @@ local ROW_HEIGHT = 24   -- pixels
 -- raid reads a pack. Cosmetic only; the role plan itself is keyed by icon.
 local ICON_ORDER = { 8, 7, 6, 2, 5, 1, 4, 3 }
 
--- Adds a resize grip to a window, and remembers the size per character.
---
--- onResize(frame, isFinal) runs on every change so the window never looks stale
--- while being dragged, and again with isFinal true when the corner is let go.
--- Anything expensive belongs behind that flag; anything cheap should run on
--- both, because a window that only reflows on release feels broken in the hand.
---
--- key names the saved-variable slot. Position is saved by the window's own drag
--- handler; this only owns the size.
-function MFD.UI.MakeResizable(frame, key, minWidth, minHeight, onResize)
-    frame:SetResizable(true)
-    if frame.SetMinResize then
-        frame:SetMinResize(minWidth, minHeight)
-    end
-
-    local grip = CreateFrame("Button", nil, frame)
-    grip:SetSize(16, 16)
-    grip:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -4, 4)
-    grip:SetFrameLevel(frame:GetFrameLevel() + 10)
-    grip:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
-    grip:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
-    grip:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
-
-    grip:SetScript("OnMouseDown", function()
-        frame:StartSizing("BOTTOMRIGHT")
-    end)
-    grip:SetScript("OnMouseUp", function()
-        frame:StopMovingOrSizing()
-        MFD.charDb.windows[key] = MFD.charDb.windows[key] or {}
-        MFD.charDb.windows[key].width = frame:GetWidth()
-        MFD.charDb.windows[key].height = frame:GetHeight()
-        if onResize then
-            onResize(frame, true)
-        end
-    end)
-
-    frame:SetScript("OnSizeChanged", function(self)
-        if onResize then
-            onResize(self, false)
-        end
-    end)
-
-    local saved = MFD.charDb.windows[key]
-    if saved and saved.width and saved.height then
-        frame:SetSize(math.max(saved.width, minWidth), math.max(saved.height, minHeight))
-    end
-
-    frame.grip = grip
-    return grip
-end
-
 -- Wraps a container in a scroll frame and returns the frame to build into.
 --
 -- The content frame is as wide as the view and as tall as it needs to be, which
@@ -349,7 +298,7 @@ local RulesUI = MFD.UI.Rules
 -- an empty search box matches every mob in the game and nobody scrolls three
 -- hundred rows to find one, they type another letter. A zone's rule list is
 -- never long enough to need a ceiling at all.
-local RESULT_ROWS = 200    -- most search results worth building rows for
+local RESULT_ROWS = 60     -- most search results worth building rows for
 local RULE_ROW_HEIGHT = 24 -- pixels
 
 local rulesFrame
@@ -648,7 +597,10 @@ local function wireDrag(t, row)
         if not item or not item.isMine then
             return
         end
-        dragIndex = item.index
+        -- Only a flag that a drag is happening. Which rule is being moved is
+        -- read from the row at drop time, because an index into the displayed
+        -- list means nothing to the local one.
+        dragIndex = true
         row.dragTexture:Show()
 
         local ghost = ensureDragGhost()
@@ -669,20 +621,37 @@ local function wireDrag(t, row)
             dragGhost:Hide()
         end
 
-        local from = dragIndex
+        local wasDragging = dragIndex
         dragIndex = nil
         local item = self.item
-        if not from or not item then
+        if not wasDragging or not item then
             return
         end
 
+        -- The displayed list can hold rules merged from other players, which
+        -- are not in the local one at all. Everything below is in local terms:
+        -- which local rule was picked up, and how many local rules sit above
+        -- the gap it was dropped in. Using the displayed index against the
+        -- local list moved somebody else's rule, or nothing at all.
         local list = localList(item.key)
-        local boundary = boundaryAtCursor(t, #list)
+        local from = localIndexOf(list, item.rule)
+        if not from then
+            return
+        end
+
+        local boundary = boundaryAtCursor(t, #(t.displayed or {}))
         if not boundary then
             return
         end
 
-        local to = MFD.Rules.DropIndex(from, boundary)
+        local localBoundary = 0
+        for index = 1, math.min(boundary, #(t.displayed or {})) do
+            if t.displayed[index].isMine then
+                localBoundary = localBoundary + 1
+            end
+        end
+
+        local to = MFD.Rules.DropIndex(from, localBoundary)
         if to ~= from then
             MFD.Rules.MoveTo(list, from, to)
             commitRules()
@@ -784,6 +753,10 @@ local function paintRules()
             isMine = rule.owner == me or rule.owner == nil,
         }
     end
+
+    -- Kept for the drag: the gap the cursor is over is a gap in this list, and
+    -- turning it into a local index needs to know which of these rows are ours.
+    t.displayed = list
 
     t:Render(list, function(row, item)
         wireDrag(t, row)
@@ -1078,8 +1051,7 @@ local function buildRulesFrame()
         end
 
         local t = rulesFrame.ruleTable
-        local list = localList(RulesUI:TargetKey())
-        local boundary = boundaryAtCursor(t, #list)
+        local boundary = boundaryAtCursor(t, #(t.displayed or {}))
         if not boundary then
             dropMarker:Hide()
             return
