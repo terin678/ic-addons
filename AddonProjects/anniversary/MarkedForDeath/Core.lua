@@ -2,7 +2,7 @@
 local MFD = _G.MarkedForDeath or {}
 
 -- Must match ## Version: in the toc and the packaged zip name.
-MFD.VERSION = "0.9.0"
+MFD.VERSION = "1.0.0"
 
 -- Bumped only when the saved-variable shape changes in a way that needs a
 -- migration. See MFD:MigrateDB.
@@ -250,6 +250,21 @@ commands.check = {
     desc = "open the full raid buff and consumable grid",
     run = function()
         MFD.UI.RaidCheck:Toggle()
+    end,
+}
+
+commands.auras = {
+    desc = "list the buff names on you and how the addon classified them",
+    run = function()
+        local names = MFD.RaidCheck.AuraNames("player")
+        local state = MFD.RaidCheck.Classify(names)
+        MFD.Print(#names .. " buffs on you: " .. table.concat(names, ", "))
+        MFD.Print(string.format("food=%s flask=%s battle=%s guardian=%s unclassified=%s",
+            tostring(state.food), tostring(state.flask), tostring(state.battle),
+            tostring(state.guardian), tostring(state.unclassifiedElixir)))
+        MFD.Print(string.format("int=%s motw=%s fort=%s sprot=%s blessings=%s",
+            tostring(state.AI), tostring(state.MOTW), tostring(state.FORT), tostring(state.SP),
+            table.concat(state.blessings, " ")))
     end,
 }
 

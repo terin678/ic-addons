@@ -76,12 +76,17 @@ Every command is in `/mfd help`.
 | `/mfd coverage` | Mobs you have seen that the bundled database does not list. |
 | `/mfd minimap` | Hide or show the minimap button. |
 | `/mfd sound` | Toggle the sound played when a rule cannot work on its target. |
+| `/mfd check` | The full raid check grid: consumables, raid buffs, blessings, durability, spec and addon version for everyone. |
+| `/mfd buffs` | The quick buff board: only the people missing something. Works in a pug, no ready check needed. |
+| `/mfd missing` | The same as the buff board, as text in chat. |
+| `/mfd callout` | Post who is missing what to raid chat, grouped by fix. |
+| `/mfd auras` | List the buffs on you and how the addon classified each one. Use it to catch a name the tables do not know. |
 | `/mfd candidates` | The hostile mobs the addon can currently see. |
 | `/mfd selftest` | Run the built-in test suite. |
 | `/mfd version` | Print the version. |
 
 Keybinds, under Key Bindings then Marked For Death: add target as a rule, re-mark the
-visible pack, toggle the rule editor, toggle the assignment panel.
+visible pack, toggle the rule editor, toggle the assignment panel, toggle the buff board.
 
 ## Who marks
 
@@ -123,6 +128,39 @@ Editing a merged rule copies it into your own set first. From then on it is your
 - On pull, the marker posts one line to raid chat: `[MFD] Skull>Kill | Moon>Sheep Grimmtusk`.
   For the people not running the addon. Throttled to one per five seconds.
 
+## Raid check
+
+Three ways to see the same data.
+
+**The grid** (`/mfd check`) is one row per person: food, flask, both elixir slots, weapon
+enchant, Intellect, Mark of the Wild, Fortitude, Shadow Protection, the blessings they
+hold, durability, spec and addon version. Green is present. Red is missing and worth
+fixing. Grey is either not a problem (nobody here can cast it, or the raid does not expect
+it) or unknown. It opens by itself on every ready check for the raid leader and
+assistants, and only them; a checkbox on it turns that off. While it is open it updates
+live, so you can watch it go green during the buff phase.
+
+**The buff board** (`/mfd buffs` or its keybind) is the small one for between pulls: only
+the people short something, and what. Tick Show all to see everyone. It needs nothing
+from anyone else's client, so it works in a pug where you are the only one with the addon.
+
+**Callouts.** Click any name on either window to whisper that person exactly what they
+are missing. The Call out button (or `/mfd callout`) posts to raid chat grouped by fix,
+so the paladin reads the Kings line and the mage reads the Int line. Throttled to one
+per ten seconds.
+
+Some cells need the other player to be running the addon: weapon enchant, durability,
+spec and version cannot be seen from outside, so people without it show `?` there and
+their name is amber to say the row is scan-only. Everything else works on anyone.
+
+A buff nobody present can cast is never reported missing; with no mage in the raid,
+nobody is "missing Intellect". Blessings are shown, never judged: the grid tells you which
+blessings each person has and leaves which they should have to you.
+
+Buffs are recognised by name. If a flask or elixir you are wearing shows as unclassified
+or does not show at all, run `/mfd auras` and send the name along; it is a one-line
+addition to the tables.
+
 ## Crowd control that cannot work
 
 Banish only lands on demons and elementals, shackle on undead, sap on humanoids, and so
@@ -160,5 +198,4 @@ If it says it is marking N of M mobs and you still see nothing, check BugSack.
 ## Versioning
 
 The version appears in the `.toc`, the load message in `Core.lua`, and the zip name, and
-must match. This release is the marking engine. The raid buff and consumable check
-described in the design spec is a separate implementation plan and is not in this build.
+must match.
