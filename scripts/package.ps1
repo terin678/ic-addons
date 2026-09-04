@@ -35,5 +35,32 @@ if ($depLine -match '^## (Dependencies|RequiredDeps):\s*(.+)$') {
     }
 }
 
-Compress-Archive -Path $paths -DestinationPath $zip
-Write-Host "Packaged $zip ($($paths.Count) folders)"
+# Written entry by entry rather than with Compress-Archive, which on Windows PowerShell
+# 5.1 stores paths with backslashes. The zip spec requires forward slashes: Windows
+# Explorer and 7-Zip cope with the backslashes, but macOS Archive Utility and most Linux
+# tools do not, and extract the whole addon as one flat file literally named
+# "MarkedForDeath\Core.lua". Anything meant to leave this guild has to open anywhere.
+# Both: ZipFile and the CreateEntryFromFile extension are in .FileSystem, ZipArchiveMode
+# is in the base assembly, and 5.1 loads neither on its own.
+Add-Type -AssemblyName System.IO.Compression
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$archive = [System.IO.Compression.ZipFile]::Open(
+    $zip, [System.IO.Compression.ZipArchiveMode]::Create)
+$count = 0
+try {
+    foreach ($path in $paths) {
+        $folder = Split-Path -Leaf $path
+        foreach ($file in (Get-ChildItem $path -Recurse -File)) {
+            $relative = $file.FullName.Substring($path.Length).TrimStart([IO.Path]::DirectorySeparatorChar)
+            $entry = ($folder + [IO.Path]::DirectorySeparatorChar + $relative).Replace([IO.Path]::DirectorySeparatorChar, '/')
+            [void][System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
+                $archive, $file.FullName, $entry,
+                [System.IO.Compression.CompressionLevel]::Optimal)
+            $count++
+        }
+    }
+} finally {
+    $archive.Dispose()
+}
+
+Write-Host "Packaged $zip ($($paths.Count) folders, $count files)"
