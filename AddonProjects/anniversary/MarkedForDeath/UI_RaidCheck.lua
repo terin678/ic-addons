@@ -205,8 +205,10 @@ local function setLive(isLive)
     if isLive then
         eventFrame:RegisterEvent("UNIT_AURA")
         eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
+        RC.inspectWanted = RC.inspectWanted + 1
     else
         eventFrame:UnregisterAllEvents()
+        RC.inspectWanted = math.max(0, RC.inspectWanted - 1)
     end
 end
 
@@ -420,8 +422,10 @@ local function setBoardLive(isLive)
     if isLive then
         boardEvents:RegisterEvent("UNIT_AURA")
         boardEvents:RegisterEvent("GROUP_ROSTER_UPDATE")
+        RC.inspectWanted = RC.inspectWanted + 1
     else
         boardEvents:UnregisterAllEvents()
+        RC.inspectWanted = math.max(0, RC.inspectWanted - 1)
     end
 end
 

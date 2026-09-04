@@ -135,7 +135,7 @@ local FLAG_ONLY = { "AI", "MOTW", "FORT", "SP" }
 -- report because nothing else can see them. Durability prefers the report and
 -- falls back to LibDurability, which most raiders answer through BigWigs, DBM
 -- or MRT whether or not they run this addon.
-function RC.MergeRow(scanned, reported, libDurability)
+function RC.MergeRow(scanned, reported, libDurability, inspectedSpec)
     local state = {}
     for k, v in pairs(scanned) do
         state[k] = v
@@ -143,6 +143,7 @@ function RC.MergeRow(scanned, reported, libDurability)
 
     if not reported then
         state.durability = libDurability
+        state.spec = inspectedSpec
         return { state = state, isReported = false }
     end
 
@@ -159,8 +160,50 @@ function RC.MergeRow(scanned, reported, libDurability)
     if state.durability == nil then
         state.durability = libDurability
     end
+    if state.spec == nil then
+        state.spec = inspectedSpec
+    end
 
     return { state = state, isReported = true }
+end
+
+-- Takes an array of { name, points } talent tabs. Returns the name of the tab
+-- with the most points, or nil when none are spent. Ties go to the first tab
+-- so the answer is stable. Pure.
+function RC.SpecFromTabs(tabs)
+    local bestName, bestPoints = nil, 0
+    for _, tab in ipairs(tabs or {}) do
+        if (tab.points or 0) > bestPoints then
+            bestName, bestPoints = tab.name, tab.points
+        end
+    end
+    return bestName
+end
+
+-- Takes row entries, the inspected cache ({ [name] = { spec, at } }), the time
+-- and a ttl. Returns the name of the first player, by name, whose spec is not
+-- self-reported and whose inspection is missing or older than ttl, or nil.
+-- Pure. Self-reported specs are never inspected: the owning client is the
+-- authority, and inspecting costs a request each.
+function RC.NextInspectTarget(entries, inspected, now, ttl)
+    local sorted = {}
+    for _, entry in ipairs(entries or {}) do
+        sorted[#sorted + 1] = entry
+    end
+    table.sort(sorted, function(a, b)
+        return a.name < b.name
+    end)
+
+    for _, entry in ipairs(sorted) do
+        local isSelfReported = entry.row and entry.row.isReported and entry.row.state.spec ~= nil
+        local cached = inspected[entry.name]
+        local isFresh = cached and (now - cached.at) < ttl
+        if not isSelfReported and not isFresh then
+            return entry.name
+        end
+    end
+
+    return nil
 end
 
 -- Takes a LibDurability message. Returns percent and broken-item count for a
@@ -449,9 +492,17 @@ function RC:ScanUnit(unit)
     end
     local _, class = UnitClass(unit)
     local scanned = RC.Classify(RC.AuraNames(unit))
-    local reported = RC.reports[name] and RC.reports[name].state or nil
+    -- The local player is their own authority: a client never receives its
+    -- own report, so without this the own row would read as scan-only.
+    local reported
+    if name == UnitName("player") then
+        reported = RC:GatherSelf()
+    else
+        reported = RC.reports[name] and RC.reports[name].state or nil
+    end
     local libDurability = RC.durability[name] and RC.durability[name].percent or nil
-    local row = RC.MergeRow(scanned, reported, libDurability)
+    local inspectedSpec = RC.inspected[name] and RC.inspected[name].spec or nil
+    local row = RC.MergeRow(scanned, reported, libDurability, inspectedSpec)
     RC.rows[name] = {
         name = name,
         class = class,
@@ -652,6 +703,126 @@ function RC:RequestDurability()
     end
 end
 
+-- Spec by inspection. Works on anyone within inspect range running nothing at
+-- all, which is more than any addon-to-addon protocol on this client can
+-- offer: LibSpecialization has no TBC branch, and MRT does not send spec.
+-- One request in flight at a time, throttled, cached, skipped in combat, and
+-- every wait times out.
+RC.INSPECT_TTL_SECONDS = 60             -- how long an inspected spec is trusted
+RC.INSPECT_INTERVAL_SECONDS = 1.5       -- gap between inspect requests
+RC.INSPECT_TIMEOUT_SECONDS = 3          -- give up waiting for INSPECT_READY
+RC.INSPECT_RETRY_SECONDS = 10           -- wait before retrying an out-of-range player
+RC.INSPECT_READY_CHECK_SECONDS = 20     -- keep inspecting this long after a ready check
+
+RC.inspected = {}        -- [name] = { spec, at }
+RC.inspectWanted = 0     -- surfaces currently shown that want specs
+RC.inspectUntil = 0      -- inspect regardless until this time
+
+local NotifyInspect = NotifyInspect
+local CanInspect = CanInspect
+local CheckInteractDistance = CheckInteractDistance
+local InCombatLockdown = InCombatLockdown
+local GetNumTalents = GetNumTalents
+local GetTalentInfo = GetTalentInfo
+
+local pendingGuid, pendingName, pendingAt
+
+-- Reads the inspected unit's talent tabs. Prefers the tab totals; if the
+-- client reports none, sums the ranks of every talent in the tab instead,
+-- which is how the Classic inspect libraries do it.
+local function readInspectedTabs()
+    local tabs = {}
+    for tab = 1, 3 do
+        local ok, name, _, points = pcall(GetTalentTabInfo, tab, true)
+        if ok and name then
+            local total = tonumber(points) or 0
+            if total == 0 and GetNumTalents and GetTalentInfo then
+                local okCount, count = pcall(GetNumTalents, tab, true)
+                for i = 1, (okCount and tonumber(count)) or 0 do
+                    local okTalent, _, _, _, _, rank = pcall(GetTalentInfo, tab, i, true)
+                    if okTalent then
+                        total = total + (tonumber(rank) or 0)
+                    end
+                end
+            end
+            tabs[#tabs + 1] = { name = name, points = total }
+        end
+    end
+    return tabs
+end
+
+-- Stamps a player so the pump moves on rather than spinning on someone out
+-- of range, keeping any spec already known.
+local function deferInspect(name, now)
+    local previous = RC.inspected[name]
+    RC.inspected[name] = {
+        spec = previous and previous.spec or nil,
+        at = now - RC.INSPECT_TTL_SECONDS + RC.INSPECT_RETRY_SECONDS,
+    }
+end
+
+-- Issues at most one inspect request per call, and only when a surface wants
+-- specs or a ready check recently happened.
+function RC:PumpInspect(now)
+    if pendingGuid and (now - pendingAt) > RC.INSPECT_TIMEOUT_SECONDS then
+        deferInspect(pendingName, now)
+        pendingGuid = nil
+    end
+    if pendingGuid then
+        return
+    end
+    if RC.inspectWanted <= 0 and now > RC.inspectUntil then
+        return
+    end
+    if InCombatLockdown and InCombatLockdown() then
+        return
+    end
+    if not NotifyInspect or not CanInspect then
+        return
+    end
+
+    local name = RC.NextInspectTarget(RC:SortedRows(), RC.inspected, now, RC.INSPECT_TTL_SECONDS)
+    if not name then
+        return
+    end
+
+    local entry = RC.rows[name]
+    local unit = entry and entry.unit
+    if not unit or name == UnitName("player") then
+        deferInspect(name, now)
+        return
+    end
+
+    local okRange, isInRange = pcall(CheckInteractDistance, unit, 1)
+    local okCan, canInspect = pcall(CanInspect, unit, false)
+    if not (okRange and isInRange and okCan and canInspect) then
+        deferInspect(name, now)
+        return
+    end
+
+    pendingGuid, pendingName, pendingAt = UnitGUID(unit), name, now
+    pcall(NotifyInspect, unit)
+end
+
+local function onInspectReady(guid)
+    if not pendingGuid or guid ~= pendingGuid then
+        return
+    end
+    local name = pendingName
+    pendingGuid = nil
+    RC.inspected[name] = { spec = RC.SpecFromTabs(readInspectedTabs()), at = GetTime() }
+
+    local entry = RC.rows[name]
+    if entry and entry.unit then
+        RC:ScanUnit(entry.unit)
+    end
+    if RC.OnDataChanged then
+        RC.OnDataChanged()
+    end
+end
+
+local inspectAccumulator = 0
+
 local heartbeat = 0
 
 MFD.RegisterInit(function()
@@ -661,8 +832,13 @@ MFD.RegisterInit(function()
     frame:RegisterEvent("GROUP_ROSTER_UPDATE")
     frame:RegisterEvent("PLAYER_ENTERING_WORLD")
     frame:RegisterEvent("UNIT_AURA")
+    frame:RegisterEvent("INSPECT_READY")
 
     frame:SetScript("OnEvent", function(_, event, unit)
+        if event == "INSPECT_READY" then
+            onInspectReady(unit)
+            return
+        end
         if (event == "UNIT_INVENTORY_CHANGED" or event == "UNIT_AURA") and unit ~= "player" then
             return
         end
@@ -674,6 +850,15 @@ MFD.RegisterInit(function()
         if heartbeat >= RC.REPORT_HEARTBEAT_SECONDS then
             heartbeat = 0
             RC:SendReport()
+        end
+
+        inspectAccumulator = inspectAccumulator + elapsed
+        if inspectAccumulator >= RC.INSPECT_INTERVAL_SECONDS then
+            inspectAccumulator = 0
+            local ok, err = pcall(RC.PumpInspect, RC, GetTime())
+            if not ok then
+                MFD.Error("inspect failed: " .. tostring(err))
+            end
         end
     end)
 end)

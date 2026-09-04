@@ -153,10 +153,16 @@ per ten seconds.
 LibDurability, a shared protocol embedded in BigWigs, DBM and MRT, so anyone running any
 of those answers. If a player somehow runs none of them, their durability shows `?`.
 
-Three cells do need the other player to be running this addon: weapon enchant, spec and
-version cannot be seen from outside (this is true of MRT as well, whatever it looks
-like), so people without it show `?` there and their name is amber to say the row is
-scan-only. Everything else works on anyone.
+**Spec works on anyone within about 28 yards**, no addon needed: the addon inspects
+people one at a time while a raid check window is open or for twenty seconds after a
+ready check, never in combat, and remembers each answer for a minute. Someone out of
+range shows `?` until they wander closer.
+
+Two cells do need the other player to be running this addon: weapon enchant and version.
+No API and no other addon on the client can see another player's temporary weapon
+enchant (this is true of MRT as well, whatever it looks like; on TBC it only ever shows
+its own). People without the addon show `?` there and their name is amber to say the row
+is scan-only. Everything else works on anyone.
 
 A buff nobody present can cast is never reported missing; with no mage in the raid,
 nobody is "missing Intellect". Blessings are shown, never judged: the grid tells you which

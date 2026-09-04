@@ -2,7 +2,7 @@
 local MFD = _G.MarkedForDeath or {}
 
 -- Must match ## Version: in the toc and the packaged zip name.
-MFD.VERSION = "1.0.1"
+MFD.VERSION = "1.0.2"
 
 -- Bumped only when the saved-variable shape changes in a way that needs a
 -- migration. See MFD:MigrateDB.
@@ -107,6 +107,10 @@ local function onAddonLoaded()
         if not MFD.db.settings.raidCheck.isAutoOpenEnabled then
             return
         end
+        -- Specs come from inspection, so give the pump a window after every
+        -- ready check even on clients that keep the window closed.
+        MFD.RaidCheck.inspectUntil = GetTime() + MFD.RaidCheck.INSPECT_READY_CHECK_SECONDS
+
         local isLeadOrAssist = UnitIsGroupLeader("player")
             or (UnitIsGroupAssistant and UnitIsGroupAssistant("player"))
         if isLeadOrAssist then

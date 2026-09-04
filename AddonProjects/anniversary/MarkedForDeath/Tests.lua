@@ -1580,4 +1580,57 @@ T.Case("Durability: a request or rubbish does not parse as a response", function
     T.Eq(MFD.RaidCheck.ParseDurabilityMessage(nil), nil, "nil")
 end)
 
+-- Spec from inspected talent tabs. Works on anyone in inspect range running
+-- nothing at all, which beats every addon-to-addon protocol available here.
+T.Case("Spec: the tab with the most points names the spec", function()
+    T.Eq(MFD.RaidCheck.SpecFromTabs({ { name = "Arcane", points = 0 }, { name = "Fire", points = 41 }, { name = "Frost", points = 20 } }), "Fire", "fire")
+end)
+
+T.Case("Spec: no points spent means no spec, not the first tab", function()
+    T.Eq(MFD.RaidCheck.SpecFromTabs({ { name = "Arcane", points = 0 }, { name = "Fire", points = 0 }, { name = "Frost", points = 0 } }), nil, "unspecced")
+    T.Eq(MFD.RaidCheck.SpecFromTabs({}), nil, "no tabs")
+end)
+
+T.Case("Spec: a tie goes to the first tab so the answer is stable", function()
+    T.Eq(MFD.RaidCheck.SpecFromTabs({ { name = "Holy", points = 30 }, { name = "Disc", points = 30 }, { name = "Shadow", points = 1 } }), "Holy", "first wins")
+end)
+
+-- A self-reported spec is what makes a player "known"; an inspected one is
+-- refreshed on its own ttl, so the helper marks the row reported only when a
+-- spec is given.
+local function rowEntry(name, spec)
+    return { name = name, row = { state = { spec = spec }, isReported = spec ~= nil } }
+end
+
+T.Case("Inspect: the next target is the first player with no fresh spec from any source", function()
+    local entries = { rowEntry("Zed", nil), rowEntry("Alfred", nil), rowEntry("Mira", "Fire") }
+    local inspected = { Alfred = { spec = "Frost", at = 100 } }
+    T.Eq(MFD.RaidCheck.NextInspectTarget(entries, inspected, 120, 60), "Zed",
+        "Alfred is fresh, Mira self-reported, Zed is the one left")
+end)
+
+T.Case("Inspect: a stale inspection is re-done after the ttl", function()
+    local entries = { rowEntry("Alfred", nil) }
+    local inspected = { Alfred = { spec = "Frost", at = 100 } }
+    T.Eq(MFD.RaidCheck.NextInspectTarget(entries, inspected, 161, 60), "Alfred", "older than ttl")
+    T.Eq(MFD.RaidCheck.NextInspectTarget(entries, inspected, 159, 60), nil, "still fresh")
+end)
+
+T.Case("Inspect: nobody needs inspecting returns nil", function()
+    local entries = { rowEntry("Mira", "Fire") }
+    T.Eq(MFD.RaidCheck.NextInspectTarget(entries, {}, 100, 60), nil, "everyone known")
+    T.Eq(MFD.RaidCheck.NextInspectTarget({}, {}, 100, 60), nil, "empty group")
+end)
+
+T.Case("MergeRow: an inspected spec fills in when there is no self-reported one", function()
+    local row = MFD.RaidCheck.MergeRow(MFD.RaidCheck.Classify({}), nil, nil, "Frost")
+    T.Eq(row.state.spec, "Frost", "from inspect")
+    T.Eq(row.isReported, false, "still not an MFD-reported row")
+end)
+
+T.Case("MergeRow: a self-reported spec wins over an inspected one", function()
+    local row = MFD.RaidCheck.MergeRow(MFD.RaidCheck.Classify({}), { spec = "Fire" }, nil, "Frost")
+    T.Eq(row.state.spec, "Fire", "the owning client is authoritative")
+end)
+
 _G.MarkedForDeath = MFD
