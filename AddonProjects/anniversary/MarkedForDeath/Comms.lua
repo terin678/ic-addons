@@ -42,18 +42,32 @@ end
 -- Splits a wire string. Returns the message type and an array of field strings,
 -- or nil when the input is not a message. Fields always come back as strings;
 -- callers convert.
+--
+-- Empty fields keep their position. A gmatch of "[^sep]+" looks like the
+-- obvious way to do this and is wrong: the + skips empty fields entirely, so
+-- every later field shifts down one. That turned clearing the Raid Lead, which
+-- sends an empty name, into setting the lead to the clearer's own name.
 function Comms.Decode(str)
     if type(str) ~= "string" or str == "" then
         return nil
     end
 
     local fields = {}
-    for part in string.gmatch(str, "([^" .. Comms.SEPARATOR .. "]+)") do
-        fields[#fields + 1] = part
+    local separator = Comms.SEPARATOR
+    local position = 1
+
+    while true do
+        local at = string.find(str, separator, position, true)
+        if not at then
+            fields[#fields + 1] = string.sub(str, position)
+            break
+        end
+        fields[#fields + 1] = string.sub(str, position, at - 1)
+        position = at + 1
     end
 
     local msgType = table.remove(fields, 1)
-    if not msgType then
+    if not msgType or msgType == "" then
         return nil
     end
 

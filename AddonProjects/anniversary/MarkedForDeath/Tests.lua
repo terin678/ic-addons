@@ -1633,4 +1633,39 @@ T.Case("MergeRow: a self-reported spec wins over an inspected one", function()
     T.Eq(row.state.spec, "Fire", "the owning client is authoritative")
 end)
 
+-- An empty field must survive the round trip. Dropping it shifts every field
+-- after it, which silently changes what a message means.
+T.Case("Comms: an empty field keeps its position", function()
+    local msgType, fields = MFD.Comms.Decode(MFD.Comms.Encode("L", { "", "Dillon", 123 }))
+    T.Eq(msgType, "L", "type")
+    T.Eq(fields[1], "", "the empty name is still field one")
+    T.Eq(fields[2], "Dillon", "not shifted down")
+    T.Eq(fields[3], "123", "nor this")
+end)
+
+-- The bug this pins down: clearing the Raid Lead sends an empty name, and the
+-- old split turned "L~~Dillon~123" into fields {Dillon, 123}, so every client
+-- read the clearer's own name as the new lead instead of clearing it.
+T.Case("Comms: clearing the Raid Lead decodes as a clear, not as a name", function()
+    local _, fields = MFD.Comms.Decode(MFD.Comms.Encode("L", { "", "Dezedin", 1788480000 }))
+    T.Eq(fields[1], "", "no lead")
+    T.Eq(fields[2], "Dezedin", "set by")
+    T.Eq(tonumber(fields[3]), 1788480000, "timestamp intact")
+end)
+
+T.Case("Comms: trailing and consecutive empty fields survive", function()
+    local _, fields = MFD.Comms.Decode(MFD.Comms.Encode("X", { "a", "", "", "b", "" }))
+    T.Eq(#fields, 5, "all five fields")
+    T.Eq(fields[2], "", "second empty")
+    T.Eq(fields[3], "", "third empty")
+    T.Eq(fields[4], "b", "not shifted")
+    T.Eq(fields[5], "", "trailing empty kept")
+end)
+
+T.Case("Comms: a type with no fields still decodes", function()
+    local msgType, fields = MFD.Comms.Decode(MFD.Comms.Encode("B", {}))
+    T.Eq(msgType, "B", "type")
+    T.Eq(#fields, 0, "no fields")
+end)
+
 _G.MarkedForDeath = MFD
