@@ -121,8 +121,43 @@ end
 
 function Orders.RemoveItem(o, index, now)
     local it = table.remove(o.items, index)
-    if it then o.updatedAt = now end
+    if not it then return nil end
+    o.updatedAt = now
+    -- The split prompt exists because some item's quantity was a guess. Once
+    -- that item is gone the prompt is asking about nothing. (CutMaster 1.2.0)
+    local stillAmbiguous = false
+    for _, other in ipairs(o.items) do
+        if other.qtySource == "ambiguous" then
+            stillAmbiguous = true
+            break
+        end
+    end
+    o.needsSplit = stillAmbiguous
     return it
+end
+
+-- Pure. Where an item sits on the order, so callers that know the itemID (the
+-- tracker row, a slash command) can use the index-based RemoveItem.
+function Orders.IndexOfItem(o, itemID)
+    for i, it in ipairs(o.items) do
+        if it.itemID == itemID then return i end
+    end
+    return nil
+end
+
+-- Case-insensitive substring match on the item's name: someone typing a slash
+-- command has the name in front of them, not the itemID. (CutMaster 1.2.0)
+function Orders.FindItemByName(o, text)
+    text = ns.Util.Normalize(text or "")
+    if text == "" then return nil end
+    local book = Orders.BookFor(o)
+    for _, it in ipairs(o.items) do
+        local e = book[it.itemID]
+        if e and e.name and ns.Util.Normalize(e.name):find(text, 1, true) then
+            return it.itemID
+        end
+    end
+    return nil
 end
 
 -- Pure. Book entries matching what someone typed. An exact name wins on its own;
@@ -305,12 +340,19 @@ function Orders.ActiveList()
     return out
 end
 
-function Orders.PendingCount()
-    local n = 0
+-- Not counted as open work, since they may never join, but still worth seeing
+-- and still cancellable: the tracker needs something to render for them.
+-- (CutMaster 1.2.0)
+function Orders.PendingList()
+    local out = {}
     for _, o in ipairs(ns.db.orders) do
-        if o.status == "pending" then n = n + 1 end
+        if o.status == "pending" then out[#out + 1] = o end
     end
-    return n
+    return out
+end
+
+function Orders.PendingCount()
+    return #Orders.PendingList()
 end
 
 function Orders.ByID(id)
@@ -318,6 +360,66 @@ function Orders.ByID(id)
         if o.id == id then return o end
     end
     return nil
+end
+
+-- Pure over the order list. A pending order nobody ever joined for is not work
+-- in progress: they missed the invite, alt-tabbed, or changed their mind. Left
+-- alone it sits in the queue looking like a live customer. Only "pending" is
+-- touched -- once someone has actually grouped up, a slow reply is a different
+-- problem and cancelling it out from under them would be wrong. (CutMaster 1.2.0)
+function Orders.ExpireStale(orders, now, timeoutSec)
+    local expired = {}
+    -- 0 means the timeout is switched off. Without this the arithmetic below is
+    -- "older than nothing", which expires every pending order the moment it is
+    -- created -- the exact opposite of what switching it off should do.
+    if not timeoutSec or timeoutSec <= 0 then return expired end
+    for _, o in ipairs(orders or {}) do
+        if o.status == "pending" and (now - (o.createdAt or now)) >= timeoutSec then
+            Orders.SetStatus(o, "cancelled", now)
+            expired[#expired + 1] = o
+        end
+    end
+    return expired
+end
+
+-- Declining is the same thing said out loud: no reason to wait out the timeout
+-- once they have answered. (CutMaster 1.2.0)
+function Orders.CancelPending(player, now)
+    local o = Orders.Open(player)
+    if o and o.status == "pending" then
+        Orders.SetStatus(o, "cancelled", now)
+        return o
+    end
+    return nil
+end
+
+-- Polling every timeout would let one sit for nearly twice the window. A minute
+-- is close enough without being wasteful.
+local POLL_INTERVAL = 60
+
+function Orders.Poll()
+    if not ns.db or not ns.Enabled() then return end
+    local timeout = ns.db.settings.orders.pendingTimeoutSec
+    if not timeout or timeout <= 0 then return end
+
+    local expired = Orders.ExpireStale(ns.db.orders, ns.Now(), timeout)
+    -- A first poll after importing a CutMaster order book can find a whole
+    -- backlog at once, and one line each would be a wall of chat.
+    if #expired > 3 then
+        ns.Print(string.format("|cff888888%d pending orders expired, never joined.|r", #expired))
+    else
+        for _, o in ipairs(expired) do
+            ns.Print(string.format(
+                "|cff888888order #%d for %s expired, never joined within %d min.|r",
+                o.id, o.player, math.floor(timeout / 60)))
+        end
+    end
+    if #expired > 0 and ns.Tracker then ns.Tracker.Refresh() end
+end
+
+function Orders.StartExpiryTicker()
+    if Orders.expiryTicker then Orders.expiryTicker:Cancel() end
+    Orders.expiryTicker = C_Timer.NewTicker(POLL_INTERVAL, Orders.Poll)
 end
 
 -- Promote anyone who has now actually joined the group.

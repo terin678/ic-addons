@@ -197,6 +197,24 @@ which drops finished orders older than `keepDoneDays` (30 by default).
 
 The **Tracker** (`/tm tracker`, or middle-click the minimap icon) is a slim window you can
 leave on screen: open orders, a tick box per item, ticking the last one closes the order.
+Right-click a **name** to cancel that order; right-click an **item** to drop just that line,
+for something stale or wrongly matched that nobody asked for. Without that, one bad line left
+an order unable to complete, because there was nothing to tick it off with.
+
+Orders waiting on someone to join get their own rows too, right-clickable to cancel. They are
+not counted as open work — they may never join — but a static "waiting for them to join" line
+with nothing clickable on it left the full Orders tab as the only way to close one out.
+
+### Gives up on a customer who never came
+
+A pending order expires after five minutes if the customer never joins the group
+(`settings.orders.pendingTimeoutSec`, 0 to switch it off), or immediately if they decline the
+invite. Left alone, one sits in the queue forever looking like live work. Only *pending* is
+touched: once someone has actually grouped up, a slow reply is a different problem and
+cancelling it out from under them would be wrong.
+
+The decline is read by turning the client's own `ERR_DECLINE_GROUP_S` into a pattern, so it
+works on any locale rather than only on an English client.
 
 ### Shows you the message first
 
@@ -287,6 +305,7 @@ For Jewelcrafting, gem names in the profession window are replaced with what the
 | `/tm market` | Seller and buyer counts per profession, and the suggested bark interval |
 | `/tm log` / `/tm clearflags` | Recent decisions; clear competitor flags |
 | `/tm orders` / `/tm order add\|done\|cancel\|reopen <id>` | Manage orders |
+| `/tm order removeitem <id> <item name>` | Drop one line from an order, matched on part of the name |
 | `/tm tracker` / `/tm income` | Tracker window; earnings summary |
 | `/tm try <msg>` / `/tm trywhisper <msg>` / `/tm tryparty <msg>` | Test the classifier for the active profession. Sends nothing. |
 | `/tm capture` | Record every Trade message and its verdict |
