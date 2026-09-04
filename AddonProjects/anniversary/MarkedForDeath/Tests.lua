@@ -2560,4 +2560,44 @@ T.Case("Conflicts: Evaluate only reports the ones whose test says so", function(
     T.Eq(found[1].label, "On", "and it is the right one")
 end)
 
+-- Having no blessing at all is worth calling out. Which blessing each class
+-- should carry is still the raid leader's business, so only the absence of
+-- every one of them counts.
+T.Case("Blessing: someone with none is reported when a paladin is present", function()
+    local state = MFD.RaidCheck.Classify({})
+    local missing = MFD.RaidCheck.Missing(state, { BLESSING = true }, {})
+    T.Eq(#missing, 1, "one thing missing")
+    T.Eq(missing[1].column, "BLESSING", "the blessing")
+    T.Eq(missing[1].label, "Blessing", "labelled plainly")
+end)
+
+T.Case("Blessing: any blessing at all satisfies it, and none is judged", function()
+    T.Eq(#MFD.RaidCheck.Missing(MFD.RaidCheck.Classify({ "Blessing of Salvation" }), { BLESSING = true }, {}), 0,
+        "salvation counts")
+    T.Eq(#MFD.RaidCheck.Missing(MFD.RaidCheck.Classify({ "Greater Blessing of Kings" }), { BLESSING = true }, {}), 0,
+        "so does kings, and the addon does not say which they should have")
+end)
+
+T.Case("Blessing: with no paladin present it is never reported", function()
+    local state = MFD.RaidCheck.Classify({})
+    T.Eq(#MFD.RaidCheck.Missing(state, { BLESSING = false }, {}), 0,
+        "nobody can cast it, so it is an absence rather than a failure")
+end)
+
+T.Case("Blessing: a paladin in the group makes it providable", function()
+    local withPaladin = MFD.RaidCheck.Providers(roster("Dezedin", "PALADIN", "Thok", "WARRIOR"))
+    T.Eq(withPaladin.BLESSING, true, "paladin present")
+
+    local without = MFD.RaidCheck.Providers(roster("Thok", "WARRIOR"))
+    T.Eq(without.BLESSING, false, "no paladin")
+end)
+
+T.Case("Blessing: it is listed with the raid buffs, before consumables", function()
+    local state = MFD.RaidCheck.Classify({})
+    local missing = MFD.RaidCheck.Missing(state, { AI = true, BLESSING = true }, { FOOD = true })
+    T.Eq(missing[1].column, "AI", "raid buffs first")
+    T.Eq(missing[2].column, "BLESSING", "then the blessing")
+    T.Eq(missing[3].column, "FOOD", "then consumables")
+end)
+
 _G.MarkedForDeath = MFD

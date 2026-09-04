@@ -69,7 +69,7 @@ local function cellText(column, entry)
         return presence(state[column], missingSet[column])
     elseif column == "BLESSINGS" then
         if #state.blessings == 0 then
-            return GREY .. "none|r"
+            return (missingSet.BLESSING and RED or GREY) .. "none|r"
         end
         return table.concat(state.blessings, " ")
     elseif column == "DUR" then

@@ -83,6 +83,14 @@ function RC.Providers(roster)
             end
         end
     end
+
+    providers.BLESSING = false
+    for _, class in ipairs(MFD.Data.Auras.BLESSING_CLASSES) do
+        if classesPresent[class] then
+            providers.BLESSING = true
+        end
+    end
+
     return providers
 end
 
@@ -101,6 +109,12 @@ function RC.Missing(state, providers, expected)
         if providers[column] and state[column] == false then
             missing[#missing + 1] = { column = column, label = A.RAID_BUFFS[column].label }
         end
+    end
+
+    -- Having no blessing at all is a gap worth naming. Which one they should
+    -- have is not the addon's business, so any blessing satisfies this.
+    if providers.BLESSING and #state.blessings == 0 then
+        missing[#missing + 1] = { column = "BLESSING", label = "Blessing" }
     end
 
     -- A flask occupies both elixir slots, so it satisfies both.

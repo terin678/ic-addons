@@ -21,7 +21,13 @@ A.RAID_BUFFS = {
 -- Column order for every surface.
 A.RAID_BUFF_ORDER = { "AI", "MOTW", "FORT", "SP" }
 
--- Shown, never judged. Single and greater collapse to one label.
+-- Who can hand out a blessing. Which blessing each class should carry is still
+-- the raid leader's call; this only decides whether having none at all is
+-- worth mentioning.
+A.BLESSING_CLASSES = { "PALADIN" }
+
+-- Which blessings someone holds is shown, never judged. Single and greater
+-- collapse to one label.
 A.BLESSINGS = {
     ["Blessing of Kings"] = "Kings",         ["Greater Blessing of Kings"] = "Kings",
     ["Blessing of Might"] = "Might",         ["Greater Blessing of Might"] = "Might",
