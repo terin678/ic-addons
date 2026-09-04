@@ -34,19 +34,24 @@ Change any of it in `/mfd config`. A job nobody in the group can do is skipped e
 with no mage present, sheep rules fall through to their fallback (usually kill) instead of
 producing an icon nobody will honour.
 
-## The minimap button
+## One window
 
-Left click opens a menu with every window in it, plus quick toggles for automatic marking
-and pull announcements. Right click jumps straight to rules, middle click to the
-assignment panel.
+Everything you configure lives in a single window with tabs: **Seats**, **Rules**,
+**Raid check** and **Settings**. Open it by left clicking the minimap skull, or `/mfd`.
+Switching tabs never closes anything, so you can jump between the seat plan and the rule
+list without losing your place.
 
-Settings are in that menu, at `/mfd options`, and in the game's own Interface options
-under AddOns, whichever you find first. Everything the addon can be told to do is in
-there: whether it marks at all, whether it announces on the pull, whether it warns about
-nameplate settings, the impossible-crowd-control sound, opening the grid on ready check,
-and the minimap button itself.
+Right click the minimap button to land straight on Rules. Middle click toggles the
+assignment panel. Shift click gives a small menu with quick toggles for marking and pull
+announcements.
 
-`/mfd minimap` brings the button back if you hide it.
+Two panels stay separate on purpose. The **assignment panel** and the **buff board** are
+things you glance at during a pull, not things you sit and adjust, and burying them in a
+config window would mean opening one mid-fight. Both are on the shift-click menu, both
+have keybinds, and both remember where you put them.
+
+Settings also appear in the game's own Interface options under AddOns, whichever you find
+first.
 
 ## Planning a raid before you walk in
 

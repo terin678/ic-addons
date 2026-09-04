@@ -26,8 +26,10 @@ function M.Init()
                 MFD.UI.Rules:Toggle()
             elseif button == "MiddleButton" then
                 MFD.UI.Assignments:Toggle()
-            else
+            elseif IsShiftKeyDown and IsShiftKeyDown() then
                 M.OpenMenu(anchor)
+            else
+                MFD.UI.Main:Toggle()
             end
         end,
         OnTooltipShow = function(tt)
@@ -61,9 +63,10 @@ function M.Init()
             end
 
             tt:AddLine(" ")
-            tt:AddLine("|cff888888Left click: menu|r")
-            tt:AddLine("|cff888888Right click: rules and mob search|r")
+            tt:AddLine("|cff888888Left click: open the window|r")
+            tt:AddLine("|cff888888Right click: straight to rules|r")
             tt:AddLine("|cff888888Middle click: assignment panel|r")
+            tt:AddLine("|cff888888Shift click: quick menu|r")
         end,
     })
 
@@ -85,10 +88,14 @@ local function menuEntries()
     return {
         { title = true, text = "Marked For Death" },
 
-        { text = "Seats and icons", open = function() MFD.UI.Config:Toggle() end },
-        { text = "Rules and mob search", open = function() MFD.UI.Rules:Toggle() end },
+        { text = "Open Marked For Death", open = function() MFD.UI.Main:Toggle() end },
+
+        { separator = true },
+
+        -- The two floating heads-up panels. Everything else is a tab in the
+        -- main window now, so listing tabs here would just be a worse copy of
+        -- the tab strip.
         { text = "Assignment panel", open = function() MFD.UI.Assignments:Toggle() end },
-        { text = "Raid check grid", open = function() MFD.UI.RaidCheck:Toggle() end },
         { text = "Buff board", open = function() MFD.UI.BuffBoard:Toggle() end },
 
         { separator = true },
@@ -109,6 +116,10 @@ local function menuEntries()
         { text = "Settings", open = function() MFD.UI.Settings:Toggle() end },
     }
 end
+
+-- Left click opens the one window; right click jumps to the rules tab; middle
+-- click toggles the assignment panel. The menu is on shift-click for anyone
+-- who wants the quick toggles without opening anything.
 
 function M.OpenMenu(anchor)
     if not menu then

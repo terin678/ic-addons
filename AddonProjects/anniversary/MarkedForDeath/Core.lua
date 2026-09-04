@@ -2,7 +2,7 @@
 local MFD = _G.MarkedForDeath or {}
 
 -- Must match ## Version: in the toc and the packaged zip name.
-MFD.VERSION = "1.4.0"
+MFD.VERSION = "1.5.0"
 
 -- Bumped only when the saved-variable shape changes in a way that needs a
 -- migration. See MFD:MigrateDB.
@@ -667,8 +667,11 @@ SlashCmdList["MARKEDFORDEATH"] = function(input)
     local cmd, rest = string.match(input or "", "^(%S*)%s*(.-)$")
     cmd = string.lower(cmd or "")
 
+    -- Bare /mfd opens the window, which is what a player reaching for it
+    -- almost always wants. /mfd help still lists everything.
     if cmd == "" then
-        cmd = "help"
+        MFD.UI.Main:Toggle()
+        return
     end
 
     local entry = commands[cmd]

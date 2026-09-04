@@ -160,6 +160,11 @@ function Grid:Refresh()
         return
     end
 
+    if frame.auto then
+        frame.auto:SetChecked(MFD.db.settings.raidCheck.isAutoOpenEnabled)
+    end
+    Grid:RefreshHeader()
+
     local index = 0
     for _, entry in ipairs(RC:SortedRows()) do
         if index >= MAX_ROWS then
@@ -183,21 +188,6 @@ function Grid:Refresh()
 
     MFD.UI.ReleaseRows(rows, index + 1)
     frame.empty:SetText(index == 0 and (GREY .. "nobody in the group|r") or "")
-end
-
-local function savePosition()
-    local point, _, relativePoint, x, y = frame:GetPoint()
-    MFD.charDb.windows.raidCheck = { point = point, relativePoint = relativePoint, x = x, y = y }
-end
-
-local function restorePosition()
-    local saved = MFD.charDb.windows.raidCheck
-    frame:ClearAllPoints()
-    if saved and saved.point then
-        frame:SetPoint(saved.point, UIParent, saved.relativePoint or saved.point, saved.x or 0, saved.y or 0)
-    else
-        frame:SetPoint("CENTER")
-    end
 end
 
 local function isGroupUnit(unit)
@@ -230,25 +220,13 @@ local function setLive(isLive)
     end
 end
 
-local function build()
-    frame = CreateFrame("Frame", "MarkedForDeathRaidCheckFrame", UIParent, "BasicFrameTemplateWithInset")
-    frame:SetSize(GRID_WIDTH, 30 + 16 + MAX_ROWS * ROW_HEIGHT + 40)
-    frame:SetMovable(true)
-    frame:EnableMouse(true)
-    frame:RegisterForDrag("LeftButton")
-    frame:SetScript("OnDragStart", frame.StartMoving)
-    frame:SetScript("OnDragStop", function()
-        frame:StopMovingOrSizing()
-        savePosition()
-    end)
-    frame:SetFrameStrata("DIALOG")
-
-    frame.title = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    frame.title:SetPoint("TOP", frame, "TOP", 0, -6)
-    frame.title:SetText("Marked For Death: raid check")
+-- Builds the grid into a container the main window owns. The window supplies
+-- the border, the title and the dragging; this only fills the space.
+function Grid:BuildInto(container)
+    frame = container
 
     frame.header = CreateFrame("Frame", nil, frame)
-    frame.header:SetPoint("TOPLEFT", frame, "TOPLEFT", 14, -28)
+    frame.header:SetPoint("TOPLEFT", frame, "TOPLEFT", 14, -6)
     frame.header:SetPoint("RIGHT", frame, "RIGHT", -14, 0)
     frame.header:SetHeight(16)
 
@@ -300,7 +278,7 @@ local function build()
     end
 
     frame.body = CreateFrame("Frame", nil, frame)
-    frame.body:SetPoint("TOPLEFT", frame, "TOPLEFT", 6, -46)
+    frame.body:SetPoint("TOPLEFT", frame, "TOPLEFT", 6, -24)
     frame.body:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -6, 40)
 
     frame.empty = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -339,8 +317,6 @@ local function build()
         setLive(false)
     end)
 
-    restorePosition()
-    tinsert(UISpecialFrames, "MarkedForDeathRaidCheckFrame")
 end
 
 -- Repaint whichever raid check surface is open when data changes underneath
@@ -353,21 +329,13 @@ RC.OnDataChanged = function()
 end
 
 function Grid:Show()
-    if not frame then
-        build()
-    end
-    frame.auto:SetChecked(MFD.db.settings.raidCheck.isAutoOpenEnabled)
-    Grid:RefreshHeader()
-    frame:Show()
+    MFD.UI.Main:Select("check")
+    MFD.UI.Main:Open()
     RC:Scan()
 end
 
 function Grid:Toggle()
-    if frame and frame:IsShown() then
-        frame:Hide()
-        return
-    end
-    Grid:Show()
+    MFD.UI.Main:Toggle("check")
 end
 
 -- The quick buff board. Missing-only by default, buff columns only, and it

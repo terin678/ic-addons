@@ -243,27 +243,17 @@ function Config:Refresh()
     MFD.UI.ReleaseRows(rows, #ICON_ORDER + 1)
 end
 
-local function build()
-    frame = CreateFrame("Frame", "MarkedForDeathConfigFrame", UIParent, "BasicFrameTemplateWithInset")
-    frame:SetSize(640, 260)
-    frame:SetPoint("CENTER")
-    frame:SetMovable(true)
-    frame:EnableMouse(true)
-    frame:RegisterForDrag("LeftButton")
-    frame:SetScript("OnDragStart", frame.StartMoving)
-    frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
-    frame:SetFrameStrata("DIALOG")
-
-    frame.title = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    frame.title:SetPoint("TOP", frame, "TOP", 0, -6)
-    frame.title:SetText("Marked For Death: seats")
+-- Builds the seat editor into a container the main window owns. The window
+-- provides the border, the title and the dragging; this only fills the space.
+function Config:BuildInto(container)
+    frame = container
 
     frame.header = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    frame.header:SetPoint("TOPLEFT", frame, "TOPLEFT", 40, -30)
+    frame.header:SetPoint("TOPLEFT", frame, "TOPLEFT", 40, -6)
     frame.header:SetText("icon      job                    change   order      pinned player          owner right now")
 
     frame.body = CreateFrame("Frame", nil, frame)
-    frame.body:SetPoint("TOPLEFT", frame, "TOPLEFT", 6, -42)
+    frame.body:SetPoint("TOPLEFT", frame, "TOPLEFT", 6, -18)
     frame.body:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -6, 6)
 
     -- The roster changes under an open window; repaint so the owner column
@@ -272,22 +262,10 @@ local function build()
     frame:SetScript("OnEvent", function()
         Config:Refresh()
     end)
-
-    tinsert(UISpecialFrames, "MarkedForDeathConfigFrame")
 end
 
 function Config:Toggle()
-    if not frame then
-        build()
-    end
-
-    if frame:IsShown() then
-        frame:Hide()
-        return
-    end
-
-    frame:Show()
-    Config:Refresh()
+    MFD.UI.Main:Toggle("seats")
 end
 
 -- Rule editor and mob search. Left pane searches bundled and learned mobs and
@@ -679,24 +657,10 @@ function RulesUI:AddRule(spec)
 end
 
 local function buildRulesFrame()
-    rulesFrame = CreateFrame("Frame", "MarkedForDeathRulesFrame", UIParent, "BasicFrameTemplateWithInset")
-    rulesFrame:SetSize(720, 440)
-    rulesFrame:SetPoint("CENTER")
-    rulesFrame:SetMovable(true)
-    rulesFrame:EnableMouse(true)
-    rulesFrame:RegisterForDrag("LeftButton")
-    rulesFrame:SetScript("OnDragStart", rulesFrame.StartMoving)
-    rulesFrame:SetScript("OnDragStop", rulesFrame.StopMovingOrSizing)
-    rulesFrame:SetFrameStrata("DIALOG")
-
-    rulesFrame.title = rulesFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    rulesFrame.title:SetPoint("TOP", rulesFrame, "TOP", 0, -6)
-    rulesFrame.title:SetText("Marked For Death: rules")
-
     -- Left pane: search.
     rulesFrame.search = CreateFrame("EditBox", nil, rulesFrame, "InputBoxTemplate")
     rulesFrame.search:SetSize(200, 20)
-    rulesFrame.search:SetPoint("TOPLEFT", rulesFrame, "TOPLEFT", 20, -34)
+    rulesFrame.search:SetPoint("TOPLEFT", rulesFrame, "TOPLEFT", 20, -10)
     rulesFrame.search:SetAutoFocus(false)
     rulesFrame.search:SetScript("OnTextChanged", function()
         paintResults()
@@ -762,7 +726,13 @@ local function buildRulesFrame()
         RulesUI:Refresh()
     end)
 
-    tinsert(UISpecialFrames, "MarkedForDeathRulesFrame")
+end
+
+-- Builds the rule editor into a container the main window owns. The window
+-- supplies the border, title and dragging; this only fills the space.
+function RulesUI:BuildInto(container)
+    rulesFrame = container
+    buildRulesFrame()
 end
 
 -- Import and export. One window, two modes. Export shows a selected read-only
@@ -947,18 +917,7 @@ function RulesUI:ShowTransferBox(text, mode)
 end
 
 function RulesUI:Toggle()
-    if not rulesFrame then
-        buildRulesFrame()
-    end
-
-    if rulesFrame:IsShown() then
-        rulesFrame:Hide()
-        return
-    end
-
-    filterKey = nil
-    rulesFrame:Show()
-    RulesUI:Refresh()
+    MFD.UI.Main:Toggle("rules")
 end
 
 _G.MarkedForDeath = MFD

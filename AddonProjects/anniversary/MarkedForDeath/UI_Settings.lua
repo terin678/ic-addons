@@ -190,43 +190,16 @@ function Settings:Refresh()
     end
 end
 
-local function build()
-    panel = CreateFrame("Frame", "MarkedForDeathSettingsFrame", UIParent, "BasicFrameTemplateWithInset")
-    panel:SetSize(460, 400)
-    panel:SetMovable(true)
-    panel:EnableMouse(true)
-    panel:RegisterForDrag("LeftButton")
-    panel:SetScript("OnDragStart", panel.StartMoving)
-    panel:SetScript("OnDragStop", panel.StopMovingOrSizing)
-    panel:SetFrameStrata("DIALOG")
-
-    panel.title = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    panel.title:SetPoint("TOP", panel, "TOP", 0, -6)
-    panel.title:SetText("Marked For Death: settings")
-
+-- Builds the settings panel into a container the main window owns.
+function Settings:BuildInto(container)
+    panel = container
     panel.body = CreateFrame("Frame", nil, panel)
-    panel.body:SetPoint("TOPLEFT", panel, "TOPLEFT", 6, -26)
-    panel.body:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -6, 6)
+    panel.body:SetAllPoints(panel)
     buildBody(panel.body)
-
-    panel:SetScript("OnShow", function()
-        Settings:Refresh()
-    end)
-
-    tinsert(UISpecialFrames, "MarkedForDeathSettingsFrame")
 end
 
 function Settings:Toggle()
-    if not panel then
-        build()
-    end
-
-    if panel:IsShown() then
-        panel:Hide()
-        return
-    end
-
-    panel:Show()
+    MFD.UI.Main:Toggle("settings")
 end
 
 -- Registers the same layout as a category under Blizzard's addon options, so
