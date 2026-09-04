@@ -113,7 +113,25 @@ local intentMenu
 local function openIntentMenu(anchor, current, onPick)
     if not intentMenu then
         intentMenu = CreateFrame("Frame", "MarkedForDeathIntentMenu", UIParent, "UIDropDownMenuTemplate")
+
+        -- Clicking a button while its own menu is open should shut it, and on
+        -- its own it does not. The dropdown closes itself on mouse down when
+        -- the click lands outside the list, then the button's OnClick arrives
+        -- on mouse up and opens it straight back: the menu never closes and the
+        -- button looks broken. Noting when the list went away lets the next
+        -- click tell "reopen" from "that click is what closed it".
+        if DropDownList1 then
+            DropDownList1:HookScript("OnHide", function()
+                intentMenu.closedAt = GetTime()
+            end)
+        end
     end
+
+    if intentMenu.openFor == anchor and (GetTime() - (intentMenu.closedAt or 0)) < 0.3 then
+        intentMenu.openFor = nil
+        return
+    end
+    intentMenu.openFor = anchor
 
     UIDropDownMenu_Initialize(intentMenu, function()
         for _, intent in ipairs(intentNames()) do
@@ -975,7 +993,11 @@ local function buildRulesFrame()
 
     rulesFrame.results = CreateFrame("Frame", nil, rulesFrame)
     rulesFrame.results:SetPoint("TOPLEFT", rulesFrame, "TOPLEFT", 6, -76)
-    rulesFrame.results:SetPoint("BOTTOMRIGHT", rulesFrame, "BOTTOMLEFT", 336, 6)
+    -- Stops where the toolbar starts, the same as the rule list beside it. A
+    -- list that shares pixels with a bottom-anchored control is the thing the
+    -- window layout rules forbid, and while this one only rendered twelve rows
+    -- it never reached far enough down to show it.
+    rulesFrame.results:SetPoint("BOTTOMRIGHT", rulesFrame, "BOTTOMLEFT", 336, 40)
 
     -- The Add button is a trailing button column rather than a widget the row
     -- builds for itself, which is what keeps every list in the addon the same

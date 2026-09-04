@@ -251,16 +251,20 @@ local function buildBossList(top)
     if not width or width < COLUMN_WIDTH then
         width = MFD.UI.PAGE_W
     end
+    -- 26 for the scrollbar the list now has.
     local maxColumns = math.max(1, math.floor((width - 26) / COLUMN_WIDTH))
 
-    -- Every raid needs its bosses plus a heading and a gap. Spread over the
-    -- columns that fit, so no column is much longer than another.
+    -- Every raid needs its bosses plus a heading and a gap, and no raid is ever
+    -- split across two columns. Working the rows out by dividing the total by
+    -- the columns is what put five columns in a tab with room for four: the
+    -- tail of each column goes to waste when the next raid does not fit in it.
     local groups = MFD.Encounters.GroupByInstance(MFD.Data.Bosses)
-    local totalRows = 0
-    for _, group in ipairs(groups) do
-        totalRows = totalRows + #group.bosses + 2
+    local sizes = {}
+    for index, group in ipairs(groups) do
+        sizes[index] = #group.bosses + 2
     end
-    local maxRows = math.max(MIN_COLUMN_ROWS, math.ceil(totalRows / maxColumns))
+
+    local maxRows = math.max(MIN_COLUMN_ROWS, MFD.Encounters.PackColumns(sizes, maxColumns))
 
     local column, rowIndex, deepest = 0, 0, 0
 

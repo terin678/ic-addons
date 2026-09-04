@@ -2941,6 +2941,38 @@ T.Case("Encounters: a boss whose nameplate is gone is not the fight you are in",
     T.Eq(E.Detect({ { key = "1-A", npcID = 22898, isLost = true } }, index), nil, "walked off")
 end)
 
+T.Case("Packing: the average is not enough when groups cannot be split", function()
+    -- Three groups of four into two columns. The average says six rows, but six
+    -- fits only two groups per column with two wasted, and the third starts a
+    -- third column. Eight is the honest answer.
+    local rows, columns = MFD.Encounters.PackColumns({ 4, 4, 4 }, 2)
+    T.Eq(columns <= 2, true, "fits the budget")
+    T.Eq(rows, 8, "two groups per column")
+end)
+
+T.Case("Packing: the real boss list fits the columns a tab has room for", function()
+    -- The bug this guards: five columns of boss list in a tab with room for
+    -- four, so Zul'Aman and Sunwell drew off the right edge.
+    local sizes = {}
+    for _, group in ipairs(MFD.Encounters.GroupByInstance(MFD.Data.Bosses)) do
+        sizes[#sizes + 1] = #group.bosses + 2
+    end
+
+    local _, columns = MFD.Encounters.PackColumns(sizes, 4)
+    T.Eq(columns <= 4, true, "never more columns than were asked for")
+end)
+
+T.Case("Packing: a group taller than the average still gets a column", function()
+    local rows = MFD.Encounters.PackColumns({ 20, 2, 2 }, 3)
+    T.Eq(rows >= 20, true, "a group is never split")
+end)
+
+T.Case("Packing: one column takes everything", function()
+    local rows, columns = MFD.Encounters.PackColumns({ 3, 4, 5 }, 1)
+    T.Eq(columns, 1, "one column")
+    T.Eq(rows >= 12, true, "tall enough for all of it")
+end)
+
 T.Case("Encounters: bosses group by raid in the order written", function()
     local groups = E.GroupByInstance(MFD.Data.Bosses)
     T.Eq(groups[1].instance, "KARAZHAN", "first raid first")

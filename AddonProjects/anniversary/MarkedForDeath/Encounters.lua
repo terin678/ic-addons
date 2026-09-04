@@ -203,6 +203,57 @@ function Encounters.IsNeeded()
     return false
 end
 
+-- How many rows each column needs so that a list of groups, none of which may
+-- be split, packs into at most maxColumns columns. Pure.
+--
+-- The obvious answer, the total divided by the columns, is wrong: a group that
+-- does not fit in what is left of a column starts a new one, so the packing
+-- wastes the tail of every column and can need one more than the average
+-- suggests. Boss lists are small, so this walks up from that average until the
+-- packing actually fits rather than trying to be clever about it.
+function Encounters.PackColumns(sizes, maxColumns)
+    local total = 0
+    for _, size in ipairs(sizes) do
+        total = total + size
+        -- A single group taller than a whole column can never be split, so the
+        -- column has to be at least that tall.
+        if size > total then
+            total = size
+        end
+    end
+
+    if maxColumns < 1 then
+        maxColumns = 1
+    end
+
+    local largest = 0
+    for _, size in ipairs(sizes) do
+        if size > largest then
+            largest = size
+        end
+    end
+
+    local rows = math.max(largest, math.ceil(total / maxColumns))
+
+    while rows <= total do
+        local columns, used = 1, 0
+        for _, size in ipairs(sizes) do
+            if used > 0 and used + size > rows then
+                columns = columns + 1
+                used = 0
+            end
+            used = used + size
+        end
+
+        if columns <= maxColumns then
+            return rows, columns
+        end
+        rows = rows + 1
+    end
+
+    return total, 1
+end
+
 -- Ticks every boss for tanks the first time this block exists, so the shipped
 -- default announces tank deaths everywhere, which is what it has always done.
 --
