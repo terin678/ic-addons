@@ -1143,6 +1143,18 @@ local function BuildHistoryPage(page)
     local COST_COLOR = { 0.98, 0.45, 0.42 }
     local VALUE_COLOR = { 0.45, 0.92, 0.45 }
 
+    -- A TSM average is drawn as a paler version of the line it belongs to, so it
+    -- reads as "that piece, elsewhere in time" rather than as a fifth series to
+    -- work out. Washing toward white keeps the hue, which is the part carrying
+    -- which piece it is.
+    local function Paler(color)
+        return {
+            color[1] + (1 - color[1]) * 0.45,
+            color[2] + (1 - color[2]) * 0.45,
+            color[3] + (1 - color[3]) * 0.45,
+        }
+    end
+
     -- Where "now" falls in cyclic views, so the wrap from last period to this one
     -- is visible. Shared by both views.
     local function MarkerFor(modeDef)
@@ -1243,7 +1255,8 @@ local function BuildHistoryPage(page)
             .. "|cfffa736bRed|r = its materials. Thin lines = each material x how many."
             .. "\nA break in a line is a slot with no price for that item; the cost "
             .. "line breaks whenever any material does. Vendor materials are folded "
-            .. "into the cost at their fixed price.",
+            .. "into the cost at their fixed price. Flat pale lines are each "
+            .. "piece's TSM 14d average; hover a slot for its 60d.",
             recipe.product or "the product", cutPct))
 
         -- The chart still wants one entry per slot: they carry the labels and are
@@ -1270,9 +1283,39 @@ local function BuildHistoryPage(page)
         -- two lines it is the distance between.
         lines[#lines + 1] = { label = "Margin", color = { 1, 0.9, 0.5 }, values = series.margin, plot = false }
 
+        -- TSM has no daily history, only two averages, so they are levels rather
+        -- than points: a flat line per piece in its own paler shade, and both
+        -- numbers in the tooltip so the 60-day is one hover away.
+        local refLines, tooltipRows = {}, {}
+        local function Reference(label, tsm, color)
+            if not tsm then return end
+            if tsm.market then
+                refLines[#refLines + 1] = { value = tsm.market, color = Paler(color), subtle = true }
+            end
+            tooltipRows[#tooltipRows + 1] = {
+                label = label .. " TSM 14d", value = tsm.market, color = Paler(color),
+            }
+            if tsm.historical then
+                tooltipRows[#tooltipRows + 1] = {
+                    label = label .. " TSM 60d", value = tsm.historical, color = Paler(color),
+                }
+            end
+        end
+
+        for index, mat in ipairs(series.mats) do
+            if mat.values then
+                Reference(string.format("%s x%d", mat.name, mat.count), mat.tsm,
+                    MAT_COLORS[((index - 1) % #MAT_COLORS) + 1])
+            end
+        end
+        Reference("Material cost", series.tsm.cost, COST_COLOR)
+        Reference("Batch value", series.tsm.value, VALUE_COLOR)
+
         self.chart:SetData(points, {
             noBars = true,
             lines = lines,
+            refLines = refLines,
+            tooltipRows = tooltipRows,
             markerIndex = markerIndex,
             markerLabel = markerLabel,
             maxLabels = modeDef.maxLabels,

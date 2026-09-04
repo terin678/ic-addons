@@ -160,4 +160,41 @@ T.Case("Recipe series: nothing tracked at all is empty, not an error", function(
     T.Eq(MAW.RecipeSlotAt(s, nil), nil, "and no marker at all")
 end)
 
+T.Case("Recipe series: a TSM average is scaled like the line it belongs to", function()
+    -- TSM has no daily history, only these two numbers, so they are levels. To
+    -- sit on the same axis as the lines they have to take the same arithmetic:
+    -- a batch after the cut, a material times how many the recipe needs.
+    local s = MAW.ComposeRecipeSeries({
+        count = 1, labels = { "a" }, cut = 0.05,
+        productName = "Flask", productCount = 2,
+        productPoints = { pt("a", 100) },
+        productTsm = { market = 110, historical = 90 },
+        mats = {
+            { name = "Herb", count = 3, points = { pt("a", 10) },
+              tsm = { market = 12, historical = 8 } },
+            { name = "Vial", count = 2, vendor = 5 },
+        },
+    })
+    T.Near(s.tsm.value.market, 209, "110 each, two of them, five percent gone")
+    T.Near(s.tsm.value.historical, 171, "and the same for the 60 day")
+    T.Near(s.mats[1].tsm.market, 36, "three herbs at twelve")
+    T.Near(s.tsm.cost.market, 46, "plus the vendor vial, which never moves")
+
+    -- One material without TSM data means the batch cost has no TSM level, the
+    -- same rule the cost line itself follows.
+    local partial = MAW.ComposeRecipeSeries({
+        count = 1, labels = { "a" }, cut = 0,
+        productName = "Flask", productCount = 1,
+        productPoints = { pt("a", 100) },
+        mats = {
+            { name = "Herb", count = 1, points = { pt("a", 10) }, tsm = { market = 12 } },
+            { name = "Vial", count = 1, points = { pt("a", 5) } },
+        },
+    })
+    T.Eq(partial.tsm.cost, nil, "no level without every material")
+    T.Near(partial.mats[1].tsm.market, 12, "the one that has it still draws")
+    T.Eq(partial.mats[2].tsm, nil, "the one that does not, does not")
+    T.Eq(partial.tsm.value, nil, "and no TSM for the product means no level for the batch")
+end)
+
 _G.MalexisAuctionWatcher = MAW

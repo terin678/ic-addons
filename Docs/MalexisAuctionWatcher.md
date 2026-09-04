@@ -136,6 +136,14 @@ One recipe, three kinds of line:
 - **Thin**: each material on its own, priced times however many the recipe needs, so you can
   see which one moved.
 
+Flat pale lines are each piece's **TSM 14-day average**, drawn in a washed-out version of
+that piece's own colour so it reads as "that piece, elsewhere in time" rather than as another
+series to work out. They are levels, not history: TSM keeps no daily record, so there is
+nothing to plot over time. Each is scaled the way its line is, a batch after the auction house
+cut and a material times how many the recipe needs, so they sit on the same axis. The batch
+cost gets one only when every material you buy has TSM data, the same rule the cost line
+follows. Hover any slot for both the 14-day and the 60-day figure per piece.
+
 The gap between the two bold lines is the margin. Hover any slot for every line's value plus
 the margin, which is listed but not drawn: it has its own scale and would flatten the two
 lines it is the distance between.
