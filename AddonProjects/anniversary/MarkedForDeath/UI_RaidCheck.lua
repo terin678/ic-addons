@@ -138,6 +138,12 @@ local function buildRow(row)
             text:SetPoint("LEFT", row, "LEFT", column.x, 0)
             text:SetWidth(column.w)
             text:SetJustifyH("LEFT")
+            -- One line, always. A cell with a width wraps by default, and a
+            -- second line has nowhere to go in an 18 pixel row: it would draw
+            -- over the person below. Five blessings and a shortfall count is
+            -- the case that gets close to the edge. Clipping is the honest
+            -- failure here; overlapping two players' data is not.
+            text:SetWordWrap(false)
             row.cells[column.key] = text
         end
     end
