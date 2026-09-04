@@ -11,4 +11,7 @@
     <Binding name="MARKEDFORDEATH_ASSIGNMENTS" category="ADDONS">
         MarkedForDeath.Bindings.ToggleAssignments()
     </Binding>
+    <Binding name="MARKEDFORDEATH_BUFFS" category="ADDONS">
+        MarkedForDeath.Bindings.ToggleBuffs()
+    </Binding>
 </Bindings>

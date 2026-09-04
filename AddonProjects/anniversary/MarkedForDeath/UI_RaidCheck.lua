@@ -307,4 +307,190 @@ function Grid:Toggle()
     Grid:Show()
 end
 
+-- The quick buff board. Missing-only by default, buff columns only, and it
+-- reads nothing but RaidCheck.rows, which the scan fills without any report.
+-- That is what makes it work in a pug where nobody else has the addon: the
+-- reports only add columns this board does not show.
+MFD.UI.BuffBoard = MFD.UI.BuffBoard or {}
+local Board = MFD.UI.BuffBoard
+
+local BOARD_WIDTH = 360        -- pixels
+local BOARD_ROW_HEIGHT = 18    -- pixels
+local BOARD_MAX_ROWS = 26
+
+local board
+local boardRows = {}
+local boardEvents
+local isShowingAll = false
+
+local function buildBoardRow(row)
+    if row.isBuilt then
+        return
+    end
+    row.isBuilt = true
+
+    row.button = CreateFrame("Button", nil, row)
+    row.button:SetSize(100, BOARD_ROW_HEIGHT)
+    row.button:SetPoint("LEFT", row, "LEFT", 0, 0)
+    row.button.text = row.button:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.button.text:SetAllPoints()
+    row.button.text:SetJustifyH("LEFT")
+    row.button:SetScript("OnClick", function()
+        if row.entry then
+            RC:Whisper(row.entry.name)
+        end
+    end)
+
+    row.missing = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.missing:SetPoint("LEFT", row.button, "RIGHT", 6, 0)
+    row.missing:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+    row.missing:SetJustifyH("LEFT")
+end
+
+function Board:Refresh()
+    if not board or not board:IsShown() then
+        return
+    end
+
+    local index = 0
+    for _, entry in ipairs(RC:SortedRows()) do
+        if index >= BOARD_MAX_ROWS then
+            break
+        end
+        local hasMissing = #entry.missing > 0
+        if hasMissing or isShowingAll then
+            index = index + 1
+            local row = MFD.UI.AcquireRow(board.body, boardRows, index, BOARD_ROW_HEIGHT)
+            buildBoardRow(row)
+            row.entry = entry
+
+            local nameColor = entry.row.isReported and "" or AMBER
+            row.button.text:SetText(nameColor .. entry.name .. (nameColor ~= "" and "|r" or ""))
+
+            if hasMissing then
+                local labels = {}
+                for _, m in ipairs(entry.missing) do
+                    labels[#labels + 1] = m.label
+                end
+                row.missing:SetText(RED .. table.concat(labels, ", ") .. "|r")
+            else
+                row.missing:SetText(GREEN .. "ok|r")
+            end
+        end
+    end
+
+    MFD.UI.ReleaseRows(boardRows, index + 1)
+
+    if index == 0 then
+        board.empty:SetText(next(RC.rows) and (GREEN .. "everyone is buffed|r") or (GREY .. "nobody in the group|r"))
+    else
+        board.empty:SetText("")
+    end
+end
+
+local function saveBoardPosition()
+    local point, _, relativePoint, x, y = board:GetPoint()
+    MFD.charDb.windows.buffBoard = { point = point, relativePoint = relativePoint, x = x, y = y }
+end
+
+local function restoreBoardPosition()
+    local saved = MFD.charDb.windows.buffBoard
+    board:ClearAllPoints()
+    if saved and saved.point then
+        board:SetPoint(saved.point, UIParent, saved.relativePoint or saved.point, saved.x or 0, saved.y or 0)
+    else
+        board:SetPoint("CENTER", UIParent, "CENTER", -300, 100)
+    end
+end
+
+local function setBoardLive(isLive)
+    if not boardEvents then
+        boardEvents = CreateFrame("Frame")
+        boardEvents:SetScript("OnEvent", function(_, event, unit)
+            if event == "UNIT_AURA" then
+                if isGroupUnit(unit) then
+                    RC:ScanUnit(unit)
+                    Board:Refresh()
+                end
+            else
+                RC:Scan()
+            end
+        end)
+    end
+    if isLive then
+        boardEvents:RegisterEvent("UNIT_AURA")
+        boardEvents:RegisterEvent("GROUP_ROSTER_UPDATE")
+    else
+        boardEvents:UnregisterAllEvents()
+    end
+end
+
+local function buildBoard()
+    board = CreateFrame("Frame", "MarkedForDeathBuffBoardFrame", UIParent, "BasicFrameTemplateWithInset")
+    board:SetSize(BOARD_WIDTH, 30 + BOARD_MAX_ROWS * BOARD_ROW_HEIGHT + 40)
+    board:SetMovable(true)
+    board:EnableMouse(true)
+    board:RegisterForDrag("LeftButton")
+    board:SetScript("OnDragStart", board.StartMoving)
+    board:SetScript("OnDragStop", function()
+        board:StopMovingOrSizing()
+        saveBoardPosition()
+    end)
+    board:SetFrameStrata("MEDIUM")
+
+    board.title = board:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    board.title:SetPoint("TOP", board, "TOP", 0, -6)
+    board.title:SetText("Buffs")
+
+    board.body = CreateFrame("Frame", nil, board)
+    board.body:SetPoint("TOPLEFT", board, "TOPLEFT", 6, -26)
+    board.body:SetPoint("BOTTOMRIGHT", board, "BOTTOMRIGHT", -6, 40)
+
+    board.empty = board:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    board.empty:SetPoint("TOPLEFT", board.body, "TOPLEFT", 8, -8)
+
+    board.callout = CreateFrame("Button", nil, board, "UIPanelButtonTemplate")
+    board.callout:SetSize(80, 22)
+    board.callout:SetPoint("BOTTOMLEFT", board, "BOTTOMLEFT", 14, 10)
+    board.callout:SetText("Call out")
+    board.callout:SetScript("OnClick", function()
+        RC:PostCallout()
+    end)
+
+    board.all = CreateFrame("CheckButton", nil, board, "UICheckButtonTemplate")
+    board.all:SetSize(24, 24)
+    board.all:SetPoint("LEFT", board.callout, "RIGHT", 12, 0)
+    board.all.label = board:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    board.all.label:SetPoint("LEFT", board.all, "RIGHT", 2, 0)
+    board.all.label:SetText("Show all")
+    board.all:SetScript("OnClick", function(box)
+        isShowingAll = box:GetChecked() and true or false
+        Board:Refresh()
+    end)
+
+    board:SetScript("OnShow", function()
+        setBoardLive(true)
+    end)
+    board:SetScript("OnHide", function()
+        setBoardLive(false)
+    end)
+
+    restoreBoardPosition()
+    tinsert(UISpecialFrames, "MarkedForDeathBuffBoardFrame")
+end
+
+function Board:Toggle()
+    if not board then
+        buildBoard()
+    end
+
+    if board:IsShown() then
+        board:Hide()
+        return
+    end
+
+    board:Show()
+    RC:Scan()
+end
+
 _G.MarkedForDeath = MFD

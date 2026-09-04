@@ -253,6 +253,13 @@ commands.check = {
     end,
 }
 
+commands.buffs = {
+    desc = "quick board of who is missing buffs, no ready check needed",
+    run = function()
+        MFD.UI.BuffBoard:Toggle()
+    end,
+}
+
 commands.callout = {
     desc = "post who is missing what to raid chat, grouped by fix",
     run = function()
@@ -569,6 +576,7 @@ BINDING_NAME_MARKEDFORDEATH_ADD = "Add target as a rule"
 BINDING_NAME_MARKEDFORDEATH_REMARK = "Re-mark the visible pack"
 BINDING_NAME_MARKEDFORDEATH_RULES = "Toggle the rule editor"
 BINDING_NAME_MARKEDFORDEATH_ASSIGNMENTS = "Toggle the assignment panel"
+BINDING_NAME_MARKEDFORDEATH_BUFFS = "Toggle the buff board"
 
 MFD.Bindings = {}
 
@@ -598,6 +606,10 @@ function MFD.Bindings.ToggleAssignments()
     else
         MFD.Error("the assignment panel is not in this build yet")
     end
+end
+
+function MFD.Bindings.ToggleBuffs()
+    MFD.UI.BuffBoard:Toggle()
 end
 
 MFD.commands = commands
