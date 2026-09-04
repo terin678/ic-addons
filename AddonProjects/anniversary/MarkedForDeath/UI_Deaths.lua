@@ -236,20 +236,37 @@ end
 -- The boss list. One row per encounter with a tick per kind, so both lists are
 -- visible at once rather than hidden behind a mode switch.
 local function buildBossList(top)
-    local list = CreateFrame("Frame", nil, frame)
-    list:SetPoint("TOPLEFT", frame, "TOPLEFT", 16, top)
-    list:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -10, 10)
+    local area = CreateFrame("Frame", nil, frame)
+    area:SetPoint("TOPLEFT", frame, "TOPLEFT", 16, top)
+    area:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -10, 10)
 
-    -- How many rows fit is whatever is actually left, not a number written down
-    -- once and left to drift when something above changes height.
-    local available = (frame:GetHeight() or 0) + top - 10
-    local maxRows = math.max(MIN_COLUMN_ROWS, math.floor(available / ROW_HEIGHT))
+    -- The list scrolls. Laying it out to fit the height instead meant choosing
+    -- however many columns that took, which was five, and five columns of two
+    -- hundred and ten pixels do not fit a nine hundred pixel tab: Zul'Aman and
+    -- Sunwell drew off the right edge. Width is the constraint that cannot be
+    -- negotiated, so it decides the columns and the height gets a scrollbar.
+    local list = MFD.UI.MakeScrollable(area)
 
-    local column, rowIndex = 0, 0
+    local width = area:GetWidth()
+    if not width or width < COLUMN_WIDTH then
+        width = MFD.UI.PAGE_W
+    end
+    local maxColumns = math.max(1, math.floor((width - 26) / COLUMN_WIDTH))
 
-    for _, group in ipairs(MFD.Encounters.GroupByInstance(MFD.Data.Bosses)) do
-        -- A raid that would run off the bottom starts a new column instead of
-        -- being split across two.
+    -- Every raid needs its bosses plus a heading and a gap. Spread over the
+    -- columns that fit, so no column is much longer than another.
+    local groups = MFD.Encounters.GroupByInstance(MFD.Data.Bosses)
+    local totalRows = 0
+    for _, group in ipairs(groups) do
+        totalRows = totalRows + #group.bosses + 2
+    end
+    local maxRows = math.max(MIN_COLUMN_ROWS, math.ceil(totalRows / maxColumns))
+
+    local column, rowIndex, deepest = 0, 0, 0
+
+    for _, group in ipairs(groups) do
+        -- A raid that would run past the bottom of its column starts a new one
+        -- rather than being split across two.
         if rowIndex > 0 and rowIndex + #group.bosses + 2 > maxRows then
             column = column + 1
             rowIndex = 0
@@ -335,7 +352,14 @@ local function buildBossList(top)
         end
 
         rowIndex = rowIndex + 1
+        if rowIndex > deepest then
+            deepest = rowIndex
+        end
     end
+
+    -- The scroll child has to be told how tall its content ended up or there is
+    -- nothing for the bar to scroll through.
+    list:SetHeight(deepest * ROW_HEIGHT + ROW_HEIGHT)
 end
 
 function Deaths:BuildInto(container)

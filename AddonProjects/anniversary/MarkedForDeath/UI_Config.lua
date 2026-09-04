@@ -326,8 +326,12 @@ end
 MFD.UI.Rules = MFD.UI.Rules or {}
 local RulesUI = MFD.UI.Rules
 
-local RESULT_ROWS = 12     -- visible search results
-local RULE_ROWS = 14       -- visible rules
+-- Both lists scroll now, so these are not "how many fit on screen" any more.
+-- RESULT_ROWS is a ceiling on how many frames one search is worth building:
+-- an empty search box matches every mob in the game and nobody scrolls three
+-- hundred rows to find one, they type another letter. A zone's rule list is
+-- never long enough to need a ceiling at all.
+local RESULT_ROWS = 200    -- most search results worth building rows for
 local RULE_ROW_HEIGHT = 24 -- pixels
 
 local rulesFrame
@@ -509,11 +513,19 @@ local function makeGripCell(row, col, x)
     grip:SetPoint("LEFT", row, "LEFT", x, 0)
     grip:SetSize(col.width, row.rowHeight)
 
+    -- The grip is the handle, so it takes the mouse itself and covers the full
+    -- height of its column. Relying on the row underneath to catch the drag
+    -- meant hunting for the few pixels that worked, because the lines are drawn
+    -- eight pixels tall in the middle of a twenty four pixel row and that is
+    -- what the eye aims at.
+    grip:EnableMouse(true)
+    grip:RegisterForDrag("LeftButton")
+
     grip.lines = {}
     for index = 1, 3 do
         local line = grip:CreateTexture(nil, "ARTWORK")
-        line:SetSize(8, 1)
-        line:SetPoint("CENTER", grip, "CENTER", 0, (2 - index) * 3)
+        line:SetSize(12, 1)
+        line:SetPoint("CENTER", grip, "CENTER", 0, (2 - index) * 4)
         line:SetColorTexture(1, 1, 1, 0.35)
         grip.lines[index] = line
     end
@@ -574,7 +586,7 @@ local function makeRuleOrderCell(row, col, x)
 end
 
 local RULE_COLUMNS = {
-    { key = "grip",   label = "",     width = 14, type = "custom", make = makeGripCell },
+    { key = "grip",   label = "",     width = 22, type = "custom", make = makeGripCell },
     { key = "rank",   label = "#",    width = 30, justify = "RIGHT" },
     { key = "name",   label = "Mob",  width = "flex" },
     { key = "intent", label = "Job",  width = 92, type = "custom", make = makeRuleIntentCell },
@@ -613,20 +625,23 @@ local function wireDrag(t, row)
         self.cells.grip:SetHighlighted(false)
     end)
 
-    row:SetScript("OnDragStart", function(self)
-        local item = self.item
+    local function startDrag()
+        local item = row.item
         if not item or not item.isMine then
             return
         end
         dragIndex = item.index
-        self.dragTexture:Show()
+        row.dragTexture:Show()
 
         local ghost = ensureDragGhost()
         ghost.text:SetText(item.rule.name or ("npc " .. tostring(item.rule.npcID)))
         ghost:Show()
-    end)
+    end
 
-    row:SetScript("OnDragStop", function(self)
+    row:SetScript("OnDragStart", startDrag)
+
+    local function stopDrag(self)
+        self = row
         self.dragTexture:Hide()
         self.cells.grip:SetHighlighted(false)
         if dropMarker then
@@ -654,6 +669,22 @@ local function wireDrag(t, row)
             MFD.Rules.MoveTo(list, from, to)
             commitRules()
         end
+    end
+
+    row:SetScript("OnDragStop", stopDrag)
+
+    -- The grip drags the same row, and lights up on its own hover so the
+    -- target of the click is the thing that reacts to the cursor.
+    local grip = row.cells.grip
+    grip:SetScript("OnDragStart", startDrag)
+    grip:SetScript("OnDragStop", stopDrag)
+    grip:SetScript("OnEnter", function()
+        if row.item and row.item.isMine and not dragIndex then
+            grip:SetHighlighted(true)
+        end
+    end)
+    grip:SetScript("OnLeave", function()
+        grip:SetHighlighted(false)
     end)
 end
 
@@ -668,6 +699,7 @@ local function paintResults()
         end
         shown[index] = result
     end
+
 
     rulesFrame.resultTable:Render(shown, function(row, result)
         -- Amber for a mob this client learned by seeing it, plain for one that
@@ -707,7 +739,8 @@ local function paintResults()
     if #lastResults == 0 then
         rulesFrame.resultsNote:SetText("|cff999999not seen yet. Type the exact name and use the button above.|r")
     elseif #lastResults > RESULT_ROWS then
-        rulesFrame.resultsNote:SetText(string.format("|cff999999showing %d of %d, keep typing|r", RESULT_ROWS, #lastResults))
+        rulesFrame.resultsNote:SetText(string.format(
+            "|cff999999first %d of %d, keep typing to narrow it|r", RESULT_ROWS, #lastResults))
     else
         rulesFrame.resultsNote:SetText("")
     end
@@ -724,9 +757,6 @@ local function paintRules()
 
     local list = {}
     for index, rule in ipairs(ranked) do
-        if index > RULE_ROWS then
-            break
-        end
         -- Only your own rules can be reordered; a merged rule belongs to
         -- whoever wrote it and dragging it here would achieve nothing.
         list[index] = {
@@ -743,7 +773,11 @@ local function paintRules()
         local rule = item.rule
         local suffix = item.isMine and "" or ("  (" .. tostring(rule.owner) .. ")")
 
-        t:Set(row, "rank", tostring(rule.rank), { r = 0.6, g = 0.6, b = 0.6 })
+        -- The position in the list, not rule.rank. Ranks are stored in steps of
+        -- ten so a rule can be inserted between two without renumbering every
+        -- one below it; that spacing is storage and reads as nonsense in a
+        -- column headed "#".
+        t:Set(row, "rank", tostring(item.index), { r = 0.6, g = 0.6, b = 0.6 })
         t:Set(row, "name", (rule.name or ("npc " .. rule.npcID)) .. suffix,
             not item.isMine and { r = 1, g = 0.8, b = 0.4 } or nil)
 
@@ -947,7 +981,10 @@ local function buildRulesFrame()
     -- builds for itself, which is what keeps every list in the addon the same
     -- shape.
     rulesFrame.resultTable = MFD.UI.Table(rulesFrame.results, {
-        width = 322,
+        -- The pane is 330 wide and the library draws the scrollbar in the 26
+        -- pixels past the table's own width, so 304 keeps the bar inside this
+        -- pane instead of over the rule list next to it.
+        width = 304,
         rowHeight = RULE_ROW_HEIGHT,
         columns = {
             { key = "name", label = "Mob", width = "flex" },
