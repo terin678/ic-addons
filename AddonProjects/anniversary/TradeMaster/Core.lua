@@ -220,6 +220,7 @@ local HELP = {
     { "log", "the last ten classified lines" },
     { "capture", "toggle recording every Trade message" },
     { "clearcapture", "drop the recording" },
+    { "reset log", "clear the log and the recording; nothing else here resets" },
     { "clearflags", "clear the auto seller flag on every player" },
     { "debug", "toggle debug output" },
     { "status", "one line per part of the addon" },
@@ -565,6 +566,19 @@ COMMANDS.clearflags = function()
         if st.flaggedSeller then st.flaggedSeller = nil; n = n + 1 end
     end
     ns.Print(string.format("cleared the auto seller flag on %d players.", n))
+end
+
+-- Over the library's: a book, a ledger and every order live in this table, and none of
+-- that should be one word away from gone. The log is the only thing reset touches.
+COMMANDS.reset = function(rest)
+    if ns.Util.Trim(rest):lower() == "log" then
+        ns.db.log, ns.db.capture = {}, {}
+        ns.Print("log and capture cleared.")
+        return
+    end
+    ns.Print("/tm reset log clears the log. There is no reset for the book, the orders or "
+        .. "the ledger; to start over, close the game and delete this character's "
+        .. "TradeMaster.lua under WTF.")
 end
 
 -- Over the library's: this addon's log entries carry the classifier's hits.
