@@ -10,7 +10,7 @@ local ADDON_NAME = "MarkedForDeath"
 local Core = LibStub("LibICCore-1.0")
 
 -- Must match ## Version: in the toc and the packaged zip name.
-MFD.VERSION = "1.20.0"
+MFD.VERSION = "1.20.1"
 
 -- Bumped only when the saved-variable shape changes in a way that needs a
 -- migration. See MIGRATIONS.
@@ -130,17 +130,16 @@ local MIGRATIONS = {}
 
 -- Schemas 1 through 5 were stamped in db.schemaVersion, before LibICCore owned
 -- the bootstrap. An install that has already run them must not replay them, so
--- the first step adopts that number rather than upgrading: Migrate adds one
--- after every step, so it is handed one less and the loop resumes there. A
--- table with no stamp at all falls through to the schema 2 work below, which is
--- exactly what it needs.
+-- the first step adopts that number rather than upgrading, which Migrate reads
+-- as "resume here, and do not count this as an upgrade". A table with no stamp
+-- at all falls through to the schema 2 work below, which is what it needs.
 --
 -- Schema 2: "seats" became "roles" everywhere. Copy rather than move, so a
 -- downgrade to the previous version still finds its plan.
 MIGRATIONS[1] = function(db)
     local stamped = db.schemaVersion
     if stamped and stamped > 1 then
-        db.schema = stamped - 1
+        db.schema = stamped
         return
     end
 

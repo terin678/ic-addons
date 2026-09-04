@@ -2,18 +2,13 @@
 ## Title: Marked For Death
 ## Notes: Automatic raid target icons for trash by kill priority and crowd control intent, plus a raid buff and consumable check and per-boss death announcements.
 ## Author: dillon_newport
-## Version: 1.20.0
+## Version: 1.20.1
 ## IconTexture: Interface\AddOns\ICLibs\Textures\ImpulseControl-64.tga
 ## Group: ICLibs
 ## Category: Impulse Control
 ## SavedVariables: MarkedForDeathDB
 ## SavedVariablesPerCharacter: MarkedForDeathCharDB
 ## Dependencies: ICLibs
-
-Libs\LibStub\LibStub.lua
-Libs\CallbackHandler-1.0\CallbackHandler-1.0.lua
-Libs\LibDataBroker-1.1\LibDataBroker-1.1.lua
-Libs\LibDBIcon-1.0\LibDBIcon-1.0.lua
 
 Helpers.lua
 JSON.lua

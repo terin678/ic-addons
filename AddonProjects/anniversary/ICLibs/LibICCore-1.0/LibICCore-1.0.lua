@@ -34,7 +34,7 @@ the per-character one; only a restart clears it, and the damage is not the empty
 the logout after it, which writes defaults over the file that still holds the real thing.
 ]]
 
-local MAJOR, MINOR = "LibICCore-1.0", 1
+local MAJOR, MINOR = "LibICCore-1.0", 2
 local Core = LibStub:NewLibrary(MAJOR, MINOR)
 if not Core then return end
 
@@ -192,7 +192,8 @@ steps[1] takes a schema-1 table to schema 2. They run BEFORE ApplyDefaults, alwa
 runs afterwards cannot tell a field the player never had from one the defaults just invented.
 
 An empty table is a fresh install and starts at the head, so nothing runs on it. Returns
-how many steps ran.
+how many steps ran, which is what the load line reports, so a step that adopts a schema
+rather than upgrading to one does not claim to have upgraded anything.
 ]]
 function Util.Migrate(db, steps, head)
     head = head or 1
@@ -201,10 +202,21 @@ function Util.Migrate(db, steps, head)
     end
     local ran = 0
     while db.schema < head do
-        local step = (steps or {})[db.schema]
+        local at = db.schema
+        local step = (steps or {})[at]
         if step then step(db) end
-        db.schema = db.schema + 1
-        ran = ran + 1
+
+        -- A step may set db.schema itself to ADOPT a schema instead of
+        -- upgrading to one: an addon that stamped its own version under a
+        -- different key before this library owned the bootstrap does that on
+        -- its first step, to skip the steps it has already run. Nothing was
+        -- upgraded, so nothing is counted, and the loop resumes where the step
+        -- left it. The <= rather than < is a hang guard: a step that moves the
+        -- schema backwards is a bug, but it must not be an infinite loop.
+        if db.schema <= at then
+            db.schema = at + 1
+            ran = ran + 1
+        end
     end
     return ran
 end
