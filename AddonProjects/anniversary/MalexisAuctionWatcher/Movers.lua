@@ -141,7 +141,7 @@ end
 -- Buy: open Browse and search the exact name. No automatic buyout.
 function MAW:MoverBuy(itemName)
     if not AtAH() then
-        print(addonName .. ": Open the auction house first, then click Buy to search for " .. itemName)
+        MAW.Print("Open the auction house first, then click Buy to search for " .. itemName)
         return false
     end
     if AuctionFrameTab1 then AuctionFrameTab1:Click() end
@@ -178,12 +178,12 @@ end
 -- List: switch to Auctions, put the first stack in the sell slot, prefill prices.
 function MAW:MoverList(itemName, itemID, unitPrice)
     if not AtAH() then
-        print(addonName .. ": Open the auction house first, then click List for " .. itemName)
+        MAW.Print("Open the auction house first, then click List for " .. itemName)
         return false
     end
     local bag, slot, count = FindInBags(itemID)
     if not bag then
-        print(addonName .. ": No " .. itemName .. " in your bags (bank stock does not count)")
+        MAW.Print("No " .. itemName .. " in your bags (bank stock does not count)")
         return false
     end
     if AuctionFrameTab3 then AuctionFrameTab3:Click() end
@@ -206,8 +206,8 @@ function MAW:MoverList(itemName, itemID, unitPrice)
                 MoneyInputFrame_SetCopper(BuyoutPrice, stackPrice)
             end
         end)
-        print(string.format("%s: %s x%d in the sell slot at %s buyout (%s each). Check the duration and press Create Auction.",
-            addonName, itemName, count, self:FormatMoney(stackPrice), self:FormatMoney(perUnit)))
+        MAW.Printf("%s x%d in the sell slot at %s buyout (%s each). Check the duration and press Create Auction.",
+            itemName, count, self:FormatMoney(stackPrice), self:FormatMoney(perUnit))
     end
     return true
 end

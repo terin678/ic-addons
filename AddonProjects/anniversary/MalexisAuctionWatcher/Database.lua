@@ -2,9 +2,6 @@
 local addonName = "MalexisAuctionWatcher"
 local MAW = _G.MalexisAuctionWatcher or {}
 
--- Constants
-local MAX_PRICE_ENTRIES = 10
-
 -- Get the active database based on character-specific mode
 function MAW:GetActiveDB()
     if MalexisAuctionWatcherDB and MalexisAuctionWatcherDB.settings and MalexisAuctionWatcherDB.settings.characterSpecific then
@@ -16,25 +13,11 @@ function MAW:GetActiveDB()
     end
 end
 
--- Deep copy table helper
-local function DeepCopy(original)
-    local copy
-    if type(original) == 'table' then
-        copy = {}
-        for k, v in pairs(original) do
-            copy[k] = DeepCopy(v)
-        end
-    else
-        copy = original
-    end
-    return copy
-end
-
 -- Copy account-wide data to character-specific
 function MAW:CopyAccountDataToCharacter()
     if MalexisAuctionWatcherDB.items and next(MalexisAuctionWatcherDB.items) then
-        MalexisAuctionWatcherCharDB.items = DeepCopy(MalexisAuctionWatcherDB.items)
-        print(addonName .. ": Copied " .. self:CountItems(MalexisAuctionWatcherCharDB.items) .. " items from account-wide to character-specific database")
+        MalexisAuctionWatcherCharDB.items = MAW.DeepCopy(MalexisAuctionWatcherDB.items)
+        MAW.Print("Copied " .. self:CountItems(MalexisAuctionWatcherCharDB.items) .. " items from account-wide to character-specific database")
         return true
     end
     return false
@@ -49,97 +32,8 @@ function MAW:CountItems(itemsTable)
     return count
 end
 
--- Initialize SavedVariables
-function MAW:InitializeDB()
-    -- Initialize account-wide DB
-    if not MalexisAuctionWatcherDB then
-        MalexisAuctionWatcherDB = {
-            items = {},
-            settings = {
-                autoScan = false,
-                maxEntries = MAX_PRICE_ENTRIES,
-                characterSpecific = false  -- Default to account-wide
-            },
-            cache = {
-                bank = {},
-                auctionHouse = {},
-                recipes = {}
-            },
-            lastScanTime = nil  -- Timestamp of last successful AH scan
-        }
-    end
-
-    -- Ensure settings exists
-    if not MalexisAuctionWatcherDB.settings then
-        MalexisAuctionWatcherDB.settings = {
-            autoScan = false,
-            maxEntries = MAX_PRICE_ENTRIES,
-            characterSpecific = false
-        }
-    end
-    if MalexisAuctionWatcherDB.settings.characterSpecific == nil then
-        MalexisAuctionWatcherDB.settings.characterSpecific = false
-    end
-    -- Left nil on purpose: the window shrinks to fit the screen on its first open and
-    -- stores what it chose. A default of 1 here would skip that and open oversized.
-
-    -- Ensure cache exists (account-wide)
-    if not MalexisAuctionWatcherDB.cache then
-        MalexisAuctionWatcherDB.cache = {
-            bank = {},
-            auctionHouse = {},
-            recipes = {}
-        }
-    end
-    if not MalexisAuctionWatcherDB.cache.auctionHouse then
-        MalexisAuctionWatcherDB.cache.auctionHouse = {}
-    end
-    if not MalexisAuctionWatcherDB.cache.recipes then
-        MalexisAuctionWatcherDB.cache.recipes = {}
-    end
-
-    -- Initialize character-specific DB
-    if not MalexisAuctionWatcherCharDB then
-        MalexisAuctionWatcherCharDB = {
-            items = {},
-            cache = {
-                bank = {},
-                auctionHouse = {},
-                recipes = {}
-            },
-            lastScanTime = nil  -- Timestamp of last successful AH scan
-        }
-    end
-
-    -- Ensure cache exists (character-specific)
-    if not MalexisAuctionWatcherCharDB.cache then
-        MalexisAuctionWatcherCharDB.cache = {
-            bank = {},
-            auctionHouse = {},
-            recipes = {}
-        }
-    end
-    if not MalexisAuctionWatcherCharDB.cache.auctionHouse then
-        MalexisAuctionWatcherCharDB.cache.auctionHouse = {}
-    end
-    if not MalexisAuctionWatcherCharDB.cache.recipes then
-        MalexisAuctionWatcherCharDB.cache.recipes = {}
-    end
-
-    -- History settings and migration
-    if not MalexisAuctionWatcherDB.settings.historyDays then
-        MalexisAuctionWatcherDB.settings.historyDays = 180
-    end
-    if not MalexisAuctionWatcherDB.settings.sources then
-        MalexisAuctionWatcherDB.settings.sources = {}
-    end
-    if self.MigrateHistory then
-        self:MigrateHistory()
-    end
-    if self.RepairGemPresetData then
-        self:RepairGemPresetData()
-    end
-end
+-- The tables themselves are created, defaulted and migrated by LibICCore from the
+-- Defaults in Core.lua; MigrateHistory and RepairGemPresetData run from its onLoad.
 
 -- Toggle character-specific mode
 function MAW:ToggleCharacterSpecific()
@@ -162,7 +56,7 @@ function MAW:ToggleCharacterSpecific()
     end
 
     local mode = MalexisAuctionWatcherDB.settings.characterSpecific and "character-specific" or "account-wide"
-    print(addonName .. ": Data mode set to " .. mode)
+    MAW.Print("Data mode set to " .. mode)
 
     -- Fire callback to refresh UI
     self:FireCallbacks("onItemAdded")

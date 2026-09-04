@@ -186,7 +186,7 @@ function MAW:AddMotePresets()
         })
         if ok then added = added + 1 end
     end
-    print(string.format("%s: Added %d recipes and started tracking %d items", addonName, added, tracked))
+    MAW.Printf("Added %d recipes and started tracking %d items", added, tracked)
     return added
 end
 
@@ -221,9 +221,9 @@ function MAW:AddPrimalMightPreset()
         note = "Transmute has a daily cooldown",
     })
     if ok then
-        print(string.format("%s: Added Primal Might transmute and started tracking %d items", addonName, tracked))
+        MAW.Printf("Added Primal Might transmute and started tracking %d items", tracked)
     else
-        print(addonName .. ": " .. (err or "could not add recipe"))
+        MAW.Print((err or "could not add recipe"))
     end
     return ok
 end
@@ -505,7 +505,7 @@ function MAW:RepairGemPresetData()
     end
 
     if fixedItems > 0 or fixedRecipes > 0 or fixedAlchemy > 0 then
-        print(string.format("%s: Repaired preset data (%d item IDs, %d gem recipes, %d alchemy recipes)", addonName, fixedItems, fixedRecipes, fixedAlchemy))
+        MAW.Printf("Repaired preset data (%d item IDs, %d gem recipes, %d alchemy recipes)", fixedItems, fixedRecipes, fixedAlchemy)
     end
 end
 
@@ -560,7 +560,7 @@ function MAW:AddGemPresets(filter)
             if ok then added = added + 1 end
         end
     end
-    print(string.format("%s: Added %d gem-cut recipes and started tracking %d items", addonName, added, tracked))
+    MAW.Printf("Added %d gem-cut recipes and started tracking %d items", added, tracked)
     return added
 end
 
@@ -745,7 +745,7 @@ function MAW:AddAlchemyPresets(filter)
             if ok then added = added + 1 end
         end
     end
-    print(string.format("%s: Added %d Alchemy recipes and started tracking %d items", addonName, added, tracked))
+    MAW.Printf("Added %d Alchemy recipes and started tracking %d items", added, tracked)
     return added
 end
 
@@ -783,7 +783,7 @@ function MAW:AddGuideWatchlist()
     for _, it in ipairs(self.PRESET_GUIDE_WATCHLIST.products) do
         if self:AddItemByID(it.name, it.id, "product") then tracked = tracked + 1 end
     end
-    print(string.format("%s: Guide watchlist added %d new tracked items", addonName, tracked))
+    MAW.Printf("Guide watchlist added %d new tracked items", tracked)
     return tracked
 end
 

@@ -380,8 +380,12 @@ local function BuildTests(ns)
         end
     end
 
+    -- T.Near(actual, expected, label) is accepted too, with the tolerance money needs:
+    -- copper is computed in floating point, so equality on it wants slack.
     function T.Near(actual, expected, tolerance, label)
-        if math.abs((actual or 0) - expected) > (tolerance or 0) then
+        if type(tolerance) == "string" then label, tolerance = tolerance, nil end
+        if tolerance == nil then tolerance = 0.001 end
+        if type(actual) ~= "number" or math.abs(actual - expected) > tolerance then
             error(string.format("%s: expected [%s] give or take %s, got [%s]",
                 tostring(label or "value"), tostring(expected), tostring(tolerance),
                 tostring(actual)), 2)

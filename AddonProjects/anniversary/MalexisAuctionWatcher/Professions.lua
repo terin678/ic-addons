@@ -48,7 +48,7 @@ function MAW:ScanProfessionRecipes(professionName)
     if #recipes > 0 and professionName then
         db.cache.recipes[professionName] = recipes
         if self.debugMode then
-            print(addonName .. " [DEBUG]: Cached " .. #recipes .. " recipes for " .. professionName)
+            MAW.Debug("%s", "Cached " .. #recipes .. " recipes for " .. professionName)
         end
     end
 end

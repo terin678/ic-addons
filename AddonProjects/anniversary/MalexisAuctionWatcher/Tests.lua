@@ -1,49 +1,11 @@
 -- Tests.lua - Pure-function checks, run in game with /maw test
 --
--- Nothing here touches the saved variables or the auction house: every case
--- builds its own input and checks arithmetic that is otherwise only visible as a
--- line on a chart.
-local addonName = "MalexisAuctionWatcher"
+-- The harness -- Case, Eq, Near, With, Run -- is LibICCore's. Nothing here touches
+-- the saved variables or the auction house: every case builds its own input and
+-- checks arithmetic that is otherwise only visible as a line on a chart.
 local MAW = _G.MalexisAuctionWatcher or {}
 
-MAW.Tests = MAW.Tests or {}
 local T = MAW.Tests
-T.cases = {}
-
-function T.Case(name, fn)
-    T.cases[#T.cases + 1] = { name = name, fn = fn }
-end
-
-function T.Eq(actual, expected, label)
-    if actual ~= expected then
-        error(string.format("%s: expected [%s], got [%s]",
-            tostring(label or "value"), tostring(expected), tostring(actual)), 2)
-    end
-end
-
--- Money is computed in floating point, so equality on a copper value needs slack.
-function T.Near(actual, expected, label)
-    if type(actual) ~= "number" or math.abs(actual - expected) > 0.001 then
-        error(string.format("%s: expected [%s], got [%s]",
-            tostring(label or "value"), tostring(expected), tostring(actual)), 2)
-    end
-end
-
-function T.Run()
-    local pass, fail = 0, 0
-    for _, c in ipairs(T.cases) do
-        local ok, err = pcall(c.fn)
-        if ok then
-            pass = pass + 1
-        else
-            fail = fail + 1
-            print(string.format("%s: |cffff4444FAIL|r %s => %s", addonName, c.name, tostring(err)))
-        end
-    end
-    print(string.format("%s: tests |cff44ff44%d passed|r, %s%d failed|r",
-        addonName, pass, fail > 0 and "|cffff4444" or "|cff44ff44", fail))
-    return pass, fail
-end
 
 --------------------------------------------------------------------------------
 -- Recipe series
