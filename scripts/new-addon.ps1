@@ -16,20 +16,24 @@
     ictpl        the slash command itself, and every mention of it in help text
 
   The guild mark at the front of the title and the `## Group: ICLibs` line are carried
-  over untouched, so a new addon joins the family in the in-game AddOns list on the day
-  it is made rather than whenever somebody notices it has not.
+  over untouched, and `-Category` defaults to the guild heading, so a new addon joins the
+  family in the in-game AddOns list on the day it is made rather than whenever somebody
+  notices it has not. Pass `-Category` only for an addon that should sit somewhere else;
+  any other value takes the addon out from under the Impulse Control heading.
 
 .EXAMPLE
   .\scripts\new-addon.ps1 -Name GuildRecruitment -Slash gr -Title "Guild Recruitment" `
       -Notes "Shared recruitment message and a log of who barked when" `
-      -Category "Guild" -Minimal -Deploy
+      -Minimal -Deploy
 #>
 param(
     [Parameter(Mandatory = $true)][string]$Name,
     [Parameter(Mandatory = $true)][string]$Slash,
     [string]$Title,
     [string]$Notes = "",
-    [string]$Category = "User Interface",
+    # The guild heading in the in-game AddOns list. Anything else takes the new addon out
+    # from under it, which is the one part of a rename nobody notices until they log in.
+    [string]$Category = "Impulse Control",
     [ValidateSet("era", "anniversary", "retail")][string]$Flavor = "anniversary",
     [string]$From = "ICTemplate",
     [string]$Version = "0.1.0",
@@ -177,7 +181,12 @@ Add-Row -Path $rootReadme -After $lastAddon `
     -Row "| $Flavor | [$Name](AddonProjects/$Flavor/$Name) | $Notes Guide: [Docs/$Name.md](Docs/$Name.md) |"
 
 $docsReadme = Join-Path $repoRoot "Docs\README.md"
-$lastDoc = (Get-Content $docsReadme | Where-Object { $_ -match '^\| \[' } | Select-Object -Last 1)
+# That index runs one guide per addon and then the shared references, so anchor on the last
+# addon guide rather than the last row: appending blindly files the new addon after
+# client-reference.md, which is how GuildRecruitment ended up there.
+$lastDoc = (Get-Content $docsReadme |
+    Where-Object { $_ -match '^\| \[' -and $_ -notmatch 'client-reference' } |
+    Select-Object -Last 1)
 Add-Row -Path $docsReadme -After $lastDoc -Row "| [$Name.md]($Name.md) | $Notes |"
 
 $guide = Join-Path $repoRoot "Docs\$Name.md"

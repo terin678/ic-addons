@@ -10,21 +10,27 @@ Extract the zip of any addon that needs it; the `ICLibs` folder is included. It 
 in `Interface\AddOns` next to the addon. The dependent addons list it under
 `## Dependencies`, so the game refuses to load them without it and says why.
 
-Every guild addon carries `## Category: Impulse Control`, so they collapse under one
+The guild addons carry `## Category: Impulse Control`, so they collapse under one
 heading in the in-game AddOns list, and a `## Group:` naming the addon that heads its area:
 ICLibs for Core, MalexisAuctionWatcher for Auction, TradeMaster for Professions. A group's
 value has to be an addon that exists -- a made-up name silently ungroups everything that
 uses it -- so the area's name is whatever its head addon is called. The guild mark in
 `Textures/ImpulseControl-64` is the icon for the addons with no art of their own.
+CutMaster is the exception: it belongs to a collaborator and is not ours to edit, so it
+carries neither directive and sits on its own in the alphabetical list.
 `Docs/client-reference.md` has the rest.
 
 ## Contents
 
-| Library | What it does |
-| --- | --- |
-| LibStub | Standard library loader |
-| LibICTradeSkill-1.0 | Reads the open profession window into plain tables, merges scans into a per-profession book, and checks Bind on Pickup reagents |
-| LibICUI-1.0 | Windows, tabs, buttons, lists and toolbars in the guild palette, plus relative ages and the brand itself |
+| Library | MINOR | What it does |
+| --- | --- | --- |
+| LibStub | — | Standard library loader |
+| LibICTradeSkill-1.0 | 2 | Reads the open profession window into plain tables, merges scans into a per-profession book, and checks Bind on Pickup reagents |
+| LibICUI-1.0 | 5 | Windows, tabs, buttons, lists and toolbars in the guild palette, plus relative ages and the brand itself |
+
+The MINOR goes up whenever a library's API changes, and LibStub hands every caller the
+highest one loaded. Bump it in the library source and in this table together, or a reader
+has no way to tell whether a change that needed a bump got one.
 
 ## LibICTradeSkill-1.0
 
@@ -100,7 +106,9 @@ call site.
 `logo` and `logoLarge` texture paths, and the colours `ink` (#152333, window ground),
 `panel` (#192637), `gold` (#DF9C33, accents), `flame` (#C3402F, danger) and `bone`
 (#F4E5C1, headings). The mark lives at `ICLibs/Textures/ImpulseControl-64.tga`; the
-master image is `Docs/assets/impulse-control.png`. Never copy either into an addon folder.
+master image is `Docs/assets/impulse-control.png`. An addon that depends on ICLibs takes the
+mark from there and never copies it. AuctionatorSellingTweaks is the one exception: it does
+not depend on ICLibs, so carrying its own copy is the only way it can reach the texture.
 
 ## Used by
 
@@ -109,3 +117,8 @@ master image is `Docs/assets/impulse-control.png`. Never copy either into an add
   window, its six tabs, every list and its dialogs on LibICUI.
 - TradeMaster: the book scanner behind every tab, and LibICUI for the window, the tabs,
   every list and every button.
+- ICTemplate: LibICUI only, and all of it — its window is a live gallery of every widget
+  here shown beside the source that built it, so it is also the smoke test after a change
+  to this library.
+- GuildRecruitment: LibICUI only — the window, the tabs, the tables and the multi-line
+  `TextBox` the message is composed in.
