@@ -43,18 +43,26 @@ Guild World of Warcraft addons. Read `CODING_STANDARDS.md` before changing any L
 
 ## Verifying changes
 
-There is no Lua interpreter on the maintainer's machine, so nothing here runs outside the
-game. Three things stand in for one, in order:
+Three things stand in for in-game verification, in order:
 
 1. `python scripts/lint.py`. It parses every file and catches what has actually shipped
    broken: a local referenced inside its own assignment, a dead texture path, a `.toc` out
    of step with the files on disk, a version that moved in one place but not the others,
    and a quoted string running past its line -- which `luaparser` accepts and the client
    refuses to load.
-2. The addon's own cases, in game. Five addons carry a `Tests.lua`: `/tm test`,
-   `/cm test`, `/gr test`, `/ictpl test`, `/maw test`. Anything worth arguing about
+2. The addon's own cases, in game. Six addons carry a `Tests.lua`: `/tm test`, `/cm test`,
+   `/gr test`, `/ictpl test`, `/maw test`, `/mfd selftest`. Anything worth arguing about
    belongs in a pure function with a case here.
 3. The `wow-ui-reviewer` agent on every UI file touched.
+
+LuaJIT 2.1 (Lua 5.1 semantics, matching the client) is now installed on the maintainer's
+machine, so an addon whose pure modules avoid the WoW API at file scope can also run its
+cases outside the game: `scripts/run-tests.ps1 -Flavor <flavor> -Addon <Addon>`.
+MarkedForDeath is built that way and its suite runs headlessly. A shell opened before the
+install will not have `luajit` on PATH; the script falls back to the `LOCALAPPDATA` path.
+Only modules that call no WoW API at file scope work this way -- caching a global into a
+local is fine, calling one is not -- so anything that creates a frame or reads client
+state does it in an init function registered from the addon's `Core.lua`.
 
 Then deploy, `/reload`, run the commands, check BugSack. State plainly in the summary that
 in-game checks were not run when that is the case.

@@ -24,6 +24,41 @@ will not load unless the player ticks "Load out of date AddOns".
 - Legacy auction API. Exact-match name queries: `QueryAuctionItems(name, nil, nil, 0,
   false, nil, false, true, nil)`. Results arrive on `AUCTION_ITEM_LIST_UPDATE`; rows may
   be unpopulated on the first event, so re-read after a short delay.
+- `FontString:SetWordWrap(false)`. A font string with a set width wraps by default, which
+  in a fixed-height row draws over the row below. Used in MalexisAuctionWatcher and
+  MarkedForDeath.
+- `NotifyInspect(unit)` then `INSPECT_READY`, then `GetTalentTabInfo(tab)`. Works on
+  anyone within about 28 yards with no addon on their end, and is the only way to learn
+  another player's spec on this client. Never call it in combat, and rate limit it: one
+  unit at a time with a timeout, because a request that never answers otherwise wedges
+  the queue.
+
+## API signatures that differ from what you would expect
+
+- **`GetTalentTabInfo(tab)` returns `id, name, description, icon, pointsSpent`** on
+  anniversary, not `name, icon, pointsSpent`. Reading it as the shorter form puts the
+  description string where the points number belongs, and the first `points > best`
+  comparison throws "attempt to compare string with number". This cost a day: the error
+  surfaced as an unrelated feature going silently empty, because the throw aborted the
+  caller. Parse defensively and coerce with `tonumber`.
+
+## Libraries that do not work here
+
+- **LibSpecialization**: returns at load before registering anything. Line 5 gates on the
+  client build (`if wowID ~= 1 and wowID ~= cataWowID and wowID ~= mistsWowID then
+  return end`), and anniversary is none of those. Do not embed it; inspect instead.
+- **LibDurability** (`LibDRBLT` addon message prefix) does work, and is embedded in
+  BigWigs, DBM and MRT, so most of a raid answers it without running your addon. This is
+  the only cross-player data channel in this repo that does not require your own addon on
+  both ends.
+- **Method Raid Tools raid check interop**: not usable on Classic. It sends only `DUR`,
+  and its oil and enchant fields are gated behind `not ExRT.isClassic`.
+
+## Things no API can tell you
+
+- **Another player's weapon enchant.** There is no cross-unit API for it on any client
+  version. `GetWeaponEnchantInfo` reads the player only. MRT has the same limitation
+  despite appearing not to; do not spend time looking for a way around it.
 
 ## Optional dependency APIs
 

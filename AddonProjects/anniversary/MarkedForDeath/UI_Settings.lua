@@ -1,0 +1,365 @@
+-- The settings window, and the same panel registered in Blizzard's addon
+-- options list so it is findable without knowing a slash command.
+--
+-- Every toggle the addon has lives here. Before this, three of them could only
+-- be changed by editing saved variables, which is not a setting, it is a
+-- trapdoor.
+local MFD = _G.MarkedForDeath or {}
+
+MFD.UI = MFD.UI or {}
+MFD.UI.Settings = MFD.UI.Settings or {}
+local Settings = MFD.UI.Settings
+
+local ROW_SPACING = 26      -- pixels between checkboxes
+local SECTION_SPACING = 14  -- extra pixels above a section heading
+
+-- Every toggle, in display order. get and set take and return a boolean, so a
+-- setting stored in a nested table looks the same here as a flat one.
+local TOGGLES = {
+    { section = "Everything" },
+    {
+        label = "Addon enabled",
+        tip = "The master switch. Off means no icons, no chat, no warnings, without unloading the addon or reloading. Nothing you have configured is lost.",
+        get = function() return MFD.IsEnabled() end,
+        set = function(v) MFD.SetEnabled(v) end,
+    },
+
+    { section = "Marking" },
+    {
+        label = "Place raid icons automatically",
+        tip = "Turn this off to stop the addon marking anything without losing your rules or roles.",
+        get = function() return MFD.db.settings.isMarkingEnabled end,
+        set = function(v) MFD.db.settings.isMarkingEnabled = v end,
+    },
+    {
+        label = "Announce assignments as the pack is marked",
+        tip = "Posts the line as soon as the marks settle, before anyone pulls, so the crowd control reads it in time. Waits a second and a half for the assignments to stop changing, and never repeats the same line.",
+        get = function() return MFD.db.settings.isAnnounceOnMarkEnabled end,
+        set = function(v) MFD.db.settings.isAnnounceOnMarkEnabled = v end,
+    },
+    {
+        label = "Re-announce when a new mob arrives mid-fight",
+        tip = "An add walking into a pull gets one line. Never more than once every twenty seconds however many arrive, and a pack merely rearranging itself as things die is always silent. Worth turning off in Hyjal, where mobs trickling in is the whole fight.",
+        get = function() return MFD.db.settings.isAnnounceAddsEnabled end,
+        set = function(v) MFD.db.settings.isAnnounceAddsEnabled = v end,
+    },
+    {
+        label = "Announce assignments to raid chat on the pull",
+        tip = "The backstop for a pack pulled before its marks settled. Silent when the same line has already gone out, so it is not a second copy of something the raid just read.",
+        get = function() return MFD.db.settings.isAnnounceEnabled end,
+        set = function(v) MFD.db.settings.isAnnounceEnabled = v end,
+    },
+    {
+        label = "Warn when nameplate settings would break marking",
+        tip = "Marking mobs you are not targeting needs enemy nameplates on. Without this warning it fails silently.",
+        get = function() return MFD.db.settings.isCvarWarnEnabled end,
+        set = function(v) MFD.db.settings.isCvarWarnEnabled = v end,
+    },
+    {
+        label = "Use spare crowd control icons for extra kill targets",
+        tip = "When no mob in the pack needs Moon, Star, Triangle or Diamond, hand them to kill targets rather than leaving them idle. A crowd control mob always takes its own icon back, even one that walks in late.",
+        get = function() return MFD.db.settings.isIconReuseEnabled end,
+        set = function(v) MFD.db.settings.isIconReuseEnabled = v end,
+    },
+    {
+        label = "A mark placed by hand wins",
+        tip = "If a tank marks a mob themselves, the addon keeps their icon on that mob and works everything else around it, instead of arguing with them. Take the mark off again and the addon takes the mob back.",
+        get = function() return MFD.db.settings.isManualOverrideEnabled end,
+        set = function(v) MFD.db.settings.isManualOverrideEnabled = v end,
+    },
+    {
+        label = "Raid warning when crowd control turns up late",
+        tip = "If a sheep or banish target appears after the pull, take its icon back, post a raid warning and whisper whoever owns that job.",
+        get = function() return MFD.db.settings.isLateCCAlertEnabled end,
+        set = function(v) MFD.db.settings.isLateCCAlertEnabled = v end,
+    },
+    {
+        label = "Play a sound for crowd control that cannot land",
+        tip = "Sounds when you rule a mob for something its creature type is immune to, such as banishing a humanoid.",
+        get = function() return MFD.db.settings.isWarningSoundEnabled end,
+        set = function(v) MFD.db.settings.isWarningSoundEnabled = v end,
+    },
+
+    { section = "Deaths" },
+    {
+        note = true,
+        label = "Tank and healer death announcements, and which bosses they apply to, are on the Deaths tab.",
+    },
+
+    { section = "Raid check" },
+    {
+        label = "Open the grid on ready check (raid leader and assistants)",
+        tip = "Everyone else still gathers the data quietly, so their buff board is current.",
+        get = function() return MFD.db.settings.raidCheck.isAutoOpenEnabled end,
+        set = function(v) MFD.db.settings.raidCheck.isAutoOpenEnabled = v end,
+    },
+
+    { section = "Logging" },
+    {
+        label = "Keep a log of what the addon does",
+        tip = "Marks placed, marks backed off, lines sent and lines held back, deaths called, errors. Saved across reloads and readable in SavedVariables\\MarkedForDeath.lua, which is how a problem from an hour ago gets answered rather than guessed at. /mfd log shows the tail.",
+        get = function() return MFD.db.settings.isLogEnabled end,
+        set = function(v) MFD.db.settings.isLogEnabled = v end,
+    },
+    {
+        label = "Turn on combat logging in raids",
+        tip = "Starts the game's own combat log when you zone into a raid and stops it when you leave, so there is always a file to upload. Only ever stops logging it started itself, so it cannot cut short a log another addon or you turned on.",
+        get = function() return MFD.db.settings.combatLog.isEnabled end,
+        set = function(v)
+            MFD.db.settings.combatLog.isEnabled = v
+            MFD.CombatLog.Schedule()
+        end,
+    },
+    {
+        label = "Combat log heroic dungeons too",
+        tip = "Off by default. Raids are the case worth having a file for.",
+        get = function() return MFD.db.settings.combatLog.includeHeroics end,
+        set = function(v)
+            MFD.db.settings.combatLog.includeHeroics = v
+            MFD.CombatLog.Schedule()
+        end,
+    },
+
+    { section = "Interface" },
+    {
+        label = "Show the action bar",
+        tip = "The bar of mid-pull buttons. Drag it anywhere, drag its corner to reshape it, and the buttons rewrap to fit.",
+        get = function() return MFD.db.settings.actionBar.isShown end,
+        set = function(v) MFD.UI.ActionBar:SetShown(v) end,
+    },
+    {
+        label = "Only show the action bar in a raid",
+        tip = "These are buttons for running a raid, so by default the bar goes away with the job it is for and comes back when you zone in. Turn this off to keep it on screen everywhere.",
+        get = function() return MFD.db.settings.actionBar.onlyInRaid end,
+        set = function(v)
+            MFD.db.settings.actionBar.onlyInRaid = v
+            MFD.UI.ActionBar:Evaluate()
+        end,
+    },
+    {
+        label = "Lock the action bar",
+        tip = "Hides its resize grip and close button and refuses drags, so a stray click mid-fight cannot shove it across the screen or dismiss it. /mfd bar still works, so locking can never strand it. /mfd bar reset puts it back in the middle.",
+        get = function() return MFD.db.settings.actionBar.isLocked end,
+        set = function(v)
+            MFD.db.settings.actionBar.isLocked = v
+            MFD.UI.ActionBar:UpdateLock()
+        end,
+    },
+    {
+        label = "Show the minimap button",
+        tip = "The button opens this menu. /mfd minimap brings it back if you hide it.",
+        get = function() return not MFD.db.settings.minimap.hide end,
+        set = function(v)
+            MFD.db.settings.minimap.hide = not v
+            if MFD.Minimap and MFD.Minimap.SetShown then
+                MFD.Minimap:SetShown(v)
+            end
+        end,
+    },
+}
+
+-- Windows reachable from the buttons at the bottom of the panel.
+local SHORTCUTS = {
+    { label = "Roles", open = function() MFD.UI.Config:Toggle() end },
+    { label = "Rules", open = function() MFD.UI.Rules:Toggle() end },
+    { label = "Raid check", open = function() MFD.UI.RaidCheck:Toggle() end },
+    { label = "Buff board", open = function() MFD.UI.BuffBoard:Toggle() end },
+}
+
+local panel
+
+-- Builds the panel body onto any parent, so the same layout serves both the
+-- standalone window and the Blizzard options category.
+local function buildBody(parent)
+    parent.checks = {}
+    parent.edits = {}
+    local y = -12
+
+    local UI = MFD.UI
+
+    for _, entry in ipairs(TOGGLES) do
+        if entry.section then
+            y = y - SECTION_SPACING
+            local heading = UI.Label(parent, entry.section, "GameFontNormal")
+            heading:SetPoint("TOPLEFT", parent, "TOPLEFT", 16, y)
+            y = y - ROW_SPACING
+        elseif entry.note then
+            -- A pointer, not a control. Settings that moved elsewhere are worth
+            -- saying so, otherwise they read as removed.
+            local note = UI.Label(parent, entry.label, "GameFontDisableSmall")
+            note:SetPoint("TOPLEFT", parent, "TOPLEFT", 24, y - 4)
+            note:SetPoint("RIGHT", parent, "RIGHT", -20, 0)
+            y = y - ROW_SPACING
+        elseif entry.edit then
+            local label = UI.Label(parent, entry.label)
+            label:SetPoint("TOPLEFT", parent, "TOPLEFT", 24, y - 4)
+
+            local box = UI.EditBox(parent, 360, 20)
+            box:SetPoint("LEFT", label, "RIGHT", 12, 0)
+            box.entry = entry
+            -- Saved as you type rather than on enter, so a name typed and then
+            -- forgotten still counts.
+            box:SetScript("OnTextChanged", function(self)
+                entry.set(self:GetText())
+            end)
+            -- The library gives every box Escape; Enter to commit and let go is
+            -- this addon's own habit and has to be asked for.
+            box:SetScript("OnEnterPressed", box.ClearFocus)
+
+            -- Live feedback on what the text parsed to. A list field with no
+            -- echo leaves you guessing whether the separator was right.
+            if entry.preview then
+                box.preview = UI.Label(parent, "", "GameFontDisableSmall")
+                box.preview:SetPoint("TOPLEFT", box, "BOTTOMLEFT", 4, -2)
+                box.preview:SetPoint("RIGHT", parent, "RIGHT", -20, 0)
+                box:HookScript("OnTextChanged", function(self)
+                    self.preview:SetText(entry.preview(self:GetText()))
+                end)
+                y = y - 14
+            end
+
+            parent.edits = parent.edits or {}
+            parent.edits[#parent.edits + 1] = box
+            y = y - ROW_SPACING
+        else
+            -- The library's check button owns its own label, so nothing here
+            -- places a FontString beside it. Hanging one off it by hand is what
+            -- the standards mean by hand-rolling a control.
+            local check = UI.CheckBox(parent, entry.label)
+            check:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, y)
+
+            check.entry = entry
+            check:SetScript("OnClick", function(self)
+                entry.set(self:GetChecked() and true or false)
+            end)
+            UI.Tooltip(check, function()
+                GameTooltip:AddLine(entry.label, 1, 1, 1)
+                GameTooltip:AddLine(entry.tip, 0.8, 0.8, 0.8, true)
+            end)
+
+            parent.checks[#parent.checks + 1] = check
+            y = y - ROW_SPACING
+        end
+    end
+
+    y = y - SECTION_SPACING
+    local heading = UI.Label(parent, "Windows", "GameFontNormal")
+    heading:SetPoint("TOPLEFT", parent, "TOPLEFT", 16, y)
+    y = y - ROW_SPACING
+
+    local previous
+    for _, shortcut in ipairs(SHORTCUTS) do
+        local button = UI.Button(parent, shortcut.label, 100, 22)
+        if previous then
+            button:SetPoint("LEFT", previous, "RIGHT", 6, 0)
+        else
+            button:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, y)
+        end
+        button:SetScript("OnClick", shortcut.open)
+        previous = button
+    end
+
+    y = y - ROW_SPACING - SECTION_SPACING
+
+    parent.status = UI.Label(parent, "")
+    parent.status:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, y)
+    parent.status:SetPoint("RIGHT", parent, "RIGHT", -20, 0)
+
+    -- How tall the content ended up. y runs negative down the panel, so this is
+    -- the height a scroll child needs to be for all of it to be reachable.
+    return -y + ROW_SPACING
+end
+
+-- Repaints every checkbox from the saved settings, and the status line.
+local function refreshBody(body)
+    if not body or not body.checks then
+        return
+    end
+
+    for _, check in ipairs(body.checks) do
+        check:SetChecked(check.entry.get() and true or false)
+    end
+
+    for _, box in ipairs(body.edits or {}) do
+        -- Only when unfocused: overwriting what somebody is halfway through
+        -- typing is maddening.
+        if not box:HasFocus() then
+            box:SetText(box.entry.get() or "")
+        end
+        if box.preview then
+            box.preview:SetText(box.entry.preview(box:GetText()))
+        end
+    end
+
+    if body.status then
+        local marker = MFD.Comms and MFD.Comms.authority
+        body.status:SetText(string.format(
+            "|cff999999version %s   marker: %s   rules here: %d|r",
+            MFD.VERSION,
+            tostring(marker or "nobody"),
+            (function()
+                local n = 0
+                for _ in pairs(MFD.Rules.Active()) do n = n + 1 end
+                return n
+            end)()))
+    end
+end
+
+function Settings:Refresh()
+    if panel then
+        refreshBody(panel.body)
+    end
+    if Settings.blizzardBody then
+        refreshBody(Settings.blizzardBody)
+    end
+end
+
+-- Builds the settings panel into a container the main window owns.
+function Settings:BuildInto(container)
+    panel = container
+    -- Scrolled, because this list only ever grows. It had already outgrown the
+    -- window and was drawing past the bottom edge onto whatever was behind.
+    panel.body = MFD.UI.MakeScrollable(container)
+    local height = buildBody(panel.body)
+    panel.body:SetHeight(height)
+end
+
+function Settings:Toggle()
+    MFD.UI.Main:Toggle("settings")
+end
+
+-- Registers the same layout as a category under Blizzard's addon options, so
+-- the addon is configurable by someone who never learns a slash command.
+-- Guarded because the registration API differs by client generation.
+local function registerBlizzardPanel()
+    local category = CreateFrame("Frame")
+    category.name = "Marked For Death"
+
+    local body = MFD.UI.MakeScrollable(category)
+    body:SetHeight(buildBody(body))
+    Settings.blizzardBody = body
+
+    category:SetScript("OnShow", function()
+        refreshBody(body)
+    end)
+
+    if InterfaceOptions_AddCategory then
+        pcall(InterfaceOptions_AddCategory, category)
+        Settings.blizzardCategory = category
+    elseif _G.Settings and _G.Settings.RegisterCanvasLayoutCategory then
+        local ok, registered = pcall(_G.Settings.RegisterCanvasLayoutCategory, category, category.name)
+        if ok and registered then
+            pcall(_G.Settings.RegisterAddOnCategory, registered)
+            Settings.blizzardCategory = registered
+        end
+    end
+end
+
+MFD.RegisterInit(function()
+    local ok, err = pcall(registerBlizzardPanel)
+    if not ok then
+        MFD.Error("could not add the options panel: " .. tostring(err))
+    end
+end)
+
+_G.MarkedForDeath = MFD

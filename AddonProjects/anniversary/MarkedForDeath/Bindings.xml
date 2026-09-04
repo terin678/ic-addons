@@ -1,0 +1,35 @@
+<Bindings>
+    <Binding name="MARKEDFORDEATH_ADD" header="MARKEDFORDEATH" category="ADDONS">
+        MarkedForDeath.Bindings.AddTarget()
+    </Binding>
+    <Binding name="MARKEDFORDEATH_ANNOUNCE" category="ADDONS">
+        MarkedForDeath.Actions.Run("announce")
+    </Binding>
+    <Binding name="MARKEDFORDEATH_CLEAR" category="ADDONS">
+        MarkedForDeath.Actions.Run("clear")
+    </Binding>
+    <Binding name="MARKEDFORDEATH_REMARK" category="ADDONS">
+        MarkedForDeath.Actions.Run("remark")
+    </Binding>
+    <Binding name="MARKEDFORDEATH_MARKING" category="ADDONS">
+        MarkedForDeath.Actions.Run("marking")
+    </Binding>
+    <Binding name="MARKEDFORDEATH_DEATHS_TANK" category="ADDONS">
+        MarkedForDeath.Actions.Run("deaths_tank")
+    </Binding>
+    <Binding name="MARKEDFORDEATH_DEATHS_HEALER" category="ADDONS">
+        MarkedForDeath.Actions.Run("deaths_healer")
+    </Binding>
+    <Binding name="MARKEDFORDEATH_RULES" category="ADDONS">
+        MarkedForDeath.Bindings.ToggleRules()
+    </Binding>
+    <Binding name="MARKEDFORDEATH_ASSIGNMENTS" category="ADDONS">
+        MarkedForDeath.Bindings.ToggleAssignments()
+    </Binding>
+    <Binding name="MARKEDFORDEATH_BUFFS" category="ADDONS">
+        MarkedForDeath.Bindings.ToggleBuffs()
+    </Binding>
+    <Binding name="MARKEDFORDEATH_BAR" category="ADDONS">
+        MarkedForDeath.UI.ActionBar:Toggle()
+    </Binding>
+</Bindings>
