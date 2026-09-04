@@ -13,6 +13,7 @@ Libs\LibDBIcon-1.0\LibDBIcon-1.0.lua
 
 Helpers.lua
 Data_Mobs.lua
+Data_Auras.lua
 Core.lua
 Seats.lua
 Rules.lua
@@ -20,6 +21,7 @@ Allocator.lua
 Candidates.lua
 Marker.lua
 Comms.lua
+RaidCheck.lua
 Tests.lua
 UI_Config.lua
 UI_Assignments.lua

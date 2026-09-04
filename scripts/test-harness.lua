@@ -19,12 +19,14 @@ _G.MarkedForDeath = { RegisterInit = function() end }
 local files = {
     "Helpers.lua",
     "Data_Mobs.lua",
+    "Data_Auras.lua",
     "Seats.lua",
     "Rules.lua",
     "Allocator.lua",
     "Candidates.lua",
     "Marker.lua",
     "Comms.lua",
+    "RaidCheck.lua",
     "Tests.lua",
 }
 
