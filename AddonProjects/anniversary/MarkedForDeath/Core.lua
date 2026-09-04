@@ -45,6 +45,10 @@ local DB_DEFAULTS = {
         isCvarWarnEnabled = true,
         isWarningSoundEnabled = true,
         minimap = { hide = false },
+        raidCheck = {
+            isAutoOpenEnabled = true,
+            expected = { FOOD = true, FLASK = true, BATTLE = false, GUARDIAN = false, WEAPON = true },
+        },
     },
     lastTestRun = {},
 }
@@ -197,6 +201,29 @@ commands.coverage = {
         end
         if #missing > 20 then
             MFD.Print("  ... and " .. (#missing - 20) .. " more")
+        end
+    end,
+}
+
+commands.missing = {
+    desc = "text summary of who is missing what buff or consumable",
+    run = function()
+        MFD.RaidCheck:Scan()
+        local anyone = false
+        for _, entry in ipairs(MFD.RaidCheck:SortedRows()) do
+            if #entry.missing > 0 then
+                anyone = true
+                local labels = {}
+                for _, m in ipairs(entry.missing) do
+                    labels[#labels + 1] = m.label
+                end
+                MFD.Print(string.format("%s%s|r: %s",
+                    entry.row.isReported and "" or "|cffffcc66",
+                    entry.name, table.concat(labels, ", ")))
+            end
+        end
+        if not anyone then
+            MFD.Print("everyone has everything the group can provide")
         end
     end,
 }

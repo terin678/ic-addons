@@ -103,11 +103,13 @@ function RC.Missing(state, providers, expected)
         end
     end
 
+    -- A flask occupies both elixir slots, so it satisfies both.
+    local hasFlask = state.flask ~= nil
     local present = {
         FOOD = state.food ~= nil,
-        FLASK = state.flask ~= nil,
-        BATTLE = state.battle ~= nil,
-        GUARDIAN = state.guardian ~= nil,
+        FLASK = hasFlask,
+        BATTLE = hasFlask or state.battle ~= nil,
+        GUARDIAN = hasFlask or state.guardian ~= nil,
         WEAPON = state.weapon,
     }
 
@@ -118,6 +120,39 @@ function RC.Missing(state, providers, expected)
     end
 
     return missing
+end
+
+local REPORT_ONLY = { "weapon", "durability", "spec", "version" }
+local FLAG_ONLY = { "AI", "MOTW", "FORT", "SP" }
+
+-- Takes a scanned state and a reported state (or nil). Returns
+-- { state, isReported }. Pure.
+--
+-- The owning client is the authority on its own flags, so a non-nil reported
+-- flag overrides the scan. Names come only from the scan because the wire
+-- carries flags, not names. Weapon, durability, spec and version come only
+-- from the report because nothing else can see them.
+function RC.MergeRow(scanned, reported)
+    local state = {}
+    for k, v in pairs(scanned) do
+        state[k] = v
+    end
+
+    if not reported then
+        return { state = state, isReported = false }
+    end
+
+    for _, key in ipairs(FLAG_ONLY) do
+        if reported[key] ~= nil then
+            state[key] = reported[key]
+        end
+    end
+
+    for _, key in ipairs(REPORT_ONLY) do
+        state[key] = reported[key]
+    end
+
+    return { state = state, isReported = true }
 end
 
 RC.REPORT_HEARTBEAT_SECONDS = 60   -- periodic self-report while in a group
@@ -301,6 +336,79 @@ function RC:ReceiveReport(sender, fields)
     if RC.OnDataChanged then
         RC.OnDataChanged()
     end
+end
+
+-- One entry per group member, { [name] = { name, class, unit, row, missing,
+-- scannedAt } }, rebuilt by Scan and patched by ScanUnit.
+RC.rows = {}
+RC.providers = {}
+
+-- Returns the unit tokens for everyone in the group, self included.
+local function groupUnits()
+    local units = {}
+    if IsInRaid and IsInRaid() then
+        for i = 1, GetNumGroupMembers() do
+            units[#units + 1] = "raid" .. i
+        end
+        return units
+    end
+    units[1] = "player"
+    if IsInGroup and IsInGroup() then
+        for i = 1, GetNumSubgroupMembers() do
+            units[#units + 1] = "party" .. i
+        end
+    end
+    return units
+end
+
+local function expectedConsumables()
+    return MFD.db.settings.raidCheck.expected
+end
+
+-- Rebuilds one player's row from a live unit token. Providers must already
+-- be current; Scan sets them, and a single-unit rescan reuses them.
+function RC:ScanUnit(unit)
+    local name = UnitName(unit)
+    if not name or name == "" then
+        return
+    end
+    local _, class = UnitClass(unit)
+    local scanned = RC.Classify(RC.AuraNames(unit))
+    local reported = RC.reports[name] and RC.reports[name].state or nil
+    local row = RC.MergeRow(scanned, reported)
+    RC.rows[name] = {
+        name = name,
+        class = class,
+        unit = unit,
+        row = row,
+        missing = RC.Missing(row.state, RC.providers, expectedConsumables()),
+        scannedAt = GetTime(),
+    }
+end
+
+-- Rebuilds every row. Providers first, because Missing depends on them.
+function RC:Scan()
+    RC.providers = RC.Providers(MFD.Marker.CurrentRoster())
+    wipe(RC.rows)
+    for _, unit in ipairs(groupUnits()) do
+        RC:ScanUnit(unit)
+    end
+    if RC.OnDataChanged then
+        RC.OnDataChanged()
+    end
+end
+
+-- Returns the rows as an array sorted by name, so every surface lists people
+-- in the same order.
+function RC:SortedRows()
+    local list = {}
+    for _, entry in pairs(RC.rows) do
+        list[#list + 1] = entry
+    end
+    table.sort(list, function(a, b)
+        return a.name < b.name
+    end)
+    return list
 end
 
 local heartbeat = 0

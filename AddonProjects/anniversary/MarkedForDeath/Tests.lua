@@ -1466,4 +1466,37 @@ T.Case("Report: decoding rubbish returns nil", function()
     T.Eq(MFD.RaidCheck.DecodeReport({ "not", "a", "report" }), nil, "wrong shape")
 end)
 
+T.Case("MergeRow: a report overrides a scanned flag but never a scanned name", function()
+    local scanned = MFD.RaidCheck.Classify({ "Flask of Relentless Assault" })
+    local reported = { flask = false, AI = true, weapon = true, durability = 90, spec = "Fire", version = "1.0.0" }
+    local row = MFD.RaidCheck.MergeRow(scanned, reported)
+    T.Eq(row.isReported, true, "marked as reported")
+    T.Eq(row.state.AI, true, "report supplies a flag the scan could not see")
+    T.Eq(row.state.flask, "Flask of Relentless Assault", "the scanned name is kept for display")
+    T.Eq(row.state.weapon, true, "weapon only ever comes from the report")
+    T.Eq(row.state.durability, 90, "durability from the report")
+    T.Eq(row.state.spec, "Fire", "spec from the report")
+end)
+
+T.Case("MergeRow: no report leaves the row scan-only with unknowns nil", function()
+    local row = MFD.RaidCheck.MergeRow(MFD.RaidCheck.Classify({ "Well Fed" }), nil)
+    T.Eq(row.isReported, false, "scan only")
+    T.Eq(row.state.food, "Well Fed", "scanned name")
+    T.Eq(row.state.weapon, nil, "unknown, never false")
+    T.Eq(row.state.durability, nil, "unknown")
+end)
+
+T.Case("MergeRow: a reported false does not erase a scanned present name", function()
+    -- The report is a flag snapshot that can lag the scan by a debounce.
+    -- The scan just saw the flask. Keep the name; the flag is informational.
+    local row = MFD.RaidCheck.MergeRow(MFD.RaidCheck.Classify({ "Flask of Blinding Light" }), { flask = false })
+    T.Eq(row.state.flask, "Flask of Blinding Light", "present in the scan wins for names")
+end)
+
+T.Case("Missing: a flask satisfies both elixir slots", function()
+    local state = MFD.RaidCheck.Classify({ "Flask of Relentless Assault" })
+    local missing = MFD.RaidCheck.Missing(state, {}, { BATTLE = true, GUARDIAN = true })
+    T.Eq(#missing, 0, "a flask is both elixirs")
+end)
+
 _G.MarkedForDeath = MFD
