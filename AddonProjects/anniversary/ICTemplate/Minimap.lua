@@ -4,9 +4,8 @@ ns.Minimap = ns.Minimap or {}
 local M = ns.Minimap
 
 --[[
-The minimap launcher. Both libraries are optional and both are checked before
-anything is done with them, which is the house rule for every optional dependency:
-the global has to exist AND be what you think it is.
+The minimap launcher. LibICCore does the LibDataBroker and LibDBIcon work and checks
+both are there first, which is the house rule for every optional dependency.
 
 The right click is here for the same reason the key binding is: it is a hardware
 event, so it is one of the few places a protected send is allowed.
@@ -15,14 +14,10 @@ event, so it is one of the few places a protected send is allowed.
 local ICON = "Interface\\AddOns\\ICTemplate\\ICTemplate.tga"
 
 function M.Init()
-    local LDB = LibStub and LibStub:GetLibrary("LibDataBroker-1.1", true)
-    local Icon = LibStub and LibStub:GetLibrary("LibDBIcon-1.0", true)
-    if not LDB or not Icon then return end
-
-    local obj = LDB:NewDataObject("ICTemplate", {
-        type = "launcher",
+    M.obj, M.icon = ns.Core:MinimapButton(ns, {
+        name = "ICTemplate",
         icon = ICON,
-        OnClick = function(_, button)
+        onClick = function(button)
             if button == "RightButton" then
                 local ok, info = ns.Pulse.Fire(true)
                 if not ok then ns.Print("pulse skipped: " .. tostring(info)) end
@@ -32,7 +27,7 @@ function M.Init()
                 ns.UI.Toggle()
             end
         end,
-        OnTooltipShow = function(tt)
+        tooltip = function(tt)
             local s = ns.db.settings.pulse
             tt:AddLine("ICTemplate " .. ns.VERSION)
             if not ns.Enabled() then tt:AddLine("|cffff4444DISABLED|r") end
@@ -62,10 +57,4 @@ function M.Init()
             tt:AddLine("|cff888888Middle click: run the tests|r")
         end,
     })
-
-    -- LibDBIcon keeps the button's position in this table, so it has to be the
-    -- saved one and not a fresh table each login.
-    ns.db.settings.minimap = ns.db.settings.minimap or {}
-    Icon:Register("ICTemplate", obj, ns.db.settings.minimap)
-    M.obj, M.icon = obj, Icon
 end
