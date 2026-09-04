@@ -110,6 +110,7 @@ local function classify(text, over)
         linkCount = #ns.Util.ExtractItemIDs(text),
         hasRecipeLink = over.hasRecipeLink or false,
         namedUnknownItem = over.namedUnknownItem or false,
+        wrongSpec = over.wrongSpec,
         isRepeat = over.isRepeat or false,
         isDirect = over.isDirect or false,
         playerState = over.playerState,
@@ -1509,4 +1510,160 @@ T.Case("Invites: a decline is read in the client's own words", function()
     T.Eq(ns.Inviter.DeclinedName(nil, fmt), nil, "no message")
     T.Eq(ns.Inviter.DeclinedName("anything", nil), nil, "no format string on this client")
     T.Eq(ns.Inviter.DeclinedName("anything", "no placeholder here"), nil, "a format with no %s")
+end)
+
+--------------------------------------------------------------------------------
+-- Specializations
+--------------------------------------------------------------------------------
+
+local TAILOR = ns.Prof.ByKey("tailoring")
+
+local function set(...)
+    local out = {}
+    for _, k in ipairs({ ... }) do out[k] = true end
+    return out
+end
+
+T.Case("Specializations: they want a transmute master and you brew potions", function()
+    -- Draxxino, in Trade: this matched [Primal Might] out of the book and opened
+    -- an order, because nothing read the four words in front of it.
+    local line = "LF  transmute alchemist for  primal might cool down pst"
+    T.Eq(ns.Prof.SpecWanted(ALCH, line, set("potion")), "Transmutation Master",
+        "not our customer")
+    T.Eq(ns.Prof.SpecWanted(ALCH, line, set("transmute")), nil, "unless it is us")
+    T.Eq(ns.Prof.SpecWanted(ALCH, line, set("potion", "transmute")), nil, "or one of ours")
+
+    T.Eq(ns.Prof.SpecWanted(ALCH, "LF elixir master to make an elixir", set("potion")),
+        "Elixir Master", "the same for elixirs, named the way people say it")
+    T.Eq(ns.Prof.SpecWanted(ALCH, "lf alch to make a potion", set("potion")), nil,
+        "an ordinary request names no specialization")
+
+    -- A bare verb is an ordinary request any alchemist can take. Only the words
+    -- that mean the specialist are listed.
+    T.Eq(ns.Prof.SpecWanted(ALCH, "can you transmute this for me", set("potion")), nil,
+        "transmute on its own is not a specialization")
+end)
+
+T.Case("Specializations: an item is not a request for a specialist", function()
+    -- "Spellfire Belt" is an item; "spellfire tailor" is a specialization; the
+    -- word is the same one. Reading the whole line would refuse the customer.
+    local linked = "LF tailor for |cffa335ee|Hitem:21848:0:0:0:0:0:0:0|h[Spellfire Belt]|h|r"
+    T.Eq(ns.Prof.SpecWanted(TAILOR, linked, set("mooncloth")), nil, "what they linked is cut out")
+
+    local typed = "LF tailor for Spellfire Belt"
+    T.Eq(ns.Prof.SpecWanted(TAILOR, typed, set("mooncloth"), { "Spellfire Belt" }), nil,
+        "and so is what matched the book")
+    -- Nor is the bare word enough on its own: the vanilla Shadoweave set needs no
+    -- specialization at all, so every word here carries a qualifier.
+    T.Eq(ns.Prof.SpecWanted(TAILOR, typed, set("mooncloth")), nil,
+        "the item name alone asks for nobody in particular")
+    T.Eq(ns.Prof.SpecWanted(TAILOR, "LF spellfire tailor for a belt", set("mooncloth")),
+        "Spellfire Tailoring", "asking for the specialist is another matter")
+end)
+
+T.Case("Specializations: professions without them are unaffected", function()
+    T.Eq(ns.Prof.SpecWanted(JC, "LF jc for a transmute master cut", set()), nil,
+        "jewelcrafting has none, so nothing is refused")
+    T.Eq(ns.Prof.SpecWanted(nil, "anything", set()), nil, "nor does no profile")
+    T.Eq(ns.Prof.SpecWanted(ALCH, nil, set("potion")), nil, "nor no message")
+end)
+
+T.Case("Specializations: the choices a profession offers", function()
+    local choices = ns.Prof.SpecChoices(ALCH)
+    T.Eq(choices[1], "auto", "auto first")
+    T.Eq(choices[#choices], "off", "off last")
+    T.Eq(#choices, 6, "auto, three specializations, none, off")
+    T.Eq(#ns.Prof.SpecChoices(JC), 3, "auto, none and off even with no specializations")
+    -- Every state the button cycles through has to be one you can land on, or the
+    -- cycle skips it forever.
+    T.Eq(table.concat(choices, ","), "auto,potion,elixir,transmute,none,off", "in order")
+end)
+
+T.Case("Requests: a specialization we lack is vetoed, not scored", function()
+    -- Primal Might has to be in the book for this line to get past the "no item
+    -- match" exit: matching it is exactly what opened Draxxino an order.
+    local book = { [23571] = { itemID = 23571, name = "Primal Might", classID = 7,
+                               bindType = 0, match = true, aliases = {} } }
+    local line = "LF transmute alchemist for primal might cool down pst"
+
+    local plain = classify(line, { profile = ALCH, book = book })
+    T.Eq(plain.verdict ~= "vetoed", true, "a transmute master would take this one")
+
+    local r = classify(line, { profile = ALCH, book = book,
+        wrongSpec = "Transmutation Master" })
+    T.Eq(r.verdict, "vetoed", "not our customer")
+    T.Eq(r.reason, "wants a Transmutation Master", "and the log says why")
+end)
+
+--------------------------------------------------------------------------------
+-- Answering our own question
+--------------------------------------------------------------------------------
+
+T.Case("Players: what we already said no to is remembered", function()
+    -- We asked Remyy what they needed, they said [Fel Leather Gloves], and the
+    -- book does not have it. Walking them through the same invite and the same
+    -- apology on the repost is the part worth skipping.
+    local state = {}
+    ns.Players.Decline(state, "fel leather gloves", { "Fel Leather Gloves" })
+
+    T.Eq(ns.Players.WasDeclined(state, "anything", { "Fel Leather Gloves" }), true,
+        "named again, in any wrapping")
+    T.Eq(ns.Players.WasDeclined(state, "fel leather gloves", {}), true, "or typed out")
+    T.Eq(ns.Players.WasDeclined(state, "LF LW", {}), false, "a different ask is a fresh one")
+    T.Eq(ns.Players.WasDeclined(state, "x", { "Felstalker Belt" }), false, "so is a different item")
+    T.Eq(ns.Players.WasDeclined({}, "fel leather gloves", {}), false, "nothing remembered yet")
+
+    T.Eq(ns.Players.ClearDeclined(state), 1, "and it can be forgotten")
+    T.Eq(ns.Players.WasDeclined(state, "fel leather gloves", {}), false, "once cleared")
+end)
+
+T.Case("Players: the memory is capped and does not grow forever", function()
+    local state = {}
+    for i = 1, 20 do
+        ns.Players.Decline(state, "item number " .. i, {})
+    end
+    T.Eq(#state.declinedOrder, 12, "the oldest fall off")
+    T.Eq(ns.Players.WasDeclined(state, "item number 20", {}), true, "the newest is kept")
+    T.Eq(ns.Players.WasDeclined(state, "item number 1", {}), false, "the oldest is not")
+
+    -- The same thing said twice is one entry, not two.
+    local dup = {}
+    ns.Players.Decline(dup, "same thing", {})
+    ns.Players.Decline(dup, "same thing", {})
+    T.Eq(#dup.declinedOrder, 1, "no duplicates")
+end)
+
+T.Case("Invites: someone we told no is left alone for a day", function()
+    -- Remyy reposted "LF LW" four more times with the item left out. Nothing in
+    -- those lines says what they still want, so only the clock can answer.
+    local settings = { enabled = true, maxParty = 5, playerCooldownSec = 600,
+                       declinedCooldownSec = 86400 }
+    local state = { declinedAt = 1000 }
+
+    T.Eq(ns.Inviter.BlockReason(state, 1000, 1, settings), "told them no just now", "at once")
+    T.Eq(ns.Inviter.BlockReason(state, 1000 + 3600 * 4, 1, settings), "told them no 4h ago",
+        "and four hours later")
+    T.Eq(ns.Inviter.BlockReason(state, 1000 + 86400, 1, settings), nil, "a day out, invite away")
+
+    -- Off means off, and someone we never declined is unaffected.
+    local off = { enabled = true, maxParty = 5, playerCooldownSec = 600, declinedCooldownSec = 0 }
+    T.Eq(ns.Inviter.BlockReason(state, 1100, 1, off), nil, "zero switches it off")
+    T.Eq(ns.Inviter.BlockReason({}, 1100, 1, settings), nil, "nobody was told anything")
+
+    -- The operational blocks still come first: a full group is a full group.
+    T.Eq(ns.Inviter.BlockReason(state, 1100, 5, settings), "group full", "order kept")
+end)
+
+T.Case("Players: declining stamps the clock, clearing unstamps it", function()
+    local state = {}
+    ns.Players.Decline(state, "fel leather gloves", { "Fel Leather Gloves" }, 500)
+    T.Eq(state.declinedAt, 500, "stamped")
+
+    -- A later decline moves it on; the memory of what was asked keeps building.
+    ns.Players.Decline(state, "felstalker belt", { "Felstalker Belt" }, 900)
+    T.Eq(state.declinedAt, 900, "the clock restarts on the newest no")
+    T.Eq(ns.Players.WasDeclined(state, "fel leather gloves", {}), true, "the older one is kept")
+
+    ns.Players.ClearDeclined(state)
+    T.Eq(state.declinedAt, nil, "Clear Flags lets them back in")
 end)

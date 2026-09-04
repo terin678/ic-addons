@@ -1,6 +1,6 @@
 -- MalexisAuctionWatcher Core - Main coordination and utilities
 local addonName = "MalexisAuctionWatcher"
-local VERSION = "1.17.0"
+local VERSION = "1.18.0"
 local MAW = {}
 
 -- Debug mode flag

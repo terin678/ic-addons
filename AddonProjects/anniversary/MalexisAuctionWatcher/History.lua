@@ -363,8 +363,13 @@ end
 --------------------------------------------------------------------------------
 
 -- Pure, so the arithmetic can be tested without a database. input = {
---   count, labels, cut, productName, productCount, productPoints,
---   mats = { { name, count, vendor, points } }, missing = { names } }
+--   count, labels, cut, productName, productCount, productPoints, productTsm,
+--   mats = { { name, count, vendor, points, tsm } }, missing = { names } }
+--
+-- A `tsm` is { market, historical } straight off the item. They are levels, not
+-- series, so they are scaled the same way the lines are and handed back for the
+-- chart to draw flat: a batch of the product after the cut, a material times how
+-- many the recipe needs.
 --
 -- Every series for a given mode has the same slots in the same order, so the
 -- product and each material line up index for index and nothing here has to look
@@ -389,7 +394,19 @@ function MAW.ComposeRecipeSeries(input)
         vendorCost = 0,
         missing = input.missing or {},
         complete = 0,
+        tsm = {},
     }
+
+    local function Scaled(ref, factor)
+        if not ref then return nil end
+        if not ref.market and not ref.historical then return nil end
+        return {
+            market = ref.market and ref.market * factor or nil,
+            historical = ref.historical and ref.historical * factor or nil,
+        }
+    end
+
+    out.tsm.value = Scaled(input.productTsm, productCount * (1 - cut))
 
     local productPoints = input.productPoints or {}
     for i = 1, count do
@@ -403,6 +420,7 @@ function MAW.ComposeRecipeSeries(input)
     -- the cost rather than a line that would draw flat across the chart.
     for _, m in ipairs(input.mats or {}) do
         local entry = { name = m.name, count = m.count or 1, vendor = m.vendor }
+        entry.tsm = Scaled(m.tsm, entry.count)
         if m.vendor then
             out.vendorCost = out.vendorCost + m.vendor * entry.count
         else
@@ -416,6 +434,22 @@ function MAW.ComposeRecipeSeries(input)
             end
         end
         out.mats[#out.mats + 1] = entry
+    end
+
+    do
+        local total, known = out.vendorCost, false
+        for _, m in ipairs(out.mats) do
+            if not m.vendor then
+                if m.tsm and m.tsm.market then
+                    total = total + m.tsm.market
+                    known = true
+                else
+                    known = false
+                    break
+                end
+            end
+        end
+        if known then out.tsm.cost = { market = total } end
     end
 
     for i = 1, count do
@@ -465,11 +499,25 @@ function MAW:GetRecipeSeries(recipe, mode, span)
         return points
     end
 
+    -- TSM has no daily history, only these two averages, so they arrive as
+    -- levels rather than as points on the series.
+    local db = self:GetActiveDB()
+    local tsmOn = self.sources and self.sources.tsm and self.sources.tsm.available
+        and self:IsSourceEnabled("tsm")
+    local function reference(itemName)
+        if not tsmOn then return nil end
+        local itemData = db.items and db.items[itemName]
+        return itemData and itemData.tsmRef or nil
+    end
+
     local productPoints = series(recipe.product)
     local mats = {}
     for _, mat in ipairs(recipe.materials or {}) do
         local m = { name = mat.item, count = mat.count or 1, vendor = mat.vendor }
-        if not mat.vendor then m.points = series(mat.item) end
+        if not mat.vendor then
+            m.points = series(mat.item)
+            m.tsm = reference(mat.item)
+        end
         mats[#mats + 1] = m
     end
 
@@ -480,6 +528,7 @@ function MAW:GetRecipeSeries(recipe, mode, span)
         productName = recipe.product,
         productCount = recipe.productCount or 1,
         productPoints = productPoints,
+        productTsm = reference(recipe.product),
         mats = mats,
         missing = missing,
     })

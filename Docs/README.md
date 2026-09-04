@@ -9,7 +9,9 @@ maintainers.
 | [AuctionatorSellingTweaks.md](AuctionatorSellingTweaks.md) | Companion addon: Expiry column and narrower "You?" in Auctionator's Selling price list |
 | [CutMaster.md](CutMaster.md) | Jewelcrafting book scanning, trade chat/whisper customer detection, order tracking, income |
 | [TradeMaster.md](TradeMaster.md) | Crafting business assistant for any profession: scanning, customers, barking, orders, income |
-| [ICLibs.md](ICLibs.md) | Shared library addon: LibICTradeSkill reads profession windows into books for the other addons |
+| [ICLibs.md](ICLibs.md) | Shared library addon: LibICTradeSkill reads profession windows into books, LibICUI is the window and list toolkit |
+| [ICTemplate.md](ICTemplate.md) | The worked example: a live gallery of every LibICUI widget, and the folder you copy to start a new addon |
 | [client-reference.md](client-reference.md) | Interface versions, client folders, and API notes per flavor |
+| [GuildRecruitment.md](GuildRecruitment.md) | One recruitment message the raid leaders set and every officer sends, kept in step across the guild, with a log of who barked when. |
 
 When you add an addon, add its guide here and link it from the root README table.

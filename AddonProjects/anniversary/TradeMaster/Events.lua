@@ -125,7 +125,7 @@ function Events.Process(text, author, source, opts)
     end
 
     -- Fragmented requests across two messages, direct channels only.
-    local usedContext = false
+    local usedContext, contextText = false, nil
     if isDirect and #matched == 0 then
         local combined = ns.Players.RecentText(state, now, CONTEXT_WINDOW)
         if combined ~= "" then
@@ -136,6 +136,7 @@ function Events.Process(text, author, source, opts)
                 Use(cpick)
                 matched = cm
                 norm = cnorm
+                contextText = combined
                 usedContext = true
             end
         end
@@ -232,6 +233,8 @@ function Events.Process(text, author, source, opts)
             blocked = "already grouped"
         elseif not ns.InvitesOn() then
             blocked = "invites off"
+        elseif ns.Players.WasDeclined(state, norm, ns.Util.BracketNames(text)) then
+            blocked = "already told them no"
         elseif #matched > 0 and #craftable == 0 then
             blocked = "not enough " .. ns.Scanner.DescribeMissing(noMats[1].missing)
         else
@@ -239,9 +242,28 @@ function Events.Process(text, author, source, opts)
         end
     end
 
+    -- A request for a specialization we do not hold. Checked against the line
+    -- with everything they named cut out, so an item whose name happens to carry
+    -- a specialization word is still an ordinary request for that item.
+    local wrongSpec
+    if pick.key then
+        local have, source = ns.Prof.SpecSet(pick.key)
+        if source ~= "off" then
+            local names = {}
+            for _, h in ipairs(matched) do
+                local e = book[h.itemID]
+                if e and e.name then names[#names + 1] = e.name end
+            end
+            -- The stitched line when they said it across two messages, so
+            -- "LF transmute master" then "[Primal Might]" is still read as one.
+            wrongSpec = ns.Prof.SpecWanted(profile, contextText or text, have, names)
+        end
+    end
+
     local result = ns.Classifier.Evaluate({
         norm = norm,
         raw = text,
+        wrongSpec = wrongSpec,
         matched = matched,
         linkCount = #ns.Util.ExtractItemIDs(text),
         hasRecipeLink = HasRecipeLink(text, profile),
@@ -351,8 +373,13 @@ function Events.Process(text, author, source, opts)
 
         else
             local asked = ns.Util.IsAvailabilityQuestion(text, norm, ps.filter.askPhrases)
+            -- We asked what they needed and this is the answer. Saying nothing to
+            -- that is the one reply that is always wrong: they are sitting in the
+            -- group waiting for one, and the only way to find out was to search
+            -- the book by hand.
+            local answering = state.awaitingItem and true or false
             local mayReply = w.enabled and w.autoReply
-                and (w.autoSuggest or (asked and w.answerQuestions))
+                and (w.autoSuggest or answering or (asked and w.answerQuestions))
 
             local family, ids, exactFamily = ns.Matcher.NearMiss(norm, pick.index)
             local links = {}
@@ -376,7 +403,7 @@ function Events.Process(text, author, source, opts)
                 return result
             end
 
-            if #links > 0 or (asked and namedUnknownItem) then
+            if #links > 0 or ((asked or answering) and namedUnknownItem) then
                 if #links > 0 then
                     ns.Print(string.format(
                         "|cffffcc00%s asked about a %s you do not know.|r You can do: %s",
@@ -396,6 +423,23 @@ function Events.Process(text, author, source, opts)
                         ns.Inviter.Say(short, w.noneTemplate, {}, profile)
                     end
                 end
+
+                if answering and #links == 0 then
+                    -- Nothing we can offer, so remember the answer and give the
+                    -- group slot back. A repost is then blocked rather than
+                    -- invited into the same conversation again.
+                    ns.Players.Decline(state, norm, ns.Util.BracketNames(text), now)
+                    local hours = math.floor((ps.invite.declinedCooldownSec or 86400) / 3600)
+                    if ps.invite.dropOnNoMatch ~= false and ns.Inviter.Drop(short) then
+                        ns.Print(string.format("|cff888888removed %s from the group.|r "
+                            .. "No invites for %dh; Clear Flags on the Log tab undoes it.",
+                            short, hours))
+                    else
+                        ns.Print(string.format("|cff888888%s asked for something you do not "
+                            .. "have.|r No invites for %dh.", short, hours))
+                    end
+                end
+                state.awaitingItem = nil
             else
                 -- Last resort: a bare prefix with none of its base words
                 -- ("looking for jagged..."). Genuinely ambiguous, so this is

@@ -98,3 +98,46 @@ it. Whispers have no such restriction.
 is not inside the saved-variables table is session state, and a filter or toggle kept there
 looks exactly like data loss the next time the player logs in. If it changes what the
 player sees, it belongs in the saved table.
+
+**A channel list has a stride of three.** `GetChannelList()` returns a flat
+`id, name, disabled, id, name, disabled, ...`. Walking it two at a time reads every other
+channel's name as an id, and the bug is invisible until the character has joined an odd
+number of channels. `TradeMaster/Barker.lua` and `GuildRecruitment/Bark.lua` both step by 3.
+
+## Addon messages and the guild roster
+
+Answered by `/gr probe` on 20506, so these are facts now rather than guesses.
+
+**`C_ChatInfo` is the live path; the bare globals are gone.**
+`C_ChatInfo.SendAddonMessage` and `C_ChatInfo.RegisterAddonMessagePrefix` both exist;
+`SendAddonMessage` and `RegisterAddonMessagePrefix` as globals do **not**. Registration is
+accepted. Resolve the namespaced name first and keep the global only as a fallback for
+other flavours.
+
+**`GuildRoster()` does not exist either**, under that name. `IsInGuild`,
+`GetNumGuildMembers`, `GetGuildRosterInfo` and `GetGuildInfo` all do, and the roster is
+populated without anyone asking for it -- a probe that never called a refresh still read
+450 rows. `GuildRecruitment/Roster.lua` tries `C_GuildInfo.GuildRoster` and falls back to
+reading whatever is already there, because a refresh you cannot request is not a reason to
+have no roster.
+
+**A GUILD addon message comes back to the sender.** `/gr probe`'s loopback reported
+"heard from Malexis in 0.00s" -- your own message is delivered to your own
+`CHAT_MSG_ADDON` immediately. Useful, because it is what makes a loopback test possible at
+all, but anything that walks the receive path has to drop its own traffic early or it files
+itself as a peer, counts its own echo as received, and logs itself agreeing with itself.
+`GuildRecruitment/Comm.lua` returns as soon as the loopback has been told.
+
+**`GetGuildRosterInfo` returns a 0-based rankIndex** with 0 as the guild master, as
+assumed: a rank-2 officer reads as 2.
+
+**`loadstring` exists.** ICTemplate's gallery compiles each demo from the same string it
+displays, and that rests on it.
+
+## Lua, not the client
+
+**A table constructor cannot carry a nil.** `{ channel = nil }` is an *empty* table, so a
+test helper that merges an overrides table silently applies no override and the field keeps
+its default. This passed a Python port of the same cases -- a dict really can hold a `None`
+-- and failed the first time it ran in the client. Clear the field on the built table
+instead: `local s = state(); s.channel = nil`.
