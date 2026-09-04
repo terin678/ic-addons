@@ -10,8 +10,7 @@ local Deaths = MFD.UI.Deaths
 
 local ROW_HEIGHT = 18       -- pixels per boss row
 local COLUMN_WIDTH = 200    -- pixels per raid column
-local HEADER_HEIGHT = 150   -- pixels reserved for the toggles above the list
-local MAX_COLUMN_ROWS = 22  -- rows before a raid starts a new column
+local MIN_COLUMN_ROWS = 6   -- floor if the height cannot be read yet
 
 local GREEN, RED, GREY, AMBER = "|cff66ff66", "|cffff4444", "|cff999999", "|cffffcc66"
 
@@ -242,21 +241,32 @@ local function buildOverride(y)
     frame.active = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     frame.active:SetPoint("LEFT", frame.override, "RIGHT", 12, 0)
     frame.active:SetJustifyH("LEFT")
+
+    -- Where the next thing down may start. Returned rather than assumed: a
+    -- hardcoded header height drew this button on top of the first two bosses
+    -- the moment the toggles above it changed height.
+    return y - 34
 end
 
 -- The boss list, in columns by raid so all of it is visible at once. A
 -- scrolling list of forty three would mean hunting for Supremus.
-local function buildBossList()
+local function buildBossList(top)
     local list = CreateFrame("Frame", nil, frame)
-    list:SetPoint("TOPLEFT", frame, "TOPLEFT", 16, -HEADER_HEIGHT)
+    list:SetPoint("TOPLEFT", frame, "TOPLEFT", 16, top)
     list:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -10, 10)
+
+    -- How many rows fit is whatever is actually left below the toggles, not a
+    -- number written down once and left to drift when something above changes
+    -- height. top is negative, measured down from the top of the tab.
+    local available = (frame:GetHeight() or 0) + top - 10
+    local maxRows = math.max(MIN_COLUMN_ROWS, math.floor(available / ROW_HEIGHT))
 
     local column, rowIndex = 0, 0
 
     for _, group in ipairs(MFD.Encounters.GroupByInstance(MFD.Data.Bosses)) do
         -- A raid that would run off the bottom starts a new column instead of
         -- being split across two.
-        if rowIndex > 0 and rowIndex + #group.bosses + 2 > MAX_COLUMN_ROWS then
+        if rowIndex > 0 and rowIndex + #group.bosses + 2 > maxRows then
             column = column + 1
             rowIndex = 0
         end
@@ -317,8 +327,7 @@ function Deaths:BuildInto(container)
     frame.edits = {}
     frame.bossChecks = {}
 
-    buildOverride(buildToggles())
-    buildBossList()
+    buildBossList(buildOverride(buildToggles()))
 
     frame:SetScript("OnShow", function()
         Deaths:Refresh()

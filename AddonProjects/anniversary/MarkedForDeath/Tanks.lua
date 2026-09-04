@@ -76,7 +76,12 @@ local GetPartyAssignment = GetPartyAssignment
 local UnitName = UnitName
 local IsInRaid = IsInRaid
 
-local announced = {}
+-- Shared with the healer announcer, deliberately. Somebody can satisfy both
+-- definitions at once, most easily a healer still flagged Main Tank from a
+-- previous night, and two announcers with private tables would each post the
+-- same line at the raid. Whichever gets there first claims the name.
+Tanks.announced = {}
+local announced = Tanks.announced
 
 -- Returns { [name] = true } for everyone the raid has flagged as a main tank.
 function Tanks.AssignedTanks()

@@ -2958,4 +2958,146 @@ T.Case("Healers: the known list merges both sources and sorts, without duplicate
     T.Eq(table.concat(known, ","), "Amara,Kaylia,Thok", "sorted, deduplicated, no shadow priest")
 end)
 
+-- The defense brake exists for one thing: an icon of ours being wiped by
+-- something that will not stop. Everything else that moves an icon is either
+-- our own decision or a person's, and counting those burns the budget on
+-- fights that are not happening.
+local function diffOne(desired, actual, placed)
+    local defense = {}
+    local result = MFD.Marker.ComputeDiff(desired, actual, placed, defense, 100, MFD.Marker.LIMITS)
+    return result, defense
+end
+
+T.Case("Brake: changing our own mind is not a fight", function()
+    -- The board holds exactly what we wrote. We simply want something else on
+    -- it now, because a higher priority mob turned up.
+    local result = diffOne({ ["1-A"] = 7 }, { ["1-A"] = 8 }, { ["1-A"] = 8 })
+    T.Eq(#result.actions, 1, "re-marked")
+    T.Eq(result.actions[1].isDefense, false, "not a defense")
+end)
+
+T.Case("Brake: an icon taken by the mob we now want to have it is not a fight", function()
+    -- A tank marks B with Skull. The game strips Skull from A, and the
+    -- allocator has already moved A down to Cross and given B the Skull. Both
+    -- mobs are doing what we want; nobody is fighting us.
+    local result = diffOne(
+        { ["1-A"] = 7, ["1-B"] = 8 },
+        { ["1-A"] = 0, ["1-B"] = 8 },
+        { ["1-A"] = 8 })
+
+    T.Eq(#result.actions, 1, "only A needs writing")
+    T.Eq(result.actions[1].key, "1-A", "A")
+    T.Eq(result.actions[1].isDefense, false, "its icon was taken, not wiped")
+end)
+
+T.Case("Brake: an icon wiped to nothing is still defended", function()
+    local result = diffOne({ ["1-A"] = 8 }, { ["1-A"] = 0 }, { ["1-A"] = 8 })
+    T.Eq(result.actions[1].isDefense, true, "nobody has our skull, so it was wiped")
+end)
+
+T.Case("Brake: an icon taken by a mob we do not want to have it is still a fight", function()
+    -- Another addon has moved our Skull onto a mob our rules say should be
+    -- Cross. That is the case the brake was written for and it must survive.
+    local result = diffOne(
+        { ["1-A"] = 8, ["1-B"] = 7 },
+        { ["1-A"] = 0, ["1-B"] = 8 },
+        { ["1-A"] = 8, ["1-B"] = 7 })
+
+    local byKey = {}
+    for _, action in ipairs(result.actions) do
+        byKey[action.key] = action
+    end
+    T.Eq(byKey["1-A"].isDefense, true, "A lost skull to a mob that should not have it")
+    T.Eq(byKey["1-B"].isDefense, true, "and B is wearing an icon we did not put there")
+end)
+
+T.Case("Brake: our icon swapped for a different one is still a fight", function()
+    local result = diffOne({ ["1-A"] = 8 }, { ["1-A"] = 3 }, { ["1-A"] = 8 })
+    T.Eq(result.actions[1].isDefense, true, "somebody replaced it")
+end)
+
+T.Case("Brake: a mob we never marked wearing an icon is contested", function()
+    local result = diffOne({ ["1-A"] = 8 }, { ["1-A"] = 3 }, {})
+    T.Eq(result.actions[1].isDefense, true, "not ours, so not a free first mark")
+end)
+
+T.Case("Brake: a bare unmarked mob is a first mark, not a defense", function()
+    local result = diffOne({ ["1-A"] = 8 }, { ["1-A"] = 0 }, {})
+    T.Eq(result.actions[1].isDefense, false, "nothing to defend")
+end)
+
+T.Case("Brake: three hand-placed marks no longer trip it", function()
+    -- The regression this was written for. A tank marks three mobs in a pack of
+    -- four; each steal cascades every lower mob down a slot. Before, every one
+    -- of those shifts counted as a defense and the pack was yielded.
+    local defense = {}
+    local placed = { ["1-A"] = 8, ["1-B"] = 7, ["1-C"] = 6, ["1-D"] = 2 }
+
+    for _, step in ipairs({
+        { desired = { ["1-D"] = 8, ["1-A"] = 7, ["1-B"] = 6, ["1-C"] = 2 },
+          actual  = { ["1-D"] = 8, ["1-A"] = 0, ["1-B"] = 7, ["1-C"] = 6 } },
+        { desired = { ["1-D"] = 8, ["1-C"] = 7, ["1-A"] = 6, ["1-B"] = 2 },
+          actual  = { ["1-D"] = 8, ["1-C"] = 7, ["1-A"] = 0, ["1-B"] = 6 } },
+        { desired = { ["1-D"] = 8, ["1-C"] = 7, ["1-B"] = 6, ["1-A"] = 2 },
+          actual  = { ["1-D"] = 8, ["1-C"] = 7, ["1-B"] = 6, ["1-A"] = 0 } },
+    }) do
+        local result = MFD.Marker.ComputeDiff(step.desired, step.actual, placed, defense, 100, MFD.Marker.LIMITS)
+        T.Eq(#result.yielded, 0, "nothing yielded")
+        for _, action in ipairs(result.actions) do
+            T.Eq(action.isDefense, false, action.key .. " should not count as a fight")
+            placed[action.key] = action.icon
+        end
+    end
+end)
+
+T.Case("Remark: resetting the marking state clears the hand-placed holds too", function()
+    -- The bug this replaces: /mfd mark wiped locked and placed but left manual
+    -- behind, so on the next tick every icon the addon had placed read as
+    -- somebody else's and the whole pack was locked permanently.
+    MFD.Marker.locked["1-A"] = 8
+    MFD.Marker.placed["1-A"] = 8
+    MFD.Marker.manual["1-A"] = 8
+    MFD.Marker.wroteAt["1-A"] = 100
+    MFD.Marker.borrowed["1-A"] = true
+
+    MFD.Marker.ResetMarkState()
+
+    T.Eq(next(MFD.Marker.locked), nil, "locked")
+    T.Eq(next(MFD.Marker.placed), nil, "placed")
+    T.Eq(next(MFD.Marker.manual), nil, "manual, which is the one that was missed")
+    T.Eq(next(MFD.Marker.wroteAt), nil, "wroteAt")
+    T.Eq(next(MFD.Marker.borrowed), nil, "borrowed")
+end)
+
+T.Case("Encounters: a boss stays the active fight while its nameplate is gone", function()
+    -- The raid lead is a ranged healer at the edge of nameplate range. Losing
+    -- the nameplate mid fight must not silently stop death announcements.
+    T.Eq(MFD.Encounters.Resolve("Illidan Stormrage", nil, true), "Illidan Stormrage", "seen")
+    T.Eq(MFD.Encounters.Resolve(nil, "Illidan Stormrage", true), "Illidan Stormrage", "still in combat")
+    T.Eq(MFD.Encounters.Resolve(nil, "Illidan Stormrage", false), nil, "combat over, forget it")
+    T.Eq(MFD.Encounters.Resolve(nil, nil, true), nil, "never seen one")
+end)
+
+T.Case("Encounters: a boss id in the combat log identifies the fight", function()
+    local index = MFD.Encounters.IndexByNpcID({ { name = "Supremus", instance = "BT", ids = { 22898 } } })
+    T.Eq(MFD.Encounters.FromGUID("Creature-0-1-565-0-22898-000123ABCD", index), "Supremus", "boss")
+    T.Eq(MFD.Encounters.FromGUID("Creature-0-1-565-0-99999-000123ABCD", index), nil, "trash")
+    T.Eq(MFD.Encounters.FromGUID("Player-4321-0000AAAA", index), nil, "a player is not a boss")
+    T.Eq(MFD.Encounters.FromGUID(nil, index), nil, "nothing at all")
+end)
+
+T.Case("Deaths: both announcers share one suppression table", function()
+    -- A resto druid left flagged Main Tank from last night matches both, and
+    -- without a shared table the raid gets the same warning twice.
+    T.Eq(MFD.Healers.announced == MFD.Tanks.announced, true, "the same table, not a copy")
+
+    local shared = MFD.Tanks.announced
+    for key in pairs(shared) do
+        shared[key] = nil
+    end
+
+    T.Eq(MFD.Tanks.ShouldAnnounce("Kaylia", shared, 100, 10), true, "the tank announcer gets there first")
+    T.Eq(MFD.Tanks.ShouldAnnounce("Kaylia", shared, 100, 10), false, "the healer announcer is suppressed")
+end)
+
 _G.MarkedForDeath = MFD

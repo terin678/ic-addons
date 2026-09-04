@@ -2,7 +2,7 @@
 local MFD = _G.MarkedForDeath or {}
 
 -- Must match ## Version: in the toc and the packaged zip name.
-MFD.VERSION = "1.11.0"
+MFD.VERSION = "1.11.1"
 
 -- Bumped only when the saved-variable shape changes in a way that needs a
 -- migration. See MFD:MigrateDB.
@@ -569,8 +569,7 @@ commands.debug = {
 commands.mark = {
     desc = "force a full re-mark of the visible pack",
     run = function()
-        wipe(MFD.Marker.locked)
-        wipe(MFD.Marker.placed)
+        MFD.Marker.ResetMarkState()
         MFD.Print("re-marking")
     end,
 }

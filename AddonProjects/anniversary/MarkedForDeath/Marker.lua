@@ -130,8 +130,44 @@ function Marker.DetectManualMarks(actual, placed, manual, wroteAt, now, settleSe
     return { added = added, removed = removed }
 end
 
--- Takes the desired map, the observed actual map, the set of keys we have
--- placed, a mutable defense counter table, the current time and the limits.
+-- Decides whether writing an icon to this mob means contesting it.
+--
+-- A defense is one thing only: an icon of ours that something else took away
+-- and that nothing legitimate accounts for. Everything else that moves an icon
+-- is either our own decision or a person's, and counting those spends the brake
+-- budget on fights that are not happening. Pure.
+--
+-- holder maps each icon on the board to the mob wearing it, so an icon that
+-- left this mob can be told from an icon that was wiped off the board.
+local function isContested(key, present, desired, placed, holder)
+    local mine = placed[key]
+
+    if mine == nil then
+        -- Never marked by us. Bare is a first mark; anything else is an icon
+        -- somebody put here.
+        return present ~= 0
+    end
+
+    if present == mine then
+        -- The board holds exactly what we last wrote. Wanting something else
+        -- on it now is us changing our mind, not a fight.
+        return false
+    end
+
+    if present == 0 then
+        -- Our icon is gone. Raid icons are unique, so a hand-placed mark or a
+        -- reallocation moves one off its old mob as a side effect. If it landed
+        -- on the mob we now want wearing it, nothing is contesting us.
+        local takenBy = holder[mine]
+        return not (takenBy and desired[takenBy] == mine)
+    end
+
+    -- Replaced with something we did not write.
+    return true
+end
+
+-- Takes the desired map, the observed actual map, the icons we have placed, a
+-- mutable defense counter table, the current time and the limits.
 -- Returns { actions = array of { key, icon, isDefense }, yielded = array of key }.
 --
 -- Mutates defense: each re-application increments a counter inside a rolling
@@ -139,6 +175,16 @@ end
 -- rather than fought over. Sorted output keeps the result deterministic.
 function Marker.ComputeDiff(desired, actual, placed, defense, now, limits)
     local actions, yielded = {}, {}
+
+    -- Sorted so two clients build the same map even if the board is briefly
+    -- showing one icon on two mobs.
+    local holder = {}
+    for _, key in ipairs(MFD.H.SortedKeys(actual)) do
+        local icon = actual[key]
+        if icon ~= 0 and holder[icon] == nil then
+            holder[icon] = key
+        end
+    end
 
     for _, key in ipairs(MFD.H.SortedKeys(desired)) do
         local wanted = desired[key]
@@ -150,10 +196,7 @@ function Marker.ComputeDiff(desired, actual, placed, defense, now, limits)
         -- burned the entire brake budget in under a second on a mob we could
         -- not even touch.
         if present ~= nil and present ~= wanted then
-            -- Either we put an icon here and it is gone or changed, or someone
-            -- else has put a different icon on it. Both mean we are contesting
-            -- the mob rather than marking it for the first time.
-            local isDefense = placed[key] ~= nil or present ~= 0
+            local isDefense = isContested(key, present, desired, placed, holder)
 
             if not isDefense then
                 actions[#actions + 1] = { key = key, icon = wanted, isDefense = false }
@@ -306,6 +349,22 @@ end
 -- Routed through ActionableUnits for the same reason marking is: clearing
 -- through a stale token wipes the icon off whatever the player happens to be
 -- pointing at rather than off the mob it was meant for.
+-- Drops everything this client believes about the icons currently on screen,
+-- so the next tick decides the pack from scratch.
+--
+-- This exists as one function because the state is five tables and forgetting
+-- one is not a small bug: /mfd mark wiped locked and placed but left manual
+-- behind, so on the next tick every icon the addon had placed looked like
+-- somebody else's hand and the whole pack was locked permanently. Anything that
+-- resets marking calls this rather than picking tables by hand.
+function Marker.ResetMarkState()
+    wipe(Marker.locked)
+    wipe(Marker.placed)
+    wipe(Marker.manual)
+    wipe(Marker.wroteAt)
+    wipe(Marker.borrowed)
+end
+
 function Marker:ClearAll()
     local cleared = 0
     for _, unit in pairs(MFD.Candidates.ActionableUnits(MFD.Candidates.set, UnitGUID)) do
@@ -313,12 +372,9 @@ function Marker:ClearAll()
         cleared = cleared + 1
     end
 
-    wipe(Marker.locked)
-    wipe(Marker.placed)
-    wipe(Marker.borrowed)
     -- Clearing every icon includes the hand-placed ones, so the holds they
     -- were given go with them.
-    wipe(Marker.manual)
+    Marker.ResetMarkState()
     return cleared
 end
 
@@ -577,8 +633,12 @@ function Marker:Tick(elapsed)
 
     -- Which boss is up gates the death announcements, which do not care
     -- whether this client is the one marking, so it is read before the
-    -- marking switch rather than after it.
-    MFD.Encounters.Update(MFD.Candidates.ToList(MFD.Candidates.set))
+    -- marking switch rather than after it. Skipped outright when no setting
+    -- consults it, which is the default: building and sorting a candidate list
+    -- five times a second to throw the answer away is not free in a raid.
+    if MFD.Encounters.IsNeeded() then
+        MFD.Encounters.Update(MFD.Candidates.ToList(MFD.Candidates.set))
+    end
 
     if not MFD.db.settings.isMarkingEnabled then
         return
@@ -777,10 +837,7 @@ MFD.RegisterInit(function()
                 Marker.locked[key] = icon
             end
         elseif event == "PLAYER_ENTERING_WORLD" then
-            wipe(Marker.locked)
-            wipe(Marker.placed)
-            wipe(Marker.manual)
-            wipe(Marker.wroteAt)
+            Marker.ResetMarkState()
             wipe(Marker.alertedCrowdControl)
             Marker.pullCrowdControl = nil
             Marker.InvalidateRoster()

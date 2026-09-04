@@ -10,6 +10,15 @@ assert(addonDir, "usage: luajit scripts/test-harness.lua <addon dir>")
 _G.time = _G.time or os.time
 _G.GetServerTime = function() return os.time() end
 
+-- The client's in-place table clear. Pure Lua, so a faithful stand-in is three
+-- lines and lets logic that resets state be tested rather than only read.
+_G.wipe = _G.wipe or function(t)
+    for key in pairs(t) do
+        t[key] = nil
+    end
+    return t
+end
+
 -- Core.lua cannot be loaded here because it creates a frame at file scope, but
 -- the logic modules register their client-side setup through RegisterInit at
 -- file scope. Seed a no-op so those calls succeed; the registered functions are

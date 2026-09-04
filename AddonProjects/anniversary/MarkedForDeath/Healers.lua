@@ -69,7 +69,10 @@ end
 
 -- ---------------------------------------------------------------- client --
 
-local announced = {}
+-- The tank announcer's table, not a second one. See the comment on it: a
+-- healer left flagged Main Tank matches both, and one line is enough.
+Healers.announced = MFD.Tanks.announced
+local announced = Healers.announced
 
 -- Specs the addon knows, from both sources it has: what other people running
 -- this addon report about themselves, and what inspection learned. A client's

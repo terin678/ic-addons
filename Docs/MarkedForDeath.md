@@ -175,8 +175,13 @@ shift-click menu, and `/mfd deaths` cycles it from a macro:
 prints who is currently counted as one.
 
 The fight you are in is worked out from the boss's nameplate, which the addon is already
-watching for marking. There is no encounter API on this client, so nameplates need to be
-on, the same as for everything else here.
+watching for marking, and from the combat log when the nameplate is not there. There is no
+encounter API on this client, so one or the other has to do it. Once a boss is identified
+it stays the active fight until combat ends, which matters if you lead from range: losing
+the nameplate mid fight does not quietly stop the announcements.
+
+None of that runs at all unless a setting asks for it. With healer deaths off and tank
+deaths not held to the boss list, which is how it ships, the addon never looks.
 
 ## Sharing a rule set
 
@@ -249,7 +254,7 @@ Every command is in `/mfd help`.
 | `/mfd lead [name]` | Designate the Raid Lead, or clear it. Raid leader or assistant only. |
 | `/mfd status` | Who is marking and why, who else is running the addon, and how many rules were merged from whom. |
 | `/mfd debug` | If marking is not happening, this says exactly why, most fundamental reason first. |
-| `/mfd mark` | Force a full re-mark of the visible pack. |
+| `/mfd mark` | Force a full re-mark of the visible pack, dropping any hand-placed holds. |
 | `/mfd clear` | Clear every icon on visible mobs. |
 | `/mfd announce` | Post the current assignments to raid chat now, for calling a pack out before the pull. Macro friendly. |
 | `/mfd deaths [on|off|auto]` | Cycle or set the death announcement override. Macro friendly. |
@@ -319,6 +324,9 @@ Editing a merged rule copies it into your own set first. From then on it is your
   death, which frees the role for the next mob of that job.
 - If someone clears an icon the addon placed, it puts it back. After three corrections in
   five seconds it backs off and says so, rather than fighting whatever keeps wiping it.
+  Only a genuine wipe counts toward that: an icon that moved because you marked something
+  by hand, or because the addon reshuffled the pack itself, is replaced without spending
+  the budget.
 - On pull, the marker posts one line to raid chat: `[MFD] Skull>Kill | Moon>Sheep Grimmtusk`.
   For the people not running the addon. Throttled to one per five seconds.
 
@@ -333,8 +341,8 @@ The icon you reached for decides the job, not the mob's rule. Moon on something 
 call a kill is read as a sheep call and announced to whoever owns Moon.
 
 Take your mark off again and the mob goes back to the addon. Holds you placed survive the
-end of combat, so marking the next pack before pulling it works. `/mfd clear` and zoning
-clear them along with everything else. Turn the whole behaviour off in Settings under
+end of combat, so marking the next pack before pulling it works. `/mfd clear`, `/mfd mark`
+and zoning clear them along with everything else. Turn the whole behaviour off in Settings under
 **A mark placed by hand wins**.
 
 ## Calling the pack out before you pull it
