@@ -35,8 +35,15 @@ number is a **lower** rank, so both settings are ceilings.
 
 | Setting | Default | Means |
 | --- | --- | --- |
-| Raid leaders | rank 1 or better | may change the message and the teams, and push them |
+| Raid leaders | rank 2 or better | may change the message and the teams, and push them |
 | Officers | rank 4 or better | may send the message |
+
+**The two numberings do not agree.** The guild window lists ranks from 1; the game reports
+them from 0, and this addon uses the game's, so the guild master is 0 here and 1 there.
+Impulse Control's raid leaders are the guild master plus the two team leaders, which is
+0, 1 and 2 in this numbering and 1, 2 and 3 in the guild window's -- hence the default of 2.
+The Settings tab prints your guild's own name for whichever rank a threshold lands on, so
+you never have to work out which numbering a screen is using.
 
 Only the guild master can move the thresholds, on the **Settings** tab.
 

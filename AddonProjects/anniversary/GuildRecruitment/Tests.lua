@@ -411,6 +411,14 @@ T.Case("Roster: names, indexes and strangers", function()
 
     T.Eq(select(2, ns.Roster.Index({})), 0, "an empty roster is not an error")
     T.Eq(ns.Roster.Sorted(rows)[1].name, "Malexis", "sorted by rank, then name")
+
+    -- The guild window numbers ranks from 1 and the game reports them from 0, so a
+    -- bare number on a settings page is read by half its readers as the other one.
+    -- Showing the guild's own name for that rank is what stops the guessing.
+    T.Eq(ns.Roster.RankName(rows, 0), "Guild Master", "the guild's own word for rank 0")
+    T.Eq(ns.Roster.RankName(rows, 1), "Officer", "and for rank 1")
+    T.Eq(ns.Roster.RankName(rows, 9), nil, "a rank nobody holds has no name here")
+    T.Eq(ns.Roster.RankName({}, 0), nil, "and neither does anything, with no roster")
 end)
 
 --------------------------------------------------------------------------------

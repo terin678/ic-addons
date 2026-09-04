@@ -262,14 +262,18 @@ UI.RegisterPage(90, "Settings", function(page)
     barkUp:SetPoint("TOPLEFT", 408, y + 2)
     y = y - 26
 
-    local rankNote = Label(page, "Rank 0 is the guild master; larger numbers are lower ranks. "
-        .. "Everyone sets this for themselves, so an officer whose copy disagrees will "
-        .. "accept messages yours ignores. The Officers tab shows who is out of step.",
+    local rankNote = Label(page, "The guild window numbers ranks from 1; the game reports "
+        .. "them from 0, and this uses the game's numbering, so the guild master is 0 here "
+        .. "and 1 there. A lower number is a higher rank, and each name below is read off "
+        .. "your own roster.
+Everyone sets this for themselves, so an officer whose copy "
+        .. "disagrees with yours will accept messages yours ignores. The Officers tab shows "
+        .. "who is out of step.",
         "GameFontDisableSmall")
     rankNote:SetPoint("TOPLEFT", 0, y)
     rankNote:SetWidth(UI.PAGE_W - 20)
     rankNote:SetSpacing(2)
-    y = y - 44
+    y = y - 58
 
     local function Bump(key, delta)
         return function()
@@ -370,10 +374,17 @@ UI.RegisterPage(90, "Settings", function(page)
 
     return function()
         local s = ns.db.settings
-        authorLabel:SetText(string.format("Raid leaders: rank |cffffcc00%d|r or better may "
-            .. "change the message", s.authorRankIndex))
-        barkLabel:SetText(string.format("Officers: rank |cffffcc00%d|r or better may send it",
-            s.barkRankIndex))
+        -- The number on its own is the thing that got read wrong; the guild's own
+        -- name for that rank is what makes it unambiguous.
+        local function RankLabel(index)
+            local named = ns.Roster.RankName(ns.Roster.rows, index)
+            if named then return string.format("|cffffcc00%d|r (%s)", index, named) end
+            return string.format("|cffffcc00%d|r", index)
+        end
+        authorLabel:SetText(string.format("Raid leaders: rank %s or better may change "
+            .. "the message", RankLabel(s.authorRankIndex)))
+        barkLabel:SetText(string.format("Officers: rank %s or better may send it",
+            RankLabel(s.barkRankIndex)))
 
         timer:SetChecked(s.bark.enabled)
         combat:SetChecked(s.bark.pauseCombat)

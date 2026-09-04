@@ -10,7 +10,7 @@ officer's copy converges on it, and a log of who barked when means the second
 officer does not add a second line four minutes after the first.
 ]]
 
-local VERSION = "0.1.2"
+local VERSION = "0.1.3"
 ns.VERSION = VERSION
 
 ns.SCHEMA = 1
@@ -112,7 +112,10 @@ ns.Defaults = {
 
         -- rankIndex 0 is the guild master and a LARGER number is a LOWER rank, so
         -- both of these are ceilings, not floors.
-        authorRankIndex = 1,
+        -- Impulse Control's ranks, in the game's 0-based numbering: 0 is the guild
+        -- master, 1 and 2 are the two raid teams' leaders. The guild window shows
+        -- those as 1, 2 and 3.
+        authorRankIndex = 2,
         barkRankIndex = 4,
 
         bark = {
