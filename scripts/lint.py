@@ -210,7 +210,8 @@ VERSION_LUA = re.compile(r'local\s+VERSION\s*=\s*"([^"]+)"')
 def check_versions(addon_dir):
     """The .toc, the load message and the README table must agree.
 
-    Four places move together on a release and one of them gets forgotten.
+    Three places move together on a release and one of them gets forgotten. The zip name is
+    a fourth appearance but package.ps1 derives it from the .toc, so it cannot drift.
     """
     toc = toc_path(addon_dir)
     if not os.path.exists(toc):
