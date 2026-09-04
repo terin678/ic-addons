@@ -40,6 +40,7 @@ UI.RegisterPage(20, "Teams", function(page)
     -- Apply and Cancel are shared and sit right of both, so the buttons do not move when
     -- the panel changes what it is editing.
     local APPLY_X = 470
+    local PICK_X = 352      -- the team button, right of the need's own fields
 
     local function Field(w, x, hintText)
         local box = UI.EditBox(editor, w, 22)
@@ -58,9 +59,9 @@ UI.RegisterPage(20, "Teams", function(page)
     Nothing wraps: a hint that no longer fits is a hint that needs shortening, and a second
     line here would push the fields out of the panel.
     ]]
-    local function LayoutHints(fields)
+    local function LayoutHints(fields, rightEdge)
         for i, box in ipairs(fields) do
-            local nextX = fields[i + 1] and fields[i + 1].x or APPLY_X
+            local nextX = fields[i + 1] and fields[i + 1].x or rightEdge
             box.hint:SetWidth(nextX - box.x - 6)
             box.hint:SetWordWrap(false)
             if box.hint.SetMaxLines then box.hint:SetMaxLines(1) end
@@ -79,8 +80,9 @@ UI.RegisterPage(20, "Teams", function(page)
     local daysBox = Field(220, 240, "raid days and times")
     local teamFields = { nameBox, tagBox, daysBox }
 
-    LayoutHints(needFields)
-    LayoutHints(teamFields)
+    -- The need fields stop at the team button, the team fields run on to Apply.
+    LayoutHints(needFields, PICK_X)
+    LayoutHints(teamFields, APPLY_X)
 
     nameBox:SetMaxLetters(ns.Teams.MAX_NAME)
     tagBox:SetMaxLetters(ns.Teams.MAX_TAG)
@@ -98,6 +100,34 @@ UI.RegisterPage(20, "Teams", function(page)
         end
     end
 
+    --[[
+    Which team the need belongs to, changeable while it is open. There is no dropdown in
+    the widget library on purpose, and with at most a handful of teams a button that cycles
+    to the next one is less to build and less to get wrong than one.
+
+    It moves an existing need between teams too, not just new ones: opening the wrong team
+    and having to cancel is exactly the dead end this is here to remove.
+    ]]
+    local teamPick = UI.Button(editor, "", 110, 22)
+    teamPick:SetPoint("TOPLEFT", PICK_X, -32)
+    local teamPickHint = UI.Label(editor, "belongs to", "GameFontDisableSmall")
+    teamPickHint:SetPoint("BOTTOMLEFT", teamPick, "TOPLEFT", 2, 1)
+    teamPickHint:SetWidth(APPLY_X - PICK_X - 6)
+    teamPickHint:SetWordWrap(false)
+
+    teamPick:SetScript("OnClick", function()
+        if not editing or editing.kind ~= "need" then return end
+        local teams = ns.db.doc.teams
+        if #teams < 2 then return end
+        for i, team in ipairs(teams) do
+            if team.id == editing.teamID then
+                editing.teamID = teams[(i % #teams) + 1].id
+                break
+            end
+        end
+        UI.Refresh()
+    end)
+
     local apply = UI.Button(editor, "Apply", 70, 22, { kind = "accent" })
     apply:SetPoint("TOPLEFT", APPLY_X, -32)
     local cancel = UI.Button(editor, "Cancel", 70, 22)
@@ -114,6 +144,9 @@ UI.RegisterPage(20, "Teams", function(page)
         },
         buttons = {
             { key = "edit", label = "Edit", width = 50 },
+            -- On a team's heading row only. "Add a need" in the toolbar has no row under
+            -- the cursor to tell it which team is meant, so it always used the first one.
+            { key = "add", label = "+ Need", width = 54, kind = "accent" },
             { key = "onoff", label = "On", width = 34 },
             { key = "up", label = "^", width = 24 },
             { key = "del", label = "X", width = 24, kind = "danger" },
@@ -182,6 +215,15 @@ UI.RegisterPage(20, "Teams", function(page)
             end
             need = { priority = #team.needs + 1 }
             team.needs[#team.needs + 1] = need
+        else
+            -- The team button may have been cycled since this opened. Refused rather than
+            -- half-done: a need that vanished from one team without arriving at the other
+            -- is worse than one that did not move.
+            local moved, reason = ns.Teams.MoveNeed(ns.db.doc, need, editing.teamID)
+            if not moved then
+                ns.Printf("not moved: %s.", tostring(reason))
+                return
+            end
         end
         need.role, need.class, need.count = roleBox:GetText(), classBox:GetText(),
             tonumber(countBox:GetText()) or 1
@@ -197,6 +239,9 @@ UI.RegisterPage(20, "Teams", function(page)
         UI.Refresh()
     end)
 
+    -- The toolbar button has no row under the cursor to say which team is meant, so it
+    -- opens on the first one and the team button in the editor is how you change it. The
+    -- "+ Need" button on each heading row is the one that already knows.
     addNeed:SetScript("OnClick", function()
         if not ns.Roster.ICanAuthor() then return end
         local team = ns.db.doc.teams[1]
@@ -247,6 +292,19 @@ UI.RegisterPage(20, "Teams", function(page)
             local isTeam = editing.kind == "team"
             ShowFields(needFields, not isTeam)
             ShowFields(teamFields, isTeam)
+
+            -- Only a need belongs to a team; editing the team itself has nothing to pick.
+            if isTeam then
+                teamPick:Hide()
+                teamPickHint:Hide()
+            else
+                teamPick:Show()
+                teamPickHint:Show()
+                teamPick:SetText(team and team.name or "?")
+                UI.Gate(teamPick, mine and #ns.db.doc.teams > 1,
+                    #ns.db.doc.teams > 1 and why
+                        or "There is only one team to put it on.")
+            end
             if isTeam then
                 editLabel:SetText(string.format("%s  \194\183  editing the team  \194\183  "
                     .. "|cff888888the tag is what goes in the message, so keep it short; "
@@ -292,6 +350,14 @@ UI.RegisterPage(20, "Teams", function(page)
                 edit:SetText("Edit")
                 UI.Gate(edit, mine, why)
                 edit:SetScript("OnClick", function() OpenTeam(team) end)
+
+                local add = row.buttons.add
+                add:Show()
+                UI.Gate(add, mine and #team.needs < ns.Doc.MAX_NEEDS,
+                    #team.needs < ns.Doc.MAX_NEEDS and why
+                        or string.format("%s already has %d needs, which is as many as fit "
+                            .. "in a message.", team.name, ns.Doc.MAX_NEEDS))
+                add:SetScript("OnClick", function() Open(team.id, nil) end)
 
                 local toggle = row.buttons.onoff
                 toggle:Show()
@@ -348,9 +414,10 @@ UI.RegisterPage(20, "Teams", function(page)
             t:Set(row, "count", tostring(need.count))
             t:Set(row, "priority", tostring(need.priority))
 
-            -- On/Off belongs to a team, not to a need. Render shows every button again
-            -- before this runs, so a need row has to put it back down.
+            -- On/Off and "+ Need" belong to a team, not to a need. Render shows every
+            -- button again before this runs, so a need row has to put them back down.
             row.buttons.onoff:Hide()
+            row.buttons.add:Hide()
 
             row.buttons.edit:SetText("Edit")
             UI.Gate(row.buttons.edit, mine, why)

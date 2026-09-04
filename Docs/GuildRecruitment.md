@@ -70,11 +70,16 @@ on a **team's heading row** are:
 | Button | What it does |
 | --- | --- |
 | Edit | Opens the team's name, tag and raid days in the panel above the list |
+| + Need | Adds a need to THAT team, rather than to whichever happens to be first |
 | On / Off | Leaves the team out of the message without deleting it or its needs |
 | ^ | Moves the team up. This is not cosmetic — the order decides which team leads the line |
 | X | Removes the team and everything it was asking for. The last team cannot be removed |
 
 The buttons on a **need row** are Edit, `^` to raise its priority, and X to remove it.
+
+**Add a need to a particular team with that team's own `+ Need` button.** The toolbar's
+"Add a need" has no team in mind, so it opens on the first one; the **belongs to** button in
+the editor changes which team a need is on, and moves an existing need between teams.
 
 Three things about editing a team are worth knowing:
 

@@ -172,6 +172,37 @@ function Teams.Remove(doc, id)
 end
 
 --[[
+Pure. Moves a need from whichever team holds it to the team with `toId`.
+
+By the need OBJECT, not by an index: the rows are drawn sorted and the stored array is not,
+so an index taken off the screen stops meaning anything as soon as a priority changes.
+
+Returns moved, reason. Moving a need to the team it is already on is not a failure, it just
+did nothing, so it comes back true.
+]]
+function Teams.MoveNeed(doc, need, toId)
+    local target = Teams.ById(doc, toId)
+    if not need then return false, "no need to move" end
+    if not target then return false, "no team with that id" end
+
+    for _, team in ipairs((doc or {}).teams or {}) do
+        for i, other in ipairs(team.needs or {}) do
+            if other == need then
+                if team.id == toId then return true end
+                if #(target.needs or {}) >= (ns.Doc.MAX_NEEDS or math.huge) then
+                    return false, "that team already has as many needs as fit in a message"
+                end
+                table.remove(team.needs, i)
+                target.needs = target.needs or {}
+                target.needs[#target.needs + 1] = need
+                return true
+            end
+        end
+    end
+    return false, "that need is not on any team"
+end
+
+--[[
 Pure. Moves a team one place earlier in the document.
 
 Array order is what the message uses -- Message.Rotate decides which team leads from it --

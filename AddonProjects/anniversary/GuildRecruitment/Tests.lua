@@ -965,3 +965,44 @@ T.Case("Message: a questionable team template is described, not corrected", func
     -- Two teams run together with nothing to tell them apart reads as one long list.
     T.Eq(type(Check("{needs}", 2)), "string", "two teams need something to tell them apart")
 end)
+
+T.Case("Teams: a need can be moved to another team", function()
+    local doc = TwoTeams()
+    local healer = doc.teams[1].needs[1]
+
+    T.Eq(ns.Teams.MoveNeed(doc, healer, 2), true, "it moved")
+    T.Eq(#doc.teams[1].needs, 1, "and left the team it was on")
+    T.Eq(#doc.teams[2].needs, 3, "and arrived at the other one")
+    T.Eq(doc.teams[2].needs[3], healer, "as the same need, not a copy")
+
+    -- Moving it where it already is did nothing, which is not a failure.
+    T.Eq(ns.Teams.MoveNeed(doc, healer, 2), true, "moving it onto its own team is fine")
+    T.Eq(#doc.teams[2].needs, 3, "and changes nothing")
+end)
+
+T.Case("Teams: a move that cannot happen leaves everything where it was", function()
+    local doc = TwoTeams()
+    local healer = doc.teams[1].needs[1]
+
+    local ok, why = ns.Teams.MoveNeed(doc, healer, 99)
+    T.Eq(ok, false, "there is no team 99")
+    T.Eq(type(why), "string", "and it says so")
+    T.Eq(#doc.teams[1].needs, 2, "the need stayed where it was")
+
+    T.Eq(ns.Teams.MoveNeed(doc, { role = "Tank" }, 1), false, "a need on no team moves nowhere")
+    T.Eq(ns.Teams.MoveNeed(doc, nil, 1), false, "and neither does nothing")
+
+    -- A full team refuses rather than taking one too many: the message has a size, and a
+    -- need that left one team without arriving at the other would just be gone.
+    local full = TwoTeams()
+    local first = full.teams[1].needs[1]
+    full.teams[2].needs = {}
+    for i = 1, ns.Doc.MAX_NEEDS do
+        full.teams[2].needs[i] = { role = "DPS", class = "", count = 1, priority = i }
+    end
+    local moved, reason = ns.Teams.MoveNeed(full, first, 2)
+    T.Eq(moved, false, "the target is full")
+    T.Eq(type(reason), "string", "and says which way it is full")
+    T.Eq(#full.teams[1].needs, 2, "so the need is still on its own team")
+    T.Eq(#full.teams[2].needs, ns.Doc.MAX_NEEDS, "and the full one did not grow")
+end)
