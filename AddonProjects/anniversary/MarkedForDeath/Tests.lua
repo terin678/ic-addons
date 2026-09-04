@@ -1984,4 +1984,62 @@ T.Case("Search: filtering to an instance narrows bundled results", function()
     T.Eq(#MFD.Search("ashtongue", "HYJAL", MFD.Data.Mobs, {}), 0, "and none are Hyjal")
 end)
 
+-- The exact pack Dillon asked about: two Coilskar Wranglers and one Leviathan,
+-- all ruled Kill, against the shipped default seat plan.
+local function killPack(wranglerRank, leviathanRank)
+    local db = { seatPlan = {} }
+    MFD.Seats.EnsurePlan(db)
+    local seats = MFD.Seats.Resolve(db.seatPlan, roster("Thok", "WARRIOR"))
+
+    local candidates = {
+        { key = "22877:AAA", npcID = 22877, name = "Coilskar Wrangler" },
+        { key = "22877:BBB", npcID = 22877, name = "Coilskar Wrangler" },
+        { key = "22884:CCC", npcID = 22884, name = "Leviathan" },
+    }
+    local rules = {
+        [22877] = { npcID = 22877, intent = "KILL", rank = wranglerRank },
+        [22884] = { npcID = 22884, intent = "KILL", rank = leviathanRank },
+    }
+    return MFD.Allocator.Compute(candidates, rules, seats, nil).byKey
+end
+
+T.Case("Pack: wranglers above leviathan take skull and cross, leviathan takes square", function()
+    local icons = killPack(10, 20)
+    T.Eq(icons["22877:AAA"], 8, "first wrangler skull")
+    T.Eq(icons["22877:BBB"], 7, "second wrangler cross")
+    T.Eq(icons["22884:CCC"], 6, "leviathan square")
+end)
+
+T.Case("Pack: put leviathan above and it takes skull instead", function()
+    local icons = killPack(20, 10)
+    T.Eq(icons["22884:CCC"], 8, "leviathan skull")
+    T.Eq(icons["22877:AAA"], 7, "wranglers follow")
+    T.Eq(icons["22877:BBB"], 6, "in cross then square")
+end)
+
+T.Case("Pack: two copies of one mob get different icons, never the same one", function()
+    local icons = killPack(10, 20)
+    if icons["22877:AAA"] == icons["22877:BBB"] then
+        error("both wranglers got icon " .. tostring(icons["22877:AAA"]))
+    end
+end)
+
+T.Case("Pack: a fourth kill target takes circle, a fifth goes unmarked", function()
+    local db = { seatPlan = {} }
+    MFD.Seats.EnsurePlan(db)
+    local seats = MFD.Seats.Resolve(db.seatPlan, roster("Thok", "WARRIOR"))
+
+    local candidates, rules = {}, { [22877] = { npcID = 22877, intent = "KILL", rank = 10 } }
+    for i = 1, 5 do
+        candidates[i] = { key = "22877:" .. string.char(64 + i), npcID = 22877, name = "Coilskar Wrangler" }
+    end
+
+    local icons = MFD.Allocator.Compute(candidates, rules, seats, nil).byKey
+    local placed = 0
+    for _ in pairs(icons) do placed = placed + 1 end
+    T.Eq(placed, 4, "four kill seats exist, so the fifth is left alone")
+    T.Eq(icons["22877:D"], 2, "fourth takes circle")
+    T.Eq(icons["22877:E"], nil, "fifth unmarked rather than stealing a cc icon")
+end)
+
 _G.MarkedForDeath = MFD
