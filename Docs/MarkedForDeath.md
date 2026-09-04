@@ -115,6 +115,28 @@ own trash is taken from the contiguous id block those creatures occupy.
 Anything that could not be established either way was left out rather than guessed. A gap
 costs you a search suggestion and nothing else, because you can always type the name.
 
+## Sharing a rule set
+
+The **Share** button on the Rules tab gives you a plain JSON file of every rule you have.
+Copy it into a text file, post it on a forum, hand it to whoever is learning to lead. They
+click **Load file**, paste, and have your whole kill order.
+
+**Load file merges.** It updates rules for mobs the file names and leaves everything else
+alone, so importing a Black Temple order does not touch your Hyjal list.
+
+**Roles are deliberately not in the file.** Which icon means which job, and who is pinned
+to it, is your raid's business and differs between guilds. Import somebody's kill order,
+then set your own on the Roles tab. That is the one thing a new raid leader has to do for
+themselves, and it takes a minute.
+
+The **Format** button shows the file's shape with a worked example and what every field
+means. It is ordinary JSON, sorted and indented, so it reads and diffs cleanly and can be
+edited in any text editor without the addon.
+
+A file that is not a Marked For Death export, or one made by a newer version, is refused
+rather than half applied. So is a file with an unrecognised job in it: half a kill order
+looks complete and is not.
+
 ## First night
 
 1. Enemy nameplates must be on. The addon can only touch a mob it has a nameplate for.
@@ -155,6 +177,9 @@ Every command is in `/mfd help`.
 | `/mfd export` | A string of your own rules to paste to someone. |
 | `/mfd import` | Paste a rule string. It merges in; nothing of yours is deleted. |
 | `/mfd coverage` | Mobs you have seen that the bundled database does not list. |
+| `/mfd readycheck` | Start a real ready check, the native one everybody sees. Raid leader or assistant. |
+| `/mfd share` | A shareable JSON file of your rules, for posting or handing to a new raid leader. |
+| `/mfd load` | Paste a shared rule file. It merges into yours; nothing of yours is deleted. |
 | `/mfd off` | Stop the addon doing anything: no icons, no chat, no warnings. Nothing configured is lost. |
 | `/mfd on` | Resume after `/mfd off`. |
 | `/mfd minimap` | Hide or show the minimap button. |
@@ -217,6 +242,10 @@ Editing a merged rule copies it into your own set first. From then on it is your
 ## Raid check
 
 Three ways to see the same data.
+
+The **Ready check** button on the grid starts a real one: everybody gets the game's own
+ready check window, and the grid fills in behind it. `/mfd check` on its own only opens the
+grid, it does not ask anybody anything.
 
 **The grid** (`/mfd check`) is one row per person: food, flask, both elixir slots, weapon
 enchant, Intellect, Mark of the Wild, Fortitude, Shadow Protection, the blessings they

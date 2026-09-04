@@ -2318,4 +2318,144 @@ T.Case("LastResort: a sheep mob still beats a kill target to Moon", function()
     T.Eq(out.byKey["100:C"], 6, "and the third kill still has Square")
 end)
 
+-- Dragging a rule to an arbitrary position, for when the arrows would take ten
+-- clicks. Same renumbering as Reorder, different way of naming the target.
+T.Case("MoveTo: dragging a rule down lands it at the target position", function()
+    local list = { { npcID = 1, rank = 10 }, { npcID = 2, rank = 20 }, { npcID = 3, rank = 30 }, { npcID = 4, rank = 40 } }
+    MFD.Rules.MoveTo(list, 1, 3)
+    T.Eq(list[1].npcID, 2, "the rest shuffle up")
+    T.Eq(list[2].npcID, 3, "second")
+    T.Eq(list[3].npcID, 1, "the dragged rule is third now")
+    T.Eq(list[4].npcID, 4, "and the tail is undisturbed")
+end)
+
+T.Case("MoveTo: dragging a rule up lands it at the target position", function()
+    local list = { { npcID = 1, rank = 10 }, { npcID = 2, rank = 20 }, { npcID = 3, rank = 30 }, { npcID = 4, rank = 40 } }
+    MFD.Rules.MoveTo(list, 4, 1)
+    T.Eq(list[1].npcID, 4, "dragged to the top")
+    T.Eq(list[2].npcID, 1, "everything else moves down one")
+    T.Eq(list[4].npcID, 3, "last")
+end)
+
+T.Case("MoveTo: ranks are respaced so priority still reads cleanly", function()
+    local list = { { npcID = 1, rank = 10 }, { npcID = 2, rank = 20 }, { npcID = 3, rank = 30 } }
+    MFD.Rules.MoveTo(list, 3, 1)
+    T.Eq(list[1].rank, 10, "first")
+    T.Eq(list[2].rank, 20, "second")
+    T.Eq(list[3].rank, 30, "third")
+end)
+
+T.Case("MoveTo: dropping a rule on itself changes nothing", function()
+    local list = { { npcID = 1, rank = 10 }, { npcID = 2, rank = 20 } }
+    MFD.Rules.MoveTo(list, 2, 2)
+    T.Eq(list[1].npcID, 1, "unchanged")
+    T.Eq(list[2].npcID, 2, "unchanged")
+end)
+
+T.Case("MoveTo: an out of range drop is ignored rather than corrupting the list", function()
+    local list = { { npcID = 1, rank = 10 }, { npcID = 2, rank = 20 } }
+    MFD.Rules.MoveTo(list, 1, 99)
+    MFD.Rules.MoveTo(list, 0, 1)
+    MFD.Rules.MoveTo(list, 1, 0)
+    T.Eq(#list, 2, "still two rules")
+    T.Eq(list[1].npcID, 1, "in the original order")
+end)
+
+T.Case("JSON: encodes the scalar types", function()
+    T.Eq(MFD.JSON.Encode(42), "42", "number")
+    T.Eq(MFD.JSON.Encode(true), "true", "true")
+    T.Eq(MFD.JSON.Encode(false), "false", "false")
+    T.Eq(MFD.JSON.Encode("hi"), '"hi"', "string")
+end)
+
+T.Case("JSON: escapes what would otherwise break the string", function()
+    T.Eq(MFD.JSON.Encode('a"b'), '"a\\"b"', "quote")
+    T.Eq(MFD.JSON.Encode("a\\b"), '"a\\\\b"', "backslash")
+    T.Eq(MFD.JSON.Encode("a\nb"), '"a\\nb"', "newline")
+end)
+
+T.Case("JSON: an empty table encodes as an object, not an array", function()
+    T.Eq(MFD.JSON.Encode({}), "{}", "ambiguous, and object is the safer read")
+end)
+
+T.Case("JSON: arrays and objects round-trip", function()
+    local original = {
+        addon = "MarkedForDeath",
+        formatVersion = 1,
+        rules = { BLACKTEMPLE = { { npc = 22890, job = "SHEEP", priority = 10 } } },
+    }
+    local back = MFD.JSON.Decode(MFD.JSON.Encode(original))
+    T.Eq(back.addon, "MarkedForDeath", "string field")
+    T.Eq(back.formatVersion, 1, "number field")
+    T.Eq(back.rules.BLACKTEMPLE[1].npc, 22890, "nested array of objects")
+    T.Eq(back.rules.BLACKTEMPLE[1].job, "SHEEP", "job")
+end)
+
+T.Case("JSON: object keys come out in a stable order", function()
+    local text = MFD.JSON.Encode({ zebra = 1, apple = 2, mango = 3 })
+    T.Eq(text:find("apple") < text:find("mango"), true, "alphabetical")
+    T.Eq(text:find("mango") < text:find("zebra"), true, "so two exports of one config are identical")
+end)
+
+T.Case("JSON: decoding rubbish returns nil and a reason", function()
+    for _, bad in ipairs({ "", "{", "{\"a\":}", "[1,]", "nonsense", "{\"a\" 1}" }) do
+        local value, err = MFD.JSON.Decode(bad)
+        T.Eq(value, nil, "rejected: " .. bad)
+        T.Eq(type(err), "string", "with a reason: " .. bad)
+    end
+end)
+
+T.Case("JSON: whitespace between tokens is fine", function()
+    local v = MFD.JSON.Decode('  {  "a" : [ 1 , 2 ]  ,  "b" : "x"  }  ')
+    T.Eq(v.a[2], 2, "array element")
+    T.Eq(v.b, "x", "string value")
+end)
+
+T.Case("Share: exporting produces a document with the addon and format stamped", function()
+    local doc = MFD.JSON.Decode(MFD.Rules.ToJSON(
+        { BLACKTEMPLE = { { npcID = 22890, name = "Illidari Nightlord", intent = "SHEEP", rank = 10 } } },
+        { note = "BT trash" }))
+    T.Eq(doc.addon, "MarkedForDeath", "so an import can refuse someone else's file")
+    T.Eq(doc.formatVersion, 1, "version")
+    T.Eq(doc.note, "BT trash", "the note travels with it")
+    T.Eq(doc.rules.BLACKTEMPLE[1].name, "Illidari Nightlord", "name")
+    T.Eq(doc.rules.BLACKTEMPLE[1].job, "SHEEP", "intent is called job in the file")
+    T.Eq(doc.rules.BLACKTEMPLE[1].priority, 10, "rank is called priority in the file")
+end)
+
+T.Case("Share: a document round-trips back into rules", function()
+    local original = { HYJAL = { { npcID = 17907, name = "Frost Wyrm", intent = "KILL", rank = 20, fallback = "KILL" } } }
+    local back = MFD.Rules.FromJSON(MFD.Rules.ToJSON(original, {}))
+    T.Eq(back.HYJAL[1].npcID, 17907, "npc id")
+    T.Eq(back.HYJAL[1].name, "Frost Wyrm", "name")
+    T.Eq(back.HYJAL[1].intent, "KILL", "intent")
+    T.Eq(back.HYJAL[1].rank, 20, "rank")
+end)
+
+T.Case("Share: importing someone else's file is refused, not half applied", function()
+    local rules, err = MFD.Rules.FromJSON('{"addon":"SomethingElse","formatVersion":1,"rules":{}}')
+    T.Eq(rules, nil, "refused")
+    T.Eq(err, "that file is not a Marked For Death export", "and says why")
+end)
+
+T.Case("Share: a newer format version is refused rather than guessed at", function()
+    local rules, err = MFD.Rules.FromJSON('{"addon":"MarkedForDeath","formatVersion":99,"rules":{}}')
+    T.Eq(rules, nil, "refused")
+    T.Eq(err, "that file was made by a newer version of the addon", "and says why")
+end)
+
+T.Case("Share: an unknown job fails the whole import", function()
+    local rules, err = MFD.Rules.FromJSON(
+        '{"addon":"MarkedForDeath","formatVersion":1,"rules":{"BT":[{"name":"A","job":"FROBNICATE","priority":10}]}}')
+    T.Eq(rules, nil, "nothing imported")
+    T.Eq(err, "BT: unknown job 'FROBNICATE'", "naming the zone and the job")
+end)
+
+T.Case("Share: a rule with neither a name nor an npc id is rejected", function()
+    local rules, err = MFD.Rules.FromJSON(
+        '{"addon":"MarkedForDeath","formatVersion":1,"rules":{"BT":[{"job":"KILL","priority":10}]}}')
+    T.Eq(rules, nil, "rejected")
+    T.Eq(type(err), "string", "with a reason")
+end)
+
 _G.MarkedForDeath = MFD

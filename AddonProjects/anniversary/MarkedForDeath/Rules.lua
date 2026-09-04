@@ -161,6 +161,114 @@ function Rules.ParseBulk(text)
     return rules
 end
 
+Rules.SHARE_FORMAT_VERSION = 1
+
+-- Turns a rule set into a shareable JSON document. meta may carry a note.
+--
+-- The file uses plain words rather than the addon's internal names: "job"
+-- instead of intent, "priority" instead of rank, "npc" instead of npcID. It is
+-- meant to be read and edited by a person who has never seen this code.
+function Rules.ToJSON(rulesByInstance, meta)
+    local doc = {
+        addon = "MarkedForDeath",
+        formatVersion = Rules.SHARE_FORMAT_VERSION,
+        note = (meta and meta.note) or nil,
+        rules = {},
+    }
+
+    for _, instanceKey in ipairs(MFD.H.SortedKeys(rulesByInstance)) do
+        local out = {}
+        for _, rule in ipairs(Rules.Ranked(Rules.ByKey(rulesByInstance[instanceKey]))) do
+            out[#out + 1] = {
+                npc = rule.npcID or nil,
+                name = rule.name or nil,
+                job = rule.intent,
+                priority = rule.rank,
+                fallback = rule.fallback or nil,
+                maxCount = rule.maxCount or nil,
+            }
+        end
+        if #out > 0 then
+            doc.rules[instanceKey] = out
+        end
+    end
+
+    return MFD.JSON.Encode(doc)
+end
+
+-- Accepts either shape a rule set can be in: the array a saved file holds, or
+-- the merge-keyed table Rules.Merge produces.
+function Rules.ByKey(rules)
+    if rules[1] == nil then
+        return rules
+    end
+    local byKey = {}
+    for _, rule in ipairs(rules) do
+        byKey[Rules.MergeKey(rule) or #byKey + 1] = rule
+    end
+    return byKey
+end
+
+-- Reads a shared document. Returns { [instanceKey] = array of rule }, or nil
+-- and a reason. Pure.
+--
+-- A bad job or a rule naming nothing fails the whole import. Half a kill order
+-- looks complete and is not, which is the same reason the paste parser refuses
+-- to import what it managed to read.
+function Rules.FromJSON(text)
+    local doc, err = MFD.JSON.Decode(text)
+    if not doc then
+        return nil, err
+    end
+
+    if type(doc) ~= "table" or doc.addon ~= "MarkedForDeath" then
+        return nil, "that file is not a Marked For Death export"
+    end
+
+    if type(doc.formatVersion) ~= "number" or doc.formatVersion > Rules.SHARE_FORMAT_VERSION then
+        return nil, "that file was made by a newer version of the addon"
+    end
+
+    if type(doc.rules) ~= "table" then
+        return nil, "that file has no rules in it"
+    end
+
+    local out = {}
+    for _, instanceKey in ipairs(MFD.H.SortedKeys(doc.rules)) do
+        local incoming = doc.rules[instanceKey]
+        if type(incoming) ~= "table" then
+            return nil, instanceKey .. ": rules should be a list"
+        end
+
+        local list = {}
+        for index, entry in ipairs(incoming) do
+            local intent = type(entry.job) == "string" and string.upper(entry.job) or nil
+            if not intent or not MFD.Roles.INTENTS[intent] then
+                return nil, instanceKey .. ": unknown job '" .. tostring(entry.job) .. "'"
+            end
+
+            local npcID = tonumber(entry.npc)
+            local name = type(entry.name) == "string" and entry.name ~= "" and entry.name or nil
+            if not npcID and not name then
+                return nil, instanceKey .. ": rule " .. index .. " names neither a mob nor an npc id"
+            end
+
+            list[#list + 1] = {
+                npcID = npcID,
+                name = name,
+                intent = intent,
+                rank = tonumber(entry.priority) or (index * Rules.RANK_STEP),
+                fallback = type(entry.fallback) == "string" and string.upper(entry.fallback) or nil,
+                maxCount = tonumber(entry.maxCount) or nil,
+            }
+        end
+
+        out[instanceKey] = list
+    end
+
+    return out
+end
+
 -- Takes the merged rules for a zone and the live candidate list. Returns
 -- { [npcID] = rule } for the allocator, which only ever thinks in npc ids.
 -- Pure.
@@ -193,6 +301,29 @@ function Rules.ResolveForCandidates(activeRules, candidates)
     end
 
     return resolved
+end
+
+-- Moves list[fromIndex] to sit at toIndex and respaces every rank. Mutates and
+-- returns list. An out of range move is a no-op. Pure.
+--
+-- Reorder shifts by one for the arrow buttons; this names an absolute
+-- destination, which is what dragging needs. Ten rows is ten arrow clicks and
+-- one drag.
+function Rules.MoveTo(list, fromIndex, toIndex)
+    if fromIndex < 1 or fromIndex > #list or toIndex < 1 or toIndex > #list then
+        return list
+    end
+    if fromIndex == toIndex then
+        return list
+    end
+
+    table.insert(list, toIndex, table.remove(list, fromIndex))
+
+    for i, rule in ipairs(list) do
+        rule.rank = i * Rules.RANK_STEP
+    end
+
+    return list
 end
 
 -- Returns the rank a newly appended rule should take.

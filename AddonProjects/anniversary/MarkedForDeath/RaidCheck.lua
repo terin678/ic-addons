@@ -555,6 +555,30 @@ local lastCalloutAt = 0
 
 -- Posts the callout to raid or party chat, throttled so a second click a
 -- moment later does not double post.
+-- Starts a real ready check. This is the native one: everybody gets Blizzard's
+-- window, and our own READY_CHECK handler then opens the grid and asks the
+-- group for durability. Needs leader or assistant, like the raid frame button.
+function RC:StartReadyCheck()
+    if not (IsInRaid and IsInRaid()) and not (IsInGroup and IsInGroup()) then
+        MFD.Error("not in a group")
+        return
+    end
+
+    local canStart = UnitIsGroupLeader("player")
+        or (UnitIsGroupAssistant and UnitIsGroupAssistant("player"))
+    if not canStart then
+        MFD.Error("you need to be raid leader or an assistant to start a ready check")
+        return
+    end
+
+    if type(DoReadyCheck) ~= "function" then
+        MFD.Error("this client has no ready check function")
+        return
+    end
+
+    pcall(DoReadyCheck)
+end
+
 function RC:PostCallout()
     if not MFD.IsEnabled() then
         MFD.Print("the addon is switched off. /mfd on to resume.")

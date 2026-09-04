@@ -390,11 +390,89 @@ local function buildResultRow(row)
     end)
 end
 
+-- Which row is being dragged, and the highlight showing where it would land.
+local dragIndex
+local dropMarker
+
+-- Turns a cursor position into the row index it is over. Rows are a fixed
+-- height stacked from the top of the list, so this is arithmetic rather than a
+-- hit test against every row.
+local function rowIndexAtCursor(count)
+    if not rulesFrame or count == 0 then
+        return nil
+    end
+
+    local _, cursorY = GetCursorPosition()
+    local scale = rulesFrame.ruleList:GetEffectiveScale()
+    local top = rulesFrame.ruleList:GetTop()
+    if not top then
+        return nil
+    end
+
+    local offset = top - (cursorY / scale)
+    local index = math.floor(offset / RULE_ROW_HEIGHT) + 1
+    if index < 1 then
+        index = 1
+    elseif index > count then
+        index = count
+    end
+    return index
+end
+
 local function buildRuleRow(row)
     if row.isBuilt then
         return
     end
     row.isBuilt = true
+
+    -- The whole row is a drag handle. Arrows stay for a one-place nudge; this
+    -- is for moving something ten rows without ten clicks.
+    row:EnableMouse(true)
+    row:RegisterForDrag("LeftButton")
+    row:SetScript("OnDragStart", function(self)
+        if not self.rule or not self.isMine then
+            return
+        end
+        dragIndex = self.index
+        self.dragTexture:Show()
+    end)
+    row:SetScript("OnDragStop", function(self)
+        self.dragTexture:Hide()
+        if dropMarker then
+            dropMarker:Hide()
+        end
+
+        local from = dragIndex
+        dragIndex = nil
+        if not from or not self.instanceKey then
+            return
+        end
+
+        local list = localList(self.instanceKey)
+        local to = rowIndexAtCursor(#list)
+        if to and to ~= from then
+            MFD.Rules.MoveTo(list, from, to)
+            commitRules()
+        end
+    end)
+    row:SetScript("OnUpdate", function(self)
+        if not dragIndex or not dropMarker then
+            return
+        end
+        local list = localList(self.instanceKey or "")
+        local to = rowIndexAtCursor(#list)
+        if to then
+            dropMarker:ClearAllPoints()
+            dropMarker:SetPoint("TOPLEFT", rulesFrame.ruleList, "TOPLEFT", 0, -(to - 1) * RULE_ROW_HEIGHT)
+            dropMarker:SetPoint("RIGHT", rulesFrame.ruleList, "RIGHT", 0, 0)
+            dropMarker:Show()
+        end
+    end)
+
+    row.dragTexture = row:CreateTexture(nil, "BACKGROUND")
+    row.dragTexture:SetAllPoints()
+    row.dragTexture:SetColorTexture(1, 1, 1, 0.15)
+    row.dragTexture:Hide()
 
     row.rank = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     row.rank:SetPoint("LEFT", row, "LEFT", 0, 0)
@@ -529,8 +607,12 @@ local function paintRules()
         buildRuleRow(row)
         row.rule = rule
         row.instanceKey = key
+        row.index = index
 
         local isMine = rule.owner == me or rule.owner == nil
+        -- Only your own rules can be reordered; a merged rule belongs to
+        -- whoever wrote it and dragging it here would achieve nothing.
+        row.isMine = isMine
         local color = isMine and "" or "|cffffcc66"
         local suffix = isMine and "" or ("  (" .. tostring(rule.owner) .. ")")
 
@@ -692,6 +774,30 @@ local function buildRulesFrame()
         RulesUI:ShowTransferBox("", "bulk")
     end)
 
+    rulesFrame.share = CreateFrame("Button", nil, rulesFrame, "UIPanelButtonTemplate")
+    rulesFrame.share:SetSize(70, 20)
+    rulesFrame.share:SetPoint("LEFT", rulesFrame.bulk, "RIGHT", 6, 0)
+    rulesFrame.share:SetText("Share")
+    rulesFrame.share:SetScript("OnClick", function()
+        RulesUI:ShowTransferBox(MFD.Rules.ToJSON(MFD.db.rules, {}), "exportjson")
+    end)
+
+    rulesFrame.load = CreateFrame("Button", nil, rulesFrame, "UIPanelButtonTemplate")
+    rulesFrame.load:SetSize(80, 20)
+    rulesFrame.load:SetPoint("LEFT", rulesFrame.share, "RIGHT", 6, 0)
+    rulesFrame.load:SetText("Load file")
+    rulesFrame.load:SetScript("OnClick", function()
+        RulesUI:ShowTransferBox("", "importjson")
+    end)
+
+    rulesFrame.format = CreateFrame("Button", nil, rulesFrame, "UIPanelButtonTemplate")
+    rulesFrame.format:SetSize(70, 20)
+    rulesFrame.format:SetPoint("LEFT", rulesFrame.load, "RIGHT", 6, 0)
+    rulesFrame.format:SetText("Format")
+    rulesFrame.format:SetScript("OnClick", function()
+        RulesUI:ShowTransferBox(FORMAT_HELP, "help")
+    end)
+
     rulesFrame.filter = CreateFrame("Button", nil, rulesFrame, "UIPanelButtonTemplate")
     rulesFrame.filter:SetSize(110, 20)
     rulesFrame.filter:SetPoint("LEFT", rulesFrame.search, "RIGHT", 6, 0)
@@ -715,11 +821,19 @@ local function buildRulesFrame()
 
     rulesFrame.ruleHint = rulesFrame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     rulesFrame.ruleHint:SetPoint("TOPLEFT", rulesFrame.ruleHeader, "BOTTOMLEFT", 0, -2)
-    rulesFrame.ruleHint:SetText("top = highest priority.  amber = merged from another player")
+    rulesFrame.ruleHint:SetText("top = highest priority.  drag a row to move it.  amber = merged from another player")
 
     rulesFrame.ruleList = CreateFrame("Frame", nil, rulesFrame)
+
     rulesFrame.ruleList:SetPoint("TOPLEFT", rulesFrame, "TOPLEFT", 342, -76)
     rulesFrame.ruleList:SetPoint("BOTTOMRIGHT", rulesFrame, "BOTTOMRIGHT", -6, 6)
+
+    -- Shows where a dragged rule would land. One marker for the whole list
+    -- rather than a highlight per row.
+    dropMarker = rulesFrame.ruleList:CreateTexture(nil, "OVERLAY")
+    dropMarker:SetHeight(2)
+    dropMarker:SetColorTexture(0.4, 1, 0.4, 0.9)
+    dropMarker:Hide()
 
     rulesFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
     rulesFrame:SetScript("OnEvent", function()
@@ -799,6 +913,10 @@ local function buildTransferFrame()
             runImport()
         elseif transferFrame.mode == "bulk" then
             RulesUI:RunBulkAdd()
+        elseif transferFrame.mode == "importjson" then
+            RulesUI:RunJSONImport()
+        elseif transferFrame.mode == "help" then
+            transferFrame:Hide()
         else
             transferFrame:Hide()
         end
@@ -883,6 +1001,88 @@ function RulesUI:RunBulkAdd()
     RulesUI:Refresh()
 end
 
+-- What the shared file looks like, shown by the Format button. Written as a
+-- worked example rather than a specification, because the audience is a raid
+-- leader who wants to post their Black Temple order, not a parser author.
+local FORMAT_HELP = [[
+{
+  "addon": "MarkedForDeath",
+  "formatVersion": 1,
+  "note": "Black Temple kill order, Inner Circle",
+  "rules": {
+    "BLACKTEMPLE": [
+      { "name": "Illidari Nightlord", "job": "SHEEP",  "priority": 10 },
+      { "name": "Illidari Defiler",   "job": "BANISH", "priority": 20 },
+      { "npc": 22880,                 "job": "KILL",   "priority": 30 }
+    ],
+    "HYJAL": [
+      { "name": "Shadowy Necromancer", "job": "KILL", "priority": 10 }
+    ]
+  }
+}
+
+  note        optional, free text, travels with the file
+  rules       one list per zone. Zone keys are the ones /mfd where prints:
+              KARAZHAN GRUUL MAGTHERIDON SERPENTSHRINE TEMPESTKEEP
+              HYJAL BLACKTEMPLE ZULAMAN SUNWELL
+
+  name        the mob's name exactly as the game shows it. Works even for a
+              mob the addon has never seen, which is the point: a list written
+              from a guide marks correctly the first time you walk in.
+  npc         an npc id instead of a name. More precise, but you need to have
+              seen the mob to know it. Give one or the other; npc wins.
+  job         KILL SHEEP BANISH TRAP SAP SHACKLE SEDUCE ENSLAVE FEAR
+              HIBERNATE ROOTS MINDCONTROL REPENTANCE IGNORE
+  priority    lower marks first. 10, 20, 30 leaves room to insert later.
+  fallback    optional job to use when nobody present can do the first one.
+  maxCount    optional cap on how many of that mob get marked at once.
+
+Roles are deliberately not in the file. Which icon means which job, and who is
+pinned to it, is your raid's business and differs between guilds. Import
+somebody's kill order, then set your own roles on the Roles tab.
+]]
+
+function RulesUI:RunJSONImport()
+    local incoming, err = MFD.Rules.FromJSON(transferFrame.edit:GetText())
+    if not incoming then
+        MFD.Error(err)
+        return
+    end
+
+    local added, replaced, zones = 0, 0, 0
+    for _, instanceKey in ipairs(MFD.H.SortedKeys(incoming)) do
+        zones = zones + 1
+        local list = localList(instanceKey)
+
+        for _, rule in ipairs(incoming[instanceKey]) do
+            local wanted = MFD.Rules.MergeKey(rule)
+            local existing
+            for _, mine in ipairs(list) do
+                if MFD.Rules.MergeKey(mine) == wanted then
+                    existing = mine
+                    break
+                end
+            end
+
+            if existing then
+                existing.intent = rule.intent
+                existing.rank = rule.rank
+                existing.fallback = rule.fallback
+                existing.maxCount = rule.maxCount
+                replaced = replaced + 1
+            else
+                list[#list + 1] = rule
+                added = added + 1
+            end
+        end
+    end
+
+    commitRules()
+    transferFrame:Hide()
+    MFD.Print(string.format("imported %d zones: %d rules added, %d updated. Set your own roles on the Roles tab.",
+        zones, added, replaced))
+end
+
 function RulesUI:ShowTransferBox(text, mode)
     if not transferFrame then
         buildTransferFrame()
@@ -890,6 +1090,33 @@ function RulesUI:ShowTransferBox(text, mode)
 
     transferFrame.mode = mode
     transferFrame.edit:SetText(text or "")
+
+    if mode == "exportjson" then
+        transferFrame.title:SetText("Share rules")
+        transferFrame.hint:SetText("Ctrl+C to copy, then paste it into a file or a forum post. Anyone can load it with Import file.")
+        transferFrame.action:SetText("Close")
+        transferFrame:Show()
+        transferFrame.edit:SetFocus()
+        transferFrame.edit:HighlightText()
+        return
+    end
+
+    if mode == "importjson" then
+        transferFrame.title:SetText("Import a shared rule file")
+        transferFrame.hint:SetText("Paste a shared file below. It merges into your rules for the zones it names; nothing of yours is deleted. Format button explains the file.")
+        transferFrame.action:SetText("Import")
+        transferFrame:Show()
+        transferFrame.edit:SetFocus()
+        return
+    end
+
+    if mode == "help" then
+        transferFrame.title:SetText("The shared rule file format")
+        transferFrame.hint:SetText("Plain JSON. Edit it in any text editor, post it anywhere, hand it to a new raid leader.")
+        transferFrame.action:SetText("Close")
+        transferFrame:Show()
+        return
+    end
 
     if mode == "bulk" then
         transferFrame.title:SetText("Paste a kill order for " .. tostring(RulesUI:TargetKey() or "no zone"))

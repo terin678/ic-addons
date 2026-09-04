@@ -2,7 +2,7 @@
 local MFD = _G.MarkedForDeath or {}
 
 -- Must match ## Version: in the toc and the packaged zip name.
-MFD.VERSION = "1.5.0"
+MFD.VERSION = "1.6.0"
 
 -- Bumped only when the saved-variable shape changes in a way that needs a
 -- migration. See MFD:MigrateDB.
@@ -348,6 +348,13 @@ commands.buffs = {
     end,
 }
 
+commands.readycheck = {
+    desc = "start a real ready check, the native one everybody sees",
+    run = function()
+        MFD.RaidCheck:StartReadyCheck()
+    end,
+}
+
 commands.callout = {
     desc = "post who is missing what to raid chat, grouped by fix",
     run = function()
@@ -648,6 +655,20 @@ commands.intents = {
         for _, intent in ipairs(MFD.H.SortedKeys(MFD.Roles.INTENTS)) do
             MFD.Print("  " .. string.lower(intent) .. " - " .. MFD.Roles.INTENTS[intent].label)
         end
+    end,
+}
+
+commands.share = {
+    desc = "a shareable JSON file of your rules, for posting or handing to someone",
+    run = function()
+        MFD.UI.Rules:ShowTransferBox(MFD.Rules.ToJSON(MFD.db.rules, {}), "exportjson")
+    end,
+}
+
+commands.load = {
+    desc = "paste a shared rule file to merge it into yours",
+    run = function()
+        MFD.UI.Rules:ShowTransferBox("", "importjson")
     end,
 }
 

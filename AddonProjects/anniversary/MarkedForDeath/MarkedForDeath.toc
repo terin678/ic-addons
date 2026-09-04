@@ -2,7 +2,7 @@
 ## Title: Marked For Death
 ## Notes: Automatic raid target icons for trash by kill priority and crowd control intent, plus a raid buff and consumable check.
 ## Author: dillon_newport
-## Version: 1.5.0
+## Version: 1.6.0
 ## SavedVariables: MarkedForDeathDB
 ## SavedVariablesPerCharacter: MarkedForDeathCharDB
 
@@ -12,6 +12,7 @@ Libs\LibDataBroker-1.1\LibDataBroker-1.1.lua
 Libs\LibDBIcon-1.0\LibDBIcon-1.0.lua
 
 Helpers.lua
+JSON.lua
 Data_Mobs.lua
 Data_Auras.lua
 Core.lua
