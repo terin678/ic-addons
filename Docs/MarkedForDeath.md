@@ -375,8 +375,13 @@ Editing a merged rule copies it into your own set first. From then on it is your
   its waves trickle mobs in continuously by design, so an unlimited "new mob, new line"
   rule would post for the entire fight. A mob held back stays unannounced, so it gets its
   line late rather than never. Turn the whole add rule off in Settings for a Hyjal night;
-  crowd control that turns up late still gets its own raid warning and whisper either way,
-  which is the part that actually needs acting on.
+  crowd control that turns up late still gets told either way, which is the part that
+  actually needs acting on.
+- **Late crowd control alerts are once per mob**, at most one every three seconds, and only
+  for mobs that were not there at the pull. The raid warning half is budgeted to three per
+  pull: past that only the person who has to sheep it is whispered. In a fight that feeds
+  mobs in continuously the roles get handed to new mobs over and over, and twenty raid
+  warnings a minute across twenty five screens stops being a warning.
 - The pull is detected from the pack, not from you. The marking lead is often at range and
   enters combat seconds after the tank, and reading only their own combat flag would leave
   their client announcing into a fight that had already started.

@@ -540,8 +540,10 @@ end
 -- Icons currently on loan to a kill target, { [key] = true }.
 Marker.borrowed = {}
 
--- Crowd control assignments already shouted about this pull.
+-- Crowd control assignments already shouted about this pull, and how many raid
+-- warnings this pull has spent.
 Marker.alertedCrowdControl = {}
+Marker.lateWarnings = 0
 
 -- Set at the pull: the crowd control the raid knew about going in. Anything
 -- that appears afterwards is by definition a surprise and worth a warning.
@@ -577,10 +579,16 @@ function Marker:AlertLateCrowdControl(desired, now)
             local learned = MFD.db.learnedMobs[MFD.H.NpcIDFromKey(assignment.key)]
             local mobName = learned and learned.name or nil
 
-            local channel = (IsInRaid and IsInRaid() and "RAID_WARNING")
-                or (IsInGroup and IsInGroup() and "PARTY") or nil
-            if channel then
-                pcall(SendChatMessage, "[MFD] " .. MFD.Announce.FormatLateAlert(assignment, mobName), channel)
+            -- The raid gets told about the first few. After that only the
+            -- person who has to act on it does, because a fight that keeps
+            -- feeding in mobs would otherwise fill the screen with warnings.
+            if MFD.Announce.AllowsRaidWarning(Marker.lateWarnings, MFD.Announce.LATE_WARNING_BUDGET) then
+                local channel = (IsInRaid and IsInRaid() and "RAID_WARNING")
+                    or (IsInGroup and IsInGroup() and "PARTY") or nil
+                if channel then
+                    Marker.lateWarnings = Marker.lateWarnings + 1
+                    pcall(SendChatMessage, "[MFD] " .. MFD.Announce.FormatLateAlert(assignment, mobName), channel)
+                end
             end
 
             if assignment.owner and assignment.owner ~= UnitName("player") then
@@ -835,6 +843,7 @@ MFD.RegisterInit(function()
             -- Freeze the current map so nothing shifts under the raid mid-pull.
             local desired = Marker.lastDesired
             Marker.pullCrowdControl = {}
+            Marker.lateWarnings = 0
             wipe(Marker.alertedCrowdControl)
 
             if desired then
@@ -940,6 +949,25 @@ function Announce.Format(assignments)
 end
 
 Announce.LATE_ALERT_THROTTLE_SECONDS = 3   -- minimum gap between late alerts
+
+-- How many raid warnings one pull may spend on late crowd control.
+--
+-- The per-mob rule and the three second gap bound a normal pull to one or two
+-- of these. A fight that feeds mobs in for eight minutes is a different shape:
+-- every wave hands the crowd control roles to new mobs, and each one is
+-- legitimately new, so the ceiling is one raid warning every three seconds for
+-- the whole fight. Twenty a minute of yellow text across the middle of twenty
+-- five screens is not a warning any more, it is weather.
+--
+-- Past the budget the whisper still goes out. That is the half that reaches the
+-- person who actually has to sheep something; the raid warning is the half that
+-- interrupts everybody else.
+Announce.LATE_WARNING_BUDGET = 3
+
+-- Whether a late alert may still shout at the whole raid. Pure.
+function Announce.AllowsRaidWarning(spent, budget)
+    return (spent or 0) < budget
+end
 
 -- The raid warning for a crowd control target nobody planned for. Names the
 -- job first because that is the word the reader is scanning for. Pure.

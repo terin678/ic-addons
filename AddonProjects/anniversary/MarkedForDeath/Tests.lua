@@ -3292,6 +3292,17 @@ T.Case("Announce: adds can be switched off entirely for a Hyjal night", function
         pullOpts({ allowAdds = false })), false, "silent whatever arrives")
 end)
 
+T.Case("Announce: late crowd control stops shouting at the raid after a few", function()
+    -- A fight that feeds mobs in for eight minutes hands the crowd control
+    -- roles to new mobs over and over, and each one is legitimately new. The
+    -- raid warning is the half that interrupts everybody; the whisper is the
+    -- half that reaches whoever has to act, and that one is never budgeted.
+    T.Eq(Ann.AllowsRaidWarning(0, 3), true, "first")
+    T.Eq(Ann.AllowsRaidWarning(2, 3), true, "third")
+    T.Eq(Ann.AllowsRaidWarning(3, 3), false, "fourth goes to the owner only")
+    T.Eq(Ann.AllowsRaidWarning(nil, 3), true, "nothing spent yet")
+end)
+
 T.Case("Announce: keys come out sorted, so the same pack reads the same", function()
     local keys = Ann.KeysOf({ { key = "1-C" }, { key = "1-A" }, { key = "1-B" } })
     T.Eq(table.concat(keys, ","), "1-A,1-B,1-C", "sorted")
