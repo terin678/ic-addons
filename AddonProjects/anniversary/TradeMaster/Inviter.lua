@@ -146,6 +146,21 @@ function Inviter.SayComposed(name, text, profile)
     return Inviter.SayText(name, text, profile)
 end
 
+-- They are in the group because we asked what they needed, and the answer was
+-- something we cannot make. Leaving them there holds a slot for a trade that is
+-- not going to happen.
+function Inviter.Drop(name)
+    if not name or name == "" then return false end
+    if not (UnitInParty(name) or UnitInRaid(name)) then return false end
+    -- Only the leader can, and never mid-fight.
+    if InCombatLockdown and InCombatLockdown() then return false end
+    if UninviteUnit then
+        UninviteUnit(name)
+        return true
+    end
+    return false
+end
+
 -- Pure. Pulls the player name out of a CHAT_MSG_SYSTEM decline notice by turning
 -- the client's own localized format string (ERR_DECLINE_GROUP_S, "%s declines
 -- your group invitation.") into a pattern. Hardcoding the English wording would

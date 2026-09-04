@@ -141,6 +141,7 @@ profession in **Filter**.
 | Names an item you have | Invites, whispers that it's on the way |
 | Names several you have | Names **all** of them, up to three |
 | `LF alch`, nothing named | Invites, asks what they need, waits |
+| Answers that with something you lack | Says so, drops them from the group, remembers |
 | Names an item you lack | "Sorry, I don't have that potion." No alternatives pitched. |
 | Names several, you have some | "I can do X, but I don't have Y." |
 | Types half a gem name (Jewelcrafting) | "Did you mean one of these?" |
@@ -216,6 +217,24 @@ cancelling it out from under them would be wrong.
 
 The decline is read by turning the client's own `ERR_DECLINE_GROUP_S` into a pattern, so it
 works on any locale rather than only on an English client.
+
+### Answers the question it asked
+
+`LF LW` on its own gets an invite and "what item do you need?". If the answer is something
+your book does not have, TradeMaster used to say nothing at all: the customer sat in the group
+and the only way to find out was to search the book by hand.
+
+It now replies. Answering a question you asked is not the same as volunteering an opinion, so
+this reply goes out whether or not "suggest alternatives" is on. If there is nothing close to
+offer either, it also gives the group slot back — `UninviteUnit`, never in combat, off with
+`invite.dropOnNoMatch` — and remembers the answer.
+
+**Remembering** means the item, not the person. The next time they name that item, in any
+channel and with any wrapping around it, the invite is blocked with "already told them no"
+in the Log. A bare `LF LW` from them is still a fresh ask, because next week they may want
+something you do have. Twelve items are remembered per player, oldest dropped first; **Clear
+Flags** on the Log tab forgets all of them. That is separate from **Never invite**, which you
+set by hand and which nothing clears for you.
 
 ### Knows which specialist you are
 

@@ -522,6 +522,9 @@ function Prof.DefaultSettings(profile)
         },
         invite = {
             enabled = true, maxParty = 5, playerCooldownSec = 600, fromWhisper = true,
+            -- We asked what they needed, they named something we cannot make:
+            -- give the group slot back rather than holding it. (1.12.0)
+            dropOnNoMatch = true,
             -- "unsure" shows the message first when we cannot name what they
             -- asked for; "never" trusts the templates, "always" reviews everything.
             confirm = "unsure",

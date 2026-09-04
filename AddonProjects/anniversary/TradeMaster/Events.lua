@@ -233,6 +233,8 @@ function Events.Process(text, author, source, opts)
             blocked = "already grouped"
         elseif not ns.InvitesOn() then
             blocked = "invites off"
+        elseif ns.Players.WasDeclined(state, norm, ns.Util.BracketNames(text)) then
+            blocked = "already told them no"
         elseif #matched > 0 and #craftable == 0 then
             blocked = "not enough " .. ns.Scanner.DescribeMissing(noMats[1].missing)
         else
@@ -371,8 +373,13 @@ function Events.Process(text, author, source, opts)
 
         else
             local asked = ns.Util.IsAvailabilityQuestion(text, norm, ps.filter.askPhrases)
+            -- We asked what they needed and this is the answer. Saying nothing to
+            -- that is the one reply that is always wrong: they are sitting in the
+            -- group waiting for one, and the only way to find out was to search
+            -- the book by hand.
+            local answering = state.awaitingItem and true or false
             local mayReply = w.enabled and w.autoReply
-                and (w.autoSuggest or (asked and w.answerQuestions))
+                and (w.autoSuggest or answering or (asked and w.answerQuestions))
 
             local family, ids, exactFamily = ns.Matcher.NearMiss(norm, pick.index)
             local links = {}
@@ -396,7 +403,7 @@ function Events.Process(text, author, source, opts)
                 return result
             end
 
-            if #links > 0 or (asked and namedUnknownItem) then
+            if #links > 0 or ((asked or answering) and namedUnknownItem) then
                 if #links > 0 then
                     ns.Print(string.format(
                         "|cffffcc00%s asked about a %s you do not know.|r You can do: %s",
@@ -416,6 +423,18 @@ function Events.Process(text, author, source, opts)
                         ns.Inviter.Say(short, w.noneTemplate, {}, profile)
                     end
                 end
+
+                if answering and #links == 0 then
+                    -- Nothing we can offer, so remember the answer and give the
+                    -- group slot back. A repost is then blocked rather than
+                    -- invited into the same conversation again.
+                    ns.Players.Decline(state, norm, ns.Util.BracketNames(text))
+                    if ps.invite.dropOnNoMatch ~= false and ns.Inviter.Drop(short) then
+                        ns.Print(string.format("|cff888888removed %s from the group.|r "
+                            .. "They will not be invited for this again.", short))
+                    end
+                end
+                state.awaitingItem = nil
             else
                 -- Last resort: a bare prefix with none of its base words
                 -- ("looking for jagged..."). Genuinely ambiguous, so this is

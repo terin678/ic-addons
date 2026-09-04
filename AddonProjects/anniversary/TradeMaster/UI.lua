@@ -802,12 +802,21 @@ function UI.BuildLog(page)
 
     local clear = Button(bar, "Clear Flags", 90, 22)
     clear:SetScript("OnClick", function()
-        local n = 0
+        local flags, declines = 0, 0
         for _, st in pairs(ns.db.players) do
-            if st.flaggedSeller then st.flaggedSeller = nil; n = n + 1 end
+            if st.flaggedSeller then st.flaggedSeller = nil; flags = flags + 1 end
+            declines = declines + ns.Players.ClearDeclined(st)
         end
-        ns.Print(string.format("cleared the auto seller flag on %d players.", n))
+        ns.Print(string.format(
+            "cleared the auto seller flag on %d players, and %d remembered \"no\".",
+            flags, declines))
         UI.RefreshLog()
+    end)
+    ICUI:Tooltip(clear, function()
+        GameTooltip:AddLine("Clear Flags", 1, 1, 1)
+        GameTooltip:AddLine("Drops the automatic seller flag, and forgets every item "
+            .. "TradeMaster has told someone it cannot make. Never invite, which you "
+            .. "set by hand, is left alone.", 0.8, 0.8, 0.8, true)
     end)
     bar:Left(clear)
 

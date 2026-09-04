@@ -1591,3 +1591,41 @@ T.Case("Requests: a specialization we lack is vetoed, not scored", function()
     T.Eq(r.verdict, "vetoed", "not our customer")
     T.Eq(r.reason, "wants a Transmutation Master", "and the log says why")
 end)
+
+--------------------------------------------------------------------------------
+-- Answering our own question
+--------------------------------------------------------------------------------
+
+T.Case("Players: what we already said no to is remembered", function()
+    -- We asked Remyy what they needed, they said [Fel Leather Gloves], and the
+    -- book does not have it. Walking them through the same invite and the same
+    -- apology on the repost is the part worth skipping.
+    local state = {}
+    ns.Players.Decline(state, "fel leather gloves", { "Fel Leather Gloves" })
+
+    T.Eq(ns.Players.WasDeclined(state, "anything", { "Fel Leather Gloves" }), true,
+        "named again, in any wrapping")
+    T.Eq(ns.Players.WasDeclined(state, "fel leather gloves", {}), true, "or typed out")
+    T.Eq(ns.Players.WasDeclined(state, "LF LW", {}), false, "a different ask is a fresh one")
+    T.Eq(ns.Players.WasDeclined(state, "x", { "Felstalker Belt" }), false, "so is a different item")
+    T.Eq(ns.Players.WasDeclined({}, "fel leather gloves", {}), false, "nothing remembered yet")
+
+    T.Eq(ns.Players.ClearDeclined(state), 1, "and it can be forgotten")
+    T.Eq(ns.Players.WasDeclined(state, "fel leather gloves", {}), false, "once cleared")
+end)
+
+T.Case("Players: the memory is capped and does not grow forever", function()
+    local state = {}
+    for i = 1, 20 do
+        ns.Players.Decline(state, "item number " .. i, {})
+    end
+    T.Eq(#state.declinedOrder, 12, "the oldest fall off")
+    T.Eq(ns.Players.WasDeclined(state, "item number 20", {}), true, "the newest is kept")
+    T.Eq(ns.Players.WasDeclined(state, "item number 1", {}), false, "the oldest is not")
+
+    -- The same thing said twice is one entry, not two.
+    local dup = {}
+    ns.Players.Decline(dup, "same thing", {})
+    ns.Players.Decline(dup, "same thing", {})
+    T.Eq(#dup.declinedOrder, 1, "no duplicates")
+end)
