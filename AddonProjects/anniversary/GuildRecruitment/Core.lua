@@ -169,6 +169,9 @@ frame:RegisterEvent("CHAT_MSG_ADDON")
 
 frame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4)
     if event == "ADDON_LOADED" and arg1 == addonName then
+        -- Before we create it: whether the client handed us anything at all. This is the
+        -- one fact that separates "the file did not load" from "the addon cleared it".
+        local sawFile = GuildRecruitmentDB ~= nil and next(GuildRecruitmentDB) ~= nil
         GuildRecruitmentDB = GuildRecruitmentDB or {}
         GuildRecruitmentCharDB = GuildRecruitmentCharDB or {}
         ns.Migrate(GuildRecruitmentDB, ns.Migrations, ns.SCHEMA)
@@ -190,15 +193,43 @@ frame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4)
 
         SeedTeams()
 
-        -- Log.Add, not Log.Capture: /gr log reads ns.db.log and Capture writes to a
-        -- different buffer, so a breadcrumb left there is one nobody can find.
-        ns.Log.Add("info", "Core", string.format("loaded rev %d", ns.db.doc.rev or 0),
-            string.format("%s, %s",
-                ns.Util.Plural(loadedTeams, loadedTeams .. " team"),
-                ns.Util.Plural(loadedNeeds, loadedNeeds .. " need")))
+        --[[
+        Everything in the text, not the detail column: the detail is off the right edge of
+        a narrow window, and the team count is the whole point. Zero teams means the saved
+        variables never reached us; teams but no revision would mean something else again.
+
+        `sawFile` distinguishes the two states that matter. An account that has run this
+        addon before has settings written; a table with nothing in it at all is either a
+        first run or a load that did not happen.
+        ]]
+        ns.Log.Add("info", "Core", string.format(
+            "loaded rev %d, %s, %s, scale %d%%", ns.db.doc.rev or 0,
+            ns.Util.Plural(loadedTeams, loadedTeams .. " team"),
+            ns.Util.Plural(loadedNeeds, loadedNeeds .. " need"),
+            (ns.db.settings.windowScale or 1) * 100 + 0.5),
+            sawFile and "saved variables were present" or "SAVED VARIABLES WERE EMPTY")
         if loadedTeams == 0 and (ns.db.doc.rev or 0) > 0 then
             ns.Print("|cffffcc00the saved message has a revision but no teams,|r which "
                 .. "should not happen. /gr log has the detail.")
+        end
+
+        --[[
+        An empty table on an account that has used this addon before means the client did
+        not hand back what it saved. Say so BEFORE anything is edited, because the damage is
+        not the empty load -- it is the logout afterwards, which writes these defaults over
+        the file that still holds the real thing.
+
+        The previous session's file is still on disk as a .bak until the next save, so this
+        says where it is while it is still there.
+        ]]
+        if not sawFile and not ns.cdb.everRan then
+            ns.cdb.everRan = true
+        elseif not sawFile then
+            ns.Print("|cffff4444The saved settings did not load.|r This session started "
+                .. "empty even though this account has run the addon before.")
+            ns.Print("|cffff4444Do not log out or reload yet|r if the teams matter: that "
+                .. "writes these defaults over the file. The previous session is still in "
+                .. "WTF\\Account\\<account>\\SavedVariables\\GuildRecruitment.lua.bak")
         end
 
         ns.Comm.Init()
