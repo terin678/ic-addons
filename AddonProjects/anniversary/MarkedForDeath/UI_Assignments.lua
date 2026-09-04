@@ -140,6 +140,10 @@ local function build()
     frame.empty = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     frame.empty:SetPoint("TOPLEFT", frame.body, "TOPLEFT", 8, -8)
 
+    MFD.UI.MakeResizable(frame, "assignments", 220, 120, function()
+        Panel:Refresh()
+    end)
+
     restorePosition()
     addView(frame)
     tinsert(UISpecialFrames, "MarkedForDeathAssignmentsFrame")

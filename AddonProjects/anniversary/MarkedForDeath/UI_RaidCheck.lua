@@ -756,6 +756,10 @@ local function buildBoard()
         setBoardLive(false)
     end)
 
+    MFD.UI.MakeResizable(board, "buffBoard", 300, 140, function()
+        Board:Refresh()
+    end)
+
     restoreBoardPosition()
     addBoardView(board)
     tinsert(UISpecialFrames, "MarkedForDeathBuffBoardFrame")

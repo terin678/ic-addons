@@ -12,7 +12,12 @@ local Main = MFD.UI.Main
 
 -- Sized for the widest panel, the raid check grid, so switching tabs never
 -- resizes the window under the cursor.
-local WIDTH, HEIGHT = 940, 600     -- pixels
+local WIDTH, HEIGHT = 940, 600     -- pixels, the size it opens at first
+-- The floor is what the raid check grid's columns need. Narrower and they
+-- would draw outside the window rather than politely clipping, so the window
+-- grows but does not shrink past its widest tab. Height is where resizing pays
+-- anyway: more rows on the grid, more of the rule list, less scrolling.
+local MIN_WIDTH, MIN_HEIGHT = 940, 380
 local TAB_HEIGHT = 22              -- pixels
 local CONTENT_TOP = 54             -- pixels below the window top
 
@@ -137,8 +142,35 @@ local function build()
         containers[tab.key] = container
     end
 
+    -- Resizable, and every panel that lays itself out from the space it is
+    -- given gets told when that changes.
+    MFD.UI.MakeResizable(frame, "main", MIN_WIDTH, MIN_HEIGHT, function(_, isFinal)
+        Main:Relayout(isFinal)
+    end)
+
     restorePosition()
     tinsert(UISpecialFrames, "MarkedForDeathFrame")
+end
+
+-- Tells the visible panel the window changed shape. A panel that does not care
+-- says nothing by not having the method; one that does, such as the boss list
+-- on the Deaths tab, rebuilds its columns to suit.
+function Main:Relayout(isFinal)
+    for _, tab in ipairs(TABS) do
+        local container = containers[tab.key]
+        if container and container:IsShown() then
+            local panel = tab.owner()
+            -- Resize can be expensive, so it runs when the corner is let go
+            -- rather than on every frame of the drag. Refresh is cheap and runs
+            -- either way, so the window never looks stale while being dragged.
+            if isFinal and panel and panel.Resize then
+                pcall(panel.Resize, panel, container)
+            end
+            if panel and panel.Refresh then
+                pcall(panel.Refresh, panel)
+            end
+        end
+    end
 end
 
 -- Shows one tab, building its panel the first time it is asked for. Each panel

@@ -34,6 +34,87 @@ function MFD.UI.AcquireRow(parent, pool, index, height)
     return row
 end
 
+-- Adds a resize grip to a window, and remembers the size per character.
+--
+-- onResize(frame, isFinal) runs on every change so the window never looks stale
+-- while being dragged, and again with isFinal true when the corner is let go.
+-- Anything expensive belongs behind that flag; anything cheap should run on
+-- both, because a window that only reflows on release feels broken in the hand.
+--
+-- key names the saved-variable slot. Position is saved by the window's own drag
+-- handler; this only owns the size.
+function MFD.UI.MakeResizable(frame, key, minWidth, minHeight, onResize)
+    frame:SetResizable(true)
+    if frame.SetMinResize then
+        frame:SetMinResize(minWidth, minHeight)
+    end
+
+    local grip = CreateFrame("Button", nil, frame)
+    grip:SetSize(16, 16)
+    grip:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -4, 4)
+    grip:SetFrameLevel(frame:GetFrameLevel() + 10)
+    grip:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+    grip:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
+    grip:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
+
+    grip:SetScript("OnMouseDown", function()
+        frame:StartSizing("BOTTOMRIGHT")
+    end)
+    grip:SetScript("OnMouseUp", function()
+        frame:StopMovingOrSizing()
+        MFD.charDb.windows[key] = MFD.charDb.windows[key] or {}
+        MFD.charDb.windows[key].width = frame:GetWidth()
+        MFD.charDb.windows[key].height = frame:GetHeight()
+        if onResize then
+            onResize(frame, true)
+        end
+    end)
+
+    frame:SetScript("OnSizeChanged", function(self)
+        if onResize then
+            onResize(self, false)
+        end
+    end)
+
+    local saved = MFD.charDb.windows[key]
+    if saved and saved.width and saved.height then
+        frame:SetSize(math.max(saved.width, minWidth), math.max(saved.height, minHeight))
+    end
+
+    frame.grip = grip
+    return grip
+end
+
+-- Wraps a container in a scroll frame and returns the frame to build into.
+--
+-- The content frame is as wide as the view and as tall as it needs to be, which
+-- is what stops a list outgrowing its window: the Settings tab grew past the
+-- bottom edge and simply drew outside it, over whatever was behind. Scrolling
+-- is the answer that keeps working as more settings are added, where a taller
+-- window only moves the day it happens.
+function MFD.UI.MakeScrollable(container)
+    local scroll = CreateFrame("ScrollFrame", nil, container, "UIPanelScrollFrameTemplate")
+    scroll:SetPoint("TOPLEFT", container, "TOPLEFT", 0, 0)
+    -- Room on the right for the scroll bar, and clear of the resize grip below.
+    scroll:SetPoint("BOTTOMRIGHT", container, "BOTTOMRIGHT", -26, 4)
+
+    local content = CreateFrame("Frame", nil, scroll)
+    content:SetSize(1, 1)
+    scroll:SetScrollChild(content)
+
+    -- The child has to be told its width or its anchored children have nothing
+    -- to lay out against; height is set by whoever fills it.
+    local function fit()
+        content:SetWidth(scroll:GetWidth())
+    end
+    scroll:SetScript("OnSizeChanged", fit)
+    fit()
+
+    container.scroll = scroll
+    container.content = content
+    return content
+end
+
 -- Hides every pooled row from index onward, so a shorter refresh does not leave
 -- stale rows on screen.
 function MFD.UI.ReleaseRows(pool, fromIndex)

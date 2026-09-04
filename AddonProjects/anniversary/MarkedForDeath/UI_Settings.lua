@@ -275,7 +275,9 @@ local function buildBody(parent)
     parent.status:SetPoint("RIGHT", parent, "RIGHT", -20, 0)
     parent.status:SetJustifyH("LEFT")
 
-    return parent
+    -- How tall the content ended up. y runs negative down the panel, so this is
+    -- the height a scroll child needs to be for all of it to be reachable.
+    return -y + ROW_SPACING
 end
 
 -- Repaints every checkbox from the saved settings, and the status line.
@@ -325,9 +327,11 @@ end
 -- Builds the settings panel into a container the main window owns.
 function Settings:BuildInto(container)
     panel = container
-    panel.body = CreateFrame("Frame", nil, panel)
-    panel.body:SetAllPoints(panel)
-    buildBody(panel.body)
+    -- Scrolled, because this list only ever grows. It had already outgrown the
+    -- window and was drawing past the bottom edge onto whatever was behind.
+    panel.body = MFD.UI.MakeScrollable(container)
+    local height = buildBody(panel.body)
+    panel.body:SetHeight(height)
 end
 
 function Settings:Toggle()
@@ -341,9 +345,8 @@ local function registerBlizzardPanel()
     local category = CreateFrame("Frame")
     category.name = "Marked For Death"
 
-    local body = CreateFrame("Frame", nil, category)
-    body:SetAllPoints(category)
-    buildBody(body)
+    local body = MFD.UI.MakeScrollable(category)
+    body:SetHeight(buildBody(body))
     Settings.blizzardBody = body
 
     category:SetScript("OnShow", function()

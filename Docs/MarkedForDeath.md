@@ -50,6 +50,15 @@ things you glance at during a pull, not things you sit and adjust, and burying t
 config window would mean opening one mid-fight. Both are on the shift-click menu, both
 have keybinds, and both remember where you put them.
 
+**The windows resize.** Drag the grip in the bottom right corner of the main window, the
+assignment panel or the buff board, and each remembers its size per character. The main
+window grows but will not shrink below the width the raid check grid's columns need, since
+narrower they would draw outside it rather than clipping politely. Height is where it pays
+anyway: more rows of the grid, more of the rule list, less scrolling.
+
+**The Settings tab scrolls**, so it cannot outgrow the window as more settings are added.
+It already had, and was drawing past the bottom edge over whatever was behind it.
+
 ## Doing things mid-pull
 
 Nothing you need during a fight requires typing. The **action bar** is a separate bar you
