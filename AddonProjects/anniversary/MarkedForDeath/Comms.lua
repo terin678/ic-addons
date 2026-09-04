@@ -569,6 +569,13 @@ function Comms:HandleRuleMessage(msgType, fields, sender)
         return true
     end
 
+    if msgType == "PC" then
+        if MFD.RaidCheck and MFD.RaidCheck.ReceiveReport then
+            MFD.RaidCheck:ReceiveReport(sender, fields)
+        end
+        return true
+    end
+
     if msgType == "A" then
         local index, total = tonumber(fields[1]), tonumber(fields[2])
         if not index or not total then

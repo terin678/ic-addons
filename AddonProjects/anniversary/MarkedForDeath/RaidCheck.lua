@@ -120,4 +120,213 @@ function RC.Missing(state, providers, expected)
     return missing
 end
 
+RC.REPORT_HEARTBEAT_SECONDS = 60   -- periodic self-report while in a group
+RC.REPORT_DEBOUNCE_SECONDS = 2     -- coalesce bursts of change into one report
+
+-- Tri-state flags on the wire: 1 true, 0 false, ? unknown. Unknown must stay
+-- distinct from false, because "no data" is not "no flask".
+local FLAG_ORDER = { "weapon", "AI", "MOTW", "FORT", "SP", "food", "flask", "battle", "guardian" }
+
+local function flagChar(v)
+    if v == true then
+        return "1"
+    end
+    if v == false then
+        return "0"
+    end
+    return "?"
+end
+
+local function charFlag(c)
+    if c == "1" then
+        return true
+    end
+    if c == "0" then
+        return false
+    end
+    return nil
+end
+
+-- Takes a state. Returns the fields array for a PC message:
+-- { version, flags, durability, spec }. Pure.
+function RC.EncodeReport(state)
+    local flags = {}
+    for i, key in ipairs(FLAG_ORDER) do
+        flags[i] = flagChar(state[key])
+    end
+    return {
+        state.version or "?",
+        table.concat(flags),
+        state.durability and tostring(math.floor(state.durability)) or "?",
+        state.spec or "?",
+    }
+end
+
+-- Takes the fields array from a PC message. Returns a state, or nil when the
+-- fields are not a report. Pure.
+function RC.DecodeReport(fields)
+    if type(fields) ~= "table" or #fields < 4 then
+        return nil
+    end
+    local flags = fields[2]
+    if type(flags) ~= "string" or #flags ~= #FLAG_ORDER then
+        return nil
+    end
+
+    local state = { version = fields[1] ~= "?" and fields[1] or nil }
+    for i, key in ipairs(FLAG_ORDER) do
+        state[key] = charFlag(string.sub(flags, i, i))
+    end
+    state.durability = tonumber(fields[3])
+    state.spec = fields[4] ~= "?" and fields[4] or nil
+    return state
+end
+
+-- ---------------------------------------------------------------- client --
+-- Everything below touches the client. Nothing here runs at file scope
+-- beyond caching globals, so the harness can still load this file.
+
+local UnitAura = UnitAura
+local GetWeaponEnchantInfo = GetWeaponEnchantInfo
+local GetInventoryItemDurability = GetInventoryItemDurability
+local GetTalentTabInfo = GetTalentTabInfo
+
+-- Reports received from other clients, { [playerName] = { state, at } }.
+RC.reports = {}
+
+-- Returns an array of aura names on unit. Reads only the first return of
+-- UnitAura, which is the name on every client build. Wrapped because the
+-- return signature differs across the flavors this repo targets.
+function RC.AuraNames(unit)
+    local names = {}
+    if not UnitAura then
+        return names
+    end
+    for i = 1, 40 do
+        local ok, name = pcall(UnitAura, unit, i, "HELPFUL")
+        if not ok or not name then
+            break
+        end
+        names[#names + 1] = name
+    end
+    return names
+end
+
+-- Equipped item slots that have durability: head, shoulder, chest, waist,
+-- legs, feet, wrist, hands, main hand, off hand, ranged. Same slots the
+-- repair vendor totals.
+local DURABILITY_SLOTS = { 1, 3, 5, 6, 7, 8, 9, 10, 16, 17, 18 }
+
+local function durabilityPercent()
+    if not GetInventoryItemDurability then
+        return nil
+    end
+    local current, maximum = 0, 0
+    for _, slot in ipairs(DURABILITY_SLOTS) do
+        local ok, cur, max = pcall(GetInventoryItemDurability, slot)
+        if ok and cur and max and max > 0 then
+            current = current + cur
+            maximum = maximum + max
+        end
+    end
+    if maximum == 0 then
+        return nil
+    end
+    return math.floor(current / maximum * 100)
+end
+
+local function specName()
+    if not GetTalentTabInfo then
+        return nil
+    end
+    local bestName, bestPoints = nil, -1
+    for tab = 1, 3 do
+        local ok, name, _, points = pcall(GetTalentTabInfo, tab)
+        if ok and name and points and points > bestPoints then
+            bestName, bestPoints = name, points
+        end
+    end
+    return bestName
+end
+
+-- Reads this client's own state. The only place weapon enchant, durability
+-- and spec can ever be learned from, which is why they are self-reported.
+function RC:GatherSelf()
+    local state = RC.Classify(RC.AuraNames("player"))
+    state.version = MFD.VERSION
+    state.durability = durabilityPercent()
+    state.spec = specName()
+
+    if GetWeaponEnchantInfo then
+        local ok, hasMainHand = pcall(GetWeaponEnchantInfo)
+        if ok then
+            state.weapon = hasMainHand and true or false
+        end
+    end
+
+    -- Flatten names to flags for the wire; a receiver in range has the names
+    -- from its own scan, and names for twenty five people do not fit.
+    state.food = state.food ~= nil
+    state.flask = state.flask ~= nil
+    state.battle = state.battle ~= nil
+    state.guardian = state.guardian ~= nil
+    return state
+end
+
+local isReportPending = false
+
+-- Sends a self-report, debounced so a mass rebuff produces one message per
+-- client rather than one per buff. Nothing is sent when solo.
+function RC:SendReport()
+    if isReportPending then
+        return
+    end
+    isReportPending = true
+    C_Timer.After(RC.REPORT_DEBOUNCE_SECONDS, function()
+        isReportPending = false
+        if not ((IsInRaid and IsInRaid()) or (IsInGroup and IsInGroup())) then
+            return
+        end
+        MFD.Comms:Send("PC", RC.EncodeReport(RC:GatherSelf()))
+    end)
+end
+
+-- Called by Comms when a PC message arrives.
+function RC:ReceiveReport(sender, fields)
+    local state = RC.DecodeReport(fields)
+    if not state then
+        return
+    end
+    RC.reports[sender] = { state = state, at = GetTime() }
+    if RC.OnDataChanged then
+        RC.OnDataChanged()
+    end
+end
+
+local heartbeat = 0
+
+MFD.RegisterInit(function()
+    local frame = CreateFrame("Frame")
+    frame:RegisterEvent("UNIT_INVENTORY_CHANGED")
+    frame:RegisterEvent("UPDATE_INVENTORY_DURABILITY")
+    frame:RegisterEvent("GROUP_ROSTER_UPDATE")
+    frame:RegisterEvent("PLAYER_ENTERING_WORLD")
+    frame:RegisterEvent("UNIT_AURA")
+
+    frame:SetScript("OnEvent", function(_, event, unit)
+        if (event == "UNIT_INVENTORY_CHANGED" or event == "UNIT_AURA") and unit ~= "player" then
+            return
+        end
+        RC:SendReport()
+    end)
+
+    frame:SetScript("OnUpdate", function(_, elapsed)
+        heartbeat = heartbeat + elapsed
+        if heartbeat >= RC.REPORT_HEARTBEAT_SECONDS then
+            heartbeat = 0
+            RC:SendReport()
+        end
+    end)
+end)
+
 _G.MarkedForDeath = MFD

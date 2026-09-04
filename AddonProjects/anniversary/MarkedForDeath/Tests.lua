@@ -1425,4 +1425,45 @@ T.Case("Missing: weapon enchant comes from the reported flag, not auras", functi
     T.Eq(#MFD.RaidCheck.Missing(state, {}, { WEAPON = true }), 0, "unknown is never reported missing")
 end)
 
+T.Case("Report: encode and decode round-trip the self-reported state", function()
+    local state = {
+        version = "0.9.0", weapon = true, durability = 87, spec = "Fire",
+        AI = true, MOTW = false, FORT = true, SP = false,
+        food = true, flask = false, battle = true, guardian = false,
+    }
+    local decoded = MFD.RaidCheck.DecodeReport(MFD.RaidCheck.EncodeReport(state))
+    T.Eq(decoded.version, "0.9.0", "version")
+    T.Eq(decoded.weapon, true, "weapon")
+    T.Eq(decoded.durability, 87, "durability as a number")
+    T.Eq(decoded.spec, "Fire", "spec")
+    T.Eq(decoded.AI, true, "AI")
+    T.Eq(decoded.MOTW, false, "MOTW false, not nil")
+    T.Eq(decoded.battle, true, "battle")
+    T.Eq(decoded.guardian, false, "guardian")
+end)
+
+T.Case("Report: unknown fields encode as unknown and decode as nil", function()
+    local decoded = MFD.RaidCheck.DecodeReport(MFD.RaidCheck.EncodeReport({ version = "x" }))
+    T.Eq(decoded.weapon, nil, "no weapon data is nil, never false")
+    T.Eq(decoded.durability, nil, "no durability is nil")
+    T.Eq(decoded.spec, nil, "no spec is nil")
+    T.Eq(decoded.AI, nil, "unknown buff is nil")
+end)
+
+T.Case("Report: the encoded form fits one addon message with room to spare", function()
+    local fields = MFD.RaidCheck.EncodeReport({
+        version = "10.10.10", weapon = true, durability = 100, spec = "Restoration",
+        AI = true, MOTW = true, FORT = true, SP = true, food = true, flask = true, battle = true, guardian = true,
+    })
+    local wire = MFD.Comms.Encode("PC", fields)
+    if #wire > 120 then
+        error("report is " .. #wire .. " bytes; must stay well under the 255 byte cap")
+    end
+end)
+
+T.Case("Report: decoding rubbish returns nil", function()
+    T.Eq(MFD.RaidCheck.DecodeReport({}), nil, "empty")
+    T.Eq(MFD.RaidCheck.DecodeReport({ "not", "a", "report" }), nil, "wrong shape")
+end)
+
 _G.MarkedForDeath = MFD
