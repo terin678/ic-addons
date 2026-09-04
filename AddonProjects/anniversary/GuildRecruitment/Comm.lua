@@ -495,6 +495,22 @@ function Comm.OnAddonMessage(prefix, text, distribution, sender)
         return
     end
     local rank = rankOrReason
+
+    -- Anything arriving at all is what the probe's loopback is waiting for.
+    if ns.Probe and ns.Probe.Heard then ns.Probe.Heard(short) end
+
+    --[[
+    Our own guild messages come straight back to us. The probe proved it --
+    "heard from Malexis in 0.00s" -- and the loopback above is the one thing that
+    wants them.
+
+    Past that there is nothing to learn from ourselves, and three things go wrong
+    if we carry on: we file ourselves as a peer, so the Officers tab reports "1 of
+    1 in step" when nobody else is running the addon at all; we count our own echo
+    as a message received; and we log a line about agreeing with our own message.
+    ]]
+    if short == ns.Roster.Me() then return end
+
     ns.db.stats.received = (ns.db.stats.received or 0) + 1
 
     local op, msgid, seq, total, payload = Comm.ParseEnvelope(text)
@@ -516,8 +532,6 @@ function Comm.OnAddonMessage(prefix, text, distribution, sender)
     end
 
     Comm.Peer(short, rank, now)
-    -- /gr probe's loopback is waiting to hear anything at all come back.
-    if ns.Probe and ns.Probe.Heard then ns.Probe.Heard(short) end
 
     if op == "S" then
         Comm.OnState(short, rank, payload, now)

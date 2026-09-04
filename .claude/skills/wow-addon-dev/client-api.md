@@ -121,6 +121,13 @@ populated without anyone asking for it -- a probe that never called a refresh st
 reading whatever is already there, because a refresh you cannot request is not a reason to
 have no roster.
 
+**A GUILD addon message comes back to the sender.** `/gr probe`'s loopback reported
+"heard from Malexis in 0.00s" -- your own message is delivered to your own
+`CHAT_MSG_ADDON` immediately. Useful, because it is what makes a loopback test possible at
+all, but anything that walks the receive path has to drop its own traffic early or it files
+itself as a peer, counts its own echo as received, and logs itself agreeing with itself.
+`GuildRecruitment/Comm.lua` returns as soon as the loopback has been told.
+
 **`GetGuildRosterInfo` returns a 0-based rankIndex** with 0 as the guild master, as
 assumed: a rank-2 officer reads as 2.
 
