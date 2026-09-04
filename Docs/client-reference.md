@@ -53,8 +53,10 @@ logout and `/reload` only. Lua errors: BugSack in game or `<flavor>\Errors\`.
 
 The list has exactly **two levels**, confirmed in game:
 
-- **`## Category:`** is the top-level heading. It is free text, and every addon sharing a
-  string collapses under it. The guild addons all use `## Category: Impulse Control`.
+- **`## Category:`** is the top-level heading. It is free text, and a string nobody else
+  uses gets a heading of its own -- confirmed: the guild addons all say
+  `## Category: Impulse Control` and the list grew an Impulse Control heading between
+  Guild and Loot.
 - **One level of nesting inside it.** A nested addon is drawn indented under the row of the
   addon that heads its cluster; there is no separate label row for the cluster itself, so
   the heading you read is the head addon's `## Title`.
@@ -87,3 +89,20 @@ A `## Title` can carry an inline texture --
 `|TInterface\AddOns\ICLibs\Textures\ImpulseControl-64:16|t Name` -- and the escape takes
 the path **without** a file extension while `## IconTexture` takes it with one. Worth
 knowing, but see the warning above: use one or the other, never both.
+
+What the guild addons end up rendering as, for reference:
+
+```
+> Guild
+v Impulse Control                      ## Category: Impulse Control
+    [mark] Impulse Control Core        ICLibs          ## Group: ICLibs
+      [mark] Guild Recruitment         GuildRecruitment
+      [mark] ICTemplate                ICTemplate
+    [mark] Malexis Auction Watcher     MAW             ## Group: MalexisAuctionWatcher
+      [mark] Auctionator Selling ...   AST
+    [gem]  TradeMaster                 TradeMaster     ## Group: TradeMaster
+> Loot
+```
+
+One icon per row, because no title carries a texture. Members sort alphabetically inside a
+cluster; the head is drawn first whatever its name.
