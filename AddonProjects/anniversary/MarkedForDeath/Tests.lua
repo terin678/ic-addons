@@ -3211,6 +3211,41 @@ T.Case("Actions: every action is complete enough to bind and draw", function()
     end
 end)
 
+-- Announcing the pack as it is marked rather than as it is pulled. A line that
+-- arrives at the pull reaches the sheep after the tank has already gone in.
+local Ann = MFD.Announce
+
+T.Case("Announce: assignments must stop changing before they are worth posting", function()
+    -- Walking up to a pack brings nameplates in one at a time and the allocator
+    -- re-optimises with each. The first version is usually wrong.
+    local state = {}
+    T.Eq(Ann.Settled("Skull>Kill", state, 100, 1.5), false, "first sighting starts the clock")
+    T.Eq(Ann.Settled("Skull>Kill", state, 101, 1.5), false, "still settling")
+    T.Eq(Ann.Settled("Skull>Kill", state, 101.5, 1.5), true, "held still long enough")
+end)
+
+T.Case("Announce: a change restarts the clock", function()
+    local state = {}
+    Ann.Settled("Skull>Kill", state, 100, 1.5)
+    T.Eq(Ann.Settled("Skull>Kill | Moon>Sheep", state, 101, 1.5), false, "another mob walked in")
+    T.Eq(Ann.Settled("Skull>Kill | Moon>Sheep", state, 102.6, 1.5), true, "settled on the new set")
+end)
+
+T.Case("Announce: the same line is not posted twice in a row", function()
+    T.Eq(Ann.ShouldPost("Skull>Kill", nil, nil, 100, 30), true, "nothing said yet")
+    T.Eq(Ann.ShouldPost("Skull>Kill", "Skull>Kill", 100, 110, 30), false, "the raid just read this")
+    T.Eq(Ann.ShouldPost("Skull>Kill", "Skull>Kill", 100, 140, 30), true, "long enough ago to be news again")
+end)
+
+T.Case("Announce: a different pack is always news", function()
+    T.Eq(Ann.ShouldPost("Moon>Sheep", "Skull>Kill", 100, 101, 30), true, "different assignments")
+end)
+
+T.Case("Announce: an empty pack is never posted", function()
+    T.Eq(Ann.ShouldPost("", nil, nil, 100, 30), false, "nothing marked")
+    T.Eq(Ann.ShouldPost(nil, nil, nil, 100, 30), false, "nothing at all")
+end)
+
 -- Dragging a rule: the gap the cursor is nearest, turned into the index MoveTo
 -- wants. The two differ because MoveTo removes before it inserts.
 local function ruleList(names)

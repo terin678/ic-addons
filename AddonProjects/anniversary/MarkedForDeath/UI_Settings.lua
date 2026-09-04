@@ -32,8 +32,14 @@ local TOGGLES = {
         set = function(v) MFD.db.settings.isMarkingEnabled = v end,
     },
     {
+        label = "Announce assignments as the pack is marked",
+        tip = "Posts the line as soon as the marks settle, before anyone pulls, so the crowd control reads it in time. Waits a second and a half for the assignments to stop changing, and never repeats the same line.",
+        get = function() return MFD.db.settings.isAnnounceOnMarkEnabled end,
+        set = function(v) MFD.db.settings.isAnnounceOnMarkEnabled = v end,
+    },
+    {
         label = "Announce assignments to raid chat on the pull",
-        tip = "One compact line naming each icon, its job and its owner, for people not running the addon.",
+        tip = "The backstop for a pack pulled before its marks settled. Silent when the same line has already gone out, so it is not a second copy of something the raid just read.",
         get = function() return MFD.db.settings.isAnnounceEnabled end,
         set = function(v) MFD.db.settings.isAnnounceEnabled = v end,
     },

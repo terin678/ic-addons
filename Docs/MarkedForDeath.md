@@ -361,8 +361,15 @@ Editing a merged rule copies it into your own set first. From then on it is your
   Only a genuine wipe counts toward that: an icon that moved because you marked something
   by hand, or because the addon reshuffled the pack itself, is replaced without spending
   the budget.
-- On pull, the marker posts one line to raid chat: `[MFD] Skull>Kill | Moon>Sheep Grimmtusk`.
-  For the people not running the addon. Throttled to one per five seconds.
+- **The pack is announced as it is marked, not as it is pulled.** One line to raid chat:
+  `[MFD] Skull>Kill | Moon>Sheep Grimmtusk`, for the people not running the addon. It
+  waits a second and a half for the assignments to stop changing, because walking up to a
+  pack brings nameplates in one at a time and the first version of a kill order is usually
+  wrong. Announcing at the pull was too late to be useful: the tank is going in while the
+  crowd control is still reading.
+- The pull announcement is still there as a backstop for a pack pulled before it settled,
+  and stays quiet when the same line has already gone out. The same assignments are not
+  announced twice within thirty seconds, however they were triggered.
 
 ## Marking something yourself
 

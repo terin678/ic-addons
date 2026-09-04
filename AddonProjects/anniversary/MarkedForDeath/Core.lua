@@ -2,7 +2,7 @@
 local MFD = _G.MarkedForDeath or {}
 
 -- Must match ## Version: in the toc and the packaged zip name.
-MFD.VERSION = "1.15.0"
+MFD.VERSION = "1.16.0"
 
 -- Bumped only when the saved-variable shape changes in a way that needs a
 -- migration. See MFD:MigrateDB.
@@ -50,6 +50,10 @@ local DB_DEFAULTS = {
         isEnabled = true,
         isMarkingEnabled = true,
         isAnnounceEnabled = true,
+        -- Announce the pack as it is marked rather than as it is pulled. The
+        -- pull is too late: the tank is pulling while the crowd control is
+        -- still reading the line.
+        isAnnounceOnMarkEnabled = true,
         isCvarWarnEnabled = true,
         isWarningSoundEnabled = true,
         isIconReuseEnabled = true,

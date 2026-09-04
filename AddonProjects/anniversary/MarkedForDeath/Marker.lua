@@ -763,6 +763,13 @@ function Marker:Tick(elapsed)
     end
 
     Marker:AlertLateCrowdControl(desired, now)
+
+    -- Announce the pack as it is marked rather than as it is pulled. Out of
+    -- combat only: once the pull happens the pull announcement covers it.
+    if not (UnitAffectingCombat and UnitAffectingCombat("player")) then
+        MFD.Announce.Auto(desired, now)
+    end
+
     Marker.lastDesired = desired
 
     -- Publish only when the map actually changed. The tick runs five times a
@@ -922,6 +929,79 @@ function Announce.FormatLateWhisper(assignment, mobName)
         ICON_NAMES[assignment.icon] or "?", mobName or "unknown")
 end
 
+-- The same assignments are not news twice inside this. Long enough that a pack
+-- announced as it was marked is not announced again the moment it is pulled,
+-- short enough that a wipe and a re-pull both get a line.
+Announce.REPEAT_SECONDS = 30
+
+-- How long the assignments must stop changing before they are worth announcing.
+-- Walking up to a pack brings nameplates in one at a time and the allocator
+-- re-optimises with each one; announcing on the first version would post a
+-- kill order that is wrong two frames later.
+Announce.SETTLE_SECONDS = 1.5
+
+-- Is this line worth posting? Pure.
+--
+-- Repeats are the thing to avoid: the announcement exists for the people not
+-- running the addon, and a line they have already read is noise that teaches
+-- them to stop reading it.
+function Announce.ShouldPost(line, lastLine, lastAt, now, repeatSeconds)
+    if not line or line == "" then
+        return false
+    end
+
+    if line == lastLine and (now - (lastAt or 0)) < repeatSeconds then
+        return false
+    end
+
+    return true
+end
+
+-- Decides whether an unchanged set of assignments has held still long enough.
+-- Mutates state, which carries { line, since }. Pure apart from that.
+function Announce.Settled(line, state, now, settleSeconds)
+    if line ~= state.line then
+        state.line = line
+        state.since = now
+        return false
+    end
+
+    return state.since ~= nil and (now - state.since) >= settleSeconds
+end
+
+-- Announces a pack as it is marked, before anybody pulls it.
+--
+-- This is the one that matters. A line posted at the moment combat starts
+-- reaches the sheep three seconds after they needed it; the tank is pulling
+-- while the crowd control is still reading. Out of combat only, so it never
+-- competes with the pull announcement.
+Announce.autoState = {}
+
+function Announce.Auto(desired, now)
+    if not MFD.IsEnabled() or not MFD.db.settings.isAnnounceOnMarkEnabled
+        or not MFD.Comms:IsAuthority() or not desired then
+        return false
+    end
+
+    local line = Announce.Format(desired.list)
+    if not Announce.Settled(line, Announce.autoState, now, Announce.SETTLE_SECONDS) then
+        return false
+    end
+
+    if not Announce.ShouldPost(line, Announce.lastLine, Announce.lastAt, now, Announce.REPEAT_SECONDS) then
+        return false
+    end
+
+    local target = (IsInRaid and IsInRaid() and "RAID") or (IsInGroup and IsInGroup() and "PARTY") or nil
+    if not target then
+        return false
+    end
+
+    Announce.lastLine, Announce.lastAt = line, now
+    pcall(SendChatMessage, "[MFD] " .. line, target)
+    return true
+end
+
 -- Posts the current pack to the group once per pull, authority only, throttled
 -- so two quick pulls do not produce two lines.
 function Announce.Post(desired, now)
@@ -935,7 +1015,11 @@ function Announce.Post(desired, now)
     end
 
     local line = Announce.Format(desired.list)
-    if line == "" then
+
+    -- Silent when the pack was already announced as it was marked and nothing
+    -- has changed since. The pull is the fallback for a pack pulled before it
+    -- settled, not a second copy of a line the raid has just read.
+    if not Announce.ShouldPost(line, Announce.lastLine, Announce.lastAt, now, Announce.REPEAT_SECONDS) then
         return
     end
 
@@ -944,7 +1028,7 @@ function Announce.Post(desired, now)
         return
     end
 
-    Announce.lastAt = now
+    Announce.lastLine, Announce.lastAt = line, now
     pcall(SendChatMessage, "[MFD] " .. line, target)
 end
 
@@ -990,6 +1074,7 @@ function Announce.PostNow()
 
     Announce.lastManualAt = now
     Announce.lastAt = now
+    Announce.lastLine = line
     pcall(SendChatMessage, "[MFD] " .. line, target)
     return true
 end
