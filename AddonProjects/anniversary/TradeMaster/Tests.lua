@@ -1572,8 +1572,11 @@ T.Case("Specializations: the choices a profession offers", function()
     local choices = ns.Prof.SpecChoices(ALCH)
     T.Eq(choices[1], "auto", "auto first")
     T.Eq(choices[#choices], "off", "off last")
-    T.Eq(#choices, 5, "auto, three specializations, none, off")
+    T.Eq(#choices, 6, "auto, three specializations, none, off")
     T.Eq(#ns.Prof.SpecChoices(JC), 3, "auto, none and off even with no specializations")
+    -- Every state the button cycles through has to be one you can land on, or the
+    -- cycle skips it forever.
+    T.Eq(table.concat(choices, ","), "auto,potion,elixir,transmute,none,off", "in order")
 end)
 
 T.Case("Requests: a specialization we lack is vetoed, not scored", function()
