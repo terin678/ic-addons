@@ -15,6 +15,7 @@ and every control wears the guild palette.
     UI:TabStrip(parent, opts)           -> strip (strip:Select(name))
     UI:Button(parent, text, w, h, opts) -> b    (b:SetActive(on), b:SetKind(kind))
     UI:EditBox(parent, w, h, opts)
+    UI:TextBox(parent, w, h, opts)   -> box  (box:SetText(s), box:SelectAllAndFocus())
     UI:CheckBox(parent, label, opts)    -> cb   (cb.label)
     UI:Panel(parent, opts) / UI:Skin(frame, color, border)
     UI:ScrollList(parent, top, bottom, right)
@@ -33,7 +34,7 @@ Set `theme = false` in a style to get plain Blizzard controls instead of the gui
 The palette is the default; nothing has to ask for it.
 ]]
 
-local MAJOR, MINOR = "LibICUI-1.0", 3
+local MAJOR, MINOR = "LibICUI-1.0", 5
 local Lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not Lib then return end
 
@@ -240,10 +241,17 @@ function Lib:Button(parent, text, w, h, opts)
     b:SetText(text or "")
     RepaintButton(b)
 
+    -- A disabled Button is given no mouse scripts at all unless it asks for them,
+    -- and a greyed control that cannot say why it is greyed reads as a broken
+    -- addon. The hover paint is for a button you can press; the tooltip is for one
+    -- you cannot, which is when a reader most needs telling.
+    if b.SetMotionScriptsWhileDisabled then b:SetMotionScriptsWhileDisabled(true) end
+
     b:SetScript("OnEnter", function(self)
-        if not self:IsEnabled() then return end
-        local _, hover = KindColors(self.icStyle, self.icKind)
-        self:SetBackdropColor(hover.r, hover.g, hover.b, hover.a or 1)
+        if self:IsEnabled() then
+            local _, hover = KindColors(self.icStyle, self.icKind)
+            self:SetBackdropColor(hover.r, hover.g, hover.b, hover.a or 1)
+        end
         if self.icOnEnter then self.icOnEnter(self) end
     end)
     b:SetScript("OnLeave", function(self)
@@ -284,6 +292,124 @@ function Lib:EditBox(parent, w, h, opts)
         Paint(box, DEFAULT.editBg, DEFAULT.border)
     end
     box:SetScript("OnEscapePressed", box.ClearFocus)
+    return box
+end
+
+--[[
+A multi-line text area: a scroll frame wrapping an EditBox, in the palette.
+opts = { style, readOnly, maxBytes, font, onChange(text) }
+
+Returns the outer frame with:
+    box.scroll              the ScrollFrame, for anything that needs to drive it
+    box.edit                the EditBox itself
+    box:SetText(s), box:GetText()
+    box:SelectAllAndFocus() for a Copy button
+
+There is no clipboard API on this client, so the most an addon can offer is to
+select the text and let the player press Ctrl+C. That is also why readOnly puts
+the old text back on every change instead of disabling the box: a disabled
+EditBox cannot be selected either, and selecting is the whole point of one.
+]]
+function Lib:TextBox(parent, w, h, opts)
+    opts = opts or {}
+    local style = StyleOf(opts.style)
+    w, h = w or 300, h or 100
+
+    local box = CreateFrame("Frame", nil, parent, BackdropTemplateMixin and "BackdropTemplate")
+    box:SetSize(w, h)
+    if style.theme then
+        Paint(box, style.editBg, style.buttonBorder)
+    else
+        Paint(box, DEFAULT.editBg, DEFAULT.border)
+    end
+
+    -- 26 on the right is the scrollbar's width, the same inset Lib:ScrollList
+    -- reserves, so a text box and a table beside it line up.
+    local scroll = CreateFrame("ScrollFrame", nil, box, "UIPanelScrollFrameTemplate")
+    scroll:SetPoint("TOPLEFT", 6, -5)
+    scroll:SetPoint("BOTTOMRIGHT", -26, 5)
+    box.scroll = scroll
+
+    local edit = CreateFrame("EditBox", nil, scroll)
+    edit:SetMultiLine(true)
+    edit:SetAutoFocus(false)
+    edit:SetFontObject(opts.font or style.font)
+    -- A multi-line EditBox grows its own height to fit its text once it is a
+    -- scroll child; the width is ours to set and the initial height only has to
+    -- be non-zero, or there is nothing for the scroll frame to show. The viewport
+    -- is w minus the 6 on the left and the 26 on the right, so this fills it.
+    edit:SetWidth(w - 34)
+    edit:SetHeight(h)
+    if opts.maxBytes then edit:SetMaxBytes(opts.maxBytes) end
+    if style.theme then
+        local t = style.buttonText
+        edit:SetTextColor(t.r, t.g, t.b)
+    end
+    edit:SetScript("OnEscapePressed", edit.ClearFocus)
+    scroll:SetScrollChild(edit)
+    box.edit = edit
+
+    -- Typing past the bottom of the viewport has to bring the caret back into
+    -- view, or the player is typing somewhere they cannot see.
+    edit:SetScript("OnCursorChanged", function(_, _, y, _, cursorHeight)
+        local top = -y
+        local offset, view = scroll:GetVerticalScroll(), scroll:GetHeight()
+        local want = offset
+        if top < offset then
+            want = top
+        elseif top + cursorHeight > offset + view then
+            want = top + cursorHeight - view
+        end
+        local range = scroll:GetVerticalScrollRange() or 0
+        want = math.max(0, math.min(want, range))
+        if want ~= offset then scroll:SetVerticalScroll(want) end
+    end)
+
+    -- Set while we are the ones changing the text, so our own writes do not come
+    -- back round as edits.
+    local ours = false
+    edit:SetScript("OnTextChanged", function(self, byUser)
+        if ours then return end
+        if opts.readOnly and byUser then
+            ours = true
+            self:SetText(box.text or "")
+            ours = false
+            return
+        end
+        box.text = self:GetText()
+        if opts.onChange then opts.onChange(box.text) end
+    end)
+
+    function box:SetText(s)
+        self.text = s or ""
+        ours = true
+        edit:SetText(self.text)
+        ours = false
+        edit:SetCursorPosition(0)
+        scroll:SetVerticalScroll(0)
+    end
+
+    function box:GetText()
+        return edit:GetText()
+    end
+
+    function box:SelectAllAndFocus()
+        edit:SetFocus()
+        edit:HighlightText()
+    end
+
+    -- The EditBox is only as tall as its own text, so on a box with one line in it
+    -- everything below that line is dead to the mouse and clicking there puts no
+    -- caret anywhere. The frame and its viewport hand the click on.
+    local function Focus()
+        edit:SetFocus()
+    end
+    box:EnableMouse(true)
+    box:SetScript("OnMouseDown", Focus)
+    scroll:EnableMouse(true)
+    scroll:SetScript("OnMouseDown", Focus)
+
+    box:SetText("")
     return box
 end
 

@@ -98,3 +98,30 @@ it. Whispers have no such restriction.
 is not inside the saved-variables table is session state, and a filter or toggle kept there
 looks exactly like data loss the next time the player logs in. If it changes what the
 player sees, it belongs in the saved table.
+
+**A channel list has a stride of three.** `GetChannelList()` returns a flat
+`id, name, disabled, id, name, disabled, ...`. Walking it two at a time reads every other
+channel's name as an id, and the bug is invisible until the character has joined an odd
+number of channels. `TradeMaster/Barker.lua` and `GuildRecruitment/Bark.lua` both step by 3.
+
+## Not verified yet
+
+Everything above was paid for. These are the opposite: things the code guards against
+because nobody has ever run them on this client. Replace an entry with what actually
+happened the first time somebody does.
+
+**Addon messages.** Whether `C_ChatInfo.SendAddonMessage` exists on 20506 or only the bare
+`SendAddonMessage`; whether `RegisterAddonMessagePrefix` is required before
+`CHAT_MSG_ADDON` fires at all; whether the 255-byte cap counts the prefix; whether your own
+`GUILD` message is echoed back to you. `GuildRecruitment` tries both names, guards every
+call in `pcall`, and `/gr probe` reports which answered and then sends a real message and
+waits for it — the round trip is the only thing that proves the channel carries anything.
+`/gr probe noreg` plus a `/reload` answers the registration question on its own.
+
+**The guild roster.** The exact return positions of `GetGuildRosterInfo(i)` on 20506, and
+whether `rankIndex` is 0-based with 0 meaning guild master. Everything that decides
+permission takes the index as an argument and is pure, so if the polarity turns out to be
+inverted only `Roster.Read` changes.
+
+**`SendChatMessage` to `GUILD`.** The hardware-event rule above is documented for `CHANNEL`
+and `SAY`. Nothing has tried `GUILD`. Assume it needs one until somebody finds out.

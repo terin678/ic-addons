@@ -1,13 +1,20 @@
 # ICLibs
 
-Shared libraries for the ic-addons guild addons, packaged as a small library addon so the
-same code is loaded once and both MalexisAuctionWatcher and TradeMaster use it.
+Shared libraries for the Impulse Control guild addons, packaged as a small library addon
+so the same code is loaded once and MalexisAuctionWatcher, TradeMaster, ICTemplate and
+GuildRecruitment all use it.
 
 ## Install
 
 Extract the zip of any addon that needs it; the `ICLibs` folder is included. It must sit
 in `Interface\AddOns` next to the addon. The dependent addons list it under
 `## Dependencies`, so the game refuses to load them without it and says why.
+
+ICLibs also heads the family in the in-game AddOns list. Every guild addon carries
+`## Group: ICLibs`, which collects them under one collapsible heading, and the guild mark
+in front of each name is drawn from `Textures/ImpulseControl-64` in this folder.
+`Docs/client-reference.md` has the detail; the short version is that a group's value has to
+be a real addon folder name, and ICLibs is the one that is always installed.
 
 ## Contents
 
@@ -53,8 +60,9 @@ local UI = LibStub("LibICUI-1.0")
 | `UI:Style(name, style)` | Registers an addon's look (row height, fonts, colours) and fills in the rest from the default. Pass the name or the table as `opts.style`. |
 | `UI:Window(name, opts)` | A movable, escapable window wearing the guild mark. `f.body` is the area under the title bar, plus `f.title` and `f.status`. |
 | `UI:TabStrip(parent, opts)` | A row of tab buttons; the live one goes gold. `strip:Select(name or index)` calls `onSelect`. |
-| `UI:Button(parent, text, w, h, opts)` | A palette button. `opts.kind` is `"normal"`, `"accent"` or `"danger"`; `opts.template` adds a frame template such as `SecureActionButtonTemplate`. `SetText`, `Enable`, `Disable` and `SetEnabled` work as on a Blizzard button, and `b:SetActive(on)` shows a toggle's state. |
+| `UI:Button(parent, text, w, h, opts)` | A palette button. A disabled one still shows its tooltip, so a greyed control can say why. `opts.kind` is `"normal"`, `"accent"` or `"danger"`; `opts.template` adds a frame template such as `SecureActionButtonTemplate`. `SetText`, `Enable`, `Disable` and `SetEnabled` work as on a Blizzard button, and `b:SetActive(on)` shows a toggle's state. |
 | `UI:EditBox(parent, w, h, opts)` | A single-line text box in the palette. |
+| `UI:TextBox(parent, w, h, opts)` | A multi-line text area that scrolls: `box:SetText(s)`, `box:GetText()`, `box:SelectAllAndFocus()` for a Copy button, `opts.readOnly` and `opts.maxBytes`. |
 | `UI:CheckBox(parent, label, opts)` | Blizzard's check button with a palette label; `opts.labelSide = "LEFT"` puts the label before it. |
 | `UI:Tooltip(widget, builder)` | Wires a GameTooltip onto anything: `builder(widget)` adds the lines. `nil` takes it off again, which is what a pooled row needs. |
 | `UI:Skin(frame, color, border)` / `UI:Panel(parent, opts)` | Paints a frame, or makes a raised panel. |
