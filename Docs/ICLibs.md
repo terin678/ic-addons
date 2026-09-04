@@ -55,6 +55,7 @@ local UI = LibStub("LibICUI-1.0")
 | `UI:TabStrip(parent, opts)` | A row of tab buttons; the live one goes gold. `strip:Select(name or index)` calls `onSelect`. |
 | `UI:Button(parent, text, w, h, opts)` | A palette button. `opts.kind` is `"normal"`, `"accent"` or `"danger"`; `opts.template` adds a frame template such as `SecureActionButtonTemplate`. `SetText`, `Enable`, `Disable` and `SetEnabled` work as on a Blizzard button, and `b:SetActive(on)` shows a toggle's state. |
 | `UI:EditBox(parent, w, h, opts)` | A single-line text box in the palette. |
+| `UI:TextBox(parent, w, h, opts)` | A multi-line text area that scrolls: `box:SetText(s)`, `box:GetText()`, `box:SelectAllAndFocus()` for a Copy button, `opts.readOnly` and `opts.maxBytes`. |
 | `UI:CheckBox(parent, label, opts)` | Blizzard's check button with a palette label; `opts.labelSide = "LEFT"` puts the label before it. |
 | `UI:Tooltip(widget, builder)` | Wires a GameTooltip onto anything: `builder(widget)` adds the lines. `nil` takes it off again, which is what a pooled row needs. |
 | `UI:Skin(frame, color, border)` / `UI:Panel(parent, opts)` | Paints a frame, or makes a raised panel. |
