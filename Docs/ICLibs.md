@@ -28,7 +28,7 @@ carries neither directive and sits on its own in the alphabetical list.
 | --- | --- | --- |
 | LibStub | — | Standard library loader |
 | CallbackHandler-1.0, LibDataBroker-1.1, LibDBIcon-1.0 | — | The minimap launcher, and what it stands on |
-| LibICCore-1.0 | 1 | The plumbing every addon used to carry its own copy of: Print, the saved-variable bootstrap and its load check, Util, Log, the test harness, the slash dispatcher, reset, the minimap launcher, the probe |
+| LibICCore-1.0 | 2 | The plumbing every addon used to carry its own copy of: Print, the saved-variable bootstrap and its load check, Util, Log, the test harness, the slash dispatcher, reset, the minimap launcher, the probe |
 | LibICTradeSkill-1.0 | 2 | Reads the open profession window into plain tables, merges scans into a per-profession book, and checks Bind on Pickup reagents |
 | LibICUI-1.0 | 6 | Windows, tabs, buttons, lists and toolbars in the guild palette, plus relative ages and the brand itself |
 
@@ -74,6 +74,14 @@ The slash dispatcher parses `/x <sub> <rest>` and comes with `help`, `log [n]`, 
 `version`; a key in `commands` adds a sub-command or replaces a built-in, and `""`
 is the bare command. `help` prints the `HELP` rows; a row with `needs = "Module"` is
 shown only when `ns.Module` exists.
+
+`migrations` is keyed by the schema each step upgrades FROM, so `migrations[1]` takes a
+schema-1 table to schema 2. A step that instead sets `db.schema` itself is **adopting** a
+schema rather than upgrading to one: the loop resumes wherever it was left and the jump is
+not counted as an upgrade, so the load line does not claim work it did not do. That is for
+an addon which stamped its own version under a different key before this library owned the
+bootstrap, whose first step skips the ones it has already run. MarkedForDeath's
+`MIGRATIONS[1]` is the worked example.
 
 The bootstrap runs on the addon's own ADDON_LOADED: migrate, then default, then publish,
 then log **whether the client handed the saved variables back at all**. An account that
