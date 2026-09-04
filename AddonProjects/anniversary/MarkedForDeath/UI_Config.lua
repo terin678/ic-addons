@@ -51,21 +51,35 @@ local function intentNames()
 end
 
 -- Cycles an icon's intent to the next one alphabetically, keeping its ordinal.
-local function cycleIntent(icon)
-    local names = intentNames()
-    local seat = MFD.db.seatPlan[icon]
-    local current = seat and seat.intent
-    local nextIndex = 1
+-- The dropdown the intent pickers share. UIDropDownMenu requires a global
+-- frame name, which is the documented exception to the one-global rule in
+-- CODING_STANDARDS.md, the same as the named windows.
+local intentMenu
 
-    for i, name in ipairs(names) do
-        if name == current then
-            nextIndex = (i % #names) + 1
-            break
-        end
+-- Opens a menu of every intent anchored to a widget, ticking the current one
+-- and calling onPick with the chosen intent.
+--
+-- Both pickers used to cycle on click. With fourteen intents, getting from
+-- Kill to Sheep was thirteen clicks and a lap if you overshot.
+local function openIntentMenu(anchor, current, onPick)
+    if not intentMenu then
+        intentMenu = CreateFrame("Frame", "MarkedForDeathIntentMenu", UIParent, "UIDropDownMenuTemplate")
     end
 
-    MFD.db.seatPlan[icon] = MFD.db.seatPlan[icon] or { ordinal = 1 }
-    MFD.db.seatPlan[icon].intent = names[nextIndex]
+    UIDropDownMenu_Initialize(intentMenu, function()
+        for _, intent in ipairs(intentNames()) do
+            local info = UIDropDownMenu_CreateInfo()
+            info.text = MFD.Seats.INTENTS[intent].label
+            info.checked = intent == current
+            info.func = function()
+                onPick(intent)
+                CloseDropDownMenus()
+            end
+            UIDropDownMenu_AddButton(info)
+        end
+    end, "MENU")
+
+    ToggleDropDownMenu(1, nil, intentMenu, anchor, 0, 0)
 end
 
 -- Moves an icon's ordinal within its intent. Ordinals are renumbered from 1 so
@@ -131,9 +145,13 @@ local function buildRow(row, icon)
     row.cycle:SetSize(64, 20)
     row.cycle:SetPoint("LEFT", row.intentText, "RIGHT", 4, 0)
     row.cycle:SetText("Intent")
-    row.cycle:SetScript("OnClick", function()
-        cycleIntent(icon)
-        Config:Refresh()
+    row.cycle:SetScript("OnClick", function(button)
+        local seat = MFD.db.seatPlan[icon]
+        openIntentMenu(button, seat and seat.intent, function(intent)
+            MFD.db.seatPlan[icon] = MFD.db.seatPlan[icon] or { ordinal = 1 }
+            MFD.db.seatPlan[icon].intent = intent
+            Config:Refresh()
+        end)
     end)
 
     row.up = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
@@ -361,24 +379,7 @@ local function cycleFilter()
     filterKey = nextKey or nil
 end
 
-local function intentNamesSorted()
-    local names = {}
-    for intent in pairs(MFD.Seats.INTENTS) do
-        names[#names + 1] = intent
-    end
-    table.sort(names)
-    return names
-end
 
-local function nextIntent(current)
-    local names = intentNamesSorted()
-    for i, name in ipairs(names) do
-        if name == current then
-            return names[(i % #names) + 1]
-        end
-    end
-    return names[1]
-end
 
 local function buildResultRow(row)
     if row.isBuilt then
@@ -421,13 +422,15 @@ local function buildRuleRow(row)
     row.intent = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
     row.intent:SetSize(88, 20)
     row.intent:SetPoint("LEFT", row.name, "RIGHT", 4, 0)
-    row.intent:SetScript("OnClick", function()
+    row.intent:SetScript("OnClick", function(button)
         if not row.rule then
             return
         end
-        local rule = ownedRule(row.instanceKey, row.rule)
-        rule.intent = nextIntent(rule.intent)
-        commitRules()
+        openIntentMenu(button, row.rule.intent, function(intent)
+            local rule = ownedRule(row.instanceKey, row.rule)
+            rule.intent = intent
+            commitRules()
+        end)
     end)
 
     row.up = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")

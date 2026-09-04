@@ -137,6 +137,19 @@ local function missingSetFor(entry)
     return set
 end
 
+-- Paints the consumable headers: white when the raid expects that consumable,
+-- grey when it does not and its absences are therefore ignored.
+function Grid:RefreshHeader()
+    if not frame or not frame.headerToggles then
+        return
+    end
+
+    for key, button in pairs(frame.headerToggles) do
+        local isExpected = MFD.db.settings.raidCheck.expected[key]
+        button.text:SetText((isExpected and "" or GREY) .. button.columnLabel .. (isExpected and "" or "|r"))
+    end
+end
+
 function Grid:Refresh()
     if not frame or not frame:IsShown() then
         return
@@ -233,10 +246,52 @@ local function build()
     frame.header:SetPoint("TOPLEFT", frame, "TOPLEFT", 14, -28)
     frame.header:SetPoint("RIGHT", frame, "RIGHT", -14, 0)
     frame.header:SetHeight(16)
+
+    -- The five consumable headers double as the expected-or-not toggle. Putting
+    -- the control directly above the column it governs beats a settings screen,
+    -- and it is the only way to change this without editing saved variables.
+    local isConsumable = {}
+    for _, key in ipairs(RC.CONSUMABLE_ORDER) do
+        isConsumable[key] = true
+    end
+
+    frame.headerToggles = {}
+
     for _, column in ipairs(COLUMNS) do
-        local label = frame.header:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-        label:SetPoint("LEFT", frame.header, "LEFT", column.x, 0)
-        label:SetText(column.label)
+        if isConsumable[column.key] then
+            local button = CreateFrame("Button", nil, frame.header)
+            button:SetSize(column.w, 16)
+            button:SetPoint("LEFT", frame.header, "LEFT", column.x, 0)
+            button.text = button:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+            button.text:SetAllPoints()
+            button.text:SetJustifyH("LEFT")
+
+            button:SetScript("OnClick", function()
+                local expected = MFD.db.settings.raidCheck.expected
+                expected[column.key] = not expected[column.key]
+                RC:Scan()
+                Grid:RefreshHeader()
+            end)
+
+            button:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_BOTTOMLEFT")
+                GameTooltip:AddLine(column.label)
+                GameTooltip:AddLine(MFD.db.settings.raidCheck.expected[column.key]
+                    and "The raid expects this. Click to stop reporting it missing."
+                    or "Not expected. Click to start reporting it missing.", 1, 1, 1, true)
+                GameTooltip:Show()
+            end)
+            button:SetScript("OnLeave", function()
+                GameTooltip:Hide()
+            end)
+
+            button.columnLabel = column.label
+            frame.headerToggles[column.key] = button
+        else
+            local label = frame.header:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+            label:SetPoint("LEFT", frame.header, "LEFT", column.x, 0)
+            label:SetText(column.label)
+        end
     end
 
     frame.body = CreateFrame("Frame", nil, frame)
@@ -297,6 +352,7 @@ function Grid:Show()
         build()
     end
     frame.auto:SetChecked(MFD.db.settings.raidCheck.isAutoOpenEnabled)
+    Grid:RefreshHeader()
     frame:Show()
     RC:Scan()
 end
