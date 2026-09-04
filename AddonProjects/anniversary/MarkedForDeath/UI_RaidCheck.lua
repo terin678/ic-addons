@@ -1,0 +1,310 @@
+-- The raid check surfaces: the full grid here, the quick buff board below it.
+-- Both paint from RaidCheck.rows and never read the client directly, so the
+-- data they show is exactly what /mfd missing and the callout would report.
+local MFD = _G.MarkedForDeath or {}
+
+MFD.UI = MFD.UI or {}
+MFD.UI.RaidCheck = MFD.UI.RaidCheck or {}
+local Grid = MFD.UI.RaidCheck
+local RC = MFD.RaidCheck
+
+local ROW_HEIGHT = 18     -- pixels
+local MAX_ROWS = 26       -- a full raid plus one
+local GRID_WIDTH = 860    -- pixels
+
+-- Column layout: key, header label, x offset from the row's left edge, width.
+local COLUMNS = {
+    { key = "NAME",      label = "Name",      x = 0,   w = 110 },
+    { key = "FOOD",      label = "Food",      x = 112, w = 44 },
+    { key = "FLASK",     label = "Flask",     x = 158, w = 44 },
+    { key = "BATTLE",    label = "Battle",    x = 204, w = 44 },
+    { key = "GUARDIAN",  label = "Guard",     x = 250, w = 44 },
+    { key = "WEAPON",    label = "Weapon",    x = 296, w = 44 },
+    { key = "AI",        label = "Int",       x = 342, w = 40 },
+    { key = "MOTW",      label = "MotW",      x = 384, w = 40 },
+    { key = "FORT",      label = "Fort",      x = 426, w = 40 },
+    { key = "SP",        label = "SProt",     x = 468, w = 40 },
+    { key = "BLESSINGS", label = "Blessings", x = 510, w = 120 },
+    { key = "DUR",       label = "Dur",       x = 632, w = 40 },
+    { key = "SPEC",      label = "Spec",      x = 674, w = 80 },
+    { key = "VER",       label = "Ver",       x = 756, w = 50 },
+}
+
+local GREEN, RED, GREY, AMBER = "|cff66ff66", "|cffff4444", "|cff999999", "|cffffcc66"
+
+-- Formats a yes/no/unknown cell. isMissing decides whether an absence is a
+-- problem (red) or merely an absence (grey).
+local function presence(value, isMissing)
+    if value == nil then
+        return GREY .. "?|r"
+    end
+    if value == false then
+        return (isMissing and RED or GREY) .. "no|r"
+    end
+    return GREEN .. "yes|r"
+end
+
+-- Returns the text for one cell of one player's entry.
+local function cellText(column, entry)
+    local state, missingSet = entry.row.state, entry.missingSet
+    local hasFlask = state.flask ~= nil
+
+    if column == "FOOD" then
+        return presence(state.food ~= nil, missingSet.FOOD)
+    elseif column == "FLASK" then
+        return presence(hasFlask, missingSet.FLASK)
+    elseif column == "BATTLE" then
+        if hasFlask and state.battle == nil then
+            return GREEN .. "flask|r"
+        end
+        return presence(state.battle ~= nil, missingSet.BATTLE)
+    elseif column == "GUARDIAN" then
+        if hasFlask and state.guardian == nil then
+            return GREEN .. "flask|r"
+        end
+        return presence(state.guardian ~= nil, missingSet.GUARDIAN)
+    elseif column == "WEAPON" then
+        return presence(state.weapon, missingSet.WEAPON)
+    elseif column == "AI" or column == "MOTW" or column == "FORT" or column == "SP" then
+        return presence(state[column], missingSet[column])
+    elseif column == "BLESSINGS" then
+        if #state.blessings == 0 then
+            return GREY .. "none|r"
+        end
+        return table.concat(state.blessings, " ")
+    elseif column == "DUR" then
+        local d = state.durability
+        if d == nil then
+            return GREY .. "?|r"
+        end
+        local color = (d < 30 and RED) or (d < 60 and AMBER) or ""
+        return color .. d .. "%" .. (color ~= "" and "|r" or "")
+    elseif column == "SPEC" then
+        return state.spec or (GREY .. "?|r")
+    elseif column == "VER" then
+        if not state.version then
+            return GREY .. "?|r"
+        end
+        if state.version ~= MFD.VERSION then
+            return RED .. state.version .. "|r"
+        end
+        return state.version
+    end
+    return ""
+end
+
+local frame
+local rows = {}
+local eventFrame
+
+local function buildRow(row)
+    if row.isBuilt then
+        return
+    end
+    row.isBuilt = true
+    row.cells = {}
+
+    for _, column in ipairs(COLUMNS) do
+        if column.key == "NAME" then
+            -- The name is a button: click to whisper that player their list.
+            local button = CreateFrame("Button", nil, row)
+            button:SetSize(column.w, ROW_HEIGHT)
+            button:SetPoint("LEFT", row, "LEFT", column.x, 0)
+            button.text = button:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            button.text:SetAllPoints()
+            button.text:SetJustifyH("LEFT")
+            button:SetScript("OnClick", function()
+                if row.entry then
+                    RC:Whisper(row.entry.name)
+                end
+            end)
+            row.cells.NAME = button
+        else
+            local text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            text:SetPoint("LEFT", row, "LEFT", column.x, 0)
+            text:SetWidth(column.w)
+            text:SetJustifyH("LEFT")
+            row.cells[column.key] = text
+        end
+    end
+end
+
+local function missingSetFor(entry)
+    local set = {}
+    for _, m in ipairs(entry.missing or {}) do
+        set[m.column] = true
+    end
+    return set
+end
+
+function Grid:Refresh()
+    if not frame or not frame:IsShown() then
+        return
+    end
+
+    local index = 0
+    for _, entry in ipairs(RC:SortedRows()) do
+        if index >= MAX_ROWS then
+            break
+        end
+        index = index + 1
+        local row = MFD.UI.AcquireRow(frame.body, rows, index, ROW_HEIGHT)
+        buildRow(row)
+        row.entry = entry
+        entry.missingSet = missingSetFor(entry)
+
+        local nameColor = entry.row.isReported and "" or AMBER
+        row.cells.NAME.text:SetText(nameColor .. entry.name .. (nameColor ~= "" and "|r" or ""))
+
+        for _, column in ipairs(COLUMNS) do
+            if column.key ~= "NAME" then
+                row.cells[column.key]:SetText(cellText(column.key, entry))
+            end
+        end
+    end
+
+    MFD.UI.ReleaseRows(rows, index + 1)
+    frame.empty:SetText(index == 0 and (GREY .. "nobody in the group|r") or "")
+end
+
+local function savePosition()
+    local point, _, relativePoint, x, y = frame:GetPoint()
+    MFD.charDb.windows.raidCheck = { point = point, relativePoint = relativePoint, x = x, y = y }
+end
+
+local function restorePosition()
+    local saved = MFD.charDb.windows.raidCheck
+    frame:ClearAllPoints()
+    if saved and saved.point then
+        frame:SetPoint(saved.point, UIParent, saved.relativePoint or saved.point, saved.x or 0, saved.y or 0)
+    else
+        frame:SetPoint("CENTER")
+    end
+end
+
+local function isGroupUnit(unit)
+    return unit == "player" or string.find(unit or "", "^raid%d+$") or string.find(unit or "", "^party%d+$")
+end
+
+-- Live while shown: a buff landing on anyone repaints. Registered on show and
+-- dropped on hide so a closed window costs nothing.
+local function setLive(isLive)
+    if not eventFrame then
+        eventFrame = CreateFrame("Frame")
+        eventFrame:SetScript("OnEvent", function(_, event, unit)
+            if event == "UNIT_AURA" then
+                if isGroupUnit(unit) then
+                    RC:ScanUnit(unit)
+                    Grid:Refresh()
+                end
+            else
+                RC:Scan()
+            end
+        end)
+    end
+    if isLive then
+        eventFrame:RegisterEvent("UNIT_AURA")
+        eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
+    else
+        eventFrame:UnregisterAllEvents()
+    end
+end
+
+local function build()
+    frame = CreateFrame("Frame", "MarkedForDeathRaidCheckFrame", UIParent, "BasicFrameTemplateWithInset")
+    frame:SetSize(GRID_WIDTH, 30 + 16 + MAX_ROWS * ROW_HEIGHT + 40)
+    frame:SetMovable(true)
+    frame:EnableMouse(true)
+    frame:RegisterForDrag("LeftButton")
+    frame:SetScript("OnDragStart", frame.StartMoving)
+    frame:SetScript("OnDragStop", function()
+        frame:StopMovingOrSizing()
+        savePosition()
+    end)
+    frame:SetFrameStrata("DIALOG")
+
+    frame.title = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    frame.title:SetPoint("TOP", frame, "TOP", 0, -6)
+    frame.title:SetText("Marked For Death: raid check")
+
+    frame.header = CreateFrame("Frame", nil, frame)
+    frame.header:SetPoint("TOPLEFT", frame, "TOPLEFT", 14, -28)
+    frame.header:SetPoint("RIGHT", frame, "RIGHT", -14, 0)
+    frame.header:SetHeight(16)
+    for _, column in ipairs(COLUMNS) do
+        local label = frame.header:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        label:SetPoint("LEFT", frame.header, "LEFT", column.x, 0)
+        label:SetText(column.label)
+    end
+
+    frame.body = CreateFrame("Frame", nil, frame)
+    frame.body:SetPoint("TOPLEFT", frame, "TOPLEFT", 6, -46)
+    frame.body:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -6, 40)
+
+    frame.empty = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    frame.empty:SetPoint("TOPLEFT", frame.body, "TOPLEFT", 8, -8)
+
+    frame.refresh = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+    frame.refresh:SetSize(90, 22)
+    frame.refresh:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 14, 10)
+    frame.refresh:SetText("Refresh")
+    frame.refresh:SetScript("OnClick", function()
+        RC:Scan()
+    end)
+
+    frame.callout = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+    frame.callout:SetSize(90, 22)
+    frame.callout:SetPoint("LEFT", frame.refresh, "RIGHT", 8, 0)
+    frame.callout:SetText("Call out")
+    frame.callout:SetScript("OnClick", function()
+        RC:PostCallout()
+    end)
+
+    frame.auto = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")
+    frame.auto:SetSize(24, 24)
+    frame.auto:SetPoint("LEFT", frame.callout, "RIGHT", 16, 0)
+    frame.auto.label = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    frame.auto.label:SetPoint("LEFT", frame.auto, "RIGHT", 2, 0)
+    frame.auto.label:SetText("Open on ready check (leader and assist)")
+    frame.auto:SetScript("OnClick", function(box)
+        MFD.db.settings.raidCheck.isAutoOpenEnabled = box:GetChecked() and true or false
+    end)
+
+    frame:SetScript("OnShow", function()
+        setLive(true)
+    end)
+    frame:SetScript("OnHide", function()
+        setLive(false)
+    end)
+
+    restorePosition()
+    tinsert(UISpecialFrames, "MarkedForDeathRaidCheckFrame")
+end
+
+-- Repaint whichever raid check surface is open when data changes underneath
+-- it: a report arriving, or a scan finishing.
+RC.OnDataChanged = function()
+    Grid:Refresh()
+    if MFD.UI.BuffBoard and MFD.UI.BuffBoard.Refresh then
+        MFD.UI.BuffBoard:Refresh()
+    end
+end
+
+function Grid:Show()
+    if not frame then
+        build()
+    end
+    frame.auto:SetChecked(MFD.db.settings.raidCheck.isAutoOpenEnabled)
+    frame:Show()
+    RC:Scan()
+end
+
+function Grid:Toggle()
+    if frame and frame:IsShown() then
+        frame:Hide()
+        return
+    end
+    Grid:Show()
+end
+
+_G.MarkedForDeath = MFD

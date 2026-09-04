@@ -98,6 +98,24 @@ local function onAddonLoaded()
 
     MFD.Rules.RefreshLocal(MFD.db, UnitName("player"))
 
+    -- The grid opens itself on ready check for the raid leader and assistants
+    -- only. A window on twenty four screens every ready check is how an addon
+    -- gets uninstalled. Everyone else still scans so their buff board is fresh.
+    local readyFrame = CreateFrame("Frame")
+    readyFrame:RegisterEvent("READY_CHECK")
+    readyFrame:SetScript("OnEvent", function()
+        if not MFD.db.settings.raidCheck.isAutoOpenEnabled then
+            return
+        end
+        local isLeadOrAssist = UnitIsGroupLeader("player")
+            or (UnitIsGroupAssistant and UnitIsGroupAssistant("player"))
+        if isLeadOrAssist then
+            MFD.UI.RaidCheck:Show()
+        else
+            MFD.RaidCheck:Scan()
+        end
+    end)
+
     MFD.Print("v" .. MFD.VERSION .. " loaded. /mfd help for commands.")
 end
 
@@ -225,6 +243,13 @@ commands.missing = {
         if not anyone then
             MFD.Print("everyone has everything the group can provide")
         end
+    end,
+}
+
+commands.check = {
+    desc = "open the full raid buff and consumable grid",
+    run = function()
+        MFD.UI.RaidCheck:Toggle()
     end,
 }
 

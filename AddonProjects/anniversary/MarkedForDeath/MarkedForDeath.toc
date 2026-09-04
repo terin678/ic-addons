@@ -25,4 +25,5 @@ RaidCheck.lua
 Tests.lua
 UI_Config.lua
 UI_Assignments.lua
+UI_RaidCheck.lua
 Minimap.lua
