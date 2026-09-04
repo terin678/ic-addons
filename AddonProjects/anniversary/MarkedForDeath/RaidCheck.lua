@@ -155,6 +155,59 @@ function RC.MergeRow(scanned, reported)
     return { state = state, isReported = true }
 end
 
+RC.CALLOUT_THROTTLE_SECONDS = 10  -- minimum gap between raid-chat callouts
+RC.CALLOUT_MAX_LINES = 4          -- lines per callout
+RC.CALLOUT_LINE_BYTES = 200       -- bytes per line, under the chat cap
+
+-- Takes row entries ({ name, missing }). Returns chat lines grouped by fix,
+-- in the order fixes first appear, names sorted, capped and truncated. Pure.
+-- Grouping by fix rather than by player is what makes it actionable: the
+-- paladin reads the Kings line, the mage reads the Int line.
+function RC.FormatCallout(entries)
+    local byFix, order = {}, {}
+    for _, entry in ipairs(entries) do
+        for _, m in ipairs(entry.missing or {}) do
+            if not byFix[m.label] then
+                byFix[m.label] = {}
+                order[#order + 1] = m.label
+            end
+            table.insert(byFix[m.label], entry.name)
+        end
+    end
+
+    local lines = {}
+    for i, label in ipairs(order) do
+        if i > RC.CALLOUT_MAX_LINES then
+            -- Never silently exceed the cap: the last kept line says how many
+            -- fixes were left out.
+            lines[#lines] = lines[#lines] .. " (and " .. (#order - RC.CALLOUT_MAX_LINES) .. " more)"
+            break
+        end
+        local names = byFix[label]
+        table.sort(names)
+        local line = label .. ": " .. table.concat(names, ", ")
+        if #line > RC.CALLOUT_LINE_BYTES then
+            line = string.sub(line, 1, RC.CALLOUT_LINE_BYTES - 3) .. "..."
+        end
+        lines[#lines + 1] = line
+    end
+
+    return lines
+end
+
+-- Takes one row entry. Returns a whisper line, or nil when there is nothing
+-- to say. Pure.
+function RC.FormatWhisper(entry)
+    if not entry.missing or #entry.missing == 0 then
+        return nil
+    end
+    local labels = {}
+    for _, m in ipairs(entry.missing) do
+        labels[#labels + 1] = m.label
+    end
+    return "You are missing: " .. table.concat(labels, ", ")
+end
+
 RC.REPORT_HEARTBEAT_SECONDS = 60   -- periodic self-report while in a group
 RC.REPORT_DEBOUNCE_SECONDS = 2     -- coalesce bursts of change into one report
 
@@ -409,6 +462,47 @@ function RC:SortedRows()
         return a.name < b.name
     end)
     return list
+end
+
+local lastCalloutAt = 0
+
+-- Posts the callout to raid or party chat, throttled so a second click a
+-- moment later does not double post.
+function RC:PostCallout()
+    local now = GetTime()
+    if (now - lastCalloutAt) < RC.CALLOUT_THROTTLE_SECONDS then
+        MFD.Print("callout throttled, try again in a few seconds")
+        return
+    end
+
+    local target = (IsInRaid and IsInRaid() and "RAID") or (IsInGroup and IsInGroup() and "PARTY") or nil
+    if not target then
+        MFD.Error("not in a group")
+        return
+    end
+
+    RC:Scan()
+    local lines = RC.FormatCallout(RC:SortedRows())
+    if #lines == 0 then
+        MFD.Print("nothing to call out")
+        return
+    end
+
+    lastCalloutAt = now
+    for _, line in ipairs(lines) do
+        pcall(SendChatMessage, "[MFD] " .. line, target)
+    end
+end
+
+-- Whispers one player what they are missing.
+function RC:Whisper(name)
+    local entry = RC.rows[name]
+    local text = entry and RC.FormatWhisper(entry)
+    if not text then
+        MFD.Print(tostring(name) .. " is not missing anything")
+        return
+    end
+    pcall(SendChatMessage, "[MFD] " .. text, "WHISPER", nil, name)
 end
 
 local heartbeat = 0

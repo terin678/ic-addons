@@ -228,6 +228,13 @@ commands.missing = {
     end,
 }
 
+commands.callout = {
+    desc = "post who is missing what to raid chat, grouped by fix",
+    run = function()
+        MFD.RaidCheck:PostCallout()
+    end,
+}
+
 commands.minimap = {
     desc = "show or hide the minimap button",
     run = function()

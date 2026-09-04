@@ -1499,4 +1499,54 @@ T.Case("Missing: a flask satisfies both elixir slots", function()
     T.Eq(#missing, 0, "a flask is both elixirs")
 end)
 
+local function entryWith(name, ...)
+    local missing = {}
+    for _, label in ipairs({ ... }) do
+        missing[#missing + 1] = { column = label, label = label }
+    end
+    return { name = name, missing = missing }
+end
+
+T.Case("Callout: groups players by what they are missing", function()
+    local lines = MFD.RaidCheck.FormatCallout({
+        entryWith("Bob", "Int", "Flask"),
+        entryWith("Sue", "Int"),
+        entryWith("Dave", "Flask"),
+    })
+    T.Eq(lines[1], "Int: Bob, Sue", "first fix, sorted names")
+    T.Eq(lines[2], "Flask: Bob, Dave", "second fix")
+end)
+
+T.Case("Callout: nothing missing produces no lines", function()
+    T.Eq(#MFD.RaidCheck.FormatCallout({ entryWith("Bob") }), 0, "silence")
+end)
+
+T.Case("Callout: lines are capped and the overflow is counted", function()
+    local entries = {}
+    for i = 1, 8 do
+        entries[i] = entryWith("P" .. i, "Fix" .. i)
+    end
+    local lines = MFD.RaidCheck.FormatCallout(entries)
+    T.Eq(#lines, MFD.RaidCheck.CALLOUT_MAX_LINES, "capped")
+    if not string.find(lines[#lines], "and %d+ more") then
+        error("last line should say how many fixes were left out, got: " .. lines[#lines])
+    end
+end)
+
+T.Case("Callout: a very long name list is cut to the byte limit", function()
+    local entries = {}
+    for i = 1, 60 do
+        entries[i] = entryWith("Longishplayername" .. i, "Int")
+    end
+    local lines = MFD.RaidCheck.FormatCallout(entries)
+    if #lines[1] > MFD.RaidCheck.CALLOUT_LINE_BYTES then
+        error("line is " .. #lines[1] .. " bytes")
+    end
+end)
+
+T.Case("Whisper: names exactly what one player is missing", function()
+    T.Eq(MFD.RaidCheck.FormatWhisper(entryWith("Bob", "Int", "Flask")), "You are missing: Int, Flask", "template")
+    T.Eq(MFD.RaidCheck.FormatWhisper(entryWith("Bob")), nil, "nothing to say")
+end)
+
 _G.MarkedForDeath = MFD
