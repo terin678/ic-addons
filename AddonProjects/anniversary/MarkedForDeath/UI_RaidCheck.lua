@@ -502,49 +502,49 @@ local board
 local boardEvents
 local isShowingAll = false
 
-local function addBoardView(container)
-    container.rows = container.rows or {}
+-- One icon per thing somebody is missing. A strip of greyed icons reads faster
+-- than a comma list when you are scanning twenty five people between pulls.
+local MAX_MISSING_ICONS = 8
+
+-- The custom cell: a frame holding the strip. A frame is the safe shape here
+-- because Render blanks a cell by calling SetText, SetTexture and SetChecked on
+-- it, and a frame has none of them to be caught by.
+local function makeIconStrip(row, col, x)
+    local strip = CreateFrame("Frame", nil, row)
+    strip:SetPoint("LEFT", row, "LEFT", x, 0)
+    strip:SetSize(col.width, row.rowHeight)
+
+    strip.icons = {}
+    for index = 1, MAX_MISSING_ICONS do
+        local icon = strip:CreateTexture(nil, "ARTWORK")
+        icon:SetSize(ICON_SIZE, ICON_SIZE)
+        icon:SetPoint("LEFT", strip, "LEFT", (index - 1) * (ICON_SIZE + ICON_GAP), 0)
+        icon:Hide()
+        strip.icons[index] = icon
+    end
+
+    return strip
+end
+
+local function addBoardView(container, top, bottom)
+    container.table = MFD.UI.Table(container, {
+        top = top or 0,
+        bottom = bottom or 0,
+        rowHeight = BOARD_ROW_HEIGHT,
+        columns = {
+            { key = "name", label = "Name", width = 100, hit = true },
+            { key = "icons", label = "Missing", width = MAX_MISSING_ICONS * (ICON_SIZE + ICON_GAP),
+              type = "custom", make = makeIconStrip },
+            { key = "words", label = "", width = "flex" },
+        },
+    })
     boardViews[#boardViews + 1] = container
     return container
 end
 
-local function buildBoardRow(row)
-    if row.isBuilt then
-        return
-    end
-    row.isBuilt = true
-
-    row.button = CreateFrame("Button", nil, row)
-    row.button:SetSize(100, BOARD_ROW_HEIGHT)
-    row.button:SetPoint("LEFT", row, "LEFT", 0, 0)
-    row.button.text = row.button:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    row.button.text:SetAllPoints()
-    row.button.text:SetJustifyH("LEFT")
-    row.button:SetScript("OnClick", function()
-        if row.entry then
-            RC:Whisper(row.entry.name)
-        end
-    end)
-
-    row.missing = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    row.missing:SetPoint("RIGHT", row, "RIGHT", 0, 0)
-    row.missing:SetJustifyH("LEFT")
-
-    -- One icon per thing they are missing, drawn before the words. A row of
-    -- greyed-out icons reads faster than a comma list when you are scanning
-    -- twenty five of them between pulls.
-    row.missingIcons = {}
-    for index = 1, 8 do
-        local icon = row:CreateTexture(nil, "ARTWORK")
-        icon:SetSize(ICON_SIZE, ICON_SIZE)
-        icon:Hide()
-        row.missingIcons[index] = icon
-    end
-end
-
--- Draws an icon for each missing entry that has one and returns the words for
--- the rest, so nothing is lost when an icon has not been seen yet.
-local function paintMissingIcons(row, entry, startX)
+-- Fills the strip and returns the labels that had no icon to draw, so nothing
+-- is lost when an icon has not been seen on anybody yet.
+local function paintMissingIcons(strip, entry)
     local learned = MFD.db.learnedAuraIcons
     local buffs = MFD.Data.Auras.RAID_BUFFS
     local drawn, words = 0, {}
@@ -553,12 +553,10 @@ local function paintMissingIcons(row, entry, startX)
         local buff = buffs[m.column]
         local iconPath = buff and RC.IconFor(buff.names, learned) or nil
 
-        if iconPath and drawn < #row.missingIcons then
+        if iconPath and drawn < MAX_MISSING_ICONS then
             drawn = drawn + 1
-            local icon = row.missingIcons[drawn]
+            local icon = strip.icons[drawn]
             icon:SetTexture(iconPath)
-            icon:ClearAllPoints()
-            icon:SetPoint("LEFT", row, "LEFT", startX + (drawn - 1) * (ICON_SIZE + ICON_GAP), 0)
             icon:SetDesaturated(true)
             icon:SetVertexColor(1, 0.3, 0.3)
             icon:Show()
@@ -568,50 +566,49 @@ local function paintMissingIcons(row, entry, startX)
         end
     end
 
-    for index = drawn + 1, #row.missingIcons do
-        row.missingIcons[index]:Hide()
+    for index = drawn + 1, MAX_MISSING_ICONS do
+        strip.icons[index]:Hide()
     end
 
-    return startX + drawn * (ICON_SIZE + ICON_GAP), words
+    return words
 end
 
 local function paintBoard(view)
-    local index = 0
+    local list = {}
     for _, entry in ipairs(RC:SortedRows()) do
-        if index >= BOARD_MAX_ROWS then
+        if #list >= BOARD_MAX_ROWS then
             break
         end
-        local hasMissing = #entry.missing > 0
-        if hasMissing or isShowingAll then
-            index = index + 1
-            local row = MFD.UI.AcquireRow(view.body, view.rows, index, BOARD_ROW_HEIGHT)
-            buildBoardRow(row)
-            row.entry = entry
-
-            local nameColor = entry.row.isReported and "" or AMBER
-            row.button.text:SetText(nameColor .. entry.name .. (nameColor ~= "" and "|r" or ""))
-
-            row.missing:ClearAllPoints()
-            row.missing:SetPoint("RIGHT", row, "RIGHT", 0, 0)
-
-            if hasMissing then
-                local textX, words = paintMissingIcons(row, entry, 106)
-                row.missing:SetPoint("LEFT", row, "LEFT", textX + 4, 0)
-                row.missing:SetText(#words > 0 and (RED .. table.concat(words, ", ") .. "|r") or "")
-            else
-                for _, icon in ipairs(row.missingIcons) do
-                    icon:Hide()
-                end
-                row.missing:SetPoint("LEFT", row, "LEFT", 106, 0)
-                row.missing:SetText(GREEN .. "ok|r")
-            end
+        if #entry.missing > 0 or isShowingAll then
+            list[#list + 1] = entry
         end
     end
 
-    MFD.UI.ReleaseRows(view.rows, index + 1)
+    view.table:Render(list, function(row, entry)
+        -- Amber for somebody the addon has only scanned rather than heard from,
+        -- which is the colour this addon uses for a derived value everywhere.
+        local nameColor = entry.row.isReported and nil or { r = 1, g = 0.8, b = 0.4 }
+        view.table:Set(row, "name", entry.name, nameColor)
 
-    if index == 0 then
-        view.empty:SetText(next(RC.rows) and (GREEN .. "everyone is buffed|r") or (GREY .. "nobody in the group|r"))
+        row.hit.name:SetScript("OnClick", function()
+            RC:Whisper(entry.name)
+        end)
+
+        if #entry.missing == 0 then
+            for _, icon in ipairs(row.cells.icons.icons) do
+                icon:Hide()
+            end
+            view.table:Set(row, "words", "ok", { r = 0.4, g = 1, b = 0.4 })
+            return
+        end
+
+        local words = paintMissingIcons(row.cells.icons, entry)
+        view.table:Set(row, "words", table.concat(words, ", "), { r = 1, g = 0.3, b = 0.3 })
+    end)
+
+    if #list == 0 then
+        view.empty:SetText(next(RC.rows) and (GREEN .. "everyone is buffed|r")
+            or (GREY .. "nobody in the group|r"))
     else
         view.empty:SetText("")
     end
@@ -628,12 +625,8 @@ end
 -- Builds the board into a container the main window owns, alongside the
 -- floating one rather than instead of it.
 function Board:BuildInto(container)
-    container.body = CreateFrame("Frame", nil, container)
-    container.body:SetPoint("TOPLEFT", container, "TOPLEFT", 6, -6)
-    container.body:SetPoint("BOTTOMRIGHT", container, "BOTTOMRIGHT", -6, 34)
-
     container.empty = MFD.UI.Label(container, "")
-    container.empty:SetPoint("TOPLEFT", container.body, "TOPLEFT", 8, -8)
+    container.empty:SetPoint("TOPLEFT", container, "TOPLEFT", 8, -26)
 
     local callout = MFD.UI.Button(container, "Call out", 80, 22)
     callout:SetPoint("BOTTOMLEFT", container, "BOTTOMLEFT", 14, 6)
@@ -651,7 +644,8 @@ function Board:BuildInto(container)
         RC:Scan()
     end)
 
-    addBoardView(container)
+    -- The toolbar sits along the bottom, so the list stops short of it.
+    addBoardView(container, 0, 34)
 end
 
 local function saveBoardPosition()
@@ -714,10 +708,8 @@ local function buildBoard()
 
     -- The library's body starts under the title bar; the toolbar along the
     -- bottom is this board's own, so the list stops short of it.
-    board.body:SetPoint("BOTTOMRIGHT", board, "BOTTOMRIGHT", -6, 40)
-
-    board.empty = MFD.UI.Label(board.body, "")
-    board.empty:SetPoint("TOPLEFT", board.body, "TOPLEFT", 8, -8)
+    board.empty = MFD.UI.Label(board, "")
+    board.empty:SetPoint("TOPLEFT", board, "TOPLEFT", 14, -56)
 
     board.callout = MFD.UI.Button(board, "Call out", 80, 22)
     board.callout:SetPoint("BOTTOMLEFT", board, "BOTTOMLEFT", 14, 10)
@@ -745,7 +737,8 @@ local function buildBoard()
     end
 
     restoreBoardPosition()
-    addBoardView(board)
+    -- Below the library's title bar, and clear of the toolbar at the bottom.
+    addBoardView(board, -34, 40)
     tinsert(UISpecialFrames, "MarkedForDeathBuffBoardFrame")
 end
 
