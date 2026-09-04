@@ -115,6 +115,25 @@ own trash is taken from the contiguous id block those creatures occupy.
 Anything that could not be established either way was left out rather than guessed. A gap
 costs you a search suggestion and nothing else, because you can always type the name.
 
+## Main tank deaths
+
+When a main tank dies the raid gets `Dezedin has died` as a raid warning, posted by the
+Raid Lead's client only so it appears once.
+
+**Whoever is set as Main Tank in the raid frame is picked up automatically.** You do not
+have to type anything. Right click a portrait, Set Main Tank, and they count.
+
+The text box on the Settings tab is only for tanks the raid does not flag, separated by
+commas:
+
+```
+Dezedin, Moophie, Grimmtusk
+```
+
+The line under it shows both sources: who the raid has assigned, and who you typed. With
+no tanks known from either, nothing is announced rather than the addon guessing at who
+tanks.
+
 ## Sharing a rule set
 
 The **Share** button on the Rules tab gives you a plain JSON file of every rule you have.

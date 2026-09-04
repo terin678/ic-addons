@@ -71,10 +71,32 @@ local TOGGLES = {
     },
     {
         edit = true,
-        label = "Extra tank names",
-        tip = "Comma separated. The raid's own main tank assignment already counts; this is for tanks it does not list.",
+        label = "Extra tanks, separated by commas (optional)",
+        tip = "Whoever is set as Main Tank in the raid frame is already picked up automatically. Only type names here for tanks the raid does not flag. Dezedin, Moophie, Grimmtusk.",
         get = function() return MFD.db.settings.tankNames end,
         set = function(v) MFD.db.settings.tankNames = v end,
+        preview = function(text)
+            local parts = {}
+
+            local assigned = {}
+            for name in pairs(MFD.Tanks.AssignedTanks()) do
+                assigned[#assigned + 1] = name
+            end
+            table.sort(assigned)
+
+            if #assigned > 0 then
+                parts[#parts + 1] = "|cff66ff66from the raid:|r " .. table.concat(assigned, ", ")
+            else
+                parts[#parts + 1] = "|cff999999nobody is set as Main Tank in the raid frame|r"
+            end
+
+            local typed = MFD.Tanks.ParseList(text)
+            if #typed > 0 then
+                parts[#parts + 1] = "|cff66ff66typed:|r " .. table.concat(typed, ", ")
+            end
+
+            return table.concat(parts, "   ")
+        end,
     },
 
     { section = "Raid check" },
@@ -129,7 +151,7 @@ local function buildBody(parent)
             label:SetText(entry.label)
 
             local box = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
-            box:SetSize(300, 20)
+            box:SetSize(360, 20)
             box:SetPoint("LEFT", label, "RIGHT", 12, 0)
             box:SetAutoFocus(false)
             box.entry = entry
@@ -144,6 +166,19 @@ local function buildBody(parent)
             box:SetScript("OnEnterPressed", function(self)
                 self:ClearFocus()
             end)
+
+            -- Live feedback on what the text parsed to. A list field with no
+            -- echo leaves you guessing whether the separator was right.
+            if entry.preview then
+                box.preview = parent:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+                box.preview:SetPoint("TOPLEFT", box, "BOTTOMLEFT", 4, -2)
+                box.preview:SetPoint("RIGHT", parent, "RIGHT", -20, 0)
+                box.preview:SetJustifyH("LEFT")
+                box:HookScript("OnTextChanged", function(self)
+                    self.preview:SetText(entry.preview(self:GetText()))
+                end)
+                y = y - 14
+            end
 
             parent.edits = parent.edits or {}
             parent.edits[#parent.edits + 1] = box
@@ -221,6 +256,9 @@ local function refreshBody(body)
         -- typing is maddening.
         if not box:HasFocus() then
             box:SetText(box.entry.get() or "")
+        end
+        if box.preview then
+            box.preview:SetText(box.entry.preview(box:GetText()))
         end
     end
 
