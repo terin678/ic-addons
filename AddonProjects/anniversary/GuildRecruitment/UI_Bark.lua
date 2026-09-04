@@ -183,16 +183,28 @@ UI.RegisterPage(30, "Message", function(page)
         "GameFontDisableSmall")
     mainLabel:SetPoint("TOPLEFT", 0, -40)
 
+    -- Assigned once every widget below exists. The boxes call it as they are typed in, so
+    -- the preview is of what is on screen rather than of what was last saved.
+    local UpdatePreview
+    -- Set the moment anybody types, cleared by Save and by Revert. Without it the refresh
+    -- reloads the boxes from the saved document whenever nothing has focus, so switching
+    -- to the Teams tab and back would throw away an unsaved edit without saying so.
+    local dirty = false
+    local function Typed()
+        dirty = true
+        if UpdatePreview then UpdatePreview() end
+    end
+
     -- Full page width: TextBox reserves its own 26 for its scrollbar, so taking
     -- 26 off first put this page's right edge 26 short of every other tab's.
-    local main = UI.TextBox(page, UI.PAGE_W, 54, { maxBytes = 255 })
+    local main = UI.TextBox(page, UI.PAGE_W, 54, { maxBytes = 255, onChange = Typed })
     main:SetPoint("TOPLEFT", 0, -56)
 
     local teamLabel = UI.Label(page, "Each team  |cff888888{tag}  {days}  {needs}|r",
         "GameFontDisableSmall")
     teamLabel:SetPoint("TOPLEFT", 0, -118)
 
-    local team = UI.TextBox(page, UI.PAGE_W, 40, { maxBytes = 255 })
+    local team = UI.TextBox(page, UI.PAGE_W, 40, { maxBytes = 255, onChange = Typed })
     team:SetPoint("TOPLEFT", 0, -134)
 
     local contactsLabel = UI.Label(page, "Whisper who  |cff888888comma separated|r",
@@ -202,6 +214,11 @@ UI.RegisterPage(30, "Message", function(page)
     local contacts = UI.EditBox(page, 300, 22)
     contacts:SetPoint("TOPLEFT", 0, -198)
     contacts:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+    -- byUser only: LoadDraft's own SetText comes through here too, and re-previewing on
+    -- our own write would be work for nothing.
+    contacts:SetScript("OnTextChanged", function(_, byUser)
+        if byUser then Typed() end
+    end)
 
     local bar = UI.Toolbar(page, { top = -230, right = -26 })
     local save = bar:Left(UI.Button(bar, "Save and push", 120, 22, { kind = "accent" }))
@@ -239,6 +256,8 @@ UI.RegisterPage(30, "Message", function(page)
         main:SetText(draft.template)
         team:SetText(draft.teamTemplate)
         contacts:SetText(draft.contacts)
+        -- The boxes now match the document again, whoever asked for that.
+        dirty = false
     end
 
     local function Draft()
@@ -252,6 +271,36 @@ UI.RegisterPage(30, "Message", function(page)
             if clean ~= "" then copy.contacts[#copy.contacts + 1] = clean end
         end
         return copy
+    end
+
+    --[[
+    The preview and its length meter, off the boxes as they stand right now.
+
+    Separate from the page refresh because it runs on every keystroke: it reads the two
+    templates and the contacts from the widgets and the TEAMS from the live document, so
+    editing a team on the Teams tab shows up here as soon as this tab is drawn again, and
+    editing a template shows up as you type.
+
+    Assembling per keystroke is a handful of string operations over at most a few teams.
+    ]]
+    UpdatePreview = function()
+        local copy = Draft()
+        local msg, level, dropped, _, reason = ns.Message.Assemble(copy, ns.cdb.bark.cursor)
+        previewText:SetText(msg or ("|cff888888" .. tostring(reason) .. "|r"))
+
+        local length = msg and #msg or 0
+        local color = "|cff44ff44"
+        if length > ns.Message.MAX_LEN then color = "|cffff4444"
+        elseif length > ns.Message.MAX_LEN - 30 then color = "|cffffcc00" end
+        meter:SetText(string.format("%s%d|r / %d characters  \194\183  %s%s%s",
+            color, length, ns.Message.MAX_LEN,
+            level and (ns.Message.LEVEL_NAME[level] or "?") or "nothing to show",
+            (dropped or 0) > 0 and string.format("  \194\183  |cffffcc00%d needs left out|r",
+                dropped) or "",
+            -- The preview is of the boxes, so once they differ from the saved document it
+            -- has to say so, or this reads as a line the guild is already sending.
+            dirty and "  \194\183  |cffffcc00unsaved  \194\183  Save and push to send it|r"
+                or ""))
     end
 
     save:SetScript("OnClick", function()
@@ -296,24 +345,15 @@ UI.RegisterPage(30, "Message", function(page)
         UI.SetEditable(team, mine)
         UI.SetEditable(contacts, mine)
 
-        -- Never overwrite what somebody is halfway through typing.
-        if not (main.edit:HasFocus() or team.edit:HasFocus() or contacts:HasFocus()) then
+        -- Never overwrite what somebody is halfway through typing, and never throw away
+        -- an edit they have stopped typing but not yet saved. Focus is lost the moment
+        -- they click another tab, so focus alone is not enough to tell those apart.
+        local busy = main.edit:HasFocus() or team.edit:HasFocus() or contacts:HasFocus()
+        if not busy and not dirty then
             LoadDraft()
         end
 
-        local copy = Draft()
-        local msg, level, dropped, _, reason = ns.Message.Assemble(copy, ns.cdb.bark.cursor)
-        previewText:SetText(msg or ("|cff888888" .. tostring(reason) .. "|r"))
-
-        local length = msg and #msg or 0
-        local color = "|cff44ff44"
-        if length > ns.Message.MAX_LEN then color = "|cffff4444"
-        elseif length > ns.Message.MAX_LEN - 30 then color = "|cffffcc00" end
-        meter:SetText(string.format("%s%d|r / %d characters  \194\183  %s%s",
-            color, length, ns.Message.MAX_LEN,
-            level and (ns.Message.LEVEL_NAME[level] or "?") or "nothing to show",
-            (dropped or 0) > 0 and string.format("  \194\183  |cffffcc00%d needs left out|r",
-                dropped) or ""))
+        UpdatePreview()
 
         local same, behind, ahead = ns.Doc.Agreement(ns.db.doc, ns.db.peers)
         footer:SetText(string.format("|cff888888%s  \194\183  %d of %d officers have it|r",

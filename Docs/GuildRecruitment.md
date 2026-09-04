@@ -91,7 +91,16 @@ fit in one chat line alongside everything else.
 
 **Message** is raid-leader only. `{teams}` is where the teams go; `{guild}` and `{contacts}`
 fill themselves in. A second template says how one team is written, with `{tag}`, `{days}`
-and `{needs}`. The preview under it re-assembles as you type, with a length meter.
+and `{needs}`.
+
+The preview under it re-assembles on every keystroke, with a length meter, and it is built
+from the boxes rather than from the saved message — so it shows what you are about to send,
+not what the guild already has. While the two differ the meter says **unsaved**. Nothing
+reaches anyone until **Save and push**; **Revert** puts the boxes back. Typing here does not
+move the revision every other officer is watching, which is why the two are kept apart.
+
+Team names, tags, days and needs come from the live document, so an edit made on the Teams
+tab shows up in this preview as soon as you come back to it.
 
 **Officers** is the tab that answers *"why is Threnody sending the old line"*. Green has your
 revision, amber is behind, blue is ahead of you.
