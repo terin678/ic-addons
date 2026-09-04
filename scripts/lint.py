@@ -241,6 +241,66 @@ def check_versions(addon_dir):
                  "%s is listed as %s, the .toc says %s" % (name, row.group(1), version))
 
 
+LIB_MINOR = re.compile(r'local\s+MAJOR,\s*MINOR\s*=\s*"([^"]+)",\s*(\d+)')
+TOC_SAVED = re.compile(r"^##\s*SavedVariables(PerCharacter)?:", re.M)
+
+# The collaborator's addon. It has saved variables and no LibICCore, and it is not
+# ours to change; see SKILL.md.
+NOT_OURS = {"CutMaster"}
+
+
+def check_libs(flavor_dir):
+    """Every LibIC* MINOR in the source is the one Docs/ICLibs.md records.
+
+    SKILL.md says to bump the MINOR on an API change and record it in the doc; the doc
+    was found a version behind, which is exactly the state that makes the rule useless.
+    """
+    libs_dir = os.path.join(flavor_dir, "ICLibs")
+    doc = os.path.join(ROOT, "Docs", "ICLibs.md")
+    if not os.path.isdir(libs_dir) or not os.path.exists(doc):
+        return
+    doc_src = io.open(doc, encoding="utf-8").read()
+    for name in sorted(os.listdir(libs_dir)):
+        if not name.startswith("LibIC"):
+            continue
+        path = os.path.join(libs_dir, name, name + ".lua")
+        if not os.path.exists(path):
+            continue
+        src = io.open(path, encoding="utf-8").read()
+        m = LIB_MINOR.search(src)
+        if not m:
+            note(path, 1, "no `local MAJOR, MINOR = ...` line")
+            continue
+        major, minor = m.group(1), m.group(2)
+        row = re.search(r"^\|\s*%s\s*\|\s*(\d+)\s*\|" % re.escape(major), doc_src, re.M)
+        if not row:
+            note(doc, 1, "no MINOR row for %s in the Contents table" % major)
+        elif row.group(1) != minor:
+            note(doc, line_of(doc_src, row.start()),
+                 "%s is listed at MINOR %s, the source says %s" % (major, row.group(1), minor))
+
+
+def check_core(addon_dir):
+    """An addon with saved variables boots them through LibICCore.
+
+    The library carries the load check that says whether the client handed the saved
+    variables back; an addon that bootstraps by hand has no such line and its first
+    symptom of a stale client is data gone.
+    """
+    toc = toc_path(addon_dir)
+    name = os.path.basename(addon_dir)
+    if name in NOT_OURS or not os.path.exists(toc):
+        return
+    if not TOC_SAVED.search(io.open(toc, encoding="utf-8").read()):
+        return
+    core = os.path.join(addon_dir, "Core.lua")
+    if not os.path.exists(core):
+        note(toc, 1, "declares saved variables but has no Core.lua to attach LibICCore in")
+        return
+    if "LibICCore-1.0" not in io.open(core, encoding="utf-8").read():
+        note(core, 1, "declares saved variables but does not attach LibICCore-1.0")
+
+
 def main(argv):
     wanted = set(argv[1:])
     checked = 0
@@ -248,6 +308,8 @@ def main(argv):
         flavor_dir = os.path.join(PROJECTS, flavor)
         if not os.path.isdir(flavor_dir):
             continue
+        if not wanted or "ICLibs" in wanted:
+            check_libs(flavor_dir)
         for addon in sorted(os.listdir(flavor_dir)):
             addon_dir = os.path.join(flavor_dir, addon)
             if not os.path.isdir(addon_dir):
@@ -257,6 +319,7 @@ def main(argv):
             checked += 1
             check_toc(addon_dir)
             check_versions(addon_dir)
+            check_core(addon_dir)
             for root, _, names in os.walk(addon_dir):
                 for name in sorted(names):
                     if not name.endswith(".lua"):

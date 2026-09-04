@@ -2,7 +2,7 @@
 ## Title: ICTemplate
 ## Notes: The worked example for the guild addons: a live gallery of every LibICUI widget shown beside the source it was built from. Copy this folder to start a new addon.
 ## Author: Malexis
-## Version: 1.0.2
+## Version: 1.1.0
 ## IconTexture: Interface\AddOns\ICTemplate\ICTemplate.tga
 ## Group: ICLibs
 ## Category: Impulse Control
@@ -11,14 +11,7 @@
 ## Dependencies: ICLibs
 ## X-Category: Development Tools
 
-Libs\LibStub\LibStub.lua
-Libs\CallbackHandler-1.0\CallbackHandler-1.0.lua
-Libs\LibDataBroker-1.1\LibDataBroker-1.1.lua
-Libs\LibDBIcon-1.0\LibDBIcon-1.0.lua
-
 Core.lua
-Util.lua
-Log.lua
 Snippet.lua
 Demos.lua
 Pulse.lua

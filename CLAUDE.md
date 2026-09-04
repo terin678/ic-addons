@@ -36,6 +36,10 @@ Guild World of Warcraft addons. Read `CODING_STANDARDS.md` before changing any L
 - Never edit `CutMaster`; it belongs to a collaborator. Port upstream changes by hand into
   TradeMaster instead — `SKILL.md` has the procedure.
 - Never commit `WTF/`, saved variables, or zips.
+- Editing a `.toc` needs a client restart. `/reload` does not re-read it, and a client that has been running across `.toc` edits can stop restoring one addon's account-wide saved variables while still restoring the per-character ones. The fingerprint is `/x log` saying `SAVED VARIABLES WERE EMPTY` with the per-character table intact. Restart the client before reading a line of addon code.
+- The plumbing every addon shares is `LibICCore-1.0` in ICLibs, installed by one
+  `Core:Attach` call in `Core.lua`. Do not add a Print, a bootstrap, a Util or a test
+  harness to an addon; `Docs/ICLibs.md` says what Attach installs.
 
 ## Verifying changes
 

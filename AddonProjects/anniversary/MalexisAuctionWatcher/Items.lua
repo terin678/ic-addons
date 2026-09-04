@@ -19,7 +19,7 @@ end
 -- Add a new item to track
 function MAW:AddItem(itemName, itemType)
     if not itemName or itemName == "" then
-        print(addonName .. ": Please specify an item name")
+        MAW.Print("Please specify an item name")
         return
     end
 
@@ -29,15 +29,15 @@ function MAW:AddItem(itemName, itemType)
     -- Get item ID from name
     local itemID = self:GetItemIDFromName(itemName)
     if not itemID or itemID == 0 then
-        print(addonName .. ": Could not find item: " .. itemName)
-        print(addonName .. ": Try linking the item in chat, or viewing it in-game to cache it first")
-        print(addonName .. ": Example: Shift-click the item, then try /maw add again")
+        MAW.Print("Could not find item: " .. itemName)
+        MAW.Print("Try linking the item in chat, or viewing it in-game to cache it first")
+        MAW.Print("Example: Shift-click the item, then try /maw add again")
         return
     end
 
     local db = self:GetActiveDB()
     if db.items[itemName] then
-        print(addonName .. ": Already tracking " .. itemName)
+        MAW.Print("Already tracking " .. itemName)
         return
     end
 
@@ -57,7 +57,7 @@ function MAW:AddItem(itemName, itemType)
         customHigh = nil,  -- Custom high price bound (shop selling limit)
         order = maxOrder + 1  -- Display order
     }
-    print(addonName .. ": Now tracking " .. itemName .. " (ID: " .. itemID .. ") as " .. itemType)
+    MAW.Print("Now tracking " .. itemName .. " (ID: " .. itemID .. ") as " .. itemType)
 
     -- Fire callback
     self:FireCallbacks("onItemAdded", itemName)
@@ -66,18 +66,18 @@ end
 -- Remove an item from tracking
 function MAW:RemoveItem(itemName)
     if not itemName or itemName == "" then
-        print(addonName .. ": Please specify an item name")
+        MAW.Print("Please specify an item name")
         return
     end
 
     local db = self:GetActiveDB()
     if not db.items[itemName] then
-        print(addonName .. ": Not tracking " .. itemName)
+        MAW.Print("Not tracking " .. itemName)
         return
     end
 
     db.items[itemName] = nil
-    print(addonName .. ": Stopped tracking " .. itemName)
+    MAW.Print("Stopped tracking " .. itemName)
 
     -- Fire callback
     self:FireCallbacks("onItemRemoved", itemName)
@@ -115,7 +115,7 @@ function MAW:MoveItemUp(itemName, itemType)
         db.items[itemName].order = swapOrder
         db.items[swapItem].order = currentOrder
         if self.debugMode then
-            print(addonName .. ": Moved " .. itemName .. " up")
+            MAW.Print("Moved " .. itemName .. " up")
         end
         self:FireCallbacks("onItemAdded")  -- Trigger refresh
     end
@@ -153,7 +153,7 @@ function MAW:MoveItemDown(itemName, itemType)
         db.items[itemName].order = swapOrder
         db.items[swapItem].order = currentOrder
         if self.debugMode then
-            print(addonName .. ": Moved " .. itemName .. " down")
+            MAW.Print("Moved " .. itemName .. " down")
         end
         self:FireCallbacks("onItemAdded")  -- Trigger refresh
     end

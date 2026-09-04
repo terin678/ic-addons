@@ -1,8 +1,5 @@
 local addonName, ns = ...
 
-ns.Probe = ns.Probe or {}
-local Probe = ns.Probe
-
 --[[
 "Does this client have X." Retail documentation is often wrong for interface
 20506, and guessing has cost this repo a release more than once, so anything the
@@ -10,7 +7,8 @@ code is unsure about gets asked here and the answer goes into
 .claude/skills/wow-addon-dev/client-api.md.
 
 Every entry is { path, why }. `path` is dotted, so a field on a namespace table
-can be checked without indexing a nil.
+can be checked without indexing a nil. LibICCore does the walking and the printing;
+this file is the list and the status lines.
 ]]
 
 local CHECKS = {
@@ -22,14 +20,11 @@ local CHECKS = {
     { "GetChannelList", "finding a public channel by name" },
     { "InCombatLockdown", "half the reasons a send is blocked" },
 
-    -- Nothing in this repo has ever sent an addon message. GuildRecruitment is
-    -- about to, and which of these two exists decides how its Comm layer is written.
     { "C_ChatInfo.SendAddonMessage", "addon-to-addon sync, the modern name" },
     { "C_ChatInfo.RegisterAddonMessagePrefix", "whether a prefix must be registered first" },
     { "SendAddonMessage", "addon-to-addon sync, the legacy global" },
     { "RegisterAddonMessagePrefix", "the legacy prefix registration" },
 
-    -- Nor has anything read the guild roster.
     { "IsInGuild", "is there a guild to talk to at all" },
     { "C_GuildInfo.GuildRoster", "asks the server to refresh the roster" },
     { "GuildRoster", "the legacy name for the same thing" },
@@ -40,49 +35,7 @@ local CHECKS = {
     { "GetCoinTextureString", "money in a list cell" },
 }
 
--- Pure. Walks a dotted path from a table without indexing a nil on the way.
-function Probe.Resolve(root, path)
-    local node = root
-    for part in tostring(path or ""):gmatch("[^%.]+") do
-        if type(node) ~= "table" then return nil end
-        node = node[part]
-    end
-    return node
-end
-
--- Pure. Returns present(boolean), kind(string) for one value.
-function Probe.Describe(value)
-    if value == nil then return false, "missing" end
-    return true, type(value)
-end
-
--- Prints one line per check. Green for present, red for missing, and the reason
--- the addon cares, so a missing line says what breaks rather than just "no".
-function Probe.Run()
-    ns.Printf("client probe, interface %s:", (select(4, GetBuildInfo())) or "?")
-    local present, absent = 0, 0
-    for _, check in ipairs(CHECKS) do
-        local ok, kind = Probe.Describe(Probe.Resolve(_G, check[1]))
-        if ok then present = present + 1 else absent = absent + 1 end
-        ns.Printf("  %s %-42s |cff888888%s|r",
-            ok and "|cff44ff44yes|r" or "|cffff4444no |r",
-            check[1],
-            ok and kind or check[2])
-    end
-    ns.Printf("%d present, %s%d missing|r.", present,
-        absent > 0 and "|cffffcc00" or "|cff44ff44", absent)
-    return present, absent
-end
-
--- The table behind the About page, so the window and chat cannot disagree.
-function Probe.Rows()
-    local out = {}
-    for _, check in ipairs(CHECKS) do
-        local ok, kind = Probe.Describe(Probe.Resolve(_G, check[1]))
-        out[#out + 1] = { name = check[1], present = ok, kind = kind, why = check[2] }
-    end
-    return out
-end
+local Probe = ns.Core:Probe(ns, CHECKS)
 
 -- One line per part of the addon. The answer to "it is not doing anything".
 function Probe.Status()

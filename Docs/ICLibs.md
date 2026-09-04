@@ -8,7 +8,9 @@ GuildRecruitment all use it.
 
 Extract the zip of any addon that needs it; the `ICLibs` folder is included. It must sit
 in `Interface\AddOns` next to the addon. The dependent addons list it under
-`## Dependencies`, so the game refuses to load them without it and says why.
+`## Dependencies`, so the game refuses to load them without it and says why. The
+third-party libraries every addon uses -- LibStub, CallbackHandler, LibDataBroker,
+LibDBIcon -- load here once; no addon bundles its own copy.
 
 The guild addons carry `## Category: Impulse Control`, so they collapse under one
 heading in the in-game AddOns list, and a `## Group:` naming the addon that heads its area:
@@ -25,12 +27,64 @@ carries neither directive and sits on its own in the alphabetical list.
 | Library | MINOR | What it does |
 | --- | --- | --- |
 | LibStub | — | Standard library loader |
+| CallbackHandler-1.0, LibDataBroker-1.1, LibDBIcon-1.0 | — | The minimap launcher, and what it stands on |
+| LibICCore-1.0 | 1 | The plumbing every addon used to carry its own copy of: Print, the saved-variable bootstrap and its load check, Util, Log, the test harness, the slash dispatcher, reset, the minimap launcher, the probe |
 | LibICTradeSkill-1.0 | 2 | Reads the open profession window into plain tables, merges scans into a per-profession book, and checks Bind on Pickup reagents |
 | LibICUI-1.0 | 6 | Windows, tabs, buttons, lists and toolbars in the guild palette, plus relative ages and the brand itself |
 
 The MINOR goes up whenever a library's API changes, and LibStub hands every caller the
 highest one loaded. Bump it in the library source and in this table together, or a reader
 has no way to tell whether a change that needed a bump got one.
+
+## LibICCore-1.0
+
+```lua
+local Core = LibStub("LibICCore-1.0")
+Core:Attach(ns, {
+    name = addonName, prefix = "GuildRecruitment", version = VERSION,
+    db = "GuildRecruitmentDB", cdb = "GuildRecruitmentCharDB",     -- cdb is optional
+    defaults = Defaults, charDefaults = CharDefaults,
+    schema = 1, migrations = Migrations, charSchema = 1,
+    slash = { "/gr", "/guildrecruitment" }, slashKey = "GUILDRECRUITMENT",
+    help = HELP, commands = COMMANDS,
+    logKinds = { sent = "|cff44ff44" },     -- extra Log colours
+    onLoad = function(info) end,          -- info.sawFile, info.firstRun, info.migrated
+    onToggle = function(on) end, onReset = function(what) end,
+    loadedHint = "/gr opens the window, /gr help lists commands.",   -- or a function
+    log = false,                          -- only for an addon with a Log of its own shape
+})
+```
+
+One call, and the namespace has everything the addons used to carry a copy of each,
+under the names they already used:
+
+| On `ns` | What |
+| --- | --- |
+| `Print`, `Printf`, `Debug` | Prefixed chat output on the frame `/x out` chose; `Debug` only when `settings.debug` |
+| `Enabled`, `Now` | The master switch and the one clock |
+| `DeepCopy`, `ApplyDefaults`, `Migrate` | The saved-variable helpers |
+| `Util` | Trim, StripEscapes, Normalize, Truncate, SortedKeys, Serialize, Clean, Plural, OnOff, Duration, Freshness. An addon adds its own on top |
+| `Log` | The two ring buffers: Add, Capture, Window, Filter, Recent, Sources, Describe, KIND_COLOR |
+| `Tests` | Case, Eq, True, Near, With, Run; the result goes to `db.lastTestRun` |
+| `Reset(what)` | `all`, `log`, or any top-level key of the defaults |
+| `db`, `cdb`, `VERSION`, `Core` | Set at ADDON_LOADED |
+
+The slash dispatcher parses `/x <sub> <rest>` and comes with `help`, `log [n]`, `probe`,
+`status`, `test`, `enable`, `disable`, `out [n]`, `reset [...]`, `scale [pct]` and
+`version`; a key in `commands` adds a sub-command or replaces a built-in, and `""`
+is the bare command. `help` prints the `HELP` rows; a row with `needs = "Module"` is
+shown only when `ns.Module` exists.
+
+The bootstrap runs on the addon's own ADDON_LOADED: migrate, then default, then publish,
+then log **whether the client handed the saved variables back at all**. An account that
+has run the addon before and comes up empty gets a red line saying so before anything is
+edited, because the damage is not the empty load but the logout after it. The cause is a
+client that has been running across `.toc` edits; the cure is a restart.
+
+Also on the library: `Core:MinimapButton(ns, { name, icon, onClick(button), tooltip(tt) })`
+for a LibDBIcon launcher whose position lives in `settings.minimap`; `Core:Probe(ns, CHECKS)`
+for the "does this client have X" list, installing `Rows`, `PrintChecks` and a default
+`Run` on `ns.Probe`; and `Core:Bindings(key, header, names)` for the `BINDING_*` globals.
 
 ## LibICTradeSkill-1.0
 
@@ -112,14 +166,17 @@ not depend on ICLibs, so carrying its own copy is the only way it can reach the 
 
 ## Used by
 
+All four attach through LibICCore, so the plumbing below is one implementation. On top
+of it:
+
 - MalexisAuctionWatcher: scans every profession window into a per-character book and adds
   recipes from it (Recipes tab, Presets, "From your recipe book..."), and builds its
   window, its six tabs, every list and its dialogs on LibICUI. It is also the first user of
   `opts.scalable`: its window is 1024x700, which covers most of a smaller monitor.
 - TradeMaster: the book scanner behind every tab, and LibICUI for the window, the tabs,
   every list and every button.
-- ICTemplate: LibICUI only, and all of it — its window is a live gallery of every widget
+- ICTemplate: all of LibICUI — its window is a live gallery of every widget
   here shown beside the source that built it, so it is also the smoke test after a change
   to this library.
-- GuildRecruitment: LibICUI only — the window, the tabs, the tables and the multi-line
-  `TextBox` the message is composed in.
+- GuildRecruitment: the window, the tabs, the tables and the multi-line `TextBox` the
+  message is composed in; and it is where the load check was born.

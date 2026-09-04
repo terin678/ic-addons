@@ -32,7 +32,7 @@ MAW.scan = MAW.scan or {
 
 local function Debug(msg)
     if MAW.debugMode then
-        print(addonName .. " [DEBUG]: " .. msg)
+        MAW.Debug("%s", msg)
     end
 end
 
@@ -79,7 +79,7 @@ end
 -- Start a scan of the given item names, or merge them into a running scan.
 function MAW:StartScan(itemNames, label)
     if not AtAuctionHouse() then
-        print(addonName .. ": You must be at the Auction House to scan")
+        MAW.Print("You must be at the Auction House to scan")
         UIErrorsFrame:AddMessage("You must be at the Auction House to scan", 1.0, 0.1, 0.1, 1.0)
         return false
     end
@@ -92,7 +92,7 @@ function MAW:StartScan(itemNames, label)
         end
     end
     if #wanted == 0 then
-        print(addonName .. ": No items to scan. Use /maw add to track items.")
+        MAW.Print("No items to scan. Use /maw add to track items.")
         return false
     end
 
@@ -107,9 +107,9 @@ function MAW:StartScan(itemNames, label)
         end
         s.total = s.total + added
         if added > 0 then
-            print(string.format("%s: Added %d item(s) to the running scan (%d/%d done)", addonName, added, s.done, s.total))
+            MAW.Printf("Added %d item(s) to the running scan (%d/%d done)", added, s.done, s.total)
         else
-            print(addonName .. ": Those items are already in the running scan")
+            MAW.Print("Those items are already in the running scan")
         end
         Progress()
         return true
@@ -121,7 +121,7 @@ function MAW:StartScan(itemNames, label)
     s.state = "pending"
     s.pendingSince = GetTime()
     -- The client allows one auction query about every 3 seconds; that is the pace, not the addon
-    print(string.format("%s: %s (%d items, expect about %d seconds)...", addonName, label or "Starting scan", s.total, s.total * 3))
+    MAW.Printf("%s (%d items, expect about %d seconds)...", label or "Starting scan", s.total, s.total * 3)
     Progress()
     return true
 end
@@ -132,7 +132,7 @@ function MAW:CancelScan(reason)
         return false
     end
     ResetState()
-    print(addonName .. ": Scan cancelled" .. (reason and (" (" .. reason .. ")") or ""))
+    MAW.Print("Scan cancelled" .. (reason and (" (" .. reason .. ")") or ""))
     self:FireCallbacks("onScanComplete")
     Progress()
     return true
@@ -208,7 +208,7 @@ end
 function MAW:ScanSingleItem(itemName)
     local db = self:GetActiveDB()
     if not db.items[itemName] then
-        print(addonName .. ": Not tracking " .. tostring(itemName))
+        MAW.Print("Not tracking " .. tostring(itemName))
         return false
     end
     return self:StartScan({ itemName }, "Scanning " .. itemName)
@@ -231,7 +231,7 @@ end
 local function FinishScan()
     local s = MAW.scan
     ResetState()
-    print(addonName .. ": Scan complete!")
+    MAW.Print("Scan complete!")
     local db = MAW:GetActiveDB()
     db.lastScanTime = time()
     MAW:FireCallbacks("onScanComplete")
@@ -398,7 +398,7 @@ function MAW:OnUpdateHandler(frame, elapsed)
             Debug("No AUCTION_ITEM_LIST_UPDATE after " .. string.format("%.2f", since) .. "s but slot free; reading the list anyway")
             self:TryProcessCurrent()
         elseif since > RESULT_TIMEOUT then
-            print(addonName .. ": No results for " .. tostring(s.current) .. " (timed out), skipping")
+            MAW.Print("No results for " .. tostring(s.current) .. " (timed out), skipping")
             s.done = s.done + 1
             Advance()
         end

@@ -1,6 +1,7 @@
 -- RecipeDialog.lua - Add a custom material -> product recipe
 local addonName = "MalexisAuctionWatcher"
 local MAWRecipeDialog = {}
+local MAW = _G.MalexisAuctionWatcher
 
 -- Dialogs wear the same palette as the main window. The style is registered by name in
 -- UI.lua, which loads later, so it is looked up when a dialog is actually built.
@@ -245,7 +246,7 @@ function MAWRecipeDialog.Submit()
             frame.status:SetText(err or "Could not save recipe.")
             return
         end
-        print(addonName .. ": Updated recipe " .. newName)
+        MAW.Print("Updated recipe " .. newName)
     else
         local ok, err = MAW:AddRecipe({
             name = productName,
@@ -257,7 +258,7 @@ function MAWRecipeDialog.Submit()
             frame.status:SetText(err or "Could not add recipe.")
             return
         end
-        print(addonName .. ": Added recipe for " .. productName)
+        MAW.Print("Added recipe for " .. productName)
     end
     frame.editing = nil
     frame:Hide()
@@ -518,7 +519,7 @@ local function BuildImportDialog()
                 if ok then added = added + 1 end
             end
         end
-        print(string.format("%s: added %d recipes from your %s book", addonName, added, importFrame.line or "profession"))
+        MAW.Printf("added %d recipes from your %s book", added, importFrame.line or "profession")
         MAWRecipeDialog.RefreshImport()
         if _G.MalexisAuctionWatcherUI then _G.MalexisAuctionWatcherUI:RefreshData() end
     end)
@@ -599,7 +600,7 @@ function MAWRecipeDialog.RefreshImport()
             btn:Enable()
             btn:SetScript("OnClick", function()
                 local ok, err = MAW:ImportProfessionRecipe(e, line)
-                if not ok then print(addonName .. ": " .. (err or "could not add")) end
+                if not ok then MAW.Print((err or "could not add")) end
                 MAWRecipeDialog.RefreshImport()
                 if _G.MalexisAuctionWatcherUI then _G.MalexisAuctionWatcherUI:RefreshData() end
             end)

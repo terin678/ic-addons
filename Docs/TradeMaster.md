@@ -370,6 +370,7 @@ For Jewelcrafting, gem names in the profession window are replaced with what the
 | `/tm try <msg>` / `/tm trywhisper <msg>` / `/tm tryparty <msg>` | Test the classifier for the active profession. Sends nothing. |
 | `/tm capture` | Record every Trade message and its verdict |
 | `/tm test` | Run the built-in self test |
+| `/tm help` / `/tm version` | Every command with a line each; addon and library versions |
 
 ## Tuning it
 

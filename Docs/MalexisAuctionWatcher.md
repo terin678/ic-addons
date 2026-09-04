@@ -275,6 +275,7 @@ open. "Refresh Table" recomputes without scanning.
 /maw scale <percent>      window size, 50 to 125
 /maw debug                verbose chat output
 /maw test                 run the built-in checks
+/maw version              addon and library versions
 /maw help
 ```
 

@@ -82,7 +82,15 @@ will not load unless the player ticks "Load out of date AddOns".
 ## Client folders
 
 Saved variables: `<flavor>\WTF\Account\<ACCOUNT>\SavedVariables\<Addon>.lua`, written on
-logout and `/reload` only. Lua errors: BugSack in game or `<flavor>\Errors\`.
+logout and `/reload` only; the previous write survives as `.lua.bak` until the next one.
+Lua errors: BugSack in game or `<flavor>\Errors\`.
+
+`.toc` files are read once, at client start. Editing a `.toc` needs a client restart. `/reload` does not re-read it, and a client that has been running across `.toc` edits can stop restoring one addon's account-wide saved variables while still restoring the per-character ones. The fingerprint is `/x log` saying `SAVED VARIABLES WERE EMPTY` with the per-character table intact. Restart the client before reading a line of addon code. Seen on 2026-09-04:
+GuildRecruitment's account-wide table came back empty on every `/reload` for two hours
+while the file on disk was written correctly each time and the per-character table loaded;
+the client's own logs said nothing; a restart fixed it outright. `AddOns.txt` is not
+evidence either way: it is rewritten only from the AddOns screen and does not list addons
+left at their default enabled state.
 
 ## The AddOns list
 

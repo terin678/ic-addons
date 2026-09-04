@@ -188,6 +188,7 @@ and the panel says so rather than quietly showing you a short list.
 | `/gr out [n]` | Print to ChatFrame n |
 | `/gr scale [percent]` | Window size, 50 to 125. You can also drag the grip in the window's bottom-right corner |
 | `/gr reset [doc\|peers\|log\|all]` | Restore defaults |
+| `/gr version` | Addon and library versions |
 
 Two key bindings under **GuildRecruitment**: send the message, and open the window.
 

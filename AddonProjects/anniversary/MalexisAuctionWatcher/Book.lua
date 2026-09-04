@@ -72,12 +72,12 @@ function MAW:ScanOpenBook(opts)
     opts = opts or {}
     local lib = Lib()
     if not lib then
-        if not opts.silent then print(addonName .. ": ICLibs is not loaded, cannot read the recipe book.") end
+        if not opts.silent then MAW.Print("ICLibs is not loaded, cannot read the recipe book.") end
         return false
     end
     local line = lib:OpenLine()
     if not line then
-        if not opts.silent then print(addonName .. ": open a profession window first (Enchanting is not supported).") end
+        if not opts.silent then MAW.Print("open a profession window first (Enchanting is not supported).") end
         return false
     end
 
@@ -92,8 +92,8 @@ function MAW:ScanOpenBook(opts)
         books[scannedLine] = book
 
         if not opts.silent then
-            print(string.format("%s: %s book scanned, %d recipes (%d new).%s", addonName, scannedLine,
-                #rows, added, #failed > 0 and (" " .. #failed .. " could not be read; scan again.") or ""))
+            MAW.Printf("%s book scanned, %d recipes (%d new).%s", scannedLine,
+                #rows, added, #failed > 0 and (" " .. #failed .. " could not be read; scan again.") or "")
         end
         if opts.onDone then opts.onDone(scannedLine, rows, failed) end
         local dlg = _G.MalexisAuctionWatcherRecipeDialog

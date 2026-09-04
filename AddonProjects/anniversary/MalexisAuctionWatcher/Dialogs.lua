@@ -1,6 +1,7 @@
 -- Dialogs.lua - Dialog windows for the addon
 local addonName = "MalexisAuctionWatcher"
 local MAWDialogs = {}
+local MAW = _G.MalexisAuctionWatcher
 
 -- Dialogs wear the same palette as the main window. The style is registered by name in
 -- UI.lua, which loads later, so it is looked up when a dialog is actually built.
@@ -57,39 +58,39 @@ function MAWDialogs.ShowAddItemDialog(itemType)
         local debugMode = _G.MalexisAuctionWatcher.debugMode
 
         if debugMode then
-            print("MAW Debug: TradeSkillFrame exists:", TradeSkillFrame ~= nil)
-            print("MAW Debug: CraftFrame exists:", CraftFrame ~= nil)
+            MAW.Debug("TradeSkillFrame exists: %s", tostring(TradeSkillFrame ~= nil))
+            MAW.Debug("CraftFrame exists: %s", tostring(CraftFrame ~= nil))
         end
 
         if TradeSkillFrame and TradeSkillFrame:IsVisible() then
             if debugMode then
-                print("MAW Debug: TradeSkillFrame is visible")
+                MAW.Debug("TradeSkillFrame is visible")
             end
             -- Try multiple ways to get the profession name
             local professionName = nil
             if TradeSkillFrame.titleText then
                 professionName = TradeSkillFrame.titleText:GetText()
                 if debugMode then
-                    print("MAW Debug: Got profession from titleText:", professionName)
+                    MAW.Debug("Got profession from titleText: %s", tostring(professionName))
                 end
             end
             if not professionName and TradeSkillFrameTitleText then
                 professionName = TradeSkillFrameTitleText:GetText()
                 if debugMode then
-                    print("MAW Debug: Got profession from TradeSkillFrameTitleText:", professionName)
+                    MAW.Debug("Got profession from TradeSkillFrameTitleText: %s", tostring(professionName))
                 end
             end
             if not professionName then
                 -- Fallback: just use a generic name
                 professionName = "TradeSkill"
                 if debugMode then
-                    print("MAW Debug: Using fallback profession name")
+                    MAW.Debug("Using fallback profession name")
                 end
             end
             _G.MalexisAuctionWatcher:ScanProfessionRecipes(professionName)
         elseif CraftFrame and CraftFrame:IsVisible() then
             if debugMode then
-                print("MAW Debug: CraftFrame is visible")
+                MAW.Debug("CraftFrame is visible")
             end
             local professionName = "Enchanting"
             if CraftFrame.titleText then
@@ -98,12 +99,12 @@ function MAWDialogs.ShowAddItemDialog(itemType)
                 professionName = CraftFrameTitleText:GetText() or professionName
             end
             if debugMode then
-                print("MAW Debug: Scanning profession:", professionName)
+                MAW.Debug("Scanning profession: %s", tostring(professionName))
             end
             _G.MalexisAuctionWatcher:ScanProfessionRecipes(professionName)
         else
             if debugMode then
-                print("MAW Debug: No profession window detected as visible")
+                MAW.Debug("No profession window detected as visible")
             end
         end
     end
@@ -363,7 +364,7 @@ function MAWDialogs.ShowAddItemDialog(itemType)
         local itemName = itemSlot.itemName or nameInput:GetText()
 
         if not itemName or itemName == "" then
-            print("Malexis Auction Watcher: Please specify an item")
+            MAW.Print("Please specify an item")
             return
         end
 
@@ -496,7 +497,7 @@ function MAWDialogs.ShowPriceInputDialog(itemName, priceType)
             local db = MAW:GetActiveDB()
             local item = db.items and db.items[itemName]
             if not item then
-                print("Malexis Auction Watcher: no longer tracking " .. itemName)
+                MAW.Print("no longer tracking " .. itemName)
                 priceInputFrame:Hide()
                 return
             end
@@ -510,7 +511,7 @@ function MAWDialogs.ShowPriceInputDialog(itemName, priceType)
             end
             priceInputFrame:Hide()
         else
-            print("Price must be greater than 0")
+            MAW.Print("Price must be greater than 0")
         end
     end)
 
@@ -616,7 +617,7 @@ function MAWDialogs.ShowCopyDataDialog()
     freshBtn:SetPoint("BOTTOM", copyFrame, "BOTTOM", 65, 15)
     freshBtn:SetText("Start Fresh")
     freshBtn:SetScript("OnClick", function()
-        print(addonName .. ": Starting with empty character-specific data")
+        MAW.Print("Starting with empty character-specific data")
         copyFrame:Hide()
         -- Refresh UI to show the empty character data
         if _G.MalexisAuctionWatcherUI then
