@@ -2,7 +2,7 @@
 ## Title: ICTemplate
 ## Notes: The worked example for the guild addons: a live gallery of every LibICUI widget shown beside the source it was built from. Copy this folder to start a new addon.
 ## Author: Malexis
-## Version: 1.0.1
+## Version: 1.0.2
 ## IconTexture: Interface\AddOns\ICTemplate\ICTemplate.tga
 ## Group: ICLibs
 ## Category: Impulse Control

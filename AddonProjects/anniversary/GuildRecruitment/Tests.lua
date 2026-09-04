@@ -411,6 +411,14 @@ T.Case("Roster: names, indexes and strangers", function()
 
     T.Eq(select(2, ns.Roster.Index({})), 0, "an empty roster is not an error")
     T.Eq(ns.Roster.Sorted(rows)[1].name, "Malexis", "sorted by rank, then name")
+
+    -- The guild window numbers ranks from 1 and the game reports them from 0, so a
+    -- bare number on a settings page is read by half its readers as the other one.
+    -- Showing the guild's own name for that rank is what stops the guessing.
+    T.Eq(ns.Roster.RankName(rows, 0), "Guild Master", "the guild's own word for rank 0")
+    T.Eq(ns.Roster.RankName(rows, 1), "Officer", "and for rank 1")
+    T.Eq(ns.Roster.RankName(rows, 9), nil, "a rank nobody holds has no name here")
+    T.Eq(ns.Roster.RankName({}, 0), nil, "and neither does anything, with no roster")
 end)
 
 --------------------------------------------------------------------------------
@@ -756,4 +764,24 @@ T.Case("Util: how long ago, and how long left", function()
     local now = 1750000000
     T.Eq(ns.Util.Freshness(nil, now, 60), "never", "nothing recorded")
     T.Eq(ns.Util.Freshness(now - 90, now, 60), "1m", "and something that was")
+end)
+
+T.Case("UI: every page draws without erroring", function()
+    -- The Settings page read settings.channel for a field that lives on
+    -- settings.bark, and nothing caught it until somebody opened the tab. A page
+    -- refresher is not pure, so no other case in this file reaches one; building
+    -- the window and calling each one is the cheapest thing that does.
+    --
+    -- It is a smoke test, not a check of what is drawn. It catches the nil index,
+    -- the bad format argument and the renamed field -- which is most of what goes
+    -- wrong in a refresher.
+    local frame = ns.UI.Create()
+    T.Eq(type(frame), "table", "the window builds")
+    T.Eq(#ns.UI.Pages > 0, true, "and it has pages")
+
+    for _, page in ipairs(ns.UI.Pages) do
+        T.Eq(type(page.refresh), "function", page.name .. " built a refresher")
+        local ok, err = pcall(page.refresh)
+        T.Eq(ok, true, page.name .. " draws => " .. tostring(err))
+    end
 end)

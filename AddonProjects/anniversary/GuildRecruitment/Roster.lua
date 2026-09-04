@@ -67,6 +67,20 @@ function Roster.RankOf(byName, name, fallback)
     return row.rankIndex
 end
 
+--[[
+Pure. The guild's own name for a rank index, or nil when nobody holds that rank.
+
+Worth having because the two numbering schemes do not agree: the guild window
+lists ranks from 1, and GetGuildRosterInfo reports them from 0. Showing "rank 2
+(Team2 Leader)" means nobody has to know which of the two a screen is using.
+]]
+function Roster.RankName(rows, rankIndex)
+    for _, row in ipairs(rows or {}) do
+        if row.rankIndex == rankIndex then return row.rank end
+    end
+    return nil
+end
+
 -- Pure. Sorted for display: rank first, then name, so the list does not shuffle
 -- between refreshes.
 function Roster.Sorted(rows)

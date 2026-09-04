@@ -116,6 +116,10 @@ Keep, always:
   the addon's contact with LibICUI.
 - `Tests.lua`'s harness. `T.With` in particular: it swaps a made-up database in, which is
   the only way the impure half of an addon gets tested at all.
+- The **"every page draws without erroring"** case. It builds the window and calls each
+  page's refresher under `pcall`. A refresher is not pure, so nothing else in the file
+  reaches one, and the bug it exists for -- reading a settings field at the wrong depth --
+  is invisible to the linter and to every other case.
 
 Throw away as soon as it is in the way: `Demos.lua`, `Snippet.lua`, `UI_Gallery.lua`,
 `UI_Table.lua`, and `Pulse.lua` if your addon never says anything on a timer.

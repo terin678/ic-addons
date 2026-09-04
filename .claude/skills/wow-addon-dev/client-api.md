@@ -136,6 +136,12 @@ displays, and that rests on it.
 
 ## Lua, not the client
 
+**luaparser does not catch an unfinished string.** A raw newline inside `"..."` is a load
+error in the client -- "unfinished string near" -- and `luaparser` parses it happily, so
+`scripts/lint.py`'s parse check called the file clean and it shipped. There is now a
+`check_unfinished_strings` in lint.py that walks the source properly, skipping long strings
+and comments. The lesson generalises: the parse check is a floor, not a ceiling.
+
 **A table constructor cannot carry a nil.** `{ channel = nil }` is an *empty* table, so a
 test helper that merges an overrides table silently applies no override and the field keeps
 its default. This passed a Python port of the same cases -- a dict really can hold a `None`
