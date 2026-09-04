@@ -146,6 +146,18 @@ function Inviter.SayComposed(name, text, profile)
     return Inviter.SayText(name, text, profile)
 end
 
+-- Pure. Pulls the player name out of a CHAT_MSG_SYSTEM decline notice by turning
+-- the client's own localized format string (ERR_DECLINE_GROUP_S, "%s declines
+-- your group invitation.") into a pattern. Hardcoding the English wording would
+-- quietly do nothing on any other locale. (CutMaster 1.2.0)
+function Inviter.DeclinedName(text, fmt)
+    if not text or not fmt then return nil end
+    local pre, post = fmt:match("^(.-)%%s(.*)$")
+    if not pre then return nil end
+    local pattern = "^" .. ns.Util.EscapePattern(pre) .. "(.+)" .. ns.Util.EscapePattern(post) .. "$"
+    return text:match(pattern)
+end
+
 -- Sends text as it stands, with no template and no cooldown: the player has read
 -- this one and pressed the button, which is a decision the addon should not
 -- second-guess.

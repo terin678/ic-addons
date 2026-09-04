@@ -117,6 +117,13 @@ function Classifier.Evaluate(ctx)
         if Util.HasPhrase(ctx.norm, phrase) then buyer(phrase, weight) end
     end
 
+    -- A recognised profession request ("LF leatherworker", "any alch around") is
+    -- itself the ask, whether or not its exact wording also happens to be a
+    -- buyerWords phrase. Without this, "LF jewelcrafter" as against "lf jc"
+    -- scored no buyer signal at all and requireBuyerSignal dropped it, even with
+    -- isProfReq already true. (CutMaster 1.2.0)
+    if isProfReq then buyer("professionRequest", 1) end
+
     if hasQuestion then buyer("question", QUESTION_WEIGHT) end
 
     -- Content vetoes are applied after scoring so the log still shows which

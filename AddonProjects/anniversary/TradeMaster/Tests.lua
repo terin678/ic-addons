@@ -1417,3 +1417,96 @@ T.Case("Requests: a craft link is theirs to read, an item link is not", function
     T.Eq(ns.Util.HasCraftLink("LF LW"), false, "nothing linked")
     T.Eq(ns.Util.HasCraftLink(nil), false, "no message at all")
 end)
+
+--------------------------------------------------------------------------------
+-- Ported from CutMaster 1.2.0
+--------------------------------------------------------------------------------
+
+T.Case("Requests: a profession request is itself the buyer signal", function()
+    -- "LF jewelcrafter" was dropped for no buyer signal while isProfReq was true,
+    -- because the exact wording happened not to be a buyerWords phrase.
+    local r = classify("LF jewelcrafter")
+    T.Eq(r.professionRequest, true, "it is a profession request")
+    T.Eq(r.buyerScore > 0, true, "so it carries a buyer signal")
+    T.Eq(r.verdict, "invite", "and it is a customer")
+
+    local bare = classify("any jc around?")
+    T.Eq(bare.verdict, "invite", "however it is worded")
+
+    -- A competitor advertising is still not a customer.
+    local seller = classify("JC LFW full book, all cuts")
+    T.Eq(seller.verdict ~= "invite", true, "a bark is not an ask")
+end)
+
+T.Case("Requests: they say make, whatever the profession calls it", function()
+    local r = classify("who can make " .. RUBY_LINK)
+    T.Eq(r.buyerHits["who can make"], 3, "make is the word customers use")
+    T.Eq(r.verdict, "invite", "and this is a customer")
+end)
+
+T.Case("Orders: a pending order nobody joined for expires", function()
+    local orders = {
+        { id = 1, player = "A", status = "pending", createdAt = 0, items = {} },
+        { id = 2, player = "B", status = "pending", createdAt = 250, items = {} },
+        { id = 3, player = "C", status = "grouped", createdAt = 0, items = {} },
+        { id = 4, player = "D", status = "done", createdAt = 0, items = {} },
+    }
+    local expired = ns.Orders.ExpireStale(orders, 300, 300)
+    T.Eq(#expired, 1, "only the one that ran out of time")
+    T.Eq(expired[1].id, 1, "and it is the old one")
+    T.Eq(orders[1].status, "cancelled", "closed out")
+    T.Eq(orders[2].status, "pending", "the recent one is still waiting")
+    -- Once someone has grouped up, a slow reply is a different problem.
+    T.Eq(orders[3].status, "grouped", "a joined order is never expired")
+    T.Eq(orders[4].status, "done", "nor a finished one")
+
+    -- Switched off means switched off. Without the guard the arithmetic reads
+    -- "older than nothing" and cancels a pending order the moment it is made.
+    local waiting = { { id = 9, player = "E", status = "pending", createdAt = 0, items = {} } }
+    T.Eq(#ns.Orders.ExpireStale(waiting, 9999, 0), 0, "a zero timeout expires nothing")
+    T.Eq(waiting[1].status, "pending", "and leaves it alone")
+    T.Eq(#ns.Orders.ExpireStale(waiting, 9999, nil), 0, "nor does an unset one")
+end)
+
+T.Case("Orders: dropping an item clears the split prompt it caused", function()
+    local o = { id = 1, player = "A", status = "grouped", needsSplit = true, items = {
+        { itemID = 24033, qty = 2, qtySource = "ambiguous" },
+        { itemID = 24048, qty = 1, qtySource = "mats" },
+    } }
+    T.Eq(ns.Orders.IndexOfItem(o, 24048), 2, "found by id")
+    T.Eq(ns.Orders.IndexOfItem(o, 99), nil, "and not found when absent")
+
+    ns.Orders.RemoveItem(o, 1, 100)
+    T.Eq(#o.items, 1, "one left")
+    T.Eq(o.needsSplit, false, "and nothing left to split")
+    T.Eq(o.updatedAt, 100, "stamped")
+
+    -- Removing the other one leaves nothing to ask about either.
+    local both = { id = 2, player = "B", status = "grouped", needsSplit = true, items = {
+        { itemID = 24033, qty = 2, qtySource = "ambiguous" },
+        { itemID = 24048, qty = 2, qtySource = "ambiguous" },
+    } }
+    ns.Orders.RemoveItem(both, 1, 100)
+    T.Eq(both.needsSplit, true, "still ambiguous while one remains")
+    T.Eq(ns.Orders.RemoveItem(both, 9, 100), nil, "removing what is not there does nothing")
+end)
+
+T.Case("Invites: a decline is read in the client's own words", function()
+    -- ERR_DECLINE_GROUP_S on an English client.
+    local fmt = "%s declines your group invitation."
+    T.Eq(ns.Inviter.DeclinedName("Bwasa declines your group invitation.", fmt), "Bwasa", "the name")
+    T.Eq(ns.Inviter.DeclinedName("Bwasa is already in a group.", fmt), nil, "a different notice")
+
+    -- The point of reading the format string is that the wording is not English
+    -- everywhere, and the name is not always at the front.
+    T.Eq(ns.Inviter.DeclinedName("Gruppeneinladung von Bwasa abgelehnt.",
+        "Gruppeneinladung von %s abgelehnt."), "Bwasa", "another locale")
+
+    -- A format string with magic characters must not be treated as a pattern.
+    T.Eq(ns.Inviter.DeclinedName("Bwasa (declines) your invite.",
+        "%s (declines) your invite."), "Bwasa", "parentheses are literal")
+
+    T.Eq(ns.Inviter.DeclinedName(nil, fmt), nil, "no message")
+    T.Eq(ns.Inviter.DeclinedName("anything", nil), nil, "no format string on this client")
+    T.Eq(ns.Inviter.DeclinedName("anything", "no placeholder here"), nil, "a format with no %s")
+end)

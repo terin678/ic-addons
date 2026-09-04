@@ -51,7 +51,9 @@ function Tracker.Create()
     title:SetPoint("TOPLEFT", 8, -6)
     Tracker.title = title
 
-    local hint = ns.UI.Label(f, "|cff666666tick as you finish each, right click a name to cancel|r", "GameFontDisableSmall")
+    local hint = ns.UI.Label(f,
+        "|cff666666tick to finish. Right click: name = cancel, item = drop|r",
+        "GameFontDisableSmall")
     hint:SetPoint("BOTTOMLEFT", 6, 2)
 
     local close = ns.UI.Button(f, "X", 18, 16)
@@ -185,7 +187,20 @@ function Tracker.Refresh()
                 if ns.Crafter then ns.Crafter.Focus() end
             end)
 
-            row:SetScript("OnMouseUp", nil)
+            -- Right-click one item to drop just that line, without leaving the
+            -- window: a stale or wrongly matched item nobody asked for cannot be
+            -- ticked, so the order can never complete around it. The Orders tab
+            -- can do this too, and is where it goes back on. (CutMaster 1.2.0)
+            row:SetScript("OnMouseUp", function(_, button)
+                if button ~= "RightButton" then return end
+                local index = ns.Orders.IndexOfItem(o, it.itemID)
+                if not index then return end
+                ns.Orders.RemoveItem(o, index, ns.Now())
+                ns.Print(string.format(
+                    "removed %s from order #%d. |cff888888add it back from the Orders tab|r",
+                    name, o.id))
+                Tracker.Refresh()
+            end)
             row.text:SetPoint("LEFT", 20, 0)
             local qty = string.format("x%d%s", it.qty or 1, it.qtySource == "mats" and "" or "?")
             if it.cut then
@@ -202,21 +217,46 @@ function Tracker.Refresh()
         end
     end
 
-    if #orders == 0 then
+    -- Pending orders are deliberately not open work above, since they may never
+    -- join, but they still need somewhere to act on: a static "waiting for them
+    -- to join" line with nothing clickable on it left the full Orders tab as the
+    -- only way to close one out. Header only, no ticks -- nothing has been handed
+    -- over yet, so there is nothing to check off. (CutMaster 1.2.0)
+    local pendingList = ns.Orders.PendingList()
+    for _, o in ipairs(pendingList) do
+        if used >= MAX_ROWS then break end
+        used = used + 1
+        local head = GetRow(used)
+        head.check:Hide()
+        head.text:SetPoint("LEFT", 2, 0)
+        head.text:SetText(string.format("|cffffffff%s|r  %s", o.player, STATUS_SHORT.pending))
+        head:SetScript("OnMouseUp", function(_, button)
+            if button ~= "RightButton" then return end
+            ns.Orders.SetStatus(o, "cancelled", ns.Now())
+            ns.Print(string.format("order #%d for %s cancelled. |cff888888/tm order reopen %d to undo|r",
+                o.id, o.player, o.id))
+            Tracker.Refresh()
+        end)
+        head:SetHeight(HEADER_H)
+        head:SetPoint("TOPLEFT", 0, -y)
+        head:Show()
+        y = y + HEADER_H
+    end
+
+    if #orders == 0 and #pendingList == 0 then
         used = used + 1
         local row = GetRow(used)
         row.check:Hide()
         row.text:SetPoint("LEFT", 2, 0)
         row:SetScript("OnMouseUp", nil)
-        row.text:SetText(ns.Orders.PendingCount() > 0
-            and "|cff888888waiting for them to join|r" or "|cff888888no open orders|r")
+        row.text:SetText("|cff888888no open orders|r")
         row:SetHeight(ITEM_H)
         row:SetPoint("TOPLEFT", 0, -y)
         row:Show()
         y = y + ITEM_H
     end
 
-    local pending = ns.Orders.PendingCount()
+    local pending = #pendingList
     Tracker.title:SetText(string.format("Orders  |cff888888%d open, %d to make%s|r", #orders, remaining,
         pending > 0 and (", " .. pending .. " not joined") or ""))
     Tracker.content:SetSize(WIDTH - 34, math.max(1, y))

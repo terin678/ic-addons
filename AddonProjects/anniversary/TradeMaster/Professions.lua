@@ -46,6 +46,10 @@ local function BuildVocab(spec)
         -- "LF [item] crafter" named the item but scored no buyer signal and
         -- was blocked by requireBuyerSignal. (CutMaster 1.1.0)
         ["crafter"] = 2,
+        -- Customers say "make" whatever the profession calls it, so this is not
+        -- covered by the per-verb phrases below for a jeweller who cuts or an
+        -- alchemist who brews. (CutMaster 1.2.0)
+        ["who can make"] = 3, ["anyone make"] = 3,
     }
     for _, p in ipairs(spec.personNouns) do buyer[p] = 2 end
     for _, v in ipairs(verbs) do

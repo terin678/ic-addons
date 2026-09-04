@@ -2,7 +2,7 @@ local addonName, ns = ...
 
 ns.Util = ns.Util or {}
 
-local VERSION = "1.9.0"
+local VERSION = "1.10.0"
 
 -- Output goes straight into a chat frame rather than through the chat event
 -- system, so it has no message type and the chat settings UI cannot route it.
@@ -99,6 +99,9 @@ ns.Defaults = {
             promptOnDone = true,
             showFinished = false,
             keepDoneDays = 30,
+            -- How long a customer has to accept the invite before the order is
+            -- written off. 0 turns it off. (CutMaster 1.2.0)
+            pendingTimeoutSec = 300,
         },
         enabled = true,
         annotate = true,
@@ -174,6 +177,7 @@ frame:RegisterEvent("TRADE_SKILL_CLOSE")
 frame:RegisterEvent("CHAT_MSG_CHANNEL")
 frame:RegisterEvent("CHAT_MSG_WHISPER")
 frame:RegisterEvent("GROUP_ROSTER_UPDATE")
+frame:RegisterEvent("CHAT_MSG_SYSTEM")
 frame:RegisterEvent("CHAT_MSG_RAID_LEADER")
 frame:RegisterEvent("CHAT_MSG_RAID")
 frame:RegisterEvent("CHAT_MSG_PARTY_LEADER")
@@ -217,6 +221,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
             if known[1] then ns.db.activeProfession = known[1] end
         end
         if ns.PS().bark.enabled and ns.Enabled() then ns.Barker.Start() end
+        ns.Orders.StartExpiryTicker()
         if not ns.Enabled() then
             ns.Print("|cffff9900currently disabled.|r /tm enable to switch back on.")
         end
@@ -274,6 +279,20 @@ frame:SetScript("OnEvent", function(self, event, ...)
         ns.Events.OnParty(text, author)
     elseif event == "GROUP_ROSTER_UPDATE" then
         if ns.db then ns.Orders.PromoteGrouped(ns.Now()) end
+    elseif event == "CHAT_MSG_SYSTEM" then
+        -- They said no. Close the order now rather than waiting out the timeout.
+        local text = ...
+        local name = ns.db and ns.Enabled()
+            and ns.Inviter.DeclinedName(text, _G.ERR_DECLINE_GROUP_S)
+        if name then
+            local short = name:gsub("%-.*", "")
+            local o = ns.Orders.CancelPending(short, ns.Now())
+            if o then
+                ns.Print(string.format("|cff888888%s declined the invite.|r Order #%d closed.",
+                    short, o.id))
+                if ns.Tracker then ns.Tracker.Refresh() end
+            end
+        end
     elseif event == "CHAT_MSG_WHISPER_INFORM" then
         local text, target = ...
         if ns.db.settings.orders.captureTranscript then
@@ -428,6 +447,27 @@ local function HandleSlash(input)
         if sub == "add" and arg ~= "" then
             local o = ns.Orders.Create(arg, "manual", "", {}, now, "grouped")
             ns.Print(string.format("order #%d opened for %s. Trade them the mats and it will fill itself in.", o.id, arg))
+        elseif sub == "removeitem" then
+            local id, name = arg:match("^(%S+)%s+(.+)$")
+            local o = id and ns.Orders.ByID(tonumber(id))
+            if not id then
+                ns.Print("usage: /tm order removeitem <id> <item name>")
+            elseif not o then
+                ns.Print("no order with that id.")
+            else
+                local itemID = ns.Orders.FindItemByName(o, name)
+                local index = itemID and ns.Orders.IndexOfItem(o, itemID)
+                if not index then
+                    ns.Print(string.format("no item matching '%s' on order #%d. It has: %s",
+                        name, o.id, ns.Orders.Summarise(o)))
+                else
+                    local e = ns.Orders.BookFor(o)[itemID]
+                    ns.Orders.RemoveItem(o, index, ns.Now())
+                    ns.Print(string.format("removed %s from order #%d.",
+                        e and (e.link or e.name) or tostring(itemID), o.id))
+                    if ns.Tracker then ns.Tracker.Refresh() end
+                end
+            end
         elseif sub == "done" or sub == "cancel" or sub == "reopen" then
             local o = ns.Orders.ByID(tonumber(arg))
             if not o then ns.Print("no order with that id.") return end
@@ -435,7 +475,8 @@ local function HandleSlash(input)
             ns.Orders.SetStatus(o, status, now)
             ns.Print(string.format("order #%d %s.", o.id, sub == "reopen" and "reopened" or (sub == "done" and "closed" or "cancelled")))
         else
-            ns.Print("usage: /tm order add <player> | done <id> | cancel <id> | reopen <id>")
+            ns.Print("usage: /tm order add <player> | done <id> | cancel <id> "
+                .. "| reopen <id> | removeitem <id> <item name>")
         end
     elseif cmd == "income" then
         ns.Ledger.Report()
@@ -551,7 +592,8 @@ local function HandleSlash(input)
         ns.Print("  /tm try <msg>, /tm trywhisper <msg>, /tm tryparty <msg>, /tm bark [secs],")
         ns.Print("  /tm send, /tm preview, /tm adv epic|rare|all|none|+text|-text,")
         ns.Print("  /tm invite, /tm log, /tm debug, /tm capture, /tm clearcapture,")
-        ns.Print("  /tm orders, /tm order add|done|cancel|reopen, /tm craft, /tm probe,")
+        ns.Print("  /tm orders, /tm order add|done|cancel|reopen|removeitem, /tm craft,")
+        ns.Print("  /tm probe,")
         ns.Print("  /tm tracker,")
         ns.Print("  /tm income, /tm market, /tm annotate, /tm clearflags, /tm out [n],")
         ns.Print("  /tm status, /tm test, /tm disable, /tm enable")
