@@ -42,7 +42,9 @@ UI.RegisterPage(20, "Table", function(page)
         return ns.db.settings.tablePage
     end
 
-    local bar = UI.Toolbar(page, { top = 0 })
+    -- right = -26 so the toolbar ends where the list does rather than over the
+    -- scrollbar column, which is what the count line on the right would hang into.
+    local bar = UI.Toolbar(page, { top = 0, right = -26 })
     local buttons = {}
     for _, filter in ipairs(FILTERS) do
         local b = bar:Left(UI.Button(bar, filter.label, 64, 22))
@@ -53,9 +55,9 @@ UI.RegisterPage(20, "Table", function(page)
         buttons[filter.key] = b
     end
 
-    local reset = bar:Left(UI.Button(bar, "Reset stock", 90, 22, { kind = "danger" }))
+    local reset = bar:Left(UI.Button(bar, "Reset rows", 90, 22, { kind = "danger" }))
     reset:SetScript("OnClick", function()
-        for _, item in ipairs(ns.Demos.rows) do item.ready = item.stock > 0 end
+        ns.Demos.ResetRows()
         UI.Refresh()
     end)
 
@@ -150,7 +152,10 @@ UI.RegisterPage(20, "Table", function(page)
                 return
             end
             if item.total then
-                t:Tint(row, ns.UI.Lib.Brand.gold)
+                -- Brand.gold carries no alpha and Tint defaults to 1, which paints
+                -- the row solid and the text on it unreadable. Amber is the right
+                -- meaning for a derived value; opaque is not.
+                t:Tint(row, { r = 0.875, g = 0.612, b = 0.200, a = 0.35 })
                 t:Set(row, "name", "Everything shown")
                 t:Set(row, "price", GetCoinTextureString(item.total))
                 -- Render hands every row back with its cells and buttons showing.
@@ -183,6 +188,12 @@ UI.RegisterPage(20, "Table", function(page)
                 GameTooltip:AddLine("The name cell has its own hit frame, because a "
                     .. "FontString takes no scripts.", 0.8, 0.8, 0.8, true)
             end)
+            -- A hit frame sits ON TOP of the row, so it swallows the click the row
+            -- would have used to select. Whatever a hit cell covers, it has to hand
+            -- back, or the widest column in the table is the one that does nothing.
+            row.hit.name:SetScript("OnClick", function()
+                t:SetSelected(item)
+            end)
 
             row.buttons.bump:SetScript("OnClick", function()
                 item.stock = item.stock + 1
@@ -197,7 +208,6 @@ UI.RegisterPage(20, "Table", function(page)
 
         local parts = { string.format("%d of %d", #rows, #ns.Demos.rows) }
         if hidden > 0 then parts[#parts + 1] = string.format("%d filtered", hidden) end
-        parts[#parts + 1] = "sorted by " .. v.sort
         hint:SetText("|cff888888" .. table.concat(parts, "  \194\183  ") .. "|r")
     end
 end)

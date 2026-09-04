@@ -26,7 +26,7 @@ UI.RegisterPage(40, "Log", function(page)
         return ns.db.settings.log
     end
 
-    local bar = UI.Toolbar(page, { top = 0 })
+    local bar = UI.Toolbar(page, { top = 0, right = -26 })
 
     local kindButtons = {}
     for _, kind in ipairs(KINDS) do
@@ -107,10 +107,10 @@ UI.RegisterPage(40, "Log", function(page)
 
         -- Say what is being held back. A filtered list that merely looks short is
         -- the thing that gets reported as data loss.
+        -- Short enough to clear the buttons on its left. The toolbar is 674 wide
+        -- and the left cluster ends around 500, so this has about 170 to live in.
         local parts = { string.format("%d of %d", #entries, #seen) }
-        if hidden > 0 then parts[#parts + 1] = string.format("%d filtered", hidden) end
-        parts[#parts + 1] = string.format("%d kept, %d captured",
-            #ns.db.log, #ns.db.capture)
+        if hidden > 0 then parts[#parts + 1] = string.format("%d hidden", hidden) end
         hint:SetText("|cff888888" .. table.concat(parts, "  \194\183  ") .. "|r")
     end
 end)

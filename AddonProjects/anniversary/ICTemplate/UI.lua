@@ -230,8 +230,10 @@ UI.RegisterPage(90, "About", function(page)
     status:SetWidth(STYLE.pageWidth - 20)
     status:SetSpacing(3)
 
+    -- Probe.Status returns six lines today and the block above ends near -151.
+    -- The gap is deliberate slack for the seventh.
     local t = UI.Table(page, {
-        top = -150,
+        top = -176,
         columns = {
             { key = "has", label = "", width = 34 },
             { key = "name", label = "Client API", width = 240 },

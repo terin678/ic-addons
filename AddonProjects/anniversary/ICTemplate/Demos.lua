@@ -33,6 +33,20 @@ Demos.rows = {
       icon = "Interface\\Icons\\INV_Misc_Spyglass_02",  ready = false },
 }
 
+--[[
+A pristine copy taken before anything can edit the fixtures, so the Table page's
+Reset button can genuinely put them back. The row buttons there change stock and
+the check cells change ready, and a "reset" that only recomputed one from the
+other would be a button whose label was a lie.
+]]
+Demos.pristine = ns.DeepCopy(Demos.rows)
+
+function Demos.ResetRows()
+    for i, row in ipairs(Demos.pristine) do
+        for key, value in pairs(row) do Demos.rows[i][key] = value end
+    end
+end
+
 Demos.list = {
 
     ----------------------------------------------------------------- Basics
@@ -80,7 +94,8 @@ panel:SetPoint("TOPLEFT", 0, -4)
 
 local label = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 label:SetPoint("TOPLEFT", 8, -8)
-label:SetText("ICUI:Panel(parent, opts) -- a detail area or a footer")
+label:SetWidth(224)
+label:SetText("ICUI:Panel -- a detail area or a footer")
 
 -- Skin takes any frame, including one Blizzard made.
 local plain = CreateFrame("Frame", nil, page, BackdropTemplateMixin and "BackdropTemplate")
@@ -174,19 +189,22 @@ box:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
       blurb = "Multi-line and scrolling. readOnly still selects, which is the only way "
            .. "to copy anything out: this client has no clipboard API.",
       source = [[
-local box = ICUI:TextBox(page, 420, 90, { maxBytes = 255 })
-box:SetPoint("TOPLEFT", 0, -4)
-box:SetText("A message that runs past one line.\n\n"
-    .. "maxBytes stops it at 255 here, which is what SendChatMessage accepts.")
-
 local count = page:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 count:SetPoint("TOPLEFT", 0, -100)
 
+-- Declared before the box, because the box's own handler calls it. A function
+-- named after the local it is assigned to would be captured as a nil global.
 local function Recount(text)
     count:SetText(string.format("%d / 255 bytes", #(text or "")))
 end
+
+-- opts.onChange, never box.edit:SetScript("OnTextChanged"). That handler is the
+-- library's, and it is what keeps box.text up to date and enforces readOnly.
+local box = ICUI:TextBox(page, 420, 90, { maxBytes = 255, onChange = Recount })
+box:SetPoint("TOPLEFT", 0, -4)
+box:SetText("A message that runs past one line.\n\n"
+    .. "maxBytes stops it at 255 here, which is what SendChatMessage accepts.")
 Recount(box:GetText())
-box.edit:SetScript("OnTextChanged", function(self) Recount(self:GetText()) end)
 
 local copy = ICUI:Button(page, "Copy", 70, 22)
 copy:SetPoint("TOPLEFT", 430, -4)
@@ -315,7 +333,9 @@ bar:Right(hint)
       blurb = "The plain scroll frame, for content that is not a table. Its scrollbar "
            .. "draws in the 26px on the right that the caller leaves for it.",
       source = [[
-local scroll, content = ICUI:ScrollList(page, -4, -8)
+-- The third argument is the BOTTOMRIGHT offset, so a NEGATIVE one hangs the frame
+-- below its parent and its down-arrow lands on whatever is underneath.
+local scroll, content = ICUI:ScrollList(page, -4, 4)
 content:SetWidth(450)
 
 local y = 0
@@ -403,8 +423,9 @@ end)
 ]] },
 
     { id = "table-check", group = "Table", title = "Table: check cells",
-      blurb = "A check column is a real CheckButton. Render clears its script every "
-           .. "time, so a pooled row can never fire the previous item's handler.",
+      blurb = "A check column is a real CheckButton. Render blanks a cell's value but "
+           .. "NOT its script, so the handler goes on in every fill or the row fires "
+           .. "the last item's.",
       source = [[
 local t = ICUI:Table(page, {
     top = -4, height = 110, width = 420,
@@ -415,7 +436,7 @@ local t = ICUI:Table(page, {
 })
 
 local said = page:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-said:SetPoint("BOTTOMLEFT", 0, 0)
+said:SetPoint("TOPLEFT", 0, -136)
 
 t:Render(ns.Demos.rows, function(row, item)
     row.cells.ready:SetChecked(item.ready)
@@ -444,7 +465,7 @@ local t = ICUI:Table(page, {
 })
 
 local said = page:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-said:SetPoint("BOTTOMLEFT", 0, 0)
+said:SetPoint("TOPLEFT", 0, -136)
 
 t:Render(ns.Demos.rows, function(row, item)
     t:Set(row, "name", item.name)
@@ -541,7 +562,9 @@ list[#list + 1] = { total = total }
 
 t:Render(list, function(row, item)
     if item.total then
-        t:Tint(row, ICUI.Brand.gold)
+        -- Brand.gold has no alpha and Tint defaults to 1, which paints the row
+        -- solid and the text on it unreadable.
+        t:Tint(row, { r = 0.875, g = 0.612, b = 0.200, a = 0.35 })
         t:Set(row, "name", "Everything on hand")
         t:Set(row, "price", GetCoinTextureString(item.total))
         return
@@ -556,7 +579,7 @@ end)
            .. "the constructor can still reach it. SetSelected survives a Render.",
       source = [[
 local detail = page:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-detail:SetPoint("BOTTOMLEFT", 0, 0)
+detail:SetPoint("TOPLEFT", 0, -136)
 detail:SetText("pick a row")
 
 local t = ICUI:Table(page, {

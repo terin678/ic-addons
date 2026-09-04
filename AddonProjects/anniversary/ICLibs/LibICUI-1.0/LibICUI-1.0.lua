@@ -329,8 +329,9 @@ function Lib:TextBox(parent, w, h, opts)
     edit:SetFontObject(opts.font or style.font)
     -- A multi-line EditBox grows its own height to fit its text once it is a
     -- scroll child; the width is ours to set and the initial height only has to
-    -- be non-zero, or there is nothing for the scroll frame to show.
-    edit:SetWidth(w - 38)
+    -- be non-zero, or there is nothing for the scroll frame to show. The viewport
+    -- is w minus the 6 on the left and the 26 on the right, so this fills it.
+    edit:SetWidth(w - 34)
     edit:SetHeight(h)
     if opts.maxBytes then edit:SetMaxBytes(opts.maxBytes) end
     if style.theme then
@@ -389,6 +390,17 @@ function Lib:TextBox(parent, w, h, opts)
         edit:SetFocus()
         edit:HighlightText()
     end
+
+    -- The EditBox is only as tall as its own text, so on a box with one line in it
+    -- everything below that line is dead to the mouse and clicking there puts no
+    -- caret anywhere. The frame and its viewport hand the click on.
+    local function Focus()
+        edit:SetFocus()
+    end
+    box:EnableMouse(true)
+    box:SetScript("OnMouseDown", Focus)
+    scroll:EnableMouse(true)
+    scroll:SetScript("OnMouseDown", Focus)
 
     box:SetText("")
     return box

@@ -14,8 +14,11 @@ The index is itself a demo of two Table features that have nowhere else to show
 themselves: Span for the group headings, and SetSelected for the current pick.
 ]]
 
-local INDEX_W = 170        -- the demo list on the left
-local PANE_X = INDEX_W + 12
+-- UIPanelScrollFrameTemplate draws its bar in the 26px to the RIGHT of the scroll
+-- frame, so the index has to end 26 short of where the demo pane starts or the bar
+-- is painted over the pane.
+local INDEX_W = 150        -- the demo list on the left
+local PANE_X = INDEX_W + 32
 local PANE_W = 518         -- everything to the right of the index
 local LIVE_H = 190         -- how tall a demo gets to be
 local SOURCE_H = 186
@@ -39,10 +42,14 @@ UI.RegisterPage(10, "Gallery", function(page)
     title:SetPoint("TOPLEFT", PANE_X, -2)
     title:SetWidth(PANE_W)
 
+    -- Fixed height, because the live panel below it is at a fixed offset: prose
+    -- above a list has to have a known line count or it grows into what follows.
     local blurb = UI.Label(page, "", "GameFontHighlightSmall")
     blurb:SetPoint("TOPLEFT", PANE_X, -20)
     blurb:SetWidth(PANE_W)
+    blurb:SetHeight(30)
     blurb:SetSpacing(2)
+    if blurb.SetMaxLines then blurb:SetMaxLines(2) end
 
     -- The demo runs in here. One container per demo, built on first sight and
     -- kept: frame pools over frame churn, and rebuilding on every click would
