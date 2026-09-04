@@ -186,6 +186,34 @@ function RC.MergeRow(scanned, reported, libDurability, inspectedSpec, brokenItem
     return { state = state, isReported = true }
 end
 
+-- Reads one GetTalentTabInfo result. Returns the tab name and points spent,
+-- or nil when the returns are not a talent tab. Pure.
+--
+-- The API has two shapes across client builds:
+--   name, iconTexture, pointsSpent, ...
+--   id, name, description, iconTexture, pointsSpent, ...
+-- Anniversary uses the second. Reading it as the first put the description
+-- string where the points number belonged, and comparing that string to a
+-- number threw inside GatherSelf, which aborted the whole raid check scan and
+-- left the grid reading "nobody in the group". Points are coerced so a
+-- surprise value can never reach a comparison again.
+function RC.ParseTalentTab(a, b, c, d, e)
+    local name, points
+    if type(a) == "string" then
+        name, points = a, c
+    elseif type(b) == "string" then
+        name, points = b, e
+    else
+        return nil
+    end
+
+    if type(name) ~= "string" or name == "" then
+        return nil
+    end
+
+    return name, tonumber(points) or 0
+end
+
 -- Takes an array of { name, points } talent tabs. Returns the name of the tab
 -- with the most points, or nil when none are spent. Ties go to the first tab
 -- so the answer is stable. Pure.
@@ -417,14 +445,19 @@ local function specName()
     if not GetTalentTabInfo then
         return nil
     end
-    local bestName, bestPoints = nil, -1
+
+    local tabs = {}
     for tab = 1, 3 do
-        local ok, name, _, points = pcall(GetTalentTabInfo, tab)
-        if ok and name and points and points > bestPoints then
-            bestName, bestPoints = name, points
+        local ok, a, b, c, d, e = pcall(GetTalentTabInfo, tab)
+        if ok then
+            local name, points = RC.ParseTalentTab(a, b, c, d, e)
+            if name then
+                tabs[#tabs + 1] = { name = name, points = points }
+            end
         end
     end
-    return bestName
+
+    return RC.SpecFromTabs(tabs)
 end
 
 -- Reads this client's own state. The only place weapon enchant, durability
@@ -521,7 +554,14 @@ function RC:ScanUnit(unit)
     -- own report, so without this the own row would read as scan-only.
     local reported
     if name == UnitName("player") then
-        reported = RC:GatherSelf()
+        -- Wrapped because everything in here reads a client API whose shape
+        -- can differ by build, and one of them blanking the entire grid is
+        -- exactly the failure this addon already shipped once.
+        local ok, gathered = pcall(RC.GatherSelf, RC)
+        reported = ok and gathered or nil
+        if not ok then
+            MFD.Error("could not read your own buffs: " .. tostring(gathered))
+        end
     else
         reported = RC.reports[name] and RC.reports[name].state or nil
     end
@@ -788,9 +828,13 @@ local pendingGuid, pendingName, pendingAt
 local function readInspectedTabs()
     local tabs = {}
     for tab = 1, 3 do
-        local ok, name, _, points = pcall(GetTalentTabInfo, tab, true)
-        if ok and name then
-            local total = tonumber(points) or 0
+        local ok, a, b, c, d, e = pcall(GetTalentTabInfo, tab, true)
+        local name, points
+        if ok then
+            name, points = RC.ParseTalentTab(a, b, c, d, e)
+        end
+        if name then
+            local total = points or 0
             if total == 0 and GetNumTalents and GetTalentInfo then
                 local okCount, count = pcall(GetNumTalents, tab, true)
                 for i = 1, (okCount and tonumber(count)) or 0 do

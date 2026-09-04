@@ -2600,4 +2600,40 @@ T.Case("Blessing: it is listed with the raid buffs, before consumables", functio
     T.Eq(missing[3].column, "FOOD", "then consumables")
 end)
 
+-- GetTalentTabInfo has two shapes across client builds. Reading the wrong one
+-- put a description string where the points number belonged, and comparing it
+-- threw inside GatherSelf, which aborted the entire raid check scan and left
+-- the grid reading "nobody in the group".
+T.Case("TalentTab: reads the five-return shape, id first", function()
+    local name, points = MFD.RaidCheck.ParseTalentTab(382, "Holy", "", "icon", 41)
+    T.Eq(name, "Holy", "name is the second return")
+    T.Eq(points, 41, "points are the fifth")
+end)
+
+T.Case("TalentTab: reads the three-return shape, name first", function()
+    local name, points = MFD.RaidCheck.ParseTalentTab("Fire", "icon", 41)
+    T.Eq(name, "Fire", "name is the first return")
+    T.Eq(points, 41, "points are the third")
+end)
+
+T.Case("TalentTab: a missing points value reads as zero, never as a string", function()
+    local _, points = MFD.RaidCheck.ParseTalentTab(382, "Holy", "", "icon", "")
+    T.Eq(points, 0, "the description string must never reach a comparison")
+end)
+
+T.Case("TalentTab: an unrecognisable shape yields nothing rather than throwing", function()
+    T.Eq(MFD.RaidCheck.ParseTalentTab(nil), nil, "nil")
+    T.Eq(MFD.RaidCheck.ParseTalentTab(1, 2, 3), nil, "no name anywhere")
+    T.Eq(MFD.RaidCheck.ParseTalentTab(382, "", "", "", 0), nil, "empty name")
+end)
+
+T.Case("TalentTab: SpecFromTabs still picks the tab with the most points", function()
+    local tabs = {}
+    for _, raw in ipairs({ { 381, "Arcane", "", "i", 0 }, { 382, "Fire", "", "i", 41 }, { 383, "Frost", "", "i", 20 } }) do
+        local name, points = MFD.RaidCheck.ParseTalentTab(raw[1], raw[2], raw[3], raw[4], raw[5])
+        tabs[#tabs + 1] = { name = name, points = points }
+    end
+    T.Eq(MFD.RaidCheck.SpecFromTabs(tabs), "Fire", "fire")
+end)
+
 _G.MarkedForDeath = MFD

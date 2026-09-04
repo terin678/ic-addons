@@ -768,7 +768,7 @@ local function buildRulesFrame()
 
     rulesFrame.bulk = CreateFrame("Button", nil, rulesFrame, "UIPanelButtonTemplate")
     rulesFrame.bulk:SetSize(90, 20)
-    rulesFrame.bulk:SetPoint("LEFT", rulesFrame.typedAdd, "RIGHT", 6, 0)
+    rulesFrame.bulk:SetPoint("BOTTOMLEFT", rulesFrame, "BOTTOMLEFT", 20, 10)
     rulesFrame.bulk:SetText("Paste list")
     rulesFrame.bulk:SetScript("OnClick", function()
         RulesUI:ShowTransferBox("", "bulk")
@@ -776,7 +776,7 @@ local function buildRulesFrame()
 
     rulesFrame.share = CreateFrame("Button", nil, rulesFrame, "UIPanelButtonTemplate")
     rulesFrame.share:SetSize(70, 20)
-    rulesFrame.share:SetPoint("LEFT", rulesFrame.bulk, "RIGHT", 6, 0)
+    rulesFrame.share:SetPoint("LEFT", rulesFrame.bulk, "RIGHT", 8, 0)
     rulesFrame.share:SetText("Share")
     rulesFrame.share:SetScript("OnClick", function()
         RulesUI:ShowTransferBox(MFD.Rules.ToJSON(MFD.db.rules, {}), "exportjson")
@@ -784,7 +784,7 @@ local function buildRulesFrame()
 
     rulesFrame.load = CreateFrame("Button", nil, rulesFrame, "UIPanelButtonTemplate")
     rulesFrame.load:SetSize(80, 20)
-    rulesFrame.load:SetPoint("LEFT", rulesFrame.share, "RIGHT", 6, 0)
+    rulesFrame.load:SetPoint("LEFT", rulesFrame.share, "RIGHT", 8, 0)
     rulesFrame.load:SetText("Load file")
     rulesFrame.load:SetScript("OnClick", function()
         RulesUI:ShowTransferBox("", "importjson")
@@ -792,7 +792,7 @@ local function buildRulesFrame()
 
     rulesFrame.format = CreateFrame("Button", nil, rulesFrame, "UIPanelButtonTemplate")
     rulesFrame.format:SetSize(70, 20)
-    rulesFrame.format:SetPoint("LEFT", rulesFrame.load, "RIGHT", 6, 0)
+    rulesFrame.format:SetPoint("LEFT", rulesFrame.load, "RIGHT", 8, 0)
     rulesFrame.format:SetText("Format")
     rulesFrame.format:SetScript("OnClick", function()
         RulesUI:ShowTransferBox(FORMAT_HELP, "help")
@@ -807,7 +807,7 @@ local function buildRulesFrame()
     end)
 
     rulesFrame.resultsNote = rulesFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    rulesFrame.resultsNote:SetPoint("TOPLEFT", rulesFrame.search, "BOTTOMLEFT", 0, -4)
+    rulesFrame.resultsNote:SetPoint("TOPLEFT", rulesFrame.search, "BOTTOMLEFT", 6, -30)
     rulesFrame.resultsNote:SetWidth(320)
     rulesFrame.resultsNote:SetJustifyH("LEFT")
 
@@ -826,7 +826,7 @@ local function buildRulesFrame()
     rulesFrame.ruleList = CreateFrame("Frame", nil, rulesFrame)
 
     rulesFrame.ruleList:SetPoint("TOPLEFT", rulesFrame, "TOPLEFT", 342, -76)
-    rulesFrame.ruleList:SetPoint("BOTTOMRIGHT", rulesFrame, "BOTTOMRIGHT", -6, 6)
+    rulesFrame.ruleList:SetPoint("BOTTOMRIGHT", rulesFrame, "BOTTOMRIGHT", -6, 40)
 
     -- Shows where a dragged rule would land. One marker for the whole list
     -- rather than a highlight per row.
