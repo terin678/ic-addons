@@ -106,8 +106,8 @@ said under the preview rather than corrected behind your back — no `{needs}` a
 never says who you are after, and with two teams recruiting and neither `{tag}` nor `{days}`
 there is nothing to tell them apart.
 
-The preview under it re-assembles on every keystroke, with a length meter, and it is built
-from the boxes rather than from the saved message — so it shows what you are about to send,
+The preview beside the boxes re-assembles on every keystroke, with a length meter, and it is
+built from the boxes rather than from the saved message — so it shows what you are about to send,
 not what the guild already has. While the two differ the meter says **unsaved**. Nothing
 reaches anyone until **Save and push**; **Revert** puts the boxes back. Typing here does not
 move the revision every other officer is watching, which is why the two are kept apart.

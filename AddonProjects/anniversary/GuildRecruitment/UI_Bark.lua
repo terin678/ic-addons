@@ -56,7 +56,7 @@ UI.RegisterPage(10, "Bark", function(page)
     previewLabel:SetPoint("TOPLEFT", 0, -58)
 
     local preview = UI.Panel(page)
-    preview:SetSize(UI.PAGE_W - 26, 52)
+    preview:SetSize(UI.PAGE_W - 26, 44)
     preview:SetPoint("TOPLEFT", 0, -74)
 
     local previewText = UI.Label(preview, "", "GameFontHighlightSmall")
@@ -65,13 +65,13 @@ UI.RegisterPage(10, "Bark", function(page)
     previewText:SetSpacing(2)
 
     local meter = UI.Label(page, "", "GameFontDisableSmall")
-    meter:SetPoint("TOPLEFT", 0, -132)
+    meter:SetPoint("TOPLEFT", 0, -124)
 
     local barksLabel = UI.Label(page, "Who has been recruiting", "GameFontDisableSmall")
-    barksLabel:SetPoint("TOPLEFT", 0, -156)
+    barksLabel:SetPoint("TOPLEFT", 0, -144)
 
     local t = UI.Table(page, {
-        top = -174,
+        top = -160,
         columns = {
             { key = "age", label = "Age", width = 44, justify = "RIGHT" },
             { key = "who", label = "Officer", width = 110 },
@@ -172,16 +172,21 @@ end)
 --------------------------------------------------------------------------------
 
 UI.RegisterPage(30, "Message", function(page)
+    -- Two columns: what is edited on the left, what it produces on the right. Stacked, this
+    -- page ran to 400px, and the window has 285 inside its chrome.
+    local COL_W = 340
+    local RIGHT_X = 360
+
     local intro = UI.Label(page,
-        "The whole guild sends this one line. {teams} is where the teams go, and each\n"
-        .. "team is written with the second template below.")
+        "The whole guild sends this one line. {teams} is where the teams go, and each "
+        .. "team is written with the second template.")
     intro:SetPoint("TOPLEFT", 0, -2)
-    intro:SetWidth(UI.PAGE_W - 20)
+    intro:SetWidth(COL_W - 10)
     intro:SetSpacing(3)
 
     local mainLabel = UI.Label(page, "Message  |cff888888{guild}  {teams}  {contacts}|r",
         "GameFontDisableSmall")
-    mainLabel:SetPoint("TOPLEFT", 0, -40)
+    mainLabel:SetPoint("TOPLEFT", 0, -36)
 
     -- Assigned once every widget below exists. The boxes call it as they are typed in, so
     -- the preview is of what is on screen rather than of what was last saved.
@@ -195,24 +200,24 @@ UI.RegisterPage(30, "Message", function(page)
         if UpdatePreview then UpdatePreview() end
     end
 
-    -- Full page width: TextBox reserves its own 26 for its scrollbar, so taking
-    -- 26 off first put this page's right edge 26 short of every other tab's.
-    local main = UI.TextBox(page, UI.PAGE_W, 54, { maxBytes = 255, onChange = Typed })
-    main:SetPoint("TOPLEFT", 0, -56)
+    -- The whole column: TextBox reserves its own 26 for its scrollbar, so taking 26 off
+    -- first would leave it short of the preview panel's edge.
+    local main = UI.TextBox(page, COL_W, 66, { maxBytes = 255, onChange = Typed })
+    main:SetPoint("TOPLEFT", 0, -52)
 
     local teamLabel = UI.Label(page, "Each team  |cff888888{tag}  {days}  {needs}|r",
         "GameFontDisableSmall")
-    teamLabel:SetPoint("TOPLEFT", 0, -118)
+    teamLabel:SetPoint("TOPLEFT", 0, -126)
 
-    local team = UI.TextBox(page, UI.PAGE_W, 40, { maxBytes = 255, onChange = Typed })
-    team:SetPoint("TOPLEFT", 0, -134)
+    local team = UI.TextBox(page, COL_W, 40, { maxBytes = 255, onChange = Typed })
+    team:SetPoint("TOPLEFT", 0, -142)
 
     local contactsLabel = UI.Label(page, "Whisper who  |cff888888comma separated|r",
         "GameFontDisableSmall")
-    contactsLabel:SetPoint("TOPLEFT", 0, -182)
+    contactsLabel:SetPoint("TOPLEFT", 0, -190)
 
     local contacts = UI.EditBox(page, 300, 22)
-    contacts:SetPoint("TOPLEFT", 0, -198)
+    contacts:SetPoint("TOPLEFT", 0, -206)
     contacts:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
     -- byUser only: LoadDraft's own SetText comes through here too, and re-previewing on
     -- our own write would be work for nothing.
@@ -220,29 +225,31 @@ UI.RegisterPage(30, "Message", function(page)
         if byUser then Typed() end
     end)
 
-    local bar = UI.Toolbar(page, { top = -230, right = -26 })
+    -- Spans the left column only, so the footer packs against the column's edge and not
+    -- against the preview on the far side.
+    local bar = UI.Toolbar(page, { top = -238, right = -(UI.PAGE_W - COL_W) })
     local save = bar:Left(UI.Button(bar, "Save and push", 120, 22, { kind = "accent" }))
     local revert = bar:Left(UI.Button(bar, "Revert", 80, 22))
     local footer = bar:Right(UI.Label(page, "", "GameFontDisableSmall"))
 
     local previewLabel = UI.Label(page, "Preview", "GameFontDisableSmall")
-    previewLabel:SetPoint("TOPLEFT", 0, -262)
+    previewLabel:SetPoint("TOPLEFT", RIGHT_X, -36)
 
     local preview = UI.Panel(page)
-    preview:SetSize(UI.PAGE_W - 26, 52)
-    preview:SetPoint("TOPLEFT", 0, -278)
+    preview:SetSize(COL_W - 26, 70)
+    preview:SetPoint("TOPLEFT", RIGHT_X, -52)
 
     local previewText = UI.Label(preview, "", "GameFontHighlightSmall")
     previewText:SetPoint("TOPLEFT", 8, -8)
-    previewText:SetWidth(UI.PAGE_W - 48)
+    previewText:SetWidth(COL_W - 48)
     previewText:SetSpacing(2)
 
     local meter = UI.Label(page, "", "GameFontDisableSmall")
-    meter:SetPoint("TOPLEFT", 0, -336)
+    meter:SetPoint("TOPLEFT", RIGHT_X, -128)
 
     local warning = UI.Label(page, "", "GameFontHighlightSmall")
-    warning:SetPoint("TOPLEFT", 0, -358)
-    warning:SetWidth(UI.PAGE_W - 20)
+    warning:SetPoint("TOPLEFT", RIGHT_X, -148)
+    warning:SetWidth(COL_W - 10)
     warning:SetSpacing(2)
 
     -- What is being edited, kept apart from the document so nothing is committed
