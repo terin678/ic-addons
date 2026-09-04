@@ -1717,4 +1717,62 @@ T.Case("Sightings: rubbish yields nothing rather than a bad candidate", function
     T.Eq(#MFD.Comms.DecodeSightings(nil), 0, "nil")
 end)
 
+-- The tick runs five times a second. Rebuilding the roster and re-resolving
+-- every seat on each one is 125 roster API calls a second in a full raid, for
+-- an answer that only changes when somebody joins or leaves.
+T.Case("Roster: the roster is built once and reused until invalidated", function()
+    local builds = 0
+    local realBuild = MFD.Marker.BuildRoster
+    MFD.Marker.BuildRoster = function()
+        builds = builds + 1
+        return { { name = "Alfred", class = "MAGE" } }
+    end
+
+    MFD.Marker.InvalidateRoster()
+    MFD.Marker.CurrentRoster()
+    MFD.Marker.CurrentRoster()
+    MFD.Marker.CurrentRoster()
+    T.Eq(builds, 1, "three calls, one build")
+
+    MFD.Marker.InvalidateRoster()
+    MFD.Marker.CurrentRoster()
+    T.Eq(builds, 2, "invalidating forces a rebuild")
+
+    MFD.Marker.BuildRoster = realBuild
+    MFD.Marker.InvalidateRoster()
+end)
+
+T.Case("Roster: the cached roster still has the right contents", function()
+    local realBuild = MFD.Marker.BuildRoster
+    MFD.Marker.BuildRoster = function()
+        return { { name = "Grimmtusk", class = "MAGE" } }
+    end
+
+    MFD.Marker.InvalidateRoster()
+    T.Eq(MFD.Marker.CurrentRoster()[1].name, "Grimmtusk", "first call")
+    T.Eq(MFD.Marker.CurrentRoster()[1].class, "MAGE", "and the cached one")
+
+    MFD.Marker.BuildRoster = realBuild
+    MFD.Marker.InvalidateRoster()
+end)
+
+T.Case("Seats: resolution is cached against the roster and the plan", function()
+    local realBuild = MFD.Marker.BuildRoster
+    MFD.Marker.BuildRoster = function()
+        return { { name = "Grimmtusk", class = "MAGE" } }
+    end
+    MFD.Marker.InvalidateRoster()
+
+    local plan = { [5] = { intent = "SHEEP", ordinal = 1 } }
+    local first = MFD.Marker.ResolvedSeats(plan)
+    T.Eq(first == MFD.Marker.ResolvedSeats(plan), true, "same table returned, not re-resolved")
+    T.Eq(first.byIcon[5].owner, "Grimmtusk", "and it is correct")
+
+    MFD.Marker.InvalidateRoster()
+    T.Eq(first == MFD.Marker.ResolvedSeats(plan), false, "invalidating re-resolves")
+
+    MFD.Marker.BuildRoster = realBuild
+    MFD.Marker.InvalidateRoster()
+end)
+
 _G.MarkedForDeath = MFD

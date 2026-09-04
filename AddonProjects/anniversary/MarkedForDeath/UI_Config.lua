@@ -180,6 +180,12 @@ end
 -- Repaints every row from the current seat plan and the live roster, so the
 -- Owner column shows who actually holds each seat right now.
 function Config:Refresh()
+    -- The seat plan is edited in place, so its table identity never changes and
+    -- the marker's cache cannot notice on its own. Every editor in this file
+    -- calls Refresh after mutating, so dropping the cache here covers all of
+    -- them, including any added later.
+    MFD.Marker.InvalidateRoster()
+
     if not frame or not frame:IsShown() then
         return
     end

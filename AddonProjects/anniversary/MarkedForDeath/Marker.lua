@@ -277,7 +277,7 @@ local hasReportedTickError = false
 
 -- Builds the roster the seat resolver needs. Returns an array of
 -- { name, class }. Reads client state, so it never runs at file scope.
-function Marker.CurrentRoster()
+function Marker.BuildRoster()
     local roster = {}
 
     if IsInRaid and IsInRaid() then
@@ -307,6 +307,37 @@ function Marker.CurrentRoster()
     return roster
 end
 
+local rosterCache, seatsCache, seatsCachePlan
+
+-- Drops the cached roster and the seats resolved from it. Called whenever the
+-- group changes or the seat plan is edited.
+function Marker.InvalidateRoster()
+    rosterCache, seatsCache, seatsCachePlan = nil, nil, nil
+end
+
+-- Returns the group roster, built once and reused until invalidated.
+--
+-- The tick runs five times a second and the roster only changes when somebody
+-- joins or leaves, so rebuilding it every tick is 125 roster API calls a
+-- second in a full raid for an answer that did not change.
+function Marker.CurrentRoster()
+    if not rosterCache then
+        rosterCache = Marker.BuildRoster()
+    end
+    return rosterCache
+end
+
+-- Returns the resolved seats for a plan, cached against the roster. Re-resolves
+-- when the roster is invalidated or a different plan table is passed, which is
+-- what the seat editor does after an edit.
+function Marker.ResolvedSeats(plan)
+    if not seatsCache or seatsCachePlan ~= plan then
+        seatsCache = MFD.Seats.Resolve(plan, Marker.CurrentRoster())
+        seatsCachePlan = plan
+    end
+    return seatsCache
+end
+
 -- Returns { [key] = icon } for the units the client can currently read, plus
 -- a { [key] = unitToken } map for applying icons.
 local function readActual()
@@ -325,7 +356,7 @@ end
 
 -- Recomputes the desired map from the current candidates, rules and seats.
 function Marker:Desired()
-    local seats = MFD.Seats.Resolve(MFD.db.seatPlan, Marker.CurrentRoster())
+    local seats = Marker.ResolvedSeats(MFD.db.seatPlan)
     local rules = MFD.Rules.Active and MFD.Rules.Active() or {}
     return MFD.Allocator.Compute(MFD.Candidates.ToList(MFD.Candidates.set), rules, seats, Marker.locked)
 end
@@ -485,8 +516,13 @@ MFD.RegisterInit(function()
     frame:RegisterEvent("PLAYER_REGEN_DISABLED")
     frame:RegisterEvent("PLAYER_ENTERING_WORLD")
     frame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+    frame:RegisterEvent("GROUP_ROSTER_UPDATE")
 
     frame:SetScript("OnEvent", function(_, event)
+        if event == "GROUP_ROSTER_UPDATE" then
+            Marker.InvalidateRoster()
+        end
+
         if event == "PLAYER_REGEN_DISABLED" then
             -- Freeze the current map so nothing shifts under the raid mid-pull.
             local desired = Marker.lastDesired
@@ -499,6 +535,7 @@ MFD.RegisterInit(function()
         elseif event == "PLAYER_ENTERING_WORLD" then
             wipe(Marker.locked)
             wipe(Marker.placed)
+            Marker.InvalidateRoster()
             if MFD.db and MFD.db.settings.isCvarWarnEnabled then
                 local ok, message = Marker:CheckCvars()
                 if not ok then
