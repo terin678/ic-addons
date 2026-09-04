@@ -2,7 +2,7 @@
 local MFD = _G.MarkedForDeath or {}
 
 -- Must match ## Version: in the toc and the packaged zip name.
-MFD.VERSION = "1.16.1"
+MFD.VERSION = "1.16.2"
 
 -- Bumped only when the saved-variable shape changes in a way that needs a
 -- migration. See MFD:MigrateDB.
@@ -54,6 +54,10 @@ local DB_DEFAULTS = {
         -- pull is too late: the tank is pulling while the crowd control is
         -- still reading the line.
         isAnnounceOnMarkEnabled = true,
+        -- Whether a mob that arrives mid-fight is worth re-announcing the pack
+        -- for. Rate limited whatever this says; turn it off for a night of
+        -- Hyjal, where new mobs are the entire fight.
+        isAnnounceAddsEnabled = true,
         isCvarWarnEnabled = true,
         isWarningSoundEnabled = true,
         isIconReuseEnabled = true,

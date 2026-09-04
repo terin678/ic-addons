@@ -371,6 +371,12 @@ Editing a merged rule copies it into your own set first. From then on it is your
   around is no longer news: a mob died and its icon moved on, or something got re-marked.
   Announcing that is spam and buries the line that mattered. The exception is a mob nobody
   has been told about, because an add walking in is exactly what somebody needs to hear.
+- **Adds are capped at one line every twenty seconds**, however many arrive. Hyjal is why:
+  its waves trickle mobs in continuously by design, so an unlimited "new mob, new line"
+  rule would post for the entire fight. A mob held back stays unannounced, so it gets its
+  line late rather than never. Turn the whole add rule off in Settings for a Hyjal night;
+  crowd control that turns up late still gets its own raid warning and whisper either way,
+  which is the part that actually needs acting on.
 - The pull is detected from the pack, not from you. The marking lead is often at range and
   enters combat seconds after the tank, and reading only their own combat flag would leave
   their client announcing into a fight that had already started.

@@ -38,6 +38,12 @@ local TOGGLES = {
         set = function(v) MFD.db.settings.isAnnounceOnMarkEnabled = v end,
     },
     {
+        label = "Re-announce when a new mob arrives mid-fight",
+        tip = "An add walking into a pull gets one line. Never more than once every twenty seconds however many arrive, and a pack merely rearranging itself as things die is always silent. Worth turning off in Hyjal, where mobs trickling in is the whole fight.",
+        get = function() return MFD.db.settings.isAnnounceAddsEnabled end,
+        set = function(v) MFD.db.settings.isAnnounceAddsEnabled = v end,
+    },
+    {
         label = "Announce assignments to raid chat on the pull",
         tip = "The backstop for a pack pulled before its marks settled. Silent when the same line has already gone out, so it is not a second copy of something the raid just read.",
         get = function() return MFD.db.settings.isAnnounceEnabled end,

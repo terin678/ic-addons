@@ -3237,28 +3237,59 @@ T.Case("Announce: the same line is not posted twice in a row", function()
     T.Eq(Ann.ShouldPost("Skull>Kill", "Skull>Kill", 100, 140, 30), true, "long enough ago to be news again")
 end)
 
-T.Case("Announce: once the fight is on, a reshuffle is not worth saying", function()
-    -- A mob dies, its icon moves to the next one, the line changes. Seven
-    -- seconds into a fight nobody needs to read that.
-    local told = { ["1-A"] = true, ["1-B"] = true }
-    T.Eq(Ann.IsStalePullChange({ "1-A", "1-B" }, told, 100, 110, 3), true, "same mobs, just rearranged")
-end)
+local function pullOpts(fields)
+    local opts = { grace = 3, minGap = 20, allowAdds = true }
+    for key, value in pairs(fields or {}) do
+        opts[key] = value
+    end
+    return opts
+end
 
-T.Case("Announce: a mob nobody has heard about still gets a line", function()
-    local told = { ["1-A"] = true }
-    T.Eq(Ann.IsStalePullChange({ "1-A", "1-C" }, told, 100, 110, 3), false, "an add walked in")
+T.Case("Announce: out of combat nothing is held back", function()
+    T.Eq(Ann.PullAllows({ "1-A" }, {}, nil, nil, 110, pullOpts()), true, "no pull under way")
 end)
 
 T.Case("Announce: the first seconds of a pull still announce", function()
     -- Pulled the instant it was marked, before the line had settled. That one
     -- is worth catching up on.
     local told = { ["1-A"] = true }
-    T.Eq(Ann.IsStalePullChange({ "1-A" }, told, 100, 102, 3), false, "inside the grace")
-    T.Eq(Ann.IsStalePullChange({ "1-A" }, told, 100, 104, 3), true, "past it")
+    T.Eq(Ann.PullAllows({ "1-A" }, told, 100, nil, 102, pullOpts()), true, "inside the grace")
+    T.Eq(Ann.PullAllows({ "1-A" }, told, 100, nil, 104, pullOpts()), false, "past it, and nothing new")
 end)
 
-T.Case("Announce: out of combat nothing is stale", function()
-    T.Eq(Ann.IsStalePullChange({ "1-A" }, {}, nil, 110, 3), false, "no pull under way")
+T.Case("Announce: once the fight is on, a reshuffle is not worth saying", function()
+    -- A mob dies, its icon moves to the next one, the line changes. Seven
+    -- seconds into a fight nobody needs to read that.
+    local told = { ["1-A"] = true, ["1-B"] = true }
+    T.Eq(Ann.PullAllows({ "1-A", "1-B" }, told, 100, nil, 110, pullOpts()), false, "same mobs, rearranged")
+end)
+
+T.Case("Announce: a mob nobody has heard about still gets a line", function()
+    local told = { ["1-A"] = true }
+    T.Eq(Ann.PullAllows({ "1-A", "1-C" }, told, 100, nil, 110, pullOpts()), true, "an add walked in")
+end)
+
+T.Case("Announce: adds cannot produce a line every few seconds", function()
+    -- Hyjal. Waves trickle mobs in for the whole fight, so "new mob, new line"
+    -- would post continuously. One every twenty seconds is a summary.
+    local told = { ["1-A"] = true }
+    T.Eq(Ann.PullAllows({ "1-A", "1-C" }, told, 100, 108, 110, pullOpts()), false, "one went out two seconds ago")
+    T.Eq(Ann.PullAllows({ "1-A", "1-C" }, told, 100, 108, 128, pullOpts()), true, "the floor has passed")
+end)
+
+T.Case("Announce: a suppressed add is still announced once the floor passes", function()
+    -- It stays unannounced, so it stays new, so it gets its line late rather
+    -- than never.
+    local told = { ["1-A"] = true }
+    local keys = { "1-A", "1-C" }
+    T.Eq(Ann.PullAllows(keys, told, 100, 108, 115, pullOpts()), false, "too soon")
+    T.Eq(Ann.PullAllows(keys, told, 100, 108, 130, pullOpts()), true, "and now it lands")
+end)
+
+T.Case("Announce: adds can be switched off entirely for a Hyjal night", function()
+    local told = { ["1-A"] = true }
+    T.Eq(Ann.PullAllows({ "1-A", "1-C" }, told, 100, nil, 200,
+        pullOpts({ allowAdds = false })), false, "silent whatever arrives")
 end)
 
 T.Case("Announce: keys come out sorted, so the same pack reads the same", function()

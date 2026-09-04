@@ -868,6 +868,7 @@ MFD.RegisterInit(function()
 
             -- The next pack is a new conversation.
             MFD.Announce.pullAt = nil
+            MFD.Announce.lastPullPostAt = nil
             wipe(MFD.Announce.announcedKeys)
             MFD.Announce.autoState.line = nil
             MFD.Announce.autoState.since = nil
@@ -1002,29 +1003,42 @@ end
 -- settled yet. After this, only a mob nobody has heard about gets one.
 Announce.PULL_GRACE_SECONDS = 3
 
--- Is this change worth ignoring because the fight is already under way?
+-- The floor between two mid-fight lines, however many mobs arrive.
 --
--- Once people are swinging, assignments shifting around is not news: a mob
--- died and its icon moved, or something was re-marked. Announcing that reads
--- as spam and buries the line that mattered. A mob nobody has been told about
--- is the exception, because an add walking in is exactly what somebody needs to
--- hear. Pure.
-function Announce.IsStalePullChange(keys, announcedKeys, pullAt, now, graceSeconds)
+-- Hyjal is the reason this exists. Its waves trickle mobs in continuously by
+-- design, so "a mob nobody has heard about is worth a line" fires every few
+-- seconds for the whole fight, which is the spam the pull grace was meant to
+-- stop. One line every twenty seconds is a summary; one every three is noise.
+Announce.PULL_REPEAT_SECONDS = 20
+
+-- Does the state of the pull allow a line right now? Pure.
+--
+-- Out of combat, always. In the first seconds of a pull, always, because the
+-- pack may have been pulled before its line settled. After that only a mob key
+-- nobody has been told about, and not more often than the floor above.
+--
+-- Note what this does not do mid-fight: a mob whose icon merely moved is not
+-- new, so a pack rearranging itself as things die stays silent.
+function Announce.PullAllows(keys, announcedKeys, pullAt, lastPullPostAt, now, opts)
     if not pullAt then
-        return false
+        return true
     end
 
-    if (now - pullAt) <= graceSeconds then
+    if (now - pullAt) <= opts.grace then
+        return true
+    end
+
+    if not opts.allowAdds then
         return false
     end
 
     for _, key in ipairs(keys or {}) do
         if not announcedKeys[key] then
-            return false
+            return (now - (lastPullPostAt or 0)) >= opts.minGap
         end
     end
 
-    return true
+    return false
 end
 
 -- The mob keys in an assignment list, sorted. Pure.
@@ -1047,6 +1061,7 @@ Announce.autoState = {}
 -- When the current pull started, and every mob key the raid has already been
 -- told about during it. Both cleared when combat ends.
 Announce.pullAt = nil
+Announce.lastPullPostAt = nil
 Announce.announcedKeys = {}
 
 function Announce.Auto(desired, now)
@@ -1056,8 +1071,12 @@ function Announce.Auto(desired, now)
     end
 
     local keys = Announce.KeysOf(desired.list)
-    if Announce.IsStalePullChange(keys, Announce.announcedKeys, Announce.pullAt,
-        now, Announce.PULL_GRACE_SECONDS) then
+    if not Announce.PullAllows(keys, Announce.announcedKeys, Announce.pullAt,
+        Announce.lastPullPostAt, now, {
+            grace = Announce.PULL_GRACE_SECONDS,
+            minGap = Announce.PULL_REPEAT_SECONDS,
+            allowAdds = MFD.db.settings.isAnnounceAddsEnabled,
+        }) then
         return false
     end
 
@@ -1076,6 +1095,9 @@ function Announce.Auto(desired, now)
     end
 
     Announce.lastLine, Announce.lastAt = line, now
+    if Announce.pullAt then
+        Announce.lastPullPostAt = now
+    end
     for _, key in ipairs(keys) do
         Announce.announcedKeys[key] = true
     end
