@@ -10,8 +10,10 @@ AddonName/
   AddonName.toc        Interface, Title, Notes, Version, IconTexture, Group, Category,
                        Dependencies, SavedVariables, OptionalDeps, file list
   Bindings.xml         Key bindings, if any. Shipped but NEVER listed in the .toc
-  Core.lua             Namespace, event frame, defaults, migrations, slash commands
-  Util.lua             Pure functions with no frame or event dependencies
+  Core.lua             Version, defaults, migrations, this addon's own commands and
+                       events, and the Core:Attach call that installs the rest
+  Util.lua             This addon's own pure helpers, if it has any; the shared ones
+                       come from LibICCore
   <Feature>.lua        One file per concern (Database, Scanning, ...)
   UI.lua, UI_*.lua     The window shell and one file per page
   Tests.lua            Loaded last, so every module exists when its cases register
@@ -31,12 +33,19 @@ AddonName/
   intentional globals are the saved-variable tables named in the `.toc`, frames that must
   be named for `UISpecialFrames` or a template, and the `BINDING_*` strings and functions
   `Bindings.xml` calls by name.
+- The plumbing every addon shares -- Print, the saved-variable bootstrap and its load
+  check, Util, Log, the test harness, the slash dispatcher, the minimap launcher -- is
+  `LibICCore-1.0` in ICLibs, installed by one `Core:Attach(ns, {...})` call in
+  `Core.lua` under the names above (`ns.Print`, `ns.Util`, `ns.Log`, `ns.Tests`). An
+  addon carries none of it itself, and `scripts/lint.py` fails an addon with saved
+  variables that does not attach. `Docs/ICLibs.md` lists what Attach installs.
 - `ICTemplate` is the worked example of all of this, and copying it (or running
   `scripts/new-addon.ps1`) is how a new addon starts.
 
 Two addons do not follow this, both deliberately. MalexisAuctionWatcher predates the private
-namespace and still uses a single `_G` table with colon methods; that is the old shape, and
-it is not to be copied into anything new. AuctionatorSellingTweaks is a single-file hook with
+namespace and still uses a single `_G` table with colon methods; LibICCore attaches to that
+table just the same, so its plumbing is shared, but the shape is the old one and it is not
+to be copied into anything new. AuctionatorSellingTweaks is a single-file hook with
 nothing to export, so it declares `local addonName` outright and has no `ns` at all. Every
 other addon here takes the two return values.
 
@@ -73,17 +82,26 @@ other addon here takes the two return values.
 
 ## Saved variables
 
-- One account-wide table and, if needed, one per-character table, declared in the `.toc`.
-- Initialise every field with a default on `ADDON_LOADED`; never assume a key exists.
-- When the schema changes, migrate in place and keep reading the old shape for one
-  version. Never delete user data during a migration.
+- One account-wide table and, if needed, one per-character table, declared in the `.toc`
+  and named to `Core:Attach` as `db` and `cdb`.
+- Every field has a default in the `Defaults` table in `Core.lua`. `ApplyDefaults` fills
+  in what is missing on every load, so a new field needs no migration of its own.
+- A change that has to read the old shape is a step in `Migrations`, keyed by the schema
+  it upgrades from, and `SCHEMA` goes up with it. Steps run before the defaults and never
+  delete user data.
+- The library logs at load whether the client handed the saved variables back.
+  Editing a `.toc` needs a client restart. `/reload` does not re-read it, and a client that has been running across `.toc` edits can stop restoring one addon's account-wide saved variables while still restoring the per-character ones. The fingerprint is `/x log` saying `SAVED VARIABLES WERE EMPTY` with the per-character table intact. Restart the client before reading a line of addon code.
 - Store timestamps as `time()` integers, money as copper integers, day buckets as
   `floor(time() / 86400)`.
 
 ## User-facing text
 
-- Chat output is prefixed with the addon name. Errors also go to `UIErrorsFrame`.
-- Every slash command is listed in `/<cmd> help` with a one-line description.
+- Chat output goes through `ns.Print`, which prefixes the addon name and honours
+  `/<cmd> out`. Errors also go to `UIErrorsFrame`.
+- Every slash command is a row in the `HELP` table in `Core.lua`, which is what
+  `/<cmd> help` prints, and a function in `COMMANDS`. The dispatcher's built-ins --
+  help, log, probe, status, test, enable, disable, out, reset, scale, version -- come
+  free, and a key in `COMMANDS` overrides one.
 - Anything that can silently do nothing (a source with no data, an item not cached) prints
   a reason.
 - Colors: green for good/cheap, red for bad/expensive, amber for external or derived

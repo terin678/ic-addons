@@ -28,15 +28,22 @@ into `Professions.lua` profiles, not into the modules.
 ## Shared code: ICLibs
 
 Code more than one addon needs lives in the library addon
-`AddonProjects/anniversary/ICLibs` as LibStub libraries. There are two:
+`AddonProjects/anniversary/ICLibs` as LibStub libraries. Three of ours, plus the
+third-party ones (LibStub, CallbackHandler, LibDataBroker, LibDBIcon) loaded once there
+so no addon bundles a copy:
 
+- `LibICCore-1.0` (MINOR 1) is the plumbing. One `Core:Attach(ns, opts)` in `Core.lua`
+  installs Print, the saved-variable bootstrap and its load check, Util, Log, the test
+  harness, the slash dispatcher and reset; `Core:MinimapButton`, `Core:Probe` and
+  `Core:Bindings` do the rest. Every addon with saved variables attaches, and `lint.py`
+  fails one that does not.
 - `LibICTradeSkill-1.0` (MINOR 2) reads a profession window into a book.
-- `LibICUI-1.0` (MINOR 5) is the window, tab, list and widget toolkit in the guild
+- `LibICUI-1.0` (MINOR 6) is the window, tab, list and widget toolkit in the guild
   palette, and carries the brand itself. Four addons depend on it.
 
-Addons that use either list `## Dependencies: ICLibs` in their TOC and fetch it with
+Addons list `## Dependencies: ICLibs` in their TOC and fetch a library with
 `LibStub("LibICUI-1.0")`. Bump the library's MINOR when its API changes, and record the
-new number in `Docs/ICLibs.md` so a reader can tell whether the bump happened.
+new number in `Docs/ICLibs.md`; `lint.py` fails when the two disagree.
 `scripts/package.ps1` bundles required addons into the zip and `scripts/deploy.ps1` links
 them; do not copy library files into an addon's own folder.
 
@@ -56,8 +63,12 @@ version and says what to throw away.
 - New wait on the client: give it a state, a timeout, and a cancel path. Copy the pattern
   in `MalexisAuctionWatcher/Scanning.lua`.
 - New optional dependency call: guard the global and the function, `pcall` internals.
-- New command: add it to the `help` output and to `Docs/<Addon>.md`.
-- New saved field: default it in the `InitializeDB` path and migrate old data in place.
+- New command: a row in `HELP` and a function in `COMMANDS` in `Core.lua`, and a row in
+  `Docs/<Addon>.md`. The dispatcher's built-ins are already there.
+- New saved field: default it in the `Defaults` table in `Core.lua`; `ApplyDefaults` fills
+  it in on load. A shape change is a `Migrations` step keyed by the schema it upgrades
+  from, with `SCHEMA` bumped.
+- Editing a `.toc` needs a client restart. `/reload` does not re-read it, and a client that has been running across `.toc` edits can stop restoring one addon's account-wide saved variables while still restoring the per-character ones. The fingerprint is `/x log` saying `SAVED VARIABLES WERE EMPTY` with the per-character table intact. Restart the client before reading a line of addon code.
 - New or edited window: follow "Window layout" in `CODING_STANDARDS.md`. Lists get a header
   row outside the scroll child, fixed single-line rows, a toolbar above the headers, no
   controls over the scroll area, and the page must fit (TradeMaster pages are 700x478) or
@@ -94,9 +105,9 @@ things stand in for that, in order:
    | --- | --- |
    | `/tm test` (TradeMaster) | 128 |
    | `/cm test` (CutMaster) | 135 |
-   | `/gr test` (GuildRecruitment) | 39 |
+   | `/gr test` (GuildRecruitment) | 50 |
    | `/ictpl test` (ICTemplate) | 27 |
-   | `/maw test` (MalexisAuctionWatcher) | 8 |
+   | `/maw test` (MalexisAuctionWatcher) | 9 |
 
    Any decision worth arguing about belongs in a pure function with a case here, and a case
    that asserts an ordering must have that ordering worked out rather than assumed.

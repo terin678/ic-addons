@@ -65,6 +65,7 @@ build actually has, and what needs each one.
 | `/ictpl enable` / `disable` | Master switch |
 | `/ictpl out [n]` | Print to ChatFrame n |
 | `/ictpl reset [settings\|log\|all]` | Restore defaults |
+| `/ictpl version` | Addon and library versions |
 
 Two key bindings under **ICTemplate** in the key bindings panel: send the pulse, and open
 the window.
@@ -90,7 +91,7 @@ Three tokens, and only three. They are listed at the top of `Core.lua` as well.
 
 | Token | Where it is |
 | --- | --- |
-| `ICTemplate` | the `.toc` filename and `## Title`, the `## IconTexture` path, `ICTemplateDB` and `ICTemplateCharDB`, the chat prefix in `ns.Print`, the window frame name, the LibDataBroker object name, the two globals a key binding calls, and `ICTemplate.tga` |
+| `ICTemplate` | the `.toc` filename and `## Title`, the `## IconTexture` path, `ICTemplateDB` and `ICTemplateCharDB`, the `prefix`, `db` and `cdb` handed to `Core:Attach`, the window frame name, the LibDataBroker object name, the two globals a key binding calls, and `ICTemplate.tga` |
 | `ICTEMPLATE` | `SLASH_ICTEMPLATE1/2`, `SlashCmdList["ICTEMPLATE"]`, the `BINDING_*` globals, and the `<Binding name=...>` attributes in `Bindings.xml` |
 | `ictpl` | the `/ictpl` slash string, and every mention of it in help text |
 
@@ -111,14 +112,16 @@ addon uses either a title texture or an `## IconTexture`, never both.
 
 Keep, always:
 
-- `Core.lua` from `ns.Print` down through `ns.Migrate`. Copy it unread; it is the same in
-  every addon.
-- `Util.lua`. Pure, frameless, and the reason `Tests.lua` has something to bite on.
-- `Log.lua`. Change the `kind` values; the ring buffers, the merge and the filter stay.
+- The shape of `Core.lua`: `VERSION`, `SCHEMA`, `Migrations`, `Defaults`, `CharDefaults`,
+  `HELP`, `COMMANDS` and the `Core:Attach` call at the end. There is nothing in it to copy
+  unread any more; the plumbing it used to carry is LibICCore's, and `Docs/ICLibs.md`
+  says what Attach installs. `Util.lua`, `Log.lua` and the test harness are gone from the
+  template for the same reason -- `ns.Util`, `ns.Log` and `ns.Tests` arrive with Attach,
+  and an addon's own pure helpers go in a `Util.lua` of its own only when it has some.
 - The library wrapper block at the top of `UI.lua`, lines 1 to about 90. It is the whole of
   the addon's contact with LibICUI.
-- `Tests.lua`'s harness. `T.With` in particular: it swaps a made-up database in, which is
-  the only way the impure half of an addon gets tested at all.
+- `T.With` in the cases that use it: it swaps a made-up database in, which is the only way
+  the impure half of an addon gets tested at all.
 - The **"every page draws without erroring"** case. It builds the window and calls each
   page's refresher under `pcall`. A refresher is not pure, so nothing else in the file
   reaches one, and the bug it exists for -- reading a settings field at the wrong depth --

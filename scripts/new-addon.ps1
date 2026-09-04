@@ -100,7 +100,8 @@ if ($coreText -match 'SLASH_\w+1\s*=\s*"/(\w+)"') { $fromSlash = $Matches[1] }
 
 $files = @()
 if (-not $WhatIf) {
-    # Top level only: the vendored libraries under Libs\ are nobody's to rewrite.
+    # Top level only. Nothing is vendored under the addon any more (the third-party
+    # libraries load from ICLibs), but a subfolder is still nobody's to rewrite.
     $files = Get-ChildItem $target -File | Where-Object { $_.Extension -in ".lua", ".toc", ".xml" }
 }
 
