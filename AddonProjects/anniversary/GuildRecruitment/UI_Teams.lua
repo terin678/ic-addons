@@ -39,13 +39,32 @@ UI.RegisterPage(20, "Teams", function(page)
     -- Two sets of fields in one panel: needs on one, the team's own details on the other.
     -- Apply and Cancel are shared and sit right of both, so the buttons do not move when
     -- the panel changes what it is editing.
+    local APPLY_X = 470
+
     local function Field(w, x, hintText)
         local box = UI.EditBox(editor, w, 22)
         box:SetPoint("TOPLEFT", x, -32)
         local hint = UI.Label(editor, hintText, "GameFontDisableSmall")
         hint:SetPoint("BOTTOMLEFT", box, "TOPLEFT", 2, 1)
-        box.hint = hint
+        box.hint, box.x = hint, x
         return box
+    end
+
+    --[[
+    A hint is only as wide as the gap to the next field, so it can never run into its
+    neighbour's. The first version left them at their natural width and "tag, or blank to
+    follow the name" printed straight through "raid days and times".
+
+    Nothing wraps: a hint that no longer fits is a hint that needs shortening, and a second
+    line here would push the fields out of the panel.
+    ]]
+    local function LayoutHints(fields)
+        for i, box in ipairs(fields) do
+            local nextX = fields[i + 1] and fields[i + 1].x or APPLY_X
+            box.hint:SetWidth(nextX - box.x - 6)
+            box.hint:SetWordWrap(false)
+            if box.hint.SetMaxLines then box.hint:SetMaxLines(1) end
+        end
     end
 
     local roleBox = Field(140, 8, "role")
@@ -53,10 +72,15 @@ UI.RegisterPage(20, "Teams", function(page)
     local countBox = Field(44, 300, "how many")
     local needFields = { roleBox, classBox, countBox }
 
+    -- "tag" and nothing more: the label above the fields already explains what a tag is
+    -- for and what clearing it does, and there are only 80 pixels here.
     local nameBox = Field(140, 8, "team name")
-    local tagBox = Field(80, 154, "tag, or blank to follow the name")
+    local tagBox = Field(80, 154, "tag")
     local daysBox = Field(220, 240, "raid days and times")
     local teamFields = { nameBox, tagBox, daysBox }
+
+    LayoutHints(needFields)
+    LayoutHints(teamFields)
 
     nameBox:SetMaxLetters(ns.Teams.MAX_NAME)
     tagBox:SetMaxLetters(ns.Teams.MAX_TAG)
@@ -75,9 +99,9 @@ UI.RegisterPage(20, "Teams", function(page)
     end
 
     local apply = UI.Button(editor, "Apply", 70, 22, { kind = "accent" })
-    apply:SetPoint("TOPLEFT", 470, -32)
+    apply:SetPoint("TOPLEFT", APPLY_X, -32)
     local cancel = UI.Button(editor, "Cancel", 70, 22)
-    cancel:SetPoint("TOPLEFT", 546, -32)
+    cancel:SetPoint("TOPLEFT", APPLY_X + 76, -32)
 
     local t
     t = UI.Table(page, {

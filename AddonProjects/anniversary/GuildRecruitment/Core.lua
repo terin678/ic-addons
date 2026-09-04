@@ -107,6 +107,7 @@ ns.Defaults = {
     settings = {
         enabled = true,
         outputFrame = 1,
+        windowScale = 1,
         minimap = { hide = false },
         log = { kind = "all", source = "all" },
 
@@ -251,6 +252,7 @@ local HELP = {
     { "test", "run the test suite" },
     { "enable | disable", "master switch" },
     { "out [n]", "print to ChatFrame n" },
+    { "scale [percent]", "window size, 50 to 125, or drag its bottom-right corner" },
     { "reset [doc|peers|log|all]", "restore defaults" },
     { "help", "this list" },
 }
@@ -399,6 +401,21 @@ local function HandleSlash(input)
         end
         ns.db.settings.outputFrame = math.max(1, math.min(10, math.floor(n)))
         ns.Printf("printing to ChatFrame %d.", ns.db.settings.outputFrame)
+
+    elseif cmd == "scale" then
+        local pct = tonumber(rest)
+        if not pct then
+            ns.Printf("window scale is %d%%. /gr scale <percent> sets it, or drag the grip "
+                .. "in the bottom-right corner.", (ns.db.settings.windowScale or 1) * 100 + 0.5)
+            return
+        end
+        local frame = ns.UI and ns.UI.frame
+        if not frame or not frame.SetWindowScale then
+            ns.Print("open the window first, then set the scale.")
+            return
+        end
+        local applied = frame:SetWindowScale(pct / 100)
+        ns.Printf("window scale set to %d%%.", applied * 100 + 0.5)
 
     elseif cmd == "reset" then
         local what = (rest ~= "" and rest or "peers"):lower()

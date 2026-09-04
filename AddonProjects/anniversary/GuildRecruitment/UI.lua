@@ -136,8 +136,22 @@ function UI.Create()
     local f = ICUI:Window("GuildRecruitmentFrame", {
         style = STYLE, width = WIDTH, height = HEIGHT,
         title = "Guild Recruitment " .. ns.VERSION,
+        scalable = true,
+        minScale = 0.5,
+        maxScale = 1.25,
+        onScaleChanged = function(_, scale)
+            ns.db.settings.windowScale = scale
+        end,
     })
     UI.frame = f
+
+    -- Guarded like any optional dependency: a stale ICLibs bundled in another addon can win
+    -- the LibStub race at an older MINOR, and this should cost us the grip, not the window.
+    -- No FitToScreen here: 720x560 already fits a 1024x768 UIParent with room to spare, so
+    -- the scale only moves when somebody asks for it.
+    if f.SetWindowScale then
+        f:SetWindowScale(ns.db.settings.windowScale or 1, true)
+    end
 
     local names = {}
     for i, page in ipairs(UI.Pages) do names[i] = page.name end

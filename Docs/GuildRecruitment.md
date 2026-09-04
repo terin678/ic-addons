@@ -164,6 +164,7 @@ and the panel says so rather than quietly showing you a short list.
 | `/gr test` | Run the test suite |
 | `/gr enable` / `disable` | Master switch |
 | `/gr out [n]` | Print to ChatFrame n |
+| `/gr scale [percent]` | Window size, 50 to 125. You can also drag the grip in the window's bottom-right corner |
 | `/gr reset [doc\|peers\|log\|all]` | Restore defaults |
 
 Two key bindings under **GuildRecruitment**: send the message, and open the window.
