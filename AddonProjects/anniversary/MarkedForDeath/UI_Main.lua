@@ -1,9 +1,9 @@
 -- The one window. Seats, rules, the raid check grid and settings live here as
 -- tabs rather than as four separate windows you have to close and reopen.
 --
--- Two things stay floating on purpose: the assignment panel and the buff
--- board. Those are glanceable during a pull, not things you sit and adjust,
--- and putting them in here would mean opening a config window mid-fight.
+-- The assignment panel and the buff board are tabs here as well as floating
+-- windows. They are the two you want visible during a pull without the rest of
+-- the window in the way, so both homes exist and either can be used.
 local MFD = _G.MarkedForDeath or {}
 
 MFD.UI = MFD.UI or {}
@@ -22,6 +22,8 @@ local TABS = {
     { key = "seats",  label = "Seats",      owner = function() return MFD.UI.Config end },
     { key = "rules",  label = "Rules",      owner = function() return MFD.UI.Rules end },
     { key = "check",  label = "Raid check", owner = function() return MFD.UI.RaidCheck end },
+    { key = "buffs",  label = "Buffs",      owner = function() return MFD.UI.BuffBoard end },
+    { key = "assign", label = "Assignments", owner = function() return MFD.UI.Assignments end },
     { key = "settings", label = "Settings", owner = function() return MFD.UI.Settings end },
 }
 
@@ -42,6 +44,21 @@ local function restorePosition()
         frame:SetPoint(saved.point, UIParent, saved.relativePoint or saved.point, saved.x or 0, saved.y or 0)
     else
         frame:SetPoint("CENTER")
+    end
+end
+
+-- Paints the master switch so its current state is obvious at a glance.
+function Main:PaintMaster()
+    if not frame or not frame.master then
+        return
+    end
+
+    if MFD.IsEnabled() then
+        frame.master:SetText("Disable")
+        frame.title:SetText("Marked For Death")
+    else
+        frame.master:SetText("|cff66ff66Enable|r")
+        frame.title:SetText("Marked For Death  |cffff4444(disabled)|r")
     end
 end
 
@@ -80,7 +97,7 @@ local function build()
     local previous
     for _, tab in ipairs(TABS) do
         local button = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-        button:SetSize(100, TAB_HEIGHT)
+        button:SetSize(96, TAB_HEIGHT)
         if previous then
             button:SetPoint("LEFT", previous, "RIGHT", 4, 0)
         else
@@ -93,6 +110,23 @@ local function build()
         buttons[tab.key] = button
         previous = button
     end
+
+    -- The panic button. Sits on the tab strip rather than inside Settings,
+    -- because the moment you want it you do not want to go looking for it.
+    frame.master = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+    frame.master:SetSize(110, TAB_HEIGHT)
+    frame.master:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -12, -26)
+    frame.master:SetScript("OnClick", function()
+        MFD.SetEnabled(not MFD.IsEnabled())
+        Main:PaintMaster()
+    end)
+    frame.master:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        GameTooltip:AddLine("Disable everything")
+        GameTooltip:AddLine("Stops marking, announcements and warnings without unloading the addon or reloading. Your rules and roles are untouched.", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    frame.master:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
     for _, tab in ipairs(TABS) do
         local container = CreateFrame("Frame", nil, frame)
@@ -136,6 +170,7 @@ function Main:Select(key)
 
     currentKey = key
     paintTabs()
+    Main:PaintMaster()
 end
 
 -- Opens the window on a tab, or closes it if that tab is already showing.

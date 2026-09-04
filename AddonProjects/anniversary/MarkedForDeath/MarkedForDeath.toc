@@ -22,6 +22,7 @@ Candidates.lua
 Marker.lua
 Comms.lua
 RaidCheck.lua
+Tanks.lua
 Tests.lua
 UI_Main.lua
 UI_Config.lua

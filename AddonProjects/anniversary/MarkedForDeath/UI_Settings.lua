@@ -16,6 +16,14 @@ local SECTION_SPACING = 14  -- extra pixels above a section heading
 -- Every toggle, in display order. get and set take and return a boolean, so a
 -- setting stored in a nested table looks the same here as a flat one.
 local TOGGLES = {
+    { section = "Everything" },
+    {
+        label = "Addon enabled",
+        tip = "The master switch. Off means no icons, no chat, no warnings, without unloading the addon or reloading. Nothing you have configured is lost.",
+        get = function() return MFD.IsEnabled() end,
+        set = function(v) MFD.SetEnabled(v) end,
+    },
+
     { section = "Marking" },
     {
         label = "Place raid icons automatically",
@@ -54,6 +62,21 @@ local TOGGLES = {
         set = function(v) MFD.db.settings.isWarningSoundEnabled = v end,
     },
 
+    { section = "Raid" },
+    {
+        label = "Announce when a main tank dies",
+        tip = "Posts \"Name has died\" as a raid warning. Only the Raid Lead's client announces, so the raid sees it once.",
+        get = function() return MFD.db.settings.isTankDeathAlertEnabled end,
+        set = function(v) MFD.db.settings.isTankDeathAlertEnabled = v end,
+    },
+    {
+        edit = true,
+        label = "Extra tank names",
+        tip = "Comma separated. The raid's own main tank assignment already counts; this is for tanks it does not list.",
+        get = function() return MFD.db.settings.tankNames end,
+        set = function(v) MFD.db.settings.tankNames = v end,
+    },
+
     { section = "Raid check" },
     {
         label = "Open the grid on ready check (raid leader and assistants)",
@@ -90,6 +113,7 @@ local panel
 -- standalone window and the Blizzard options category.
 local function buildBody(parent)
     parent.checks = {}
+    parent.edits = {}
     local y = -12
 
     for _, entry in ipairs(TOGGLES) do
@@ -98,6 +122,31 @@ local function buildBody(parent)
             local heading = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
             heading:SetPoint("TOPLEFT", parent, "TOPLEFT", 16, y)
             heading:SetText(entry.section)
+            y = y - ROW_SPACING
+        elseif entry.edit then
+            local label = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            label:SetPoint("TOPLEFT", parent, "TOPLEFT", 24, y - 4)
+            label:SetText(entry.label)
+
+            local box = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
+            box:SetSize(300, 20)
+            box:SetPoint("LEFT", label, "RIGHT", 12, 0)
+            box:SetAutoFocus(false)
+            box.entry = entry
+            -- Saved as you type rather than on enter, so a name typed and then
+            -- forgotten still counts.
+            box:SetScript("OnTextChanged", function(self)
+                entry.set(self:GetText())
+            end)
+            box:SetScript("OnEscapePressed", function(self)
+                self:ClearFocus()
+            end)
+            box:SetScript("OnEnterPressed", function(self)
+                self:ClearFocus()
+            end)
+
+            parent.edits = parent.edits or {}
+            parent.edits[#parent.edits + 1] = box
             y = y - ROW_SPACING
         else
             local check = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
@@ -165,6 +214,14 @@ local function refreshBody(body)
 
     for _, check in ipairs(body.checks) do
         check:SetChecked(check.entry.get() and true or false)
+    end
+
+    for _, box in ipairs(body.edits or {}) do
+        -- Only when unfocused: overwriting what somebody is halfway through
+        -- typing is maddening.
+        if not box:HasFocus() then
+            box:SetText(box.entry.get() or "")
+        end
     end
 
     if body.status then

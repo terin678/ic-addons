@@ -40,12 +40,18 @@ local DB_DEFAULTS = {
     designatedLead = { name = "", setBy = "", setAt = 0 },
     learnedMobs = {},
     settings = {
+        -- The master switch. Off means the addon takes no action of its own:
+        -- no icons, no chat, no warnings. Windows still open so it can be
+        -- turned back on, and nothing configured is lost.
+        isEnabled = true,
         isMarkingEnabled = true,
         isAnnounceEnabled = true,
         isCvarWarnEnabled = true,
         isWarningSoundEnabled = true,
         isIconReuseEnabled = true,
         isLateCCAlertEnabled = true,
+        isTankDeathAlertEnabled = true,
+        tankNames = "",
         minimap = { hide = false },
         raidCheck = {
             isAutoOpenEnabled = true,
@@ -106,7 +112,7 @@ local function onAddonLoaded()
     local readyFrame = CreateFrame("Frame")
     readyFrame:RegisterEvent("READY_CHECK")
     readyFrame:SetScript("OnEvent", function()
-        if not MFD.db.settings.raidCheck.isAutoOpenEnabled then
+        if not MFD.IsEnabled() or not MFD.db.settings.raidCheck.isAutoOpenEnabled then
             return
         end
         -- Specs come from inspection, so give the pump a window after every
@@ -197,6 +203,48 @@ function MFD.PlayBadMarkSound()
 
     pcall(PlaySoundFile, BAD_MARK_SOUND, "Master")
 end
+
+-- The master switch. Every path that acts on the world asks this first:
+-- marking, chat announcements, tank death alerts, callouts and the ready
+-- check window. Reading and configuring always work, so the addon can be
+-- turned back on without a reload.
+function MFD.IsEnabled()
+    return MFD.db and MFD.db.settings.isEnabled ~= false
+end
+
+-- Turns everything off or on. Clearing icons on the way out matters: leaving
+-- the raid marked by an addon that has stopped defending those marks is worse
+-- than leaving it unmarked.
+function MFD.SetEnabled(isEnabled)
+    MFD.db.settings.isEnabled = isEnabled and true or false
+
+    if not isEnabled then
+        MFD.Marker:ClearAll()
+        MFD.Print("|cffff4444disabled. Nothing will be marked or announced. /mfd on to resume.|r")
+    else
+        wipe(MFD.Marker.locked)
+        wipe(MFD.Marker.placed)
+        MFD.Print("|cff66ff66enabled|r")
+    end
+
+    if MFD.UI and MFD.UI.Settings then
+        MFD.UI.Settings:Refresh()
+    end
+end
+
+commands.off = {
+    desc = "stop the addon doing anything, without unloading it",
+    run = function()
+        MFD.SetEnabled(false)
+    end,
+}
+
+commands.on = {
+    desc = "resume after /mfd off",
+    run = function()
+        MFD.SetEnabled(true)
+    end,
+}
 
 commands.config = {
     desc = "open the seat editor: which icon means which job, and who is pinned to it",
@@ -405,17 +453,7 @@ commands.mark = {
 commands.clear = {
     desc = "clear every icon on visible mobs",
     run = function()
-        -- Routed through ActionableUnits for the same reason the marker is:
-        -- clearing through a stale token wipes the icon off whatever the
-        -- player is currently pointing at.
-        local cleared = 0
-        for _, unit in pairs(MFD.Candidates.ActionableUnits(MFD.Candidates.set, UnitGUID)) do
-            SetRaidTarget(unit, 0)
-            cleared = cleared + 1
-        end
-        wipe(MFD.Marker.locked)
-        wipe(MFD.Marker.placed)
-        MFD.Print("cleared " .. cleared .. " icons")
+        MFD.Print("cleared " .. MFD.Marker:ClearAll() .. " icons")
     end,
 }
 

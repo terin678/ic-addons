@@ -349,10 +349,18 @@ local BOARD_WIDTH = 360        -- pixels
 local BOARD_ROW_HEIGHT = 18    -- pixels
 local BOARD_MAX_ROWS = 26
 
+-- Same two-homes arrangement as the assignment panel: a floating board and a
+-- tab, each with its own row pool.
+local boardViews = {}
 local board
-local boardRows = {}
 local boardEvents
 local isShowingAll = false
+
+local function addBoardView(container)
+    container.rows = container.rows or {}
+    boardViews[#boardViews + 1] = container
+    return container
+end
 
 local function buildBoardRow(row)
     if row.isBuilt then
@@ -378,11 +386,7 @@ local function buildBoardRow(row)
     row.missing:SetJustifyH("LEFT")
 end
 
-function Board:Refresh()
-    if not board or not board:IsShown() then
-        return
-    end
-
+local function paintBoard(view)
     local index = 0
     for _, entry in ipairs(RC:SortedRows()) do
         if index >= BOARD_MAX_ROWS then
@@ -391,7 +395,7 @@ function Board:Refresh()
         local hasMissing = #entry.missing > 0
         if hasMissing or isShowingAll then
             index = index + 1
-            local row = MFD.UI.AcquireRow(board.body, boardRows, index, BOARD_ROW_HEIGHT)
+            local row = MFD.UI.AcquireRow(view.body, view.rows, index, BOARD_ROW_HEIGHT)
             buildBoardRow(row)
             row.entry = entry
 
@@ -410,13 +414,56 @@ function Board:Refresh()
         end
     end
 
-    MFD.UI.ReleaseRows(boardRows, index + 1)
+    MFD.UI.ReleaseRows(view.rows, index + 1)
 
     if index == 0 then
-        board.empty:SetText(next(RC.rows) and (GREEN .. "everyone is buffed|r") or (GREY .. "nobody in the group|r"))
+        view.empty:SetText(next(RC.rows) and (GREEN .. "everyone is buffed|r") or (GREY .. "nobody in the group|r"))
     else
-        board.empty:SetText("")
+        view.empty:SetText("")
     end
+end
+
+function Board:Refresh()
+    for _, view in ipairs(boardViews) do
+        if view:IsShown() then
+            paintBoard(view)
+        end
+    end
+end
+
+-- Builds the board into a container the main window owns, alongside the
+-- floating one rather than instead of it.
+function Board:BuildInto(container)
+    container.body = CreateFrame("Frame", nil, container)
+    container.body:SetPoint("TOPLEFT", container, "TOPLEFT", 6, -6)
+    container.body:SetPoint("BOTTOMRIGHT", container, "BOTTOMRIGHT", -6, 34)
+
+    container.empty = container:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    container.empty:SetPoint("TOPLEFT", container.body, "TOPLEFT", 8, -8)
+
+    local callout = CreateFrame("Button", nil, container, "UIPanelButtonTemplate")
+    callout:SetSize(80, 22)
+    callout:SetPoint("BOTTOMLEFT", container, "BOTTOMLEFT", 14, 6)
+    callout:SetText("Call out")
+    callout:SetScript("OnClick", function() RC:PostCallout() end)
+
+    local all = CreateFrame("CheckButton", nil, container, "UICheckButtonTemplate")
+    all:SetSize(24, 24)
+    all:SetPoint("LEFT", callout, "RIGHT", 12, 0)
+    all:SetChecked(isShowingAll)
+    local allLabel = container:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    allLabel:SetPoint("LEFT", all, "RIGHT", 2, 0)
+    allLabel:SetText("Show all")
+    all:SetScript("OnClick", function(box)
+        isShowingAll = box:GetChecked() and true or false
+        Board:Refresh()
+    end)
+
+    container:SetScript("OnShow", function()
+        RC:Scan()
+    end)
+
+    addBoardView(container)
 end
 
 local function saveBoardPosition()
@@ -509,6 +556,7 @@ local function buildBoard()
     end)
 
     restoreBoardPosition()
+    addBoardView(board)
     tinsert(UISpecialFrames, "MarkedForDeathBuffBoardFrame")
 end
 

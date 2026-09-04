@@ -32,7 +32,11 @@ Seats.DEFAULT_PLAN = {
     [SKULL]    = { intent = "KILL",   ordinal = 1 },
     [CROSS]    = { intent = "KILL",   ordinal = 2 },
     [SQUARE]   = { intent = "KILL",   ordinal = 3 },
-    [CIRCLE]   = { intent = "KILL",   ordinal = 4 },
+    -- Last resort: in practice the fourth kill icon is rarely reached, so a
+    -- spare sheep or banish icon is better spent on a kill target than this
+    -- one is. Only meaningful when icon reuse is on; without it there are no
+    -- borrowed icons to come first and Circle is just kill four.
+    [CIRCLE]   = { intent = "KILL",   ordinal = 4, isLastResort = true },
     [MOON]     = { intent = "SHEEP",  ordinal = 1, pin = "Grimmtusk" },
     [STAR]     = { intent = "SHEEP",  ordinal = 2 },
     [TRIANGLE] = { intent = "BANISH", ordinal = 1 },
@@ -134,7 +138,13 @@ function Seats.Resolve(seatPlan, roster)
 
     for _, icon in ipairs(MFD.H.SortedKeys(seatPlan)) do
         local seat = seatPlan[icon]
-        local record = { icon = icon, ordinal = seat.ordinal, pin = seat.pin, owner = false }
+        local record = {
+            icon = icon,
+            ordinal = seat.ordinal,
+            pin = seat.pin,
+            isLastResort = seat.isLastResort,
+            owner = false,
+        }
         byIntent[seat.intent] = byIntent[seat.intent] or {}
         table.insert(byIntent[seat.intent], record)
         byIcon[icon] = record

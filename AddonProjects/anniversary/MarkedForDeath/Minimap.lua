@@ -35,7 +35,9 @@ function M.Init()
         OnTooltipShow = function(tt)
             tt:AddLine("Marked For Death")
 
-            if not MFD.db.settings.isMarkingEnabled then
+            if not MFD.IsEnabled() then
+                tt:AddLine("|cffff4444ADDON DISABLED|r")
+            elseif not MFD.db.settings.isMarkingEnabled then
                 tt:AddLine("|cffff4444MARKING DISABLED|r")
             end
 
@@ -89,6 +91,12 @@ local function menuEntries()
         { title = true, text = "Marked For Death" },
 
         { text = "Open Marked For Death", open = function() MFD.UI.Main:Toggle() end },
+
+        {
+            text = "Addon enabled",
+            checked = function() return MFD.IsEnabled() end,
+            toggle = function() MFD.SetEnabled(not MFD.IsEnabled()) end,
+        },
 
         { separator = true },
 

@@ -27,6 +27,7 @@ local files = {
     "Marker.lua",
     "Comms.lua",
     "RaidCheck.lua",
+    "Tanks.lua",
     "Tests.lua",
 }
 

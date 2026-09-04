@@ -14,14 +14,19 @@ local Allocator = MFD.Allocator
 -- Returns the icon of the lowest-ordinal seat of intent that is both free and
 -- owned, or nil. A seat whose owner is false exists but nobody in the raid can
 -- perform it, so it is not usable.
-local function takeSeat(seats, intent, usedIcons)
+-- skipLastResort holds back seats flagged as icons of last resort, so that
+-- borrowed crowd control icons get spent before them. Only meaningful when
+-- reuse is on; with it off there is nothing to come first and the flag is
+-- ignored, leaving a last-resort seat as an ordinary one.
+local function takeSeat(seats, intent, usedIcons, skipLastResort)
     local records = seats.byIntent[intent]
     if not records then
         return nil
     end
 
     for _, record in ipairs(records) do
-        if not usedIcons[record.icon] and record.owner then
+        if not usedIcons[record.icon] and record.owner
+            and not (skipLastResort and record.isLastResort) then
             return record.icon, record.owner
         end
     end
@@ -95,11 +100,11 @@ function Allocator.Compute(candidates, rulesByNpcID, seats, locked, allowIconReu
         local used = countByNpcID[candidate.npcID] or 0
 
         if not rule.maxCount or used < rule.maxCount then
-            local icon, owner = takeSeat(seats, rule.intent, usedIcons)
+            local icon, owner = takeSeat(seats, rule.intent, usedIcons, allowIconReuse)
             local intent = rule.intent
 
             if not icon and rule.fallback then
-                icon, owner = takeSeat(seats, rule.fallback, usedIcons)
+                icon, owner = takeSeat(seats, rule.fallback, usedIcons, allowIconReuse)
                 intent = rule.fallback
             end
 
@@ -117,13 +122,31 @@ function Allocator.Compute(candidates, rulesByNpcID, seats, locked, allowIconReu
     -- the pass above, however low its priority, so borrowing can never take
     -- Moon away from a mob somebody is about to sheep.
     if allowIconReuse then
+        -- Ordered so the best-placed spare goes first: sheep seat one before
+        -- sheep seat two, and anything flagged last resort after everything
+        -- else. That is what puts Circle behind a spare Moon.
         local spare = {}
-        for icon in pairs(seats.byIcon) do
+        for icon, seat in pairs(seats.byIcon) do
             if not usedIcons[icon] then
-                spare[#spare + 1] = icon
+                spare[#spare + 1] = { icon = icon, seat = seat }
             end
         end
-        table.sort(spare)
+
+        table.sort(spare, function(a, b)
+            local aLast = a.seat.isLastResort and 1 or 0
+            local bLast = b.seat.isLastResort and 1 or 0
+            if aLast ~= bLast then
+                return aLast < bLast
+            end
+            if (a.seat.ordinal or 0) ~= (b.seat.ordinal or 0) then
+                return (a.seat.ordinal or 0) < (b.seat.ordinal or 0)
+            end
+            -- Descending icon index is the traditional marking order: skull,
+            -- cross, square, moon, triangle, diamond, circle, star. Following
+            -- it means the borrowed icons come out in the order a raid leader
+            -- would reach for them anyway.
+            return a.icon > b.icon
+        end)
 
         local nextSpare = 1
         for _, entry in ipairs(eligible) do
@@ -136,7 +159,7 @@ function Allocator.Compute(candidates, rulesByNpcID, seats, locked, allowIconReu
                 -- Reported as a kill: the icon carries no crowd control
                 -- meaning here, and saying otherwise would be a lie to whoever
                 -- reads the assignment panel.
-                record(candidate.key, spare[nextSpare], "KILL", nil, candidate.npcID, true)
+                record(candidate.key, spare[nextSpare].icon, "KILL", nil, candidate.npcID, true)
                 nextSpare = nextSpare + 1
             end
         end

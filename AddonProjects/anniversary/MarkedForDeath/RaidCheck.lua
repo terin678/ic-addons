@@ -556,6 +556,11 @@ local lastCalloutAt = 0
 -- Posts the callout to raid or party chat, throttled so a second click a
 -- moment later does not double post.
 function RC:PostCallout()
+    if not MFD.IsEnabled() then
+        MFD.Print("the addon is switched off. /mfd on to resume.")
+        return
+    end
+
     local now = GetTime()
     if (now - lastCalloutAt) < RC.CALLOUT_THROTTLE_SECONDS then
         MFD.Print("callout throttled, try again in a few seconds")

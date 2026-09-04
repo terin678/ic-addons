@@ -2207,4 +2207,115 @@ T.Case("Alert: the whisper tells one person exactly what to do", function()
         "Sheep the Moon now: Illidari Nightlord", "whisper text")
 end)
 
+T.Case("Tanks: a typed list accepts commas, newlines and stray spaces", function()
+    local names = MFD.Tanks.ParseList("Dezedin, Moophie\n  Grimmtusk ,,\nThok")
+    T.Eq(#names, 4, "four names")
+    T.Eq(names[1], "Dezedin", "trimmed")
+    T.Eq(names[2], "Moophie", "comma separated")
+    T.Eq(names[3], "Grimmtusk", "newline separated, empty entries skipped")
+    T.Eq(names[4], "Thok", "last")
+end)
+
+T.Case("Tanks: an empty list is empty, not a list containing nothing", function()
+    T.Eq(#MFD.Tanks.ParseList(""), 0, "empty string")
+    T.Eq(#MFD.Tanks.ParseList("  ,\n , "), 0, "only separators")
+    T.Eq(#MFD.Tanks.ParseList(nil), 0, "nil")
+end)
+
+T.Case("Tanks: the raid's own main tank assignment counts", function()
+    T.Eq(MFD.Tanks.IsTank("Dezedin", { Dezedin = true }, {}), true, "assigned in the raid frame")
+    T.Eq(MFD.Tanks.IsTank("Someone", { Dezedin = true }, {}), false, "not a tank")
+end)
+
+T.Case("Tanks: a manually typed name counts even with no raid assignment", function()
+    T.Eq(MFD.Tanks.IsTank("Moophie", {}, { "Moophie" }), true, "typed list")
+    T.Eq(MFD.Tanks.IsTank("moophie", {}, { "Moophie" }), true, "case insensitive")
+end)
+
+T.Case("Tanks: with no tanks known at all, nobody is a tank", function()
+    T.Eq(MFD.Tanks.IsTank("Dezedin", {}, {}), false, "silence rather than announcing everyone")
+end)
+
+T.Case("Death: the same death is announced once, not once per combat log line", function()
+    local announced = {}
+    T.Eq(MFD.Tanks.ShouldAnnounce("Dezedin", announced, 100, 10), true, "first")
+    T.Eq(MFD.Tanks.ShouldAnnounce("Dezedin", announced, 101, 10), false, "duplicate suppressed")
+end)
+
+T.Case("Death: a later death of the same tank announces again", function()
+    local announced = {}
+    MFD.Tanks.ShouldAnnounce("Dezedin", announced, 100, 10)
+    T.Eq(MFD.Tanks.ShouldAnnounce("Dezedin", announced, 111, 10), true, "died again after a rez")
+end)
+
+T.Case("Death: two different tanks each get announced", function()
+    local announced = {}
+    T.Eq(MFD.Tanks.ShouldAnnounce("Dezedin", announced, 100, 10), true, "first tank")
+    T.Eq(MFD.Tanks.ShouldAnnounce("Moophie", announced, 100, 10), true, "second tank, same instant")
+end)
+
+T.Case("Death: the message is exactly what a raid leader would type", function()
+    T.Eq(MFD.Tanks.FormatDeath("Dezedin"), "Dezedin has died", "wording")
+end)
+
+-- Circle is the icon of last resort: spare sheep and banish icons should be
+-- spent on kill targets before it, not after.
+T.Case("LastResort: the default plan marks Circle as last resort", function()
+    T.Eq(MFD.Seats.DEFAULT_PLAN[2].isLastResort, true, "circle")
+    T.Eq(MFD.Seats.DEFAULT_PLAN[8].isLastResort, nil, "skull is not")
+end)
+
+T.Case("LastResort: with reuse on, spare cc icons are spent before Circle", function()
+    local out = MFD.Allocator.Compute(killCandidates(4),
+        { [100] = { npcID = 100, intent = "KILL", rank = 10 } },
+        defaultSeats("Thok", "WARRIOR"), nil, true)
+
+    T.Eq(out.byKey["100:A"], 8, "skull")
+    T.Eq(out.byKey["100:B"], 7, "cross")
+    T.Eq(out.byKey["100:C"], 6, "square")
+    T.Eq(out.byKey["100:D"], 5, "then Moon, the first spare, not Circle")
+end)
+
+T.Case("LastResort: Circle is still used, just last of everything", function()
+    local out = MFD.Allocator.Compute(killCandidates(8),
+        { [100] = { npcID = 100, intent = "KILL", rank = 10 } },
+        defaultSeats("Thok", "WARRIOR"), nil, true)
+    T.Eq(out.byKey["100:H"], 2, "the eighth and final kill target gets Circle")
+end)
+
+T.Case("LastResort: spare icons come out in seat order, best job first", function()
+    local out = MFD.Allocator.Compute(killCandidates(7),
+        { [100] = { npcID = 100, intent = "KILL", rank = 10 } },
+        defaultSeats("Thok", "WARRIOR"), nil, true)
+    -- Seat one before seat two, then the traditional marking order within a
+    -- rank: moon, triangle, diamond, star.
+    T.Eq(out.byKey["100:D"], 5, "Moon, sheep seat one")
+    T.Eq(out.byKey["100:E"], 4, "Triangle, banish seat one")
+    T.Eq(out.byKey["100:F"], 3, "Diamond, banish seat two")
+    T.Eq(out.byKey["100:G"], 1, "Star, sheep seat two")
+end)
+
+-- With reuse off there are no borrowed icons to come first, so the flag has
+-- nothing to mean and Circle goes back to being the fourth kill icon.
+T.Case("LastResort: with reuse off Circle is simply kill four again", function()
+    local out = MFD.Allocator.Compute(killCandidates(4),
+        { [100] = { npcID = 100, intent = "KILL", rank = 10 } },
+        defaultSeats("Thok", "WARRIOR"), nil, false)
+    T.Eq(out.byKey["100:D"], 2, "circle, as the plan says")
+end)
+
+T.Case("LastResort: a sheep mob still beats a kill target to Moon", function()
+    local seats = defaultSeats("Grimmtusk", "MAGE")
+    local candidates = killCandidates(3)
+    candidates[4] = { key = "200:Z", npcID = 200, name = "Sheepable" }
+
+    local out = MFD.Allocator.Compute(candidates, {
+        [100] = { npcID = 100, intent = "KILL", rank = 10 },
+        [200] = { npcID = 200, intent = "SHEEP", rank = 99 },
+    }, seats, nil, true)
+
+    T.Eq(out.byKey["200:Z"], 5, "Moon belongs to the sheep target")
+    T.Eq(out.byKey["100:C"], 6, "and the third kill still has Square")
+end)
+
 _G.MarkedForDeath = MFD

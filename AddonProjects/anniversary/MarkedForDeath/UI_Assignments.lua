@@ -13,9 +13,18 @@ local REFRESH_SECONDS = 0.5      -- repaint cadence while shown
 -- Kill icons first, matching how the raid reads a pack. Cosmetic only.
 local ICON_ORDER = { 8, 7, 6, 2, 5, 1, 4, 3 }
 
+-- Every place this panel is drawn: the floating window and, once opened, the
+-- tab in the main window. Each view carries its own row pool, so the two can
+-- be on screen at once without fighting over widgets.
+local views = {}
 local frame
-local rows = {}
 local accumulator = 0
+
+local function addView(container)
+    container.rows = container.rows or {}
+    views[#views + 1] = container
+    return container
+end
 
 local function buildRow(row)
     if row.isBuilt then
@@ -36,11 +45,7 @@ end
 
 -- Repaints from the published map. Sorted by icon display order, so the
 -- panel reads the same way every pull regardless of which mob was seen first.
-function Panel:Refresh()
-    if not frame or not frame:IsShown() then
-        return
-    end
-
+local function paint(view)
     local byIcon = {}
     for key, icon in pairs(MFD.Marker.published) do
         byIcon[icon] = key
@@ -51,7 +56,7 @@ function Panel:Refresh()
         local key = byIcon[icon]
         if key then
             index = index + 1
-            local row = MFD.UI.AcquireRow(frame.body, rows, index, ROW_HEIGHT)
+            local row = MFD.UI.AcquireRow(view.body, view.rows, index, ROW_HEIGHT)
             buildRow(row)
             SetRaidTargetIconTexture(row.texture, icon)
 
@@ -65,13 +70,35 @@ function Panel:Refresh()
         end
     end
 
-    MFD.UI.ReleaseRows(rows, index + 1)
+    MFD.UI.ReleaseRows(view.rows, index + 1)
 
     if index == 0 then
-        frame.empty:SetText("|cff999999nothing assigned|r")
+        view.empty:SetText("|cff999999nothing assigned|r")
     else
-        frame.empty:SetText("")
+        view.empty:SetText("")
     end
+end
+
+-- Repaints every view that is actually on screen.
+function Panel:Refresh()
+    for _, view in ipairs(views) do
+        if view:IsShown() then
+            paint(view)
+        end
+    end
+end
+
+-- Builds the panel into a container the main window owns, alongside the
+-- floating one rather than instead of it.
+function Panel:BuildInto(container)
+    container.body = CreateFrame("Frame", nil, container)
+    container.body:SetPoint("TOPLEFT", container, "TOPLEFT", 6, -6)
+    container.body:SetPoint("BOTTOMRIGHT", container, "BOTTOMRIGHT", -6, 6)
+
+    container.empty = container:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    container.empty:SetPoint("TOPLEFT", container.body, "TOPLEFT", 8, -8)
+
+    addView(container)
 end
 
 local function savePosition()
@@ -124,6 +151,7 @@ local function build()
     end)
 
     restorePosition()
+    addView(frame)
     tinsert(UISpecialFrames, "MarkedForDeathAssignmentsFrame")
 end
 

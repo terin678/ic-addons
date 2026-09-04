@@ -258,6 +258,25 @@ function Marker.ReleaseBorrowed(locked, borrowed, neededCount)
     return released
 end
 
+-- Clears every icon this client can reach and forgets what it placed. Returns
+-- how many were cleared.
+--
+-- Routed through ActionableUnits for the same reason marking is: clearing
+-- through a stale token wipes the icon off whatever the player happens to be
+-- pointing at rather than off the mob it was meant for.
+function Marker:ClearAll()
+    local cleared = 0
+    for _, unit in pairs(MFD.Candidates.ActionableUnits(MFD.Candidates.set, UnitGUID)) do
+        SetRaidTarget(unit, 0)
+        cleared = cleared + 1
+    end
+
+    wipe(Marker.locked)
+    wipe(Marker.placed)
+    wipe(Marker.borrowed)
+    return cleared
+end
+
 -- Returns whether the player may place raid icons, and a reason when they may
 -- not. Marking needs raid leader or assistant; solo and parties are allowed.
 function Marker:CanMark()
@@ -415,7 +434,7 @@ local lastAlertAt = 0
 -- announcement covers it. Silent for anything present at the pull. Authority
 -- only, and once per mob.
 function Marker:AlertLateCrowdControl(desired, now)
-    if not MFD.db.settings.isLateCCAlertEnabled then
+    if not MFD.IsEnabled() or not MFD.db.settings.isLateCCAlertEnabled then
         return
     end
     if not Marker.pullCrowdControl or not MFD.Comms:IsAuthority() then
@@ -507,7 +526,7 @@ function Marker:Tick(elapsed)
     end
     accumulator = 0
 
-    if not MFD.db or not MFD.db.settings.isMarkingEnabled then
+    if not MFD.IsEnabled() or not MFD.db.settings.isMarkingEnabled then
         return
     end
 
@@ -750,7 +769,8 @@ end
 -- Posts the current pack to the group once per pull, authority only, throttled
 -- so two quick pulls do not produce two lines.
 function Announce.Post(desired, now)
-    if not MFD.db.settings.isAnnounceEnabled or not MFD.Comms:IsAuthority() or not desired then
+    if not MFD.IsEnabled() or not MFD.db.settings.isAnnounceEnabled
+        or not MFD.Comms:IsAuthority() or not desired then
         return
     end
 
