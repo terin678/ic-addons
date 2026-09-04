@@ -10,28 +10,15 @@ local RC = MFD.RaidCheck
 
 local ROW_HEIGHT = 18     -- pixels
 local MAX_ROWS = 26       -- a full raid plus one
-local GRID_WIDTH = 920    -- pixels
 
--- Column layout: key, header label, x offset from the row's left edge, width.
--- consumable names the requirement a column's header toggles, which is not
--- always the column itself: Flask, Battle and Guard are three views of the one
--- flask-or-both-elixirs requirement, so the Flask header governs all three.
-local COLUMNS = {
-    { key = "NAME",      label = "Name",      x = 0,   w = 110 },
-    { key = "FOOD",      label = "Food",      x = 112, w = 44, consumable = "FOOD" },
-    { key = "FLASK",     label = "Flask",     x = 158, w = 44, consumable = "ELIXIRS" },
-    { key = "BATTLE",    label = "Battle",    x = 204, w = 44 },
-    { key = "GUARDIAN",  label = "Guard",     x = 250, w = 44 },
-    { key = "AI",        label = "Int",       x = 296, w = 40 },
-    { key = "MOTW",      label = "MotW",      x = 338, w = 40 },
-    { key = "FORT",      label = "Fort",      x = 380, w = 40 },
-    { key = "SPIRIT",    label = "Spirit",    x = 422, w = 40 },
-    { key = "SP",        label = "SProt",     x = 464, w = 40 },
-    { key = "BLESSINGS", label = "Blessings", x = 506, w = 210 },
-    { key = "DUR",       label = "Dur",       x = 718, w = 40 },
-    { key = "SPEC",      label = "Spec",      x = 760, w = 80 },
-    { key = "VER",       label = "Ver",       x = 842, w = 50 },
-}
+-- Column layout for the library's table. consumable names the requirement a
+-- column's header toggles, which is not always the column itself: Flask, Battle
+-- and Guard are three views of the one flask-or-both-elixirs requirement, so the
+-- Flask header governs all three.
+--
+-- A raid buff column is "custom": it draws the buff's own icon, and falls back
+-- to a word for a buff whose icon this client has not seen on anybody yet.
+local COLUMNS
 
 local GREEN, RED, GREY, AMBER = "|cff66ff66", "|cffff4444", "|cff999999", "|cffffcc66"
 
@@ -49,6 +36,8 @@ end
 
 local ICON_SIZE = 14        -- pixels per buff icon
 local ICON_GAP = 2          -- pixels between blessing icons
+-- Six is every blessing there is, so no cell ever needs a seventh.
+local MAX_BLESSINGS = 6
 
 -- Paints one icon to say present, missing or unknown.
 --
@@ -83,6 +72,68 @@ local function paintIcon(texture, iconPath, value, isMissing)
 
     return true
 end
+
+-- A raid buff cell: the icon, with a word behind it for when there is no icon
+-- yet. Both live in a frame, which is the shape Render can blank safely.
+local function makeBuffCell(row, col, x, style)
+    local cell = CreateFrame("Frame", nil, row)
+    cell:SetPoint("LEFT", row, "LEFT", x, 0)
+    cell:SetSize(col.width, row.rowHeight)
+
+    cell.icon = cell:CreateTexture(nil, "ARTWORK")
+    cell.icon:SetSize(ICON_SIZE, ICON_SIZE)
+    cell.icon:SetPoint("LEFT", cell, "LEFT", 2, 0)
+    cell.icon:Hide()
+
+    cell.text = cell:CreateFontString(nil, "OVERLAY", style.font)
+    cell.text:SetPoint("LEFT", cell, "LEFT", 2, 0)
+    cell.text:SetWidth(col.width - 4)
+    cell.text:SetJustifyH("LEFT")
+    cell.text:SetWordWrap(false)
+
+    return cell
+end
+
+-- The blessings cell: the icons somebody holds, then how far short they are.
+local function makeBlessingCell(row, col, x, style)
+    local cell = CreateFrame("Frame", nil, row)
+    cell:SetPoint("LEFT", row, "LEFT", x, 0)
+    cell:SetSize(col.width, row.rowHeight)
+
+    cell.icons = {}
+    for index = 1, MAX_BLESSINGS do
+        local icon = cell:CreateTexture(nil, "ARTWORK")
+        icon:SetSize(ICON_SIZE, ICON_SIZE)
+        icon:SetPoint("LEFT", cell, "LEFT", (index - 1) * (ICON_SIZE + ICON_GAP), 0)
+        icon:Hide()
+        cell.icons[index] = icon
+    end
+
+    cell.text = cell:CreateFontString(nil, "OVERLAY", style.font)
+    cell.text:SetPoint("LEFT", cell, "LEFT", MAX_BLESSINGS * (ICON_SIZE + ICON_GAP) + 4, 0)
+    cell.text:SetWidth(col.width - MAX_BLESSINGS * (ICON_SIZE + ICON_GAP) - 6)
+    cell.text:SetJustifyH("LEFT")
+    cell.text:SetWordWrap(false)
+
+    return cell
+end
+
+COLUMNS = {
+    { key = "NAME",      label = "Name",      width = 110, hit = true },
+    { key = "FOOD",      label = "Food",      width = 44, consumable = "FOOD" },
+    { key = "FLASK",     label = "Flask",     width = 44, consumable = "ELIXIRS" },
+    { key = "BATTLE",    label = "Battle",    width = 44 },
+    { key = "GUARDIAN",  label = "Guard",     width = 44 },
+    { key = "AI",        label = "Int",       width = 42, type = "custom", make = makeBuffCell },
+    { key = "MOTW",      label = "MotW",      width = 42, type = "custom", make = makeBuffCell },
+    { key = "FORT",      label = "Fort",      width = 42, type = "custom", make = makeBuffCell },
+    { key = "SPIRIT",    label = "Spirit",    width = 42, type = "custom", make = makeBuffCell },
+    { key = "SP",        label = "SProt",     width = 42, type = "custom", make = makeBuffCell },
+    { key = "BLESSINGS", label = "Blessings", width = 210, type = "custom", make = makeBlessingCell },
+    { key = "DUR",       label = "Dur",       width = 46 },
+    { key = "SPEC",      label = "Spec",      width = 82 },
+    { key = "VER",       label = "Ver",       width = 54 },
+}
 
 -- Returns the text for one cell of one player's entry.
 local function cellText(column, entry)
@@ -146,78 +197,17 @@ local function cellText(column, entry)
 end
 
 local frame
-local rows = {}
 local eventFrame
 
-local function buildRow(row)
-    if row.isBuilt then
-        return
-    end
-    row.isBuilt = true
-    row.cells = {}
-
-    for _, column in ipairs(COLUMNS) do
-        if column.key == "NAME" then
-            -- The name is a button: click to whisper that player their list.
-            local button = CreateFrame("Button", nil, row)
-            button:SetSize(column.w, ROW_HEIGHT)
-            button:SetPoint("LEFT", row, "LEFT", column.x, 0)
-            button.text = button:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-            button.text:SetAllPoints()
-            button.text:SetJustifyH("LEFT")
-            button:SetScript("OnClick", function()
-                if row.entry then
-                    RC:Whisper(row.entry.name)
-                end
-            end)
-            row.cells.NAME = button
-        else
-            local text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-            text:SetPoint("LEFT", row, "LEFT", column.x, 0)
-            text:SetWidth(column.w)
-            text:SetJustifyH("LEFT")
-            -- One line, always. A cell with a width wraps by default, and a
-            -- second line has nowhere to go in an 18 pixel row: it would draw
-            -- over the person below. Clipping is the honest failure here;
-            -- overlapping two players' data is not.
-            text:SetWordWrap(false)
-            row.cells[column.key] = text
-
-            -- Raid buffs get an icon in front of the text. The text stays as
-            -- the fallback for a buff whose icon this client has not seen on
-            -- anybody yet, so the column always says something.
-            if MFD.Data.Auras.RAID_BUFFS[column.key] then
-                local icon = row:CreateTexture(nil, "ARTWORK")
-                icon:SetSize(ICON_SIZE, ICON_SIZE)
-                icon:SetPoint("LEFT", row, "LEFT", column.x, 0)
-                icon:Hide()
-                row.icons = row.icons or {}
-                row.icons[column.key] = icon
-            end
-        end
-    end
-
-    -- A pool of blessing icons, one per blessing anybody can hold.
-    row.blessingIcons = {}
-    for index = 1, 6 do
-        local icon = row:CreateTexture(nil, "ARTWORK")
-        icon:SetSize(ICON_SIZE, ICON_SIZE)
-        icon:Hide()
-        row.blessingIcons[index] = icon
-    end
-end
-
--- Draws the blessings somebody holds as their own icons, left to right, with
--- the shortfall count following them. Returns the x offset the count should
--- start at, so it never lands on top of an icon.
-local function paintBlessings(row, entry, column)
+-- Draws the blessings somebody holds as their own icons, left to right.
+-- The shortfall count that follows them is set by the caller.
+local function paintBlessings(cell, entry)
     local learned = MFD.db.learnedAuraIcons
-    local state = entry.row.state
     local drawn = 0
 
-    for _, label in ipairs(state.blessings) do
-        -- The names in the aura table map to labels; find one that maps back to
-        -- this label and whose icon has been seen.
+    for _, label in ipairs(entry.row.state.blessings) do
+        -- The aura table maps names to labels; find a name that maps back to
+        -- this label and whose icon has been seen on somebody.
         local iconPath
         for name, mapped in pairs(MFD.Data.Auras.BLESSINGS) do
             if mapped == label and learned[name] then
@@ -226,24 +216,19 @@ local function paintBlessings(row, entry, column)
             end
         end
 
-        if iconPath and drawn < #row.blessingIcons then
+        if iconPath and drawn < MAX_BLESSINGS then
             drawn = drawn + 1
-            local icon = row.blessingIcons[drawn]
+            local icon = cell.icons[drawn]
             icon:SetTexture(iconPath)
-            icon:ClearAllPoints()
-            icon:SetPoint("LEFT", row, "LEFT",
-                column.x + (drawn - 1) * (ICON_SIZE + ICON_GAP), 0)
             icon:SetDesaturated(false)
             icon:SetVertexColor(1, 1, 1)
             icon:Show()
         end
     end
 
-    for index = drawn + 1, #row.blessingIcons do
-        row.blessingIcons[index]:Hide()
+    for index = drawn + 1, MAX_BLESSINGS do
+        cell.icons[index]:Hide()
     end
-
-    return column.x + drawn * (ICON_SIZE + ICON_GAP), drawn
 end
 
 local function missingSetFor(entry)
@@ -257,13 +242,18 @@ end
 -- Paints the consumable headers: white when the raid expects that consumable,
 -- grey when it does not and its absences are therefore ignored.
 function Grid:RefreshHeader()
-    if not frame or not frame.headerToggles then
+    if not frame or not frame.table then
         return
     end
 
-    for key, button in pairs(frame.headerToggles) do
-        local isExpected = MFD.db.settings.raidCheck.expected[key]
-        button.text:SetText((isExpected and "" or GREY) .. button.columnLabel .. (isExpected and "" or "|r"))
+    for _, column in ipairs(COLUMNS) do
+        if column.consumable then
+            local label = frame.table.header.labels[column.key]
+            local isExpected = MFD.db.settings.raidCheck.expected[column.consumable]
+            if label then
+                label:SetText((isExpected and "" or GREY) .. column.label .. (isExpected and "" or "|r"))
+            end
+        end
     end
 end
 
@@ -277,15 +267,18 @@ function Grid:Refresh()
     end
     Grid:RefreshHeader()
 
-    local index = 0
+    local list = {}
     for _, entry in ipairs(RC:SortedRows()) do
-        if index >= MAX_ROWS then
+        if #list >= MAX_ROWS then
             break
         end
-        index = index + 1
-        local row = MFD.UI.AcquireRow(frame.body, rows, index, ROW_HEIGHT)
-        buildRow(row)
-        row.entry = entry
+        list[#list + 1] = entry
+    end
+
+    local learned = MFD.db.learnedAuraIcons
+    local t = frame.table
+
+    t:Render(list, function(row, entry)
         entry.missingSet = missingSetFor(entry)
         entry.missingShort = nil
         for _, m in ipairs(entry.missing or {}) do
@@ -294,40 +287,34 @@ function Grid:Refresh()
             end
         end
 
-        local nameColor = entry.row.isReported and "" or AMBER
-        row.cells.NAME.text:SetText(nameColor .. entry.name .. (nameColor ~= "" and "|r" or ""))
-
-        local learned = MFD.db.learnedAuraIcons
+        -- Amber for somebody only scanned rather than heard from: this addon's
+        -- colour for a derived value.
+        t:Set(row, "NAME", entry.name, not entry.row.isReported
+            and { r = 1, g = 0.8, b = 0.4 } or nil)
+        row.hit.NAME:SetScript("OnClick", function()
+            RC:Whisper(entry.name)
+        end)
 
         for _, column in ipairs(COLUMNS) do
-            if column.key == "NAME" then
-                -- Already painted above.
+            local buff = MFD.Data.Auras.RAID_BUFFS[column.key]
+
+            if buff then
+                local cell = row.cells[column.key]
+                local drew = paintIcon(cell.icon, RC.IconFor(buff.names, learned),
+                    entry.row.state[column.key], entry.missingSet[column.key])
+                -- The word only appears when the icon could not, so a column is
+                -- never both at once and never empty.
+                cell.text:SetText(drew and "" or cellText(column.key, entry))
             elseif column.key == "BLESSINGS" then
-                local countX = paintBlessings(row, entry, column)
-                local cell = row.cells.BLESSINGS
-                cell:ClearAllPoints()
-                cell:SetPoint("LEFT", row, "LEFT", countX + 2, 0)
-                cell:SetWidth(column.w - (countX - column.x) - 2)
-                cell:SetText(cellText(column.key, entry))
-            else
-                local buff = MFD.Data.Auras.RAID_BUFFS[column.key]
-                local icon = row.icons and row.icons[column.key]
-                local drewIcon = false
-
-                if buff and icon then
-                    drewIcon = paintIcon(icon, RC.IconFor(buff.names, learned),
-                        entry.row.state[column.key], entry.missingSet[column.key])
-                end
-
-                -- The word only appears when the icon could not, so the column
-                -- is never both at once and never empty.
-                row.cells[column.key]:SetText(drewIcon and "" or cellText(column.key, entry))
+                paintBlessings(row.cells.BLESSINGS, entry)
+                row.cells.BLESSINGS.text:SetText(cellText(column.key, entry))
+            elseif column.key ~= "NAME" then
+                t:Set(row, column.key, cellText(column.key, entry))
             end
         end
-    end
+    end)
 
-    MFD.UI.ReleaseRows(rows, index + 1)
-    frame.empty:SetText(index == 0 and (GREY .. "nobody in the group|r") or "")
+    frame.empty:SetText(#list == 0 and (GREY .. "nobody in the group|r") or "")
 end
 
 local function isGroupUnit(unit)
@@ -365,64 +352,36 @@ end
 function Grid:BuildInto(container)
     frame = container
 
-    frame.header = CreateFrame("Frame", nil, frame)
-    frame.header:SetPoint("TOPLEFT", frame, "TOPLEFT", 14, -6)
-    frame.header:SetPoint("RIGHT", frame, "RIGHT", -14, 0)
-    frame.header:SetHeight(16)
+    -- The header is the library's, so it sits outside the scroll child and
+    -- stays put while the rows scroll. Clicking a consumable's header toggles
+    -- whether the raid expects it: the control directly above the column it
+    -- governs beats a settings screen, and it is the only way to change this
+    -- without editing saved variables.
+    frame.table = MFD.UI.Table(frame, {
+        top = -6,
+        bottom = 40,
+        rowHeight = ROW_HEIGHT,
+        columns = COLUMNS,
+        onHeaderClick = function(col)
+            local column
+            for _, c in ipairs(COLUMNS) do
+                if c.key == col.key then
+                    column = c
+                end
+            end
+            if not column or not column.consumable then
+                return
+            end
 
-    -- The consumable headers double as the expected-or-not toggle. Putting the
-    -- control directly above the column it governs beats a settings screen, and
-    -- it is the only way to change this without editing saved variables.
-    local isConsumable = {}
-    for _, key in ipairs(RC.CONSUMABLE_ORDER) do
-        isConsumable[key] = true
-    end
+            local expected = MFD.db.settings.raidCheck.expected
+            expected[column.consumable] = not expected[column.consumable]
+            RC:Scan()
+            Grid:RefreshHeader()
+        end,
+    })
 
-    frame.headerToggles = {}
-
-    for _, column in ipairs(COLUMNS) do
-        if column.consumable and isConsumable[column.consumable] then
-            local button = CreateFrame("Button", nil, frame.header)
-            button:SetSize(column.w, 16)
-            button:SetPoint("LEFT", frame.header, "LEFT", column.x, 0)
-            button.text = button:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-            button.text:SetAllPoints()
-            button.text:SetJustifyH("LEFT")
-
-            button:SetScript("OnClick", function()
-                local expected = MFD.db.settings.raidCheck.expected
-                expected[column.consumable] = not expected[column.consumable]
-                RC:Scan()
-                Grid:RefreshHeader()
-            end)
-
-            button:SetScript("OnEnter", function(self)
-                GameTooltip:SetOwner(self, "ANCHOR_BOTTOMLEFT")
-                GameTooltip:AddLine(column.label)
-                GameTooltip:AddLine(MFD.db.settings.raidCheck.expected[column.consumable]
-                    and "The raid expects this. Click to stop reporting it missing."
-                    or "Not expected. Click to start reporting it missing.", 1, 1, 1, true)
-                GameTooltip:Show()
-            end)
-            button:SetScript("OnLeave", function()
-                GameTooltip:Hide()
-            end)
-
-            button.columnLabel = column.label
-            frame.headerToggles[column.consumable] = button
-        else
-            local label = frame.header:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-            label:SetPoint("LEFT", frame.header, "LEFT", column.x, 0)
-            label:SetText(column.label)
-        end
-    end
-
-    frame.body = CreateFrame("Frame", nil, frame)
-    frame.body:SetPoint("TOPLEFT", frame, "TOPLEFT", 6, -24)
-    frame.body:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -6, 40)
-
-    frame.empty = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    frame.empty:SetPoint("TOPLEFT", frame.body, "TOPLEFT", 8, -8)
+    frame.empty = MFD.UI.Label(frame, "")
+    frame.empty:SetPoint("TOPLEFT", frame, "TOPLEFT", 8, -30)
 
     frame.refresh = MFD.UI.Button(frame, "", 90, 22)
     frame.refresh:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 14, 10)
