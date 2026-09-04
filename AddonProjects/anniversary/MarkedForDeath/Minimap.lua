@@ -119,18 +119,21 @@ local function menuEntries()
             toggle = function() settings.isAnnounceEnabled = not settings.isAnnounceEnabled end,
         },
 
-        -- The mid-raid override, one click from anywhere. This is the one
-        -- setting somebody reaches for during a fight rather than before it,
-        -- so it is here and not only on its own tab.
+        -- The mid-pull actions, same definitions the panel buttons and the
+        -- keybindings use. Reachable from the minimap too, because during a
+        -- fight the fastest thing on screen is whatever is already under the
+        -- cursor.
         {
             text = "Death calls: " .. MFD.Encounters.OVERRIDE_LABELS[settings.deaths.override],
-            open = function()
-                settings.deaths.override = MFD.Encounters.NextOverride(settings.deaths.override)
-                MFD.Print("death announcements: " .. MFD.Encounters.OVERRIDE_LABELS[settings.deaths.override])
-                if MFD.UI.Deaths and MFD.UI.Deaths.Refresh then
-                    MFD.UI.Deaths:Refresh()
-                end
-            end,
+            open = function() MFD.Actions.Run("deaths") end,
+        },
+        {
+            text = "Announce the assignments",
+            open = function() MFD.Actions.Run("announce") end,
+        },
+        {
+            text = "Clear every icon",
+            open = function() MFD.Actions.Run("clear") end,
         },
 
         { separator = true },

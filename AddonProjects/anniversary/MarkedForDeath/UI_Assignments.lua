@@ -10,6 +10,9 @@ local ROW_HEIGHT = 20            -- pixels
 local MAX_ROWS = 8               -- one per icon
 local REFRESH_SECONDS = 0.5      -- repaint cadence while shown
 
+-- Wide enough for two action buttons side by side plus the frame's own inset.
+local PANEL_WIDTH = 236          -- pixels
+
 -- Kill icons first, matching how the raid reads a pack. Cosmetic only.
 local ICON_ORDER = { 8, 7, 6, 2, 5, 1, 4, 3 }
 
@@ -24,38 +27,6 @@ local function addView(container)
     container.rows = container.rows or {}
     views[#views + 1] = container
     return container
-end
-
--- Adds the announce button along the bottom of a container. Both the floating
--- window and the tab get one, since which of the two is open when the raid
--- leader wants to call the pack out is not something to have to think about.
-local function addAnnounceButton(container)
-    local button = CreateFrame("Button", nil, container, "UIPanelButtonTemplate")
-    button:SetSize(140, 22)
-    button:SetPoint("BOTTOMLEFT", container, "BOTTOMLEFT", 8, 8)
-    button:SetText("Announce to raid")
-
-    button:SetScript("OnClick", function()
-        local ok, reason = MFD.Announce.PostNow()
-        if not ok then
-            MFD.Print("nothing announced: " .. reason)
-        end
-    end)
-
-    button:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_TOPLEFT")
-        GameTooltip:AddLine("Announce to raid")
-        GameTooltip:AddLine("Posts the current assignments in raid chat now, so you can call a pack "
-            .. "out before pulling it. The same thing happens automatically on the pull.", 1, 1, 1, true)
-        GameTooltip:AddLine("For a macro: /mfd announce", 0.6, 0.8, 1, true)
-        GameTooltip:Show()
-    end)
-    button:SetScript("OnLeave", function()
-        GameTooltip:Hide()
-    end)
-
-    container.announce = button
-    return button
 end
 
 local function buildRow(row)
@@ -111,11 +82,13 @@ local function paint(view)
     end
 end
 
--- Repaints every view that is actually on screen.
+-- Repaints every view that is actually on screen, buttons included: "Marking
+-- off" has to stay honest when it was switched off from somewhere else.
 function Panel:Refresh()
     for _, view in ipairs(views) do
         if view:IsShown() then
             paint(view)
+            MFD.Actions.RefreshBar(view)
         end
     end
 end
@@ -123,14 +96,17 @@ end
 -- Builds the panel into a container the main window owns, alongside the
 -- floating one rather than instead of it.
 function Panel:BuildInto(container)
+    -- The bar reports how tall it ended up so the list stops above it rather
+    -- than behind it, whatever width the container happens to be.
+    local barHeight = MFD.Actions.BuildBar(container, container:GetWidth() - 16)
+
     container.body = CreateFrame("Frame", nil, container)
     container.body:SetPoint("TOPLEFT", container, "TOPLEFT", 6, -6)
-    container.body:SetPoint("BOTTOMRIGHT", container, "BOTTOMRIGHT", -6, 36)
+    container.body:SetPoint("BOTTOMRIGHT", container, "BOTTOMRIGHT", -6, barHeight)
 
     container.empty = container:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     container.empty:SetPoint("TOPLEFT", container.body, "TOPLEFT", 8, -8)
 
-    addAnnounceButton(container)
     addView(container)
 end
 
@@ -151,7 +127,10 @@ end
 
 local function build()
     frame = CreateFrame("Frame", "MarkedForDeathAssignmentsFrame", UIParent, "BasicFrameTemplateWithInset")
-    frame:SetSize(300, 30 + MAX_ROWS * ROW_HEIGHT + 16 + 30)
+    -- Three rows of buttons at this width, which is the trade: a panel narrow
+    -- enough to leave beside the raid frames, with targets big enough to hit
+    -- while something is chewing on you.
+    frame:SetSize(PANEL_WIDTH, 30 + MAX_ROWS * ROW_HEIGHT + 16 + 106)
     frame:SetMovable(true)
     frame:EnableMouse(true)
     frame:RegisterForDrag("LeftButton")
@@ -166,24 +145,14 @@ local function build()
     frame.title:SetPoint("TOP", frame, "TOP", 0, -6)
     frame.title:SetText("Assignments")
 
+    local barHeight = MFD.Actions.BuildBar(frame, PANEL_WIDTH - 16)
+
     frame.body = CreateFrame("Frame", nil, frame)
     frame.body:SetPoint("TOPLEFT", frame, "TOPLEFT", 6, -26)
-    frame.body:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -6, 36)
+    frame.body:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -6, barHeight)
 
     frame.empty = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     frame.empty:SetPoint("TOPLEFT", frame.body, "TOPLEFT", 8, -8)
-
-    addAnnounceButton(frame)
-
-    -- Repaint on a cadence rather than per published message, so a burst of
-    -- republishes costs one paint. Only runs while shown.
-    frame:SetScript("OnUpdate", function(_, elapsed)
-        accumulator = accumulator + elapsed
-        if accumulator >= REFRESH_SECONDS then
-            accumulator = 0
-            Panel:Refresh()
-        end
-    end)
 
     restorePosition()
     addView(frame)
@@ -204,5 +173,22 @@ function Panel:Toggle()
     frame:Raise()
     Panel:Refresh()
 end
+
+-- One repaint driver for every view, rather than an OnUpdate on the floating
+-- window. That script only ran while the floating window was open, so the tab
+-- version of this panel went stale whenever it was the only one on screen, and
+-- the action buttons would have gone stale with it. Paint is a cadence rather
+-- than a response to each published message so a burst of republishes costs one
+-- paint, and Refresh skips every view that is hidden.
+MFD.RegisterInit(function()
+    local driver = CreateFrame("Frame")
+    driver:SetScript("OnUpdate", function(_, elapsed)
+        accumulator = accumulator + elapsed
+        if accumulator >= REFRESH_SECONDS then
+            accumulator = 0
+            Panel:Refresh()
+        end
+    end)
+end)
 
 _G.MarkedForDeath = MFD

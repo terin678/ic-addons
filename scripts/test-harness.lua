@@ -31,6 +31,7 @@ local files = {
     "Data_Mobs.lua",
     "Data_Auras.lua",
     "Data_Bosses.lua",
+    "Actions.lua",
     "Roles.lua",
     "Rules.lua",
     "Allocator.lua",

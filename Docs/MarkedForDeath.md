@@ -50,6 +50,31 @@ things you glance at during a pull, not things you sit and adjust, and burying t
 config window would mean opening one mid-fight. Both are on the shift-click menu, both
 have keybinds, and both remember where you put them.
 
+## Doing things mid-pull
+
+Nothing you need during a fight requires typing. The **assignment panel** carries a row of
+buttons along the bottom, sized to be hit while something is chewing on you:
+
+| Button | What it does |
+| --- | --- |
+| Announce | Post the current assignments to raid chat now. |
+| Clear | Take every icon off, hand-placed ones included. |
+| Re-mark | Forget the current icons and work the pack out again. |
+| Marking on/off | Stop or start placing icons. Shows which it is. |
+| Deaths | Cycle the death announcement override. Shows which it is. |
+
+Open the panel with middle click on the minimap button, its keybind, or the Assignments
+tab. It remembers where you put it, so park it next to your raid frames.
+
+**Every one of those is bindable.** Key Bindings, Marked For Death: put Clear and Re-mark
+on spare mouse buttons and you never touch the panel at all. That is the better answer
+while you are tanking. The three most useful are also on the minimap shift-click menu,
+since during a fight the fastest thing on screen is often whatever the cursor is already
+near.
+
+Buttons, keybinds and slash commands all run the same code, so they cannot drift apart or
+behave differently from each other.
+
 Settings also appear in the game's own Interface options under AddOns, whichever you find
 first.
 
@@ -254,10 +279,10 @@ Every command is in `/mfd help`.
 | `/mfd lead [name]` | Designate the Raid Lead, or clear it. Raid leader or assistant only. |
 | `/mfd status` | Who is marking and why, who else is running the addon, and how many rules were merged from whom. |
 | `/mfd debug` | If marking is not happening, this says exactly why, most fundamental reason first. |
-| `/mfd mark` | Force a full re-mark of the visible pack, dropping any hand-placed holds. |
-| `/mfd clear` | Clear every icon on visible mobs. |
-| `/mfd announce` | Post the current assignments to raid chat now, for calling a pack out before the pull. Macro friendly. |
-| `/mfd deaths [on|off|auto]` | Cycle or set the death announcement override. Macro friendly. |
+| `/mfd mark` | Force a full re-mark of the visible pack, dropping any hand-placed holds. Also a button and a keybind. |
+| `/mfd clear` | Clear every icon on visible mobs. Also a button and a keybind. |
+| `/mfd announce` | Post the current assignments to raid chat now, for calling a pack out before the pull. Also a button and a keybind. |
+| `/mfd deaths [on|off|auto]` | Cycle or set the death announcement override. Also a button and a keybind. |
 | `/mfd healers` | Who the addon currently counts as a healer, and why it might be nobody. |
 | `/mfd where` | Current zone, its map id, and how many rules are active here. |
 | `/mfd fixcvars` | Turn enemy nameplates on and set their range to 41 yards. |

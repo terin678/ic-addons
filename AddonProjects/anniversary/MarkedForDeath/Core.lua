@@ -2,7 +2,7 @@
 local MFD = _G.MarkedForDeath or {}
 
 -- Must match ## Version: in the toc and the packaged zip name.
-MFD.VERSION = "1.11.1"
+MFD.VERSION = "1.12.0"
 
 -- Bumped only when the saved-variable shape changes in a way that needs a
 -- migration. See MFD:MigrateDB.
@@ -569,8 +569,7 @@ commands.debug = {
 commands.mark = {
     desc = "force a full re-mark of the visible pack",
     run = function()
-        MFD.Marker.ResetMarkState()
-        MFD.Print("re-marking")
+        MFD.Actions.Run("remark")
     end,
 }
 
@@ -580,15 +579,19 @@ commands.deaths = {
         local settings = MFD.db.settings.deaths
         local wanted = rest and string.upper(string.match(rest, "^%s*(%S*)") or "") or ""
 
-        if wanted == "ON" or wanted == "OFF" or wanted == "AUTO" then
-            settings.override = wanted
-        elseif wanted == "" then
-            settings.override = MFD.Encounters.NextOverride(settings.override)
-        else
+        if wanted == "" then
+            -- The bare form is the button and the keybind, so it runs the same
+            -- code they do rather than a second copy of the cycle.
+            MFD.Actions.Run("deaths")
+            return
+        end
+
+        if wanted ~= "ON" and wanted ~= "OFF" and wanted ~= "AUTO" then
             MFD.Error("use /mfd deaths, or /mfd deaths on|off|auto")
             return
         end
 
+        settings.override = wanted
         MFD.Print("death announcements: " .. MFD.Encounters.OVERRIDE_LABELS[settings.override])
         if MFD.UI.Deaths and MFD.UI.Deaths.Refresh then
             MFD.UI.Deaths:Refresh()
@@ -612,17 +615,14 @@ commands.healers = {
 commands.announce = {
     desc = "call the current assignments out in raid chat now, before the pull",
     run = function()
-        local ok, reason = MFD.Announce.PostNow()
-        if not ok then
-            MFD.Print("nothing announced: " .. reason)
-        end
+        MFD.Actions.Run("announce")
     end,
 }
 
 commands.clear = {
     desc = "clear every icon on visible mobs",
     run = function()
-        MFD.Print("cleared " .. MFD.Marker:ClearAll() .. " icons")
+        MFD.Actions.Run("clear")
     end,
 }
 
@@ -841,7 +841,13 @@ commands.rules = {
 -- rule in CODING_STANDARDS.md.
 BINDING_HEADER_MARKEDFORDEATH = "Marked For Death"
 BINDING_NAME_MARKEDFORDEATH_ADD = "Add target as a rule"
-BINDING_NAME_MARKEDFORDEATH_REMARK = "Re-mark the visible pack"
+-- The mid-pull ones, named from the action table so the keybinding screen and
+-- the buttons cannot describe the same thing two different ways.
+BINDING_NAME_MARKEDFORDEATH_ANNOUNCE = MFD.Actions.BY_KEY.announce.binding
+BINDING_NAME_MARKEDFORDEATH_CLEAR = MFD.Actions.BY_KEY.clear.binding
+BINDING_NAME_MARKEDFORDEATH_REMARK = MFD.Actions.BY_KEY.remark.binding
+BINDING_NAME_MARKEDFORDEATH_MARKING = MFD.Actions.BY_KEY.marking.binding
+BINDING_NAME_MARKEDFORDEATH_DEATHS = MFD.Actions.BY_KEY.deaths.binding
 BINDING_NAME_MARKEDFORDEATH_RULES = "Toggle the rule editor"
 BINDING_NAME_MARKEDFORDEATH_ASSIGNMENTS = "Toggle the assignment panel"
 BINDING_NAME_MARKEDFORDEATH_BUFFS = "Toggle the buff board"
@@ -858,10 +864,6 @@ function MFD.Bindings.AddTarget()
     end
 
     MFD.UI.Rules:OpenFor(npcID, name, unit)
-end
-
-function MFD.Bindings.Remark()
-    commands.mark.run()
 end
 
 function MFD.Bindings.ToggleRules()

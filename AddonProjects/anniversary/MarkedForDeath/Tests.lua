@@ -3100,4 +3100,83 @@ T.Case("Deaths: both announcers share one suppression table", function()
     T.Eq(MFD.Tanks.ShouldAnnounce("Kaylia", shared, 100, 10), false, "the healer announcer is suppressed")
 end)
 
+-- The mid-pull actions. One definition each, reached from a button, a keybind
+-- and a slash command, because a raid leader tanking cannot type.
+local A = MFD.Actions
+
+T.Case("Actions: every action is complete enough to bind and draw", function()
+    T.Eq(#A.LIST > 0, true, "there are some")
+    for _, action in ipairs(A.LIST) do
+        T.Eq(type(action.key), "string", "keyed")
+        T.Eq(type(action.label), "string", "labelled for the button")
+        T.Eq(type(action.binding), "string", action.key .. " needs a keybinding name")
+        T.Eq(type(action.tip), "string", action.key .. " needs a tooltip")
+        T.Eq(type(action.run), "function", action.key .. " needs something to do")
+        T.Eq(A.BY_KEY[action.key], action, "reachable by key")
+    end
+end)
+
+T.Case("Actions: keys are unique, so a binding cannot fire the wrong one", function()
+    local seen = {}
+    for _, action in ipairs(A.LIST) do
+        T.Eq(seen[action.key], nil, "duplicate key " .. action.key)
+        seen[action.key] = true
+    end
+end)
+
+T.Case("Actions: the ones with a state paint from it, the rest from the label", function()
+    local plain = A.BY_KEY.announce
+    T.Eq(A.TextFor(plain), plain.label, "no state, so the label stands")
+    T.Eq(type(A.BY_KEY.marking.status), "function", "marking shows whether it is on")
+    T.Eq(type(A.BY_KEY.deaths.status), "function", "so does the death override")
+end)
+
+T.Case("Actions: a narrow panel wraps, a wide one does not", function()
+    -- The floating panel and the tab are very different widths and share one
+    -- layout rule rather than each guessing.
+    local slots, rows = A.Layout(5, 220, 104, 6)
+    T.Eq(rows, 3, "two per row on the narrow panel")
+    T.Eq(slots[1].row .. "," .. slots[1].column, "0,0", "first")
+    T.Eq(slots[3].row .. "," .. slots[3].column, "1,0", "third wraps to the second row")
+    T.Eq(slots[5].row .. "," .. slots[5].column, "2,0", "fifth starts a third row")
+
+    local wide, wideRows = A.Layout(5, 852, 104, 6)
+    T.Eq(wideRows, 1, "all on one row in the tab")
+    T.Eq(wide[5].column, 4, "fifth is the fifth across")
+end)
+
+T.Case("Actions: a width too narrow for even one button still lays out", function()
+    -- Better one button per row running off the edge than a divide by zero or
+    -- an empty bar.
+    local slots, rows = A.Layout(3, 10, 104, 6)
+    T.Eq(rows, 3, "one per row")
+    T.Eq(slots[2].column, 0, "never a negative or fractional column")
+end)
+
+T.Case("Actions: running an unknown key is reported, not thrown", function()
+    local errors = {}
+    local realError, realPrint = MFD.Error, MFD.Print
+    MFD.Error = function(msg) errors[#errors + 1] = msg end
+    MFD.Print = function() end
+
+    A.Run("nonsense")
+
+    MFD.Error, MFD.Print = realError, realPrint
+    T.Eq(#errors, 1, "said so")
+end)
+
+T.Case("Actions: an action that throws is caught and named", function()
+    local errors = {}
+    local realError = MFD.Error
+    MFD.Error = function(msg) errors[#errors + 1] = msg end
+
+    A.BY_KEY.__test = { key = "__test", label = "Boom", binding = "Boom", tip = "",
+        run = function() error("no") end }
+    A.Run("__test")
+    A.BY_KEY.__test = nil
+
+    MFD.Error = realError
+    T.Eq(#errors, 1, "one error, and the tick that follows still runs")
+end)
+
 _G.MarkedForDeath = MFD
