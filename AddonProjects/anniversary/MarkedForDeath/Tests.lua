@@ -2527,4 +2527,37 @@ T.Case("Candidates: ToList reports whether a mob has gone out of view", function
     T.Eq(byKey["200:BBB"].isLost, true, "nameplate gone")
 end)
 
+T.Case("Conflicts: a detected automarker is named with the exact fix", function()
+    local lines = MFD.Conflicts.Format({
+        { label = "Method Raid Tools", what = "its automarker is on", fix = "/mrt, Marks tab, untick Enable" },
+    })
+    T.Eq(#lines, 1, "one conflict")
+    T.Eq(lines[1], "Method Raid Tools: its automarker is on. Fix: /mrt, Marks tab, untick Enable",
+        "names the addon, the problem and the fix")
+end)
+
+T.Case("Conflicts: nothing detected produces no lines at all", function()
+    T.Eq(#MFD.Conflicts.Format({}), 0, "silence when there is nothing to say")
+end)
+
+T.Case("Conflicts: several are listed in the order given", function()
+    local lines = MFD.Conflicts.Format({
+        { label = "A", what = "x", fix = "do y" },
+        { label = "B", what = "p", fix = "do q" },
+    })
+    T.Eq(#lines, 2, "both")
+    T.Eq(lines[1], "A: x. Fix: do y", "first")
+    T.Eq(lines[2], "B: p. Fix: do q", "second")
+end)
+
+T.Case("Conflicts: Evaluate only reports the ones whose test says so", function()
+    local found = MFD.Conflicts.Evaluate({
+        { label = "On", what = "w", fix = "f", isActive = function() return true end },
+        { label = "Off", what = "w", fix = "f", isActive = function() return false end },
+        { label = "Broken", what = "w", fix = "f", isActive = function() error("boom") end },
+    })
+    T.Eq(#found, 1, "only the active one")
+    T.Eq(found[1].label, "On", "and it is the right one")
+end)
+
 _G.MarkedForDeath = MFD

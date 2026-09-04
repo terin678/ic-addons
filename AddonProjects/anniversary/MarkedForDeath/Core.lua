@@ -2,7 +2,7 @@
 local MFD = _G.MarkedForDeath or {}
 
 -- Must match ## Version: in the toc and the packaged zip name.
-MFD.VERSION = "1.6.1"
+MFD.VERSION = "1.7.0"
 
 -- Bumped only when the saved-variable shape changes in a way that needs a
 -- migration. See MFD:MigrateDB.
@@ -272,6 +272,13 @@ commands.config = {
     end,
 }
 
+commands.conflicts = {
+    desc = "check whether another addon is also placing raid icons",
+    run = function()
+        MFD.Conflicts.Report(true)
+    end,
+}
+
 commands.coverage = {
     desc = "compare the mobs you have seen against the bundled database",
     run = function()
@@ -459,6 +466,8 @@ commands.debug = {
         for _, reason in ipairs(reasons) do
             MFD.Print(reason)
         end
+
+        MFD.Conflicts.Report(false)
 
         MFD.Print(string.format(
             "|cff888888roles %d, visible %d, rules %d, assigned %d, zone %s|r",

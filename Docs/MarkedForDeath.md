@@ -156,6 +156,22 @@ A file that is not a Marked For Death export, or one made by a newer version, is
 rather than half applied. So is a file with an unrecognised job in it: half a kill order
 looks complete and is not.
 
+## When two addons fight over the icons
+
+Only one addon can own a raid icon. If another one is also marking, you will see marks
+that will not stay put and a chat line like:
+
+```
+backing off 22879:00001AC1C6 for 5s, something keeps changing that icon
+```
+
+That is this addon giving up rather than fighting a human or another addon forever. Run
+`/mfd conflicts`: it names any addon it can detect doing the same job and the exact click
+to stop it. The most common one is Method Raid Tools, whose automarker is under
+`/mrt`, Marks, Auto marks.
+
+It is checked once at login too, and it will not touch another addon's settings for you.
+
 ## First night
 
 1. Enemy nameplates must be on. The addon can only touch a mob it has a nameplate for.
@@ -195,6 +211,7 @@ Every command is in `/mfd help`.
 | `/mfd fixcvars` | Turn enemy nameplates on and set their range to 41 yards. |
 | `/mfd export` | A string of your own rules to paste to someone. |
 | `/mfd import` | Paste a rule string. It merges in; nothing of yours is deleted. |
+| `/mfd conflicts` | Check whether another addon is also placing raid icons. |
 | `/mfd coverage` | Mobs you have seen that the bundled database does not list. |
 | `/mfd readycheck` | Start a real ready check, the native one everybody sees. Raid leader or assistant. |
 | `/mfd share` | A shareable JSON file of your rules, for posting or handing to a new raid leader. |

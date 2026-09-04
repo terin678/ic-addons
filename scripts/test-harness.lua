@@ -26,6 +26,7 @@ local files = {
     "Allocator.lua",
     "Candidates.lua",
     "Marker.lua",
+    "Conflicts.lua",
     "Comms.lua",
     "RaidCheck.lua",
     "Tanks.lua",

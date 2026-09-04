@@ -593,8 +593,10 @@ function Marker:Tick(elapsed)
         local entry = defense[key]
         if entry and not entry.hasReported then
             entry.hasReported = true
+            local culprits = MFD.Conflicts and MFD.Conflicts.Format(MFD.Conflicts.Detect()) or {}
             MFD.Print("backing off " .. key .. " for " .. Marker.LIMITS.defenseWindow
-                .. "s, something keeps changing that icon")
+                .. "s, something keeps changing that icon"
+                .. (#culprits > 0 and (" -- likely " .. culprits[1]) or ""))
         end
     end
 
