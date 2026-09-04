@@ -102,7 +102,14 @@ function Teams.TotalNeeded(doc)
     return total
 end
 
--- Pure. One past the highest id in use, so an id is never reused after a delete.
+--[[
+Pure. One past the highest id in use.
+
+Deleting the highest team does hand its id back to the next new one -- this is not a
+monotonic counter. That is harmless because a document is never merged team by team:
+Doc.Merge takes the whole document from whichever side wins, so two clients can never be
+holding different teams that share an id.
+]]
 function Teams.NextId(doc)
     local highest = 0
     for _, team in ipairs((doc or {}).teams or {}) do
@@ -125,4 +132,62 @@ function Teams.New(id, name)
         id = id, name = name, tag = "", days = "",
         active = true, priority = id, needs = {},
     })
+end
+
+--[[
+Pure. Writes the fields a raid leader can edit and re-normalizes.
+
+A blank tag is not an error: Normalize fills it from the name's initials. That is what makes
+renaming work -- the tag generated from the old name would otherwise stick to the new one
+forever, so clearing the tag is how you say "follow the name again".
+
+Returns the team.
+]]
+function Teams.Edit(team, fields)
+    if not team then return nil end
+    fields = fields or {}
+    if fields.name ~= nil then team.name = fields.name end
+    if fields.tag ~= nil then team.tag = fields.tag end
+    if fields.days ~= nil then team.days = fields.days end
+    if fields.active ~= nil then team.active = fields.active and true or false end
+    return Teams.Normalize(team)
+end
+
+--[[
+Pure. Takes a team out of the document by id.
+
+Refuses to remove the last one: a document with no teams has nothing to recruit for, and
+every screen that reads doc.teams[1] would then be reading nil. Returns removed, reason.
+]]
+function Teams.Remove(doc, id)
+    local teams = (doc or {}).teams or {}
+    if #teams <= 1 then return false, "the guild needs at least one team" end
+    for i, team in ipairs(teams) do
+        if team.id == id then
+            table.remove(teams, i)
+            return true
+        end
+    end
+    return false, "no team with that id"
+end
+
+--[[
+Pure. Moves a team one place earlier in the document.
+
+Array order is what the message uses -- Message.Rotate decides which team leads from it --
+so this is not cosmetic. team.priority is not touched: nothing reads it except the wire
+format, and having two orderings that can disagree is how a list starts lying.
+
+Returns moved, reason.
+]]
+function Teams.MoveUp(doc, id)
+    local teams = (doc or {}).teams or {}
+    for i, team in ipairs(teams) do
+        if team.id == id then
+            if i == 1 then return false, "already first" end
+            teams[i - 1], teams[i] = teams[i], teams[i - 1]
+            return true
+        end
+    end
+    return false, "no team with that id"
 end

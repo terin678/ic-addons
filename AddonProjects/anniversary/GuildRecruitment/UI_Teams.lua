@@ -36,24 +36,48 @@ UI.RegisterPage(20, "Teams", function(page)
     editLabel:SetPoint("TOPLEFT", 8, -6)
     editLabel:SetWidth(UI.PAGE_W - 48)
 
-    local roleBox = UI.EditBox(editor, 140, 22)
-    roleBox:SetPoint("TOPLEFT", 8, -32)
-    local classBox = UI.EditBox(editor, 140, 22)
-    classBox:SetPoint("TOPLEFT", 154, -32)
-    local countBox = UI.EditBox(editor, 44, 22)
-    countBox:SetPoint("TOPLEFT", 300, -32)
+    -- Two sets of fields in one panel: needs on one, the team's own details on the other.
+    -- Apply and Cancel are shared and sit right of both, so the buttons do not move when
+    -- the panel changes what it is editing.
+    local function Field(w, x, hintText)
+        local box = UI.EditBox(editor, w, 22)
+        box:SetPoint("TOPLEFT", x, -32)
+        local hint = UI.Label(editor, hintText, "GameFontDisableSmall")
+        hint:SetPoint("BOTTOMLEFT", box, "TOPLEFT", 2, 1)
+        box.hint = hint
+        return box
+    end
 
-    local roleHint = UI.Label(editor, "role", "GameFontDisableSmall")
-    roleHint:SetPoint("BOTTOMLEFT", roleBox, "TOPLEFT", 2, 1)
-    local classHint = UI.Label(editor, "class, or blank for any", "GameFontDisableSmall")
-    classHint:SetPoint("BOTTOMLEFT", classBox, "TOPLEFT", 2, 1)
-    local countHint = UI.Label(editor, "how many", "GameFontDisableSmall")
-    countHint:SetPoint("BOTTOMLEFT", countBox, "TOPLEFT", 2, 1)
+    local roleBox = Field(140, 8, "role")
+    local classBox = Field(140, 154, "class, or blank for any")
+    local countBox = Field(44, 300, "how many")
+    local needFields = { roleBox, classBox, countBox }
+
+    local nameBox = Field(140, 8, "team name")
+    local tagBox = Field(80, 154, "tag, or blank to follow the name")
+    local daysBox = Field(220, 240, "raid days and times")
+    local teamFields = { nameBox, tagBox, daysBox }
+
+    nameBox:SetMaxLetters(ns.Teams.MAX_NAME)
+    tagBox:SetMaxLetters(ns.Teams.MAX_TAG)
+    daysBox:SetMaxLetters(ns.Teams.MAX_DAYS)
+    roleBox:SetMaxLetters(ns.Teams.MAX_ROLE)
+    classBox:SetMaxLetters(ns.Teams.MAX_CLASS)
+    countBox:SetMaxLetters(3)
+
+    -- Show/Hide rather than SetShown: a hint is a FontString, and every other SetShown in
+    -- this addon is on a Frame.
+    local function ShowFields(fields, on)
+        for _, box in ipairs(fields) do
+            if on then box:Show() else box:Hide() end
+            if on then box.hint:Show() else box.hint:Hide() end
+        end
+    end
 
     local apply = UI.Button(editor, "Apply", 70, 22, { kind = "accent" })
-    apply:SetPoint("TOPLEFT", 352, -32)
+    apply:SetPoint("TOPLEFT", 470, -32)
     local cancel = UI.Button(editor, "Cancel", 70, 22)
-    cancel:SetPoint("TOPLEFT", 428, -32)
+    cancel:SetPoint("TOPLEFT", 546, -32)
 
     local t
     t = UI.Table(page, {
@@ -66,10 +90,16 @@ UI.RegisterPage(20, "Teams", function(page)
         },
         buttons = {
             { key = "edit", label = "Edit", width = 50 },
+            { key = "onoff", label = "On", width = 34 },
             { key = "up", label = "^", width = 24 },
             { key = "del", label = "X", width = 24, kind = "danger" },
         },
     })
+
+    -- Where the button column starts, so a Span can stop before it. Read off the table
+    -- rather than written down: the old hardcoded 548 was silently wrong the moment a
+    -- fourth button moved the packing.
+    local SPAN_W = (t.buttons[1] and t.buttons[1].x or t.width) - 12
 
     --------------------------------------------------------------------------
     -- Editing
@@ -85,10 +115,20 @@ UI.RegisterPage(20, "Teams", function(page)
     -- order and the storage array is not sorted, so an index taken from the list
     -- points at a different need the moment anybody uses the priority button.
     local function Open(teamID, need)
-        editing = { teamID = teamID, need = need }
+        editing = { kind = "need", teamID = teamID, need = need }
         roleBox:SetText(need and need.role or "DPS")
         classBox:SetText(need and need.class or "")
         countBox:SetText(tostring(need and need.count or 1))
+        UI.Refresh()
+    end
+
+    -- The team's own details. Opened on the team, for the same reason Open is opened on
+    -- the need: a position in the list is not a stable name for anything.
+    local function OpenTeam(team)
+        editing = { kind = "team", teamID = team.id }
+        nameBox:SetText(team.name or "")
+        tagBox:SetText(team.tag or "")
+        daysBox:SetText(team.days or "")
         UI.Refresh()
     end
 
@@ -96,6 +136,18 @@ UI.RegisterPage(20, "Teams", function(page)
         if not editing or not ns.Roster.ICanAuthor() then return end
         local team = ns.Teams.ById(ns.db.doc, editing.teamID)
         if not team then editing = nil; UI.Refresh(); return end
+
+        if editing.kind == "team" then
+            ns.Teams.Edit(team, {
+                name = nameBox:GetText(),
+                tag = tagBox:GetText(),
+                days = daysBox:GetText(),
+            })
+            editing = nil
+            Bump()
+            UI.Refresh()
+            return
+        end
 
         local need = editing.need
         if not need then
@@ -139,9 +191,12 @@ UI.RegisterPage(20, "Teams", function(page)
             return
         end
         local id = ns.Teams.NextId(ns.db.doc)
-        ns.db.doc.teams[#ns.db.doc.teams + 1] = ns.Teams.New(id, "Team " .. id)
+        local team = ns.Teams.New(id, "Team " .. id)
+        ns.db.doc.teams[#ns.db.doc.teams + 1] = team
         Bump()
-        UI.Refresh()
+        -- Open it straight away: "Team 3" is a placeholder, not a name anybody wanted, and
+        -- a new team with no days set is not yet worth putting in a message.
+        OpenTeam(team)
     end)
 
     push:SetScript("OnClick", function()
@@ -165,11 +220,21 @@ UI.RegisterPage(20, "Teams", function(page)
         editor:SetShown(editing ~= nil)
         if editing then
             local team = ns.Teams.ById(ns.db.doc, editing.teamID)
-            editLabel:SetText(string.format("%s  \194\183  %s  \194\183  |cff888888roles are "
-                .. "free text: %s, or whatever your raid leader calls it|r",
-                team and team.name or "?",
-                editing.need and "editing a need" or "a new need",
-                table.concat(ROLES, ", ")))
+            local isTeam = editing.kind == "team"
+            ShowFields(needFields, not isTeam)
+            ShowFields(teamFields, isTeam)
+            if isTeam then
+                editLabel:SetText(string.format("%s  \194\183  editing the team  \194\183  "
+                    .. "|cff888888the tag is what goes in the message, so keep it short; "
+                    .. "clear it to build one from the name|r",
+                    team and team.name or "?"))
+            else
+                editLabel:SetText(string.format("%s  \194\183  %s  \194\183  |cff888888roles "
+                    .. "are free text: %s, or whatever your raid leader calls it|r",
+                    team and team.name or "?",
+                    editing.need and "editing a need" or "a new need",
+                    table.concat(ROLES, ", ")))
+            end
         end
 
         -- One flat list: a heading per team, its needs under it.
@@ -194,11 +259,17 @@ UI.RegisterPage(20, "Teams", function(page)
                     ns.Teams.NeedsSummary(team)))
                 -- Span hides the cells, so the team's own controls live on its
                 -- heading row's buttons, which Span also hid: put them back.
-                -- Span sizes its text to the whole row, which is under the two
+                -- Span sizes its text to the whole row, which is under the
                 -- buttons this row puts back. Stop it before they start.
-                row.span:SetWidth(548)
+                row.span:SetWidth(SPAN_W)
 
-                local toggle = row.buttons.edit
+                local edit = row.buttons.edit
+                edit:Show()
+                edit:SetText("Edit")
+                UI.Gate(edit, mine, why)
+                edit:SetScript("OnClick", function() OpenTeam(team) end)
+
+                local toggle = row.buttons.onoff
                 toggle:Show()
                 toggle:SetText(team.active ~= false and "On" or "Off")
                 UI.Gate(toggle, mine, why)
@@ -208,14 +279,32 @@ UI.RegisterPage(20, "Teams", function(page)
                     UI.Refresh()
                 end)
 
+                -- Array order is what Message.Rotate reads, so this decides which team
+                -- leads the line, not just where the heading sits on screen.
+                local first = ns.db.doc.teams[1] and ns.db.doc.teams[1].id == team.id
+                local up = row.buttons.up
+                up:Show()
+                UI.Gate(up, mine and not first, first and "Already first." or why)
+                up:SetScript("OnClick", function()
+                    if ns.Teams.MoveUp(ns.db.doc, team.id) then
+                        Bump()
+                        UI.Refresh()
+                    end
+                end)
+
+                local last = #ns.db.doc.teams > 1
                 local remove = row.buttons.del
                 remove:Show()
-                UI.Gate(remove, mine and #ns.db.doc.teams > 1,
-                    #ns.db.doc.teams > 1 and why or "The guild needs at least one team.")
+                UI.Gate(remove, mine and last,
+                    last and why or "The guild needs at least one team.")
                 remove:SetScript("OnClick", function()
-                    for i, other in ipairs(ns.db.doc.teams) do
-                        if other.id == team.id then table.remove(ns.db.doc.teams, i) break end
+                    local gone, reason = ns.Teams.Remove(ns.db.doc, team.id)
+                    if not gone then
+                        ns.Printf("not removed: %s.", tostring(reason))
+                        return
                     end
+                    -- The editor may be open on the team that just went.
+                    if editing and editing.teamID == team.id then editing = nil end
                     Bump()
                     UI.Refresh()
                 end)
@@ -234,6 +323,10 @@ UI.RegisterPage(20, "Teams", function(page)
             t:Set(row, "class", need.class ~= "" and need.class or "|cff888888any|r")
             t:Set(row, "count", tostring(need.count))
             t:Set(row, "priority", tostring(need.priority))
+
+            -- On/Off belongs to a team, not to a need. Render shows every button again
+            -- before this runs, so a need row has to put it back down.
+            row.buttons.onoff:Hide()
 
             row.buttons.edit:SetText("Edit")
             UI.Gate(row.buttons.edit, mine, why)

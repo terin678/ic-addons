@@ -64,6 +64,31 @@ recruit, or *"Threnody barked 4m ago"*. Underneath is who has been recruiting re
 Each need has a role, a class (or blank for any), a count and a priority. Priority is what
 decides what survives when the message will not fit.
 
+A raid leader can add, edit, reorder and remove both teams and needs from here. The buttons
+on a **team's heading row** are:
+
+| Button | What it does |
+| --- | --- |
+| Edit | Opens the team's name, tag and raid days in the panel above the list |
+| On / Off | Leaves the team out of the message without deleting it or its needs |
+| ^ | Moves the team up. This is not cosmetic — the order decides which team leads the line |
+| X | Removes the team and everything it was asking for. The last team cannot be removed |
+
+The buttons on a **need row** are Edit, `^` to raise its priority, and X to remove it.
+
+Three things about editing a team are worth knowing:
+
+- **The tag is what actually goes in the message**, not the name — a 255-character line has
+  no room for "Tuesday Core Raid Team". Keep it short.
+- **Leave the tag blank and it builds itself** from the name's initials: "Molten Core"
+  becomes "MC". That is also how you make a tag follow a rename, since a tag you have typed
+  is never overwritten.
+- **Adding a team opens the editor straight away.** A new team is called "Team 3" and has no
+  raid days, which is not something you want going out to the guild.
+
+Names and days are capped at 24 characters and tags at 8, because everything here has to
+fit in one chat line alongside everything else.
+
 **Message** is raid-leader only. `{teams}` is where the teams go; `{guild}` and `{contacts}`
 fill themselves in. A second template says how one team is written, with `{tag}`, `{days}`
 and `{needs}`. The preview under it re-assembles as you type, with a length meter.

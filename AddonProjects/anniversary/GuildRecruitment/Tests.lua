@@ -785,3 +785,90 @@ T.Case("UI: every page draws without erroring", function()
         T.Eq(ok, true, page.name .. " draws => " .. tostring(err))
     end
 end)
+
+--------------------------------------------------------------------------------
+-- Editing teams
+--------------------------------------------------------------------------------
+
+T.Case("Teams: editing writes the fields a raid leader can change", function()
+    local doc = TwoTeams()
+    local team = ns.Teams.ById(doc, 1)
+
+    ns.Teams.Edit(team, { name = "Molten Core", days = "Wed 9-12" })
+    T.Eq(team.name, "Molten Core", "the name is what was typed")
+    T.Eq(team.days, "Wed 9-12", "and so are the days")
+    T.Eq(team.tag, "T1", "a tag that was set by hand is left alone")
+
+    -- Clearing the tag is how you say "follow the name again": otherwise a tag built from
+    -- the old name sticks to the new one forever.
+    ns.Teams.Edit(team, { tag = "" })
+    T.Eq(team.tag, "MC", "a blank tag is rebuilt from the name's initials")
+end)
+
+T.Case("Teams: a team is never edited into something a message cannot carry", function()
+    local doc = TwoTeams()
+    local team = ns.Teams.ById(doc, 1)
+
+    ns.Teams.Edit(team, { name = string.rep("x", 200) })
+    T.Eq(#team.name, ns.Teams.MAX_NAME, "an over-long name is cut to the cap")
+
+    ns.Teams.Edit(team, { name = "   ", tag = "   " })
+    T.Eq(team.name, "Team 1", "a name of nothing but spaces falls back to the id")
+
+    ns.Teams.Edit(team, { days = string.rep("y", 200) })
+    T.Eq(#team.days, ns.Teams.MAX_DAYS, "and the days are capped too")
+end)
+
+T.Case("Teams: removing takes the right team, and never the last one", function()
+    local doc = TwoTeams()
+
+    local gone, why = ns.Teams.Remove(doc, 1)
+    T.Eq(gone, true, "the team was removed")
+    T.Eq(#doc.teams, 1, "one left")
+    T.Eq(doc.teams[1].id, 2, "and it is the OTHER one")
+
+    -- The last team cannot go: every screen reads doc.teams[1], and a document with
+    -- nothing to recruit for is not a state this addon has a page for.
+    gone, why = ns.Teams.Remove(doc, 2)
+    T.Eq(gone, false, "the last team stays")
+    T.Eq(#doc.teams, 1, "still one")
+    T.Eq(type(why), "string", "and it says why")
+
+    T.Eq(ns.Teams.Remove(TwoTeams(), 99), false, "an id nobody has removes nothing")
+end)
+
+T.Case("Teams: moving a team up reorders the document, not just the screen", function()
+    local doc = TwoTeams()
+
+    -- Array order is what Message.Rotate reads, so this decides which team leads the line.
+    local moved = ns.Teams.MoveUp(doc, 2)
+    T.Eq(moved, true, "the second team moved")
+    T.Eq(doc.teams[1].id, 2, "and is now first")
+    T.Eq(doc.teams[2].id, 1, "with the other one behind it")
+    T.Eq(#doc.teams, 2, "nothing was lost on the way")
+
+    local again, why = ns.Teams.MoveUp(doc, 2)
+    T.Eq(again, false, "the first team cannot go higher")
+    T.Eq(type(why), "string", "and it says so")
+    T.Eq(doc.teams[1].id, 2, "and nothing moved")
+end)
+
+T.Case("Teams: a new team is complete enough to put in a message", function()
+    local doc = TwoTeams()
+    local id = ns.Teams.NextId(doc)
+    T.Eq(id, 3, "one past the highest in use")
+
+    local team = ns.Teams.New(id, "Team " .. id)
+    T.Eq(team.active, true, "a new team is on")
+    T.Eq(team.tag ~= "", true, "and has a tag without anybody typing one")
+    T.Eq(#team.needs, 0, "and needs nothing yet")
+
+    -- NextId is highest-plus-one, not a counter: removing the highest team hands its id
+    -- straight back. Harmless, because Doc.Merge takes a whole document from one side or
+    -- the other and never merges teams one at a time -- but worth pinning so nobody
+    -- "fixes" it into a counter and breaks the wire format's assumption instead.
+    doc.teams[#doc.teams + 1] = team
+    T.Eq(ns.Teams.NextId(doc), 4, "with three teams the next id is 4")
+    ns.Teams.Remove(doc, 3)
+    T.Eq(ns.Teams.NextId(doc), 3, "and removing the highest gives that id back")
+end)
