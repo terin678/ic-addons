@@ -62,8 +62,12 @@ The list has exactly **two levels**, confirmed in game:
 Two mechanisms produce that nesting, and an addon needs only one of them:
 
 - **`## Group:`**, used by AtlasLoot, Bagnon, GatherMate2 and AtlasBIStooltips (the last
-  being TBC-only, so written for this client). In all four the value is an existing addon
-  folder name.
+  being TBC-only, so written for this client). **The value must be an addon folder that
+  exists**, and the head names itself: GatherMate2's own .toc says `## Group: GatherMate2`.
+  Tried with a free-text value -- `Core`, `Auction` -- the client does not fall back to
+  using it as a label; it drops the addon out of grouping altogether and leaves it flat in
+  the alphabetical list. There is no way to give a cluster a name of its own, so the
+  heading you read is always the head addon's `## Title`.
 - **A shared folder-name prefix**, which is what Guild Roster Manager relies on:
   `Guild_Roster_Manager_Group_Info` nests under `Guild_Roster_Manager` with no `## Group:`
   line anywhere in either .toc. WeakAuras has no `## Group:` either.

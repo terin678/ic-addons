@@ -99,8 +99,8 @@ other file has to know what the addon is called.
 
 Two lines in the `.toc` are deliberately **not** tokens and must survive a rename:
 `## Category: Impulse Control`, which is the heading every guild addon collapses under in
-the in-game AddOns list, and `## Group:`, which nests it inside one of the areas (`Core`,
-`Auction`, `Professions`). The script carries both over untouched; a hand rename has to
+the in-game AddOns list, and `## Group: ICLibs`, which nests it under the Core area. A
+group's value must be an addon that exists; a made-up one silently ungroups it. The script carries both over untouched; a hand rename has to
 remember. `Docs/client-reference.md` has how the list actually behaves, including the rule
 that an addon uses either a title texture or an `## IconTexture`, never both.
 

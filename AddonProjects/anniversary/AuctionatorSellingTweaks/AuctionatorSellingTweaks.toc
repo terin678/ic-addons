@@ -4,7 +4,7 @@
 ## Author: Malexis
 ## Version: 1.0.1
 ## IconTexture: Interface\AddOns\AuctionatorSellingTweaks\ImpulseControl-64.tga
-## Group: Auction
+## Group: MalexisAuctionWatcher
 ## Category: Impulse Control
 ## Dependencies: Auctionator
 

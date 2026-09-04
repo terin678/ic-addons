@@ -4,7 +4,7 @@
 ## Author: Malexis
 ## Version: 1.0.1
 ## IconTexture: Interface\AddOns\ICTemplate\ICTemplate.tga
-## Group: Core
+## Group: ICLibs
 ## Category: Impulse Control
 ## SavedVariables: ICTemplateDB
 ## SavedVariablesPerCharacter: ICTemplateCharDB

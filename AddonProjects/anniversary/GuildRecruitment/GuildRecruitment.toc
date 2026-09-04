@@ -4,7 +4,7 @@
 ## Author: Malexis
 ## Version: 0.1.1
 ## IconTexture: Interface\AddOns\GuildRecruitment\GuildRecruitment.tga
-## Group: Core
+## Group: ICLibs
 ## Category: Impulse Control
 ## SavedVariables: GuildRecruitmentDB
 ## SavedVariablesPerCharacter: GuildRecruitmentCharDB

@@ -11,9 +11,12 @@ in `Interface\AddOns` next to the addon. The dependent addons list it under
 `## Dependencies`, so the game refuses to load them without it and says why.
 
 Every guild addon carries `## Category: Impulse Control`, so they collapse under one
-heading in the in-game AddOns list, and a `## Group:` naming the area it belongs to --
-`Core`, `Auction` or `Professions`. The guild mark in `Textures/ImpulseControl-64` is the
-icon for the ones that have no art of their own. `Docs/client-reference.md` has the detail.
+heading in the in-game AddOns list, and a `## Group:` naming the addon that heads its area:
+ICLibs for Core, MalexisAuctionWatcher for Auction, TradeMaster for Professions. A group's
+value has to be an addon that exists -- a made-up name silently ungroups everything that
+uses it -- so the area's name is whatever its head addon is called. The guild mark in
+`Textures/ImpulseControl-64` is the icon for the addons with no art of their own.
+`Docs/client-reference.md` has the rest.
 
 ## Contents
 

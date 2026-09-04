@@ -4,7 +4,7 @@
 ## Author: Malexis, Dezedin
 ## Version: 1.13.1
 ## IconTexture: Interface\AddOns\TradeMaster\TradeMaster.tga
-## Group: Professions
+## Group: TradeMaster
 ## Category: Impulse Control
 ## SavedVariablesPerCharacter: TradeMasterDB
 ## Dependencies: ICLibs
