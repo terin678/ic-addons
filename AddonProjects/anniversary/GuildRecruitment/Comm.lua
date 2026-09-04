@@ -491,7 +491,13 @@ function Comm.OnAddonMessage(prefix, text, distribution, sender)
     -- says no, so the two are unpacked under names that say which.
     local short, rankOrReason, state = Comm.Accept(prefix, text, distribution, sender, now)
     if not short then
-        if rankOrReason then Count(rankOrReason) end
+        --[[
+        A message under somebody else's prefix is not a rejection, it is not ours: this
+        event fires for other addons' traffic too. Counting those made the number useless
+        for the one thing it is for -- 95 "rejections" against 0 received, all of them
+        other addons going about their business, hides the one that would matter.
+        ]]
+        if rankOrReason and rankOrReason ~= "prefix" then Count(rankOrReason) end
         return
     end
     local rank = rankOrReason

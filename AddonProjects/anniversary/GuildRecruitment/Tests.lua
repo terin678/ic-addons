@@ -937,8 +937,12 @@ T.Case("Message: a team never renders to nothing and vanishes", function()
     local stripped = { tag = "DN", days = "M/W", needs = {} }
     T.Eq(ns.Message.TeamFragment(stripped, ns.Message.LEVELS, "{needs}"), "DN",
         "the tag is the floor")
-    T.Eq(ns.Message.TeamFragment(stripped, ns.Message.LEVELS, "{needs} for our {days}"),
+    -- Level 2 rather than the floor: the ladder drops {days} above level 2, so at the floor
+    -- this reads "for our" and the point about keeping the rest would be lost in it.
+    T.Eq(ns.Message.TeamFragment(stripped, 2, "{needs} for our {days}"),
         "for our M/W", "anything else it still says is kept")
+    T.Eq(ns.Message.TeamFragment(stripped, ns.Message.LEVELS, "{needs} for our {days}"),
+        "for our", "and at the floor the days have gone too, but it is still not empty")
 
     -- A team with no tag of its own falls back to its name, so the floor is never blank.
     local unnamed = { name = "Sunday Alt", tag = "", needs = {} }

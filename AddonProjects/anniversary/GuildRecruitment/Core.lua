@@ -180,7 +180,26 @@ frame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4)
         -- Two teams up front, so the window has something in it rather than an
         -- empty page and no hint what to do with it. The guild's own name arrives
         -- later, on the first roster update.
+        -- What came back off disk, before anything else can touch it. A document that is
+        -- whole here and empty later was lost while running; one that is already empty was
+        -- never saved. Without this line those two look identical from the chat frame.
+        local loadedTeams, loadedNeeds = #ns.db.doc.teams, 0
+        for _, team in ipairs(ns.db.doc.teams) do
+            loadedNeeds = loadedNeeds + #(team.needs or {})
+        end
+
         SeedTeams()
+
+        -- Log.Add, not Log.Capture: /gr log reads ns.db.log and Capture writes to a
+        -- different buffer, so a breadcrumb left there is one nobody can find.
+        ns.Log.Add("info", "Core", string.format("loaded rev %d", ns.db.doc.rev or 0),
+            string.format("%s, %s",
+                ns.Util.Plural(loadedTeams, loadedTeams .. " team"),
+                ns.Util.Plural(loadedNeeds, loadedNeeds .. " need")))
+        if loadedTeams == 0 and (ns.db.doc.rev or 0) > 0 then
+            ns.Print("|cffffcc00the saved message has a revision but no teams,|r which "
+                .. "should not happen. /gr log has the detail.")
+        end
 
         ns.Comm.Init()
         if ns.Minimap and ns.Minimap.Init then ns.Minimap.Init() end
