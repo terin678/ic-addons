@@ -7,7 +7,9 @@ any addon here and find the same shape.
 
 ```
 AddonName/
-  AddonName.toc        Interface, Title, Version, SavedVariables, OptionalDeps, file list
+  AddonName.toc        Interface, Title, Notes, Version, IconTexture, Group, Category,
+                       Dependencies, SavedVariables, OptionalDeps, file list
+  Bindings.xml         Key bindings, if any. Shipped but NEVER listed in the .toc
   Core.lua             Namespace, event frame, defaults, migrations, slash commands
   Util.lua             Pure functions with no frame or event dependencies
   <Feature>.lua        One file per concern (Database, Scanning, ...)
@@ -16,6 +18,12 @@ AddonName/
 ```
 
 - The `.toc` file list is load order. Data and logic files load before UI files.
+- `Bindings.xml` is loaded by the client by filename. Listing it in the `.toc` loads every
+  binding twice; `scripts/lint.py` fails on it.
+- A guild addon carries `## Category: Impulse Control` and a `## Group:` naming the addon
+  that heads its area, or it sits alone in the AddOns list instead of under the guild
+  heading. A `## Group:` value has to be an addon that exists — a made-up name silently
+  ungroups everything using it. `Docs/client-reference.md` has the whole model.
 - Only the addon folder ships. No README, screenshots, or scripts inside it.
 - **No globals.** Every file starts with `local addonName, ns = ...` and hangs what it
   exports off `ns`, which the client gives each addon privately. A module claims its own
@@ -26,8 +34,11 @@ AddonName/
 - `ICTemplate` is the worked example of all of this, and copying it (or running
   `scripts/new-addon.ps1`) is how a new addon starts.
 
-MalexisAuctionWatcher predates the private namespace and still uses a single `_G` table
-with colon methods. That is the old shape; do not copy it into anything new.
+Two addons do not follow this, both deliberately. MalexisAuctionWatcher predates the private
+namespace and still uses a single `_G` table with colon methods; that is the old shape, and
+it is not to be copied into anything new. AuctionatorSellingTweaks is a single-file hook with
+nothing to export, so it declares `local addonName` outright and has no `ns` at all. Every
+other addon here takes the two return values.
 
 ## Lua style
 
@@ -106,22 +117,27 @@ with colon methods. That is the old shape; do not copy it into anything new.
   amber pending or derived, grey missing or finished. One meaning per colour per addon.
 - Build lists with the shared widget library `LibICUI-1.0` (ICLibs) through the addon's own
   thin wrapper, not with hand-placed FontStrings per tab.
-- Windows, tabs, buttons, edit boxes and check buttons come from the same library, so the
-  guild palette is what you get by default. Do not hand-roll a button or paint one with
-  literal colour values; an addon that wants the Blizzard look sets `theme = false` on its
-  registered style instead.
+- Windows, tabs, buttons, edit boxes, multi-line text areas and check buttons come from the
+  same library, so the guild palette is what you get by default. Do not hand-roll a button
+  or paint one with literal colour values; an addon that wants the Blizzard look sets
+  `theme = false` on its registered style instead.
 
 ## Versioning and release
 
 - Semantic-ish: bump patch for fixes, minor for features, major for saved-variable
   schema changes that are not backward compatible.
 - The version appears in three places and must match: `## Version:` in the `.toc`, the
-  load message in `Core.lua`, and the packaged zip name.
+  `local VERSION` load message in `Core.lua` where the addon has one, and the addon's row
+  in `AddonProjects/<flavor>/README.md`. `scripts/lint.py` checks all three against each
+  other. The packaged zip name is derived from the `.toc` by `scripts/package.ps1`, so it
+  is not a fourth place to keep in step.
 - Commit messages: imperative subject under 72 characters, a body that says what changed
   for the player and anything a maintainer must know (migrations, new commands).
 
 ## Review checklist
 
+- `python scripts/lint.py` is clean.
+- The addon's own cases pass in game: `/<cmd> test`.
 - Loads without errors on the target client with `Load out of date AddOns` off.
 - Every new command is in `help`.
 - Every new wait has a timeout and a visible failure message.
