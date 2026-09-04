@@ -1373,4 +1373,56 @@ T.Case("Classify: unknown auras are ignored without error", function()
     T.Eq(s.AI, false, "nothing misfiled")
 end)
 
+T.Case("Providers: a buff is providable only if someone present can cast it", function()
+    local p = MFD.RaidCheck.Providers(roster("Alfred", "MAGE", "Thok", "WARRIOR"))
+    T.Eq(p.AI, true, "a mage is here")
+    T.Eq(p.MOTW, false, "no druid")
+    T.Eq(p.FORT, false, "no priest")
+end)
+
+T.Case("Missing: a raid buff nobody can cast is not reported", function()
+    local state = MFD.RaidCheck.Classify({})
+    local missing = MFD.RaidCheck.Missing(state, { AI = false, MOTW = false, FORT = false, SP = false }, {})
+    for _, m in ipairs(missing) do
+        if m.column == "AI" or m.column == "MOTW" then
+            error("reported " .. m.column .. " with no provider present")
+        end
+    end
+end)
+
+T.Case("Missing: a raid buff someone can cast and the player lacks is reported", function()
+    local state = MFD.RaidCheck.Classify({ "Mark of the Wild" })
+    local missing = MFD.RaidCheck.Missing(state, { AI = true, MOTW = true, FORT = false, SP = false }, {})
+    T.Eq(#missing, 1, "only intellect")
+    T.Eq(missing[1].column, "AI", "the one a mage could fix")
+    T.Eq(missing[1].label, "Int", "with its short label")
+end)
+
+T.Case("Missing: consumables are reported only when flagged as expected", function()
+    local state = MFD.RaidCheck.Classify({})
+    local none = MFD.RaidCheck.Missing(state, {}, {})
+    T.Eq(#none, 0, "nothing expected, nothing missing")
+
+    local some = MFD.RaidCheck.Missing(state, {}, { FOOD = true, FLASK = true })
+    T.Eq(#some, 2, "two expected, both absent")
+    T.Eq(some[1].column, "FOOD", "fixed order")
+    T.Eq(some[2].column, "FLASK", "fixed order")
+end)
+
+T.Case("Missing: a present consumable is not reported even when expected", function()
+    local state = MFD.RaidCheck.Classify({ "Well Fed" })
+    local missing = MFD.RaidCheck.Missing(state, {}, { FOOD = true })
+    T.Eq(#missing, 0, "fed")
+end)
+
+T.Case("Missing: weapon enchant comes from the reported flag, not auras", function()
+    local state = MFD.RaidCheck.Classify({})
+    state.weapon = false
+    T.Eq(#MFD.RaidCheck.Missing(state, {}, { WEAPON = true }), 1, "reported absent")
+    state.weapon = true
+    T.Eq(#MFD.RaidCheck.Missing(state, {}, { WEAPON = true }), 0, "reported present")
+    state.weapon = nil
+    T.Eq(#MFD.RaidCheck.Missing(state, {}, { WEAPON = true }), 0, "unknown is never reported missing")
+end)
+
 _G.MarkedForDeath = MFD
