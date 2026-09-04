@@ -12,7 +12,7 @@ local Main = MFD.UI.Main
 
 -- Sized for the widest panel, the raid check grid, so switching tabs never
 -- resizes the window under the cursor.
-local WIDTH, HEIGHT = 880, 600     -- pixels
+local WIDTH, HEIGHT = 940, 600     -- pixels
 local TAB_HEIGHT = 22              -- pixels
 local CONTENT_TOP = 54             -- pixels below the window top
 

@@ -2,11 +2,11 @@
 local MFD = _G.MarkedForDeath or {}
 
 -- Must match ## Version: in the toc and the packaged zip name.
-MFD.VERSION = "1.12.0"
+MFD.VERSION = "1.13.0"
 
 -- Bumped only when the saved-variable shape changes in a way that needs a
 -- migration. See MFD:MigrateDB.
-local SCHEMA_VERSION = 4
+local SCHEMA_VERSION = 5
 
 local CHAT_PREFIX = "|cff33ff99Marked For Death|r: "
 
@@ -52,17 +52,37 @@ local DB_DEFAULTS = {
         isManualOverrideEnabled = true,
         isLateCCAlertEnabled = true,
         minimap = { hide = false },
-        -- Death announcements, both kinds, and the boss gate they share.
-        -- override is the mid-raid escape hatch: AUTO follows the per-boss
-        -- ticks, ON and OFF ignore them.
+        -- The mid-pull button bar. Shown by default: buttons nobody can find
+        -- are no better than no buttons, which is how the first attempt at
+        -- this went.
+        actionBar = { isShown = true, isLocked = false },
+        -- Death announcements. The two kinds are configured separately all the
+        -- way down: their own boss list, their own override, their own people.
+        -- Wanting healer calls on Naj'entus and tank calls on Illidan is a
+        -- normal thing to want and one shared list cannot express it.
+        --
+        -- override is the mid-raid escape hatch: AUTO follows that kind's
+        -- per-boss ticks, ON and OFF ignore them.
         deaths = {
-            isTankAlertEnabled = true,
-            isTankBossOnly = false,
-            isHealerAlertEnabled = false,
-            tankNames = "",
-            healerNames = "",
-            override = "AUTO",
-            bosses = {},
+            -- Set once, the first time this block exists, so the shipped
+            -- defaults can tick every boss for tanks without re-ticking what
+            -- somebody has since turned off. See Encounters.SeedDefaults.
+            isSeeded = false,
+            tank = {
+                isEnabled = true,
+                -- On, because tank deaths have always announced everywhere.
+                onTrash = true,
+                override = "AUTO",
+                names = "",
+                bosses = {},
+            },
+            healer = {
+                isEnabled = false,
+                onTrash = false,
+                override = "AUTO",
+                names = "",
+                bosses = {},
+            },
         },
         raidCheck = {
             isAutoOpenEnabled = true,
@@ -133,6 +153,54 @@ function MFD:MigrateDB()
 
         db.schemaVersion = 4
     end
+
+    -- Schema 5: tank and healer announcements stopped sharing a boss list and
+    -- an override and became two independent blocks, and "boss fights only"
+    -- became a plain trash yes or no per kind.
+    --
+    -- The point is to land on the same behaviour the player already had. Tank
+    -- deaths that announced everywhere become trash yes and every boss ticked;
+    -- tank deaths already held to the list keep that list and lose trash.
+    -- Healers were never on trash either way.
+    if db.schemaVersion < 5 then
+        local deaths = db.settings and db.settings.deaths
+        if deaths and not deaths.tank then
+            local sharedBosses = deaths.bosses or {}
+            local sharedOverride = deaths.override or "AUTO"
+            local wasBossOnly = deaths.isTankBossOnly == true
+
+            local tankBosses
+            if wasBossOnly then
+                tankBosses = MFD.H.DeepCopy(sharedBosses)
+            else
+                tankBosses = {}
+                for _, boss in ipairs(MFD.Data.Bosses) do
+                    tankBosses[boss.name] = true
+                end
+            end
+
+            deaths.tank = {
+                isEnabled = deaths.isTankAlertEnabled ~= false,
+                onTrash = not wasBossOnly,
+                override = sharedOverride,
+                names = deaths.tankNames or "",
+                bosses = tankBosses,
+            }
+            deaths.healer = {
+                isEnabled = deaths.isHealerAlertEnabled == true,
+                onTrash = false,
+                override = sharedOverride,
+                names = deaths.healerNames or "",
+                -- A copy, not the same table. Sharing one would make these two
+                -- lists move together forever, which is the thing being fixed.
+                bosses = MFD.H.DeepCopy(sharedBosses),
+            }
+            -- Already decided above; the seeder must not touch it.
+            deaths.isSeeded = true
+        end
+
+        db.schemaVersion = 5
+    end
 end
 
 local function onAddonLoaded()
@@ -147,6 +215,7 @@ local function onAddonLoaded()
     MFD.charDb = MarkedForDeathCharDB
 
     MFD.Roles.EnsurePlan(MFD.db)
+    MFD.Encounters.SeedDefaults(MFD.db.settings.deaths, MFD.Data.Bosses)
 
     for _, fn in ipairs(inits) do
         local ok, err = pcall(fn)
@@ -485,6 +554,23 @@ commands.options = {
     end,
 }
 
+commands.bar = {
+    desc = "show or hide the action bar of mid-pull buttons",
+    run = function(rest)
+        local what = string.lower(string.match(rest or "", "^%s*(%S*)") or "")
+        if what == "reset" then
+            MFD.UI.ActionBar:Reset()
+        elseif what == "lock" then
+            local settings = MFD.db.settings.actionBar
+            settings.isLocked = not settings.isLocked
+            MFD.UI.ActionBar:UpdateLock()
+            MFD.Print("action bar " .. (settings.isLocked and "locked" or "unlocked"))
+        else
+            MFD.UI.ActionBar:Toggle()
+        end
+    end,
+}
+
 commands.minimap = {
     desc = "show or hide the minimap button",
     run = function()
@@ -574,25 +660,46 @@ commands.mark = {
 }
 
 commands.deaths = {
-    desc = "cycle death announcements: per boss, on everywhere, off everywhere",
+    desc = "death announcements: /mfd deaths tank|healer [on|off|auto]",
     run = function(rest)
-        local settings = MFD.db.settings.deaths
-        local wanted = rest and string.upper(string.match(rest, "^%s*(%S*)") or "") or ""
+        local kind, state = string.match(rest or "", "^%s*(%S*)%s*(%S*)")
+        kind = string.lower(kind or "")
+        state = string.upper(state or "")
 
-        if wanted == "" then
-            -- The bare form is the button and the keybind, so it runs the same
-            -- code they do rather than a second copy of the cycle.
-            MFD.Actions.Run("deaths")
+        -- Bare, it reports both rather than guessing which one you meant. The
+        -- two are configured apart and a command that silently picked one would
+        -- be the wrong one half the time.
+        if kind == "" then
+            for _, each in ipairs(MFD.Encounters.KINDS) do
+                local config = MFD.Encounters.Settings(each)
+                MFD.Print(MFD.Encounters.KIND_LABELS[each] .. " deaths: "
+                    .. (config.isEnabled and "on" or "off")
+                    .. ", " .. MFD.Encounters.OVERRIDE_LABELS[config.override]
+                    .. ", trash " .. (config.onTrash and "yes" or "no"))
+            end
             return
         end
 
-        if wanted ~= "ON" and wanted ~= "OFF" and wanted ~= "AUTO" then
-            MFD.Error("use /mfd deaths, or /mfd deaths on|off|auto")
+        local config = MFD.Encounters.Settings(kind)
+        if not config then
+            MFD.Error("use /mfd deaths tank|healer [on|off|auto]")
             return
         end
 
-        settings.override = wanted
-        MFD.Print("death announcements: " .. MFD.Encounters.OVERRIDE_LABELS[settings.override])
+        if state == "" then
+            -- Same code the button and the keybind run, not a second copy.
+            MFD.Actions.Run("deaths_" .. kind)
+            return
+        end
+
+        if state ~= "ON" and state ~= "OFF" and state ~= "AUTO" then
+            MFD.Error("use /mfd deaths " .. kind .. " on|off|auto")
+            return
+        end
+
+        config.override = state
+        MFD.Print(MFD.Encounters.KIND_LABELS[kind] .. " death announcements: "
+            .. MFD.Encounters.OVERRIDE_LABELS[config.override])
         if MFD.UI.Deaths and MFD.UI.Deaths.Refresh then
             MFD.UI.Deaths:Refresh()
         end
@@ -847,10 +954,12 @@ BINDING_NAME_MARKEDFORDEATH_ANNOUNCE = MFD.Actions.BY_KEY.announce.binding
 BINDING_NAME_MARKEDFORDEATH_CLEAR = MFD.Actions.BY_KEY.clear.binding
 BINDING_NAME_MARKEDFORDEATH_REMARK = MFD.Actions.BY_KEY.remark.binding
 BINDING_NAME_MARKEDFORDEATH_MARKING = MFD.Actions.BY_KEY.marking.binding
-BINDING_NAME_MARKEDFORDEATH_DEATHS = MFD.Actions.BY_KEY.deaths.binding
+BINDING_NAME_MARKEDFORDEATH_DEATHS_TANK = MFD.Actions.BY_KEY.deaths_tank.binding
+BINDING_NAME_MARKEDFORDEATH_DEATHS_HEALER = MFD.Actions.BY_KEY.deaths_healer.binding
 BINDING_NAME_MARKEDFORDEATH_RULES = "Toggle the rule editor"
 BINDING_NAME_MARKEDFORDEATH_ASSIGNMENTS = "Toggle the assignment panel"
 BINDING_NAME_MARKEDFORDEATH_BUFFS = "Toggle the buff board"
+BINDING_NAME_MARKEDFORDEATH_BAR = "Toggle the action bar"
 
 MFD.Bindings = {}
 

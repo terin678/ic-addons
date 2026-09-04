@@ -103,6 +103,7 @@ local function menuEntries()
         -- The two floating heads-up panels. Everything else is a tab in the
         -- main window now, so listing tabs here would just be a worse copy of
         -- the tab strip.
+        { text = "Action bar", open = function() MFD.UI.ActionBar:Toggle() end },
         { text = "Assignment panel", open = function() MFD.UI.Assignments:Toggle() end },
         { text = "Buff board", open = function() MFD.UI.BuffBoard:Toggle() end },
 
@@ -124,8 +125,12 @@ local function menuEntries()
         -- fight the fastest thing on screen is whatever is already under the
         -- cursor.
         {
-            text = "Death calls: " .. MFD.Encounters.OVERRIDE_LABELS[settings.deaths.override],
-            open = function() MFD.Actions.Run("deaths") end,
+            text = "Tank calls: " .. MFD.Encounters.OVERRIDE_LABELS[settings.deaths.tank.override],
+            open = function() MFD.Actions.Run("deaths_tank") end,
+        },
+        {
+            text = "Healer calls: " .. MFD.Encounters.OVERRIDE_LABELS[settings.deaths.healer.override],
+            open = function() MFD.Actions.Run("deaths_healer") end,
         },
         {
             text = "Announce the assignments",

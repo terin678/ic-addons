@@ -105,45 +105,49 @@ function Encounters.FromGUID(guid, index)
     return index[npcID]
 end
 
--- Does the boss gate pass right now? Takes the override, the per-boss
--- selection and the encounter name or nil. Pure.
---
--- Trash never passes under any setting. Somebody dying on trash is not news,
--- and a raid night of it is how a feature gets turned off for good; the
--- override changes which bosses count, not whether trash does.
-function Encounters.PassesBossGate(override, selected, encounterName)
-    if override == Encounters.OVERRIDE_OFF then
-        return false
-    end
-
-    if not encounterName then
-        return false
-    end
-
-    if override == Encounters.OVERRIDE_ON then
-        return true
-    end
-
-    return (selected or {})[encounterName] == true
-end
-
 -- Should a death of this kind be announced right now?
 --
--- Takes { isEnabled, bossOnly, override, selected } and the encounter name or
--- nil. Pure. bossOnly is what separates the two announcers: healer deaths are
--- always boss gated because that is what they were asked for, and tank deaths
--- are not unless you say so, because they already announce everywhere and
--- quietly narrowing that would be a change nobody asked for.
+-- Takes one kind's block, { isEnabled, onTrash, override, bosses }, and the
+-- encounter name or nil. Pure.
+--
+-- Bosses are picked one at a time because they are individually worth or not
+-- worth a callout. Trash is one yes or no, because nobody wants to tick five
+-- hundred mobs and no raid leader thinks about trash that way: either deaths
+-- there are worth hearing about or they are not.
+--
+-- The two kinds each have their own block and never read each other's, so tank
+-- calls can run everywhere while healer calls sit on three bosses in Black
+-- Temple.
 function Encounters.ShouldAnnounce(config, encounterName)
-    if not config.isEnabled then
+    if not config or not config.isEnabled then
         return false
     end
 
-    if not config.bossOnly then
+    if config.override == Encounters.OVERRIDE_OFF then
+        return false
+    end
+
+    if config.override == Encounters.OVERRIDE_ON then
         return true
     end
 
-    return Encounters.PassesBossGate(config.override, config.selected, encounterName)
+    if encounterName then
+        return (config.bosses or {})[encounterName] == true
+    end
+
+    return config.onTrash == true
+end
+
+-- The two kinds, in the order every surface lists them. tank first because it
+-- is the one that has always been on.
+Encounters.KINDS = { "tank", "healer" }
+
+Encounters.KIND_LABELS = { tank = "Tank", healer = "Healer" }
+
+-- One kind's block out of the deaths settings, or nil if it is not there.
+-- Pure, so the gate can be exercised without a saved variable table.
+function Encounters.ConfigFor(deaths, kind)
+    return deaths and deaths[kind] or nil
 end
 
 -- Cycles the override for a one-click toggle. Pure.
@@ -170,16 +174,44 @@ function Encounters.Index()
     return index
 end
 
--- Whether anything actually consults the boss gate. Healer alerts always do;
--- tank alerts only when held to the boss list. With neither, the whole scan is
--- work whose result is discarded, five times a second, in a raid.
+-- Whether knowing the fight changes any answer. It does for any kind that is
+-- switched on and whose override is following the ticks, since the ticks are
+-- read per boss. With none, the whole scan is work whose result is discarded,
+-- five times a second, in a raid.
 function Encounters.IsNeeded()
-    local settings = MFD.db and MFD.db.settings.deaths
-    if not settings then
+    local deaths = MFD.db and MFD.db.settings.deaths
+    if not deaths then
         return false
     end
 
-    return settings.isHealerAlertEnabled == true or settings.isTankBossOnly == true
+    for _, kind in ipairs(Encounters.KINDS) do
+        local config = Encounters.ConfigFor(deaths, kind)
+        if config and config.isEnabled and config.override == Encounters.OVERRIDE_AUTO then
+            return true
+        end
+    end
+
+    return false
+end
+
+-- Ticks every boss for tanks the first time this block exists, so the shipped
+-- default announces tank deaths everywhere, which is what it has always done.
+--
+-- Guarded by a flag rather than by "is the list empty", because an empty list
+-- is also what you get after deliberately unticking the last boss, and
+-- re-ticking all forty three on the next login would be maddening. Pure apart
+-- from writing to the block it is given.
+function Encounters.SeedDefaults(deaths, bosses)
+    if not deaths or deaths.isSeeded then
+        return false
+    end
+
+    deaths.isSeeded = true
+    for _, boss in ipairs(bosses or {}) do
+        deaths.tank.bosses[boss.name] = true
+    end
+
+    return true
 end
 
 -- Called from the marker tick with the candidate list it already computed.
@@ -231,16 +263,9 @@ MFD.RegisterInit(function()
     end)
 end)
 
--- The config each announcer asks about, read from saved variables. Healers are
--- always boss gated; tanks only when asked.
-function Encounters.ConfigFor(kind)
-    local settings = MFD.db.settings.deaths
-    return {
-        isEnabled = (kind == "HEALER") and settings.isHealerAlertEnabled or settings.isTankAlertEnabled,
-        bossOnly = (kind == "HEALER") and true or settings.isTankBossOnly,
-        override = settings.override,
-        selected = settings.bosses,
-    }
+-- One kind's live block from saved variables.
+function Encounters.Settings(kind)
+    return Encounters.ConfigFor(MFD.db.settings.deaths, kind)
 end
 
 _G.MarkedForDeath = MFD

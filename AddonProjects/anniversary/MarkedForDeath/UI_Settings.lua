@@ -84,6 +84,21 @@ local TOGGLES = {
 
     { section = "Interface" },
     {
+        label = "Show the action bar",
+        tip = "The bar of mid-pull buttons. Drag it anywhere, drag its corner to reshape it, and the buttons rewrap to fit.",
+        get = function() return MFD.db.settings.actionBar.isShown end,
+        set = function(v) MFD.UI.ActionBar:SetShown(v) end,
+    },
+    {
+        label = "Lock the action bar",
+        tip = "Hides its resize grip and refuses drags, so a stray click mid-fight cannot shove it across the screen. /mfd bar reset puts it back in the middle.",
+        get = function() return MFD.db.settings.actionBar.isLocked end,
+        set = function(v)
+            MFD.db.settings.actionBar.isLocked = v
+            MFD.UI.ActionBar:UpdateLock()
+        end,
+    },
+    {
         label = "Show the minimap button",
         tip = "The button opens this menu. /mfd minimap brings it back if you hide it.",
         get = function() return not MFD.db.settings.minimap.hide end,

@@ -12,14 +12,17 @@ local A = MFD.Data.Auras
 -- The buffs everyone should have, and who can cast them. classes drive the
 -- provider check: a buff nobody present can cast is never reported missing.
 A.RAID_BUFFS = {
-    AI   = { label = "Int",   names = { "Arcane Intellect", "Arcane Brilliance" },            classes = { "MAGE" } },
-    MOTW = { label = "MotW",  names = { "Mark of the Wild", "Gift of the Wild" },             classes = { "DRUID" } },
-    FORT = { label = "Fort",  names = { "Power Word: Fortitude", "Prayer of Fortitude" },     classes = { "PRIEST" } },
-    SP   = { label = "SProt", names = { "Shadow Protection", "Prayer of Shadow Protection" }, classes = { "PRIEST" } },
+    AI     = { label = "Int",    names = { "Arcane Intellect", "Arcane Brilliance" },            classes = { "MAGE" } },
+    MOTW   = { label = "MotW",   names = { "Mark of the Wild", "Gift of the Wild" },             classes = { "DRUID" } },
+    FORT   = { label = "Fort",   names = { "Power Word: Fortitude", "Prayer of Fortitude" },     classes = { "PRIEST" } },
+    SPIRIT = { label = "Spirit", names = { "Divine Spirit", "Prayer of Spirit" },                classes = { "PRIEST" } },
+    SP     = { label = "SProt",  names = { "Shadow Protection", "Prayer of Shadow Protection" }, classes = { "PRIEST" } },
 }
 
--- Column order for every surface.
-A.RAID_BUFF_ORDER = { "AI", "MOTW", "FORT", "SP" }
+-- Column order for every surface. The three priest buffs sit together, and
+-- SProt keeps its short label: it is Shadow Protection, not Spirit, and the two
+-- being one letter apart is exactly why the longer word is spelled out.
+A.RAID_BUFF_ORDER = { "AI", "MOTW", "FORT", "SPIRIT", "SP" }
 
 -- Who can hand out a blessing. Which blessing each class should carry is still
 -- the raid leader's call; this only decides whether having none at all is

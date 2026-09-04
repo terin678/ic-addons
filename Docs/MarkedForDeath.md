@@ -52,8 +52,8 @@ have keybinds, and both remember where you put them.
 
 ## Doing things mid-pull
 
-Nothing you need during a fight requires typing. The **assignment panel** carries a row of
-buttons along the bottom, sized to be hit while something is chewing on you:
+Nothing you need during a fight requires typing. The **action bar** is a separate bar you
+park wherever suits your layout:
 
 | Button | What it does |
 | --- | --- |
@@ -61,22 +61,24 @@ buttons along the bottom, sized to be hit while something is chewing on you:
 | Clear | Take every icon off, hand-placed ones included. |
 | Re-mark | Forget the current icons and work the pack out again. |
 | Marking on/off | Stop or start placing icons. Shows which it is. |
-| Deaths | Cycle the death announcement override. Shows which it is. |
+| Tank calls | Cycle the tank death override. Shows which it is. |
+| Healer calls | Cycle the healer death override. Shows which it is. |
 
-Open the panel with middle click on the minimap button, its keybind, or the Assignments
-tab. It remembers where you put it, so park it next to your raid frames.
+**Drag it anywhere. Drag the corner to reshape it.** The buttons rewrap to whatever width
+you give it, so it can be one long row along the bottom, a two-wide block beside your raid
+frames, or a vertical strip down the edge. It remembers position and size per character.
+Lock it in Settings once it is where you want it, and the grip disappears so a stray click
+mid-fight cannot shove it across the screen.
 
-**Every one of those is bindable.** Key Bindings, Marked For Death: put Clear and Re-mark
-on spare mouse buttons and you never touch the panel at all. That is the better answer
-while you are tanking. The three most useful are also on the minimap shift-click menu,
-since during a fight the fastest thing on screen is often whatever the cursor is already
-near.
+It is on by default. `/mfd bar` hides and shows it, `/mfd bar lock` locks it, and
+`/mfd bar reset` puts it back in the middle if it ends up somewhere unreachable.
 
-Buttons, keybinds and slash commands all run the same code, so they cannot drift apart or
-behave differently from each other.
+**Every button is also bindable.** Key Bindings, Marked For Death: put Clear and Re-mark
+on spare mouse buttons and you never reach for the bar at all. That is the better answer
+while you are tanking. The most useful are on the minimap shift-click menu too.
 
-Settings also appear in the game's own Interface options under AddOns, whichever you find
-first.
+Buttons, keybinds, menu entries and slash commands all run the same code, so they cannot
+drift apart or behave differently from each other.
 
 ## Planning a raid before you walk in
 
@@ -142,38 +144,39 @@ costs you a search suggestion and nothing else, because you can always type the 
 
 ## Death announcements
 
-Everything about them lives on the **Deaths** tab: who counts, and which fights it applies
-to. The raid gets `Dezedin has died` as a raid warning, posted by the Raid Lead's client
-only so it appears once.
+Everything about them is on the **Deaths** tab. The raid gets `Dezedin has died` as a raid
+warning, posted by the Raid Lead's client only so it appears once.
+
+**Tank calls and healer calls are configured completely separately.** Their own on/off,
+their own trash setting, their own boss list, their own override, their own extra names.
+Nothing you do to one touches the other, because wanting healer calls on Naj'entus and
+tank calls on Illidan is a normal thing to want.
 
 **Main tanks** are picked up automatically from the raid frame. Right click a portrait,
-Set Main Tank, and they count; you do not have to type anything. The Extra tanks box is
-only for tanks the raid does not flag, separated by commas:
+Set Main Tank, and they count. The Extra tanks box is only for tanks the raid does not
+flag, separated by commas:
 
 ```
 Dezedin, Moophie, Grimmtusk
 ```
 
-Tank deaths announce everywhere, trash included, which is what they have always done.
-Tick **Tank deaths only on the bosses ticked below** to hold them to the boss list too.
-
 **Healers** are recognised by spec: Holy, Discipline or Restoration. There is no healer
 role on this client's raid roster the way there is a main tank flag, so spec is the honest
-source, and it is the reason a shadow priest is never mistaken for one. Specs come from
-the same inspection the raid check grid uses, so they fill in once you open the raid check
-tab or run a ready check. The line under the Extra healers box tells you exactly who is
-currently counted, which is worth reading before the pull rather than after somebody dies
-unannounced. Anyone the addon cannot see, type in.
+source, and it is why a shadow priest is never mistaken for one. Specs come from the same
+inspection the raid check grid uses, so they fill in once you open the raid check tab or
+run a ready check. The line under the Extra healers box says exactly who is currently
+counted, worth reading before the pull rather than after somebody dies unannounced.
 
-Healer deaths are **always limited to the bosses you tick**, never trash. That is the
-whole point of them: a healer dying on a trash pack is not news, and a raid night of
-announcements is how the feature gets turned off for good.
+### Trash and bosses
 
-### Picking the bosses
+**Trash is one yes or no per kind.** Nobody wants to tick five hundred mobs, and no raid
+leader thinks about trash that way: either deaths there are worth hearing about or they
+are not. Tanks ship with trash on, which is what they have always done. Healers ship off.
 
-The boss list on the Deaths tab is every TBC raid encounter, laid out by raid. Tick the
-ones worth calling out. You can set this up before you ever walk in: Naj'entus yes,
-Supremus no. **all / none** next to a raid heading does the whole instance at once.
+**Bosses are ticked one at a time**, because they individually are or are not worth a
+callout. The list is every TBC raid encounter laid out by raid, with two ticks per row:
+the left one calls tanks, the right one calls healers. Set it up before you ever walk in.
+The **T** and **H** buttons next to a raid heading do that whole instance for that kind.
 
 Two Karazhan encounters are missing on purpose: the Opera Event and the Chess Event. None
 of their mobs appear in the bundled mob database, and shipping a toggle that silently
@@ -181,32 +184,30 @@ never fires would be worse than not offering it.
 
 ### Changing your mind mid raid
 
-The **Right now** button at the top of the Deaths tab has three states:
+Each kind has its own **Right now** button, on the Deaths tab, on the action bar, and on
+the minimap shift-click menu:
 
 | State | What it does |
 | --- | --- |
-| Per boss | Follows the ticks. The default. |
-| On everywhere | Announces on any boss, ignoring the ticks. |
-| Off everywhere | Announces nothing at all. |
+| Per boss | Follows that kind's ticks and its trash setting. The default. |
+| On everywhere | Announces every death of that kind, trash included. |
+| Off everywhere | Announces none of that kind. |
 
-Trash is never announced under any of the three. The button is also on the minimap
-shift-click menu, and `/mfd deaths` cycles it from a macro:
+The other kind is never affected. From a macro:
 
 ```
-/mfd deaths
+/mfd deaths tank
 ```
 
-`/mfd deaths on`, `off` or `auto` set a specific state instead of cycling. `/mfd healers`
-prints who is currently counted as one.
+`/mfd deaths healer on`, `off` or `auto` sets a specific state; `/mfd deaths` on its own
+reports where both currently stand. `/mfd healers` prints who is counted as one.
 
-The fight you are in is worked out from the boss's nameplate, which the addon is already
-watching for marking, and from the combat log when the nameplate is not there. There is no
+The fight you are in comes from the boss's nameplate, which the addon is already watching
+for marking, and from the combat log when the nameplate is not there. There is no
 encounter API on this client, so one or the other has to do it. Once a boss is identified
-it stays the active fight until combat ends, which matters if you lead from range: losing
-the nameplate mid fight does not quietly stop the announcements.
+it stays the active fight until combat ends, which matters if you lead from range.
 
-None of that runs at all unless a setting asks for it. With healer deaths off and tank
-deaths not held to the boss list, which is how it ships, the addon never looks.
+None of that runs unless a setting asks for it.
 
 ## Sharing a rule set
 
@@ -282,7 +283,7 @@ Every command is in `/mfd help`.
 | `/mfd mark` | Force a full re-mark of the visible pack, dropping any hand-placed holds. Also a button and a keybind. |
 | `/mfd clear` | Clear every icon on visible mobs. Also a button and a keybind. |
 | `/mfd announce` | Post the current assignments to raid chat now, for calling a pack out before the pull. Also a button and a keybind. |
-| `/mfd deaths [on|off|auto]` | Cycle or set the death announcement override. Also a button and a keybind. |
+| `/mfd deaths [tank|healer] [on|off|auto]` | Cycle or set one kind's death override. Bare, it reports both. Also buttons and keybinds. |
 | `/mfd healers` | Who the addon currently counts as a healer, and why it might be nobody. |
 | `/mfd where` | Current zone, its map id, and how many rules are active here. |
 | `/mfd fixcvars` | Turn enemy nameplates on and set their range to 41 yards. |
@@ -297,6 +298,7 @@ Every command is in `/mfd help`.
 | `/mfd off` | Stop the addon doing anything: no icons, no chat, no warnings. Nothing configured is lost. |
 | `/mfd on` | Resume after `/mfd off`. |
 | `/mfd minimap` | Hide or show the minimap button. |
+| `/mfd bar [lock|reset]` | Hide or show the action bar, lock it in place, or move it back to the middle. |
 | `/mfd sound` | Toggle the sound played when a rule cannot work on its target. |
 | `/mfd bulk` | Paste a whole kill order for a zone, one mob per line. |
 | `/mfd addname <name>` | Add a rule by typing a mob name, for a mob the addon has never seen. |
@@ -393,7 +395,7 @@ ready check window, and the grid fills in behind it. `/mfd check` on its own onl
 grid, it does not ask anybody anything.
 
 **The grid** (`/mfd check`) is one row per person: food, flask, both elixir slots,
-Intellect, Mark of the Wild, Fortitude, Shadow Protection, the blessings they
+Intellect, Mark of the Wild, Fortitude, Spirit, Shadow Protection, the blessings they
 hold, durability, spec and addon version. Green is present. Red is missing and worth
 fixing. Grey is either not a problem (nobody here can cast it, or the raid does not expect
 it) or unknown. It opens by itself on every ready check for the raid leader and

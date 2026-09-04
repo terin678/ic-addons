@@ -150,7 +150,7 @@ function RC.Missing(state, providers, expected)
 end
 
 local REPORT_ONLY = { "durability", "spec", "version" }
-local FLAG_ONLY = { "AI", "MOTW", "FORT", "SP" }
+local FLAG_ONLY = { "AI", "MOTW", "FORT", "SPIRIT", "SP" }
 
 -- Takes a scanned state, a reported state (or nil) and a durability percent
 -- learned through the shared LibDurability protocol (or nil). Returns
@@ -338,7 +338,10 @@ RC.REPORT_DEBOUNCE_SECONDS = 2     -- coalesce bursts of change into one report
 
 -- Tri-state flags on the wire: 1 true, 0 false, ? unknown. Unknown must stay
 -- distinct from false, because "no data" is not "no flask".
-local FLAG_ORDER = { "AI", "MOTW", "FORT", "SP", "food", "flask", "battle", "guardian" }
+-- Appended rather than inserted when a flag is added: the decoder rejects a
+-- report whose flag string is the wrong length, so a peer running an older
+-- build is ignored rather than misread, and their scan still covers them.
+local FLAG_ORDER = { "AI", "MOTW", "FORT", "SP", "food", "flask", "battle", "guardian", "SPIRIT" }
 
 local function flagChar(v)
     if v == true then

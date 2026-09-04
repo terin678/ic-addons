@@ -2662,6 +2662,40 @@ T.Case("Blessings: no paladin means it is never mentioned", function()
     T.Eq(#MFD.RaidCheck.Missing(state, { BLESSING = false, BLESSING_COUNT = 0 }, {}), 0, "nobody can cast one")
 end)
 
+T.Case("Spirit: Divine Spirit and Prayer of Spirit both count, and are not Shadow Protection", function()
+    -- The two are one letter apart in the grid header, so the check that they
+    -- are separate buffs is worth writing down.
+    local single = MFD.RaidCheck.Classify({ "Divine Spirit" })
+    T.Eq(single.SPIRIT, true, "single")
+    T.Eq(single.SP, false, "and not shadow protection")
+
+    local greater = MFD.RaidCheck.Classify({ "Prayer of Spirit" })
+    T.Eq(greater.SPIRIT, true, "greater")
+
+    local shadow = MFD.RaidCheck.Classify({ "Prayer of Shadow Protection" })
+    T.Eq(shadow.SP, true, "shadow protection still reads")
+    T.Eq(shadow.SPIRIT, false, "and does not count as spirit")
+end)
+
+T.Case("Spirit: reported missing only when a priest is there to cast it", function()
+    local state = MFD.RaidCheck.Classify({})
+    local withPriest = MFD.RaidCheck.Providers({ { name = "Kaylia", class = "PRIEST" } })
+    local withoutPriest = MFD.RaidCheck.Providers({ { name = "Grimmtusk", class = "MAGE" } })
+
+    local found = false
+    for _, m in ipairs(MFD.RaidCheck.Missing(state, withPriest, {})) do
+        if m.column == "SPIRIT" then
+            found = true
+            T.Eq(m.label, "Spirit", "named")
+        end
+    end
+    T.Eq(found, true, "a priest can cast it, so its absence counts")
+
+    for _, m in ipairs(MFD.RaidCheck.Missing(state, withoutPriest, {})) do
+        T.Eq(m.column ~= "SPIRIT", true, "no priest, so nobody is missing spirit")
+    end
+end)
+
 T.Case("Blessings: which ones somebody holds is still listed, sorted", function()
     local state = MFD.RaidCheck.Classify({ "Greater Blessing of Salvation", "Blessing of Kings" })
     T.Eq(state.blessings[1], "Kings", "first")
@@ -2887,52 +2921,87 @@ T.Case("Encounters: bosses group by raid in the order written", function()
     T.Eq(groups[1].bosses[1].name, "Attumen the Huntsman", "and its first boss")
 end)
 
-local function gate(override, selected, encounter)
-    return E.PassesBossGate(override, selected, encounter)
+-- Bosses are ticked one at a time; trash is one yes or no per kind. And the
+-- two kinds never read each other's settings.
+local function config(fields)
+    local base = { isEnabled = true, onTrash = false, override = "AUTO", bosses = {} }
+    for key, value in pairs(fields or {}) do
+        base[key] = value
+    end
+    return base
 end
 
-T.Case("Gate: trash never passes, whatever the override says", function()
-    T.Eq(gate("AUTO", {}, nil), false, "auto")
-    T.Eq(gate("ON", {}, nil), false, "even forced on")
-    T.Eq(gate("OFF", {}, nil), false, "off")
+T.Case("Deaths: on a boss, auto follows that kind's ticks", function()
+    T.Eq(E.ShouldAnnounce(config({ bosses = { Supremus = true } }), "Supremus"), true, "ticked")
+    T.Eq(E.ShouldAnnounce(config({ bosses = { Supremus = true } }), "Mother Shahraz"), false, "not ticked")
 end)
 
-T.Case("Gate: on a boss, auto follows the ticks", function()
-    T.Eq(gate("AUTO", { Supremus = true }, "Supremus"), true, "ticked")
-    T.Eq(gate("AUTO", { Supremus = true }, "Mother Shahraz"), false, "not ticked")
+T.Case("Deaths: on trash, auto follows the single trash setting", function()
+    T.Eq(E.ShouldAnnounce(config({ onTrash = true }), nil), true, "yes to trash")
+    T.Eq(E.ShouldAnnounce(config({ onTrash = false }), nil), false, "no to trash")
 end)
 
-T.Case("Gate: the override ignores the ticks in both directions", function()
-    T.Eq(gate("ON", {}, "Supremus"), true, "nothing ticked, still on")
-    T.Eq(gate("OFF", { Supremus = true }, "Supremus"), false, "ticked, still off")
+T.Case("Deaths: the trash setting says nothing about bosses", function()
+    -- The two questions are asked separately, so trash yes with no bosses
+    -- ticked announces on trash and nowhere else.
+    local onlyTrash = config({ onTrash = true })
+    T.Eq(E.ShouldAnnounce(onlyTrash, nil), true, "trash")
+    T.Eq(E.ShouldAnnounce(onlyTrash, "Supremus"), false, "but not the boss")
+
+    local onlyBoss = config({ bosses = { Supremus = true } })
+    T.Eq(E.ShouldAnnounce(onlyBoss, nil), false, "no trash")
+    T.Eq(E.ShouldAnnounce(onlyBoss, "Supremus"), true, "just the boss")
 end)
 
-T.Case("Gate: the override cycles through all three and back", function()
+T.Case("Deaths: the override ignores both, in both directions", function()
+    T.Eq(E.ShouldAnnounce(config({ override = "ON" }), "Supremus"), true, "nothing ticked, still on")
+    T.Eq(E.ShouldAnnounce(config({ override = "ON" }), nil), true, "trash too, when forced on")
+    T.Eq(E.ShouldAnnounce(config({ override = "OFF", onTrash = true,
+        bosses = { Supremus = true } }), "Supremus"), false, "everything ticked, still off")
+end)
+
+T.Case("Deaths: switched off says nothing however the rest reads", function()
+    T.Eq(E.ShouldAnnounce(config({ isEnabled = false, override = "ON" }), "Supremus"), false, "off is off")
+end)
+
+T.Case("Deaths: the override cycles through all three and back", function()
     T.Eq(E.NextOverride("AUTO"), "ON", "first press")
     T.Eq(E.NextOverride("ON"), "OFF", "second")
     T.Eq(E.NextOverride("OFF"), "AUTO", "third comes home")
 end)
 
-T.Case("Deaths: healer alerts are boss gated, tank alerts are not by default", function()
-    local onTrash = nil
+T.Case("Deaths: the two kinds are read from their own blocks", function()
+    local deaths = {
+        tank = config({ onTrash = true }),
+        healer = config({ bosses = { Supremus = true } }),
+    }
 
-    T.Eq(E.ShouldAnnounce({ isEnabled = true, bossOnly = true, override = "AUTO", selected = {} }, onTrash),
-        false, "healers say nothing on trash")
-    T.Eq(E.ShouldAnnounce({ isEnabled = true, bossOnly = false, override = "AUTO", selected = {} }, onTrash),
-        true, "tanks announce on trash, which is what they have always done")
+    T.Eq(E.ShouldAnnounce(E.ConfigFor(deaths, "tank"), nil), true, "tanks on trash")
+    T.Eq(E.ShouldAnnounce(E.ConfigFor(deaths, "healer"), nil), false, "healers are not")
+    T.Eq(E.ShouldAnnounce(E.ConfigFor(deaths, "tank"), "Supremus"), false, "tanks not on this boss")
+    T.Eq(E.ShouldAnnounce(E.ConfigFor(deaths, "healer"), "Supremus"), true, "healers are")
 end)
 
-T.Case("Deaths: a tank alert held to the boss list obeys it", function()
-    T.Eq(E.ShouldAnnounce({ isEnabled = true, bossOnly = true, override = "AUTO", selected = {} }, "Supremus"),
-        false, "not ticked")
-    T.Eq(E.ShouldAnnounce(
-        { isEnabled = true, bossOnly = true, override = "AUTO", selected = { Supremus = true } }, "Supremus"),
-        true, "ticked")
+T.Case("Deaths: changing one kind cannot move the other", function()
+    local deaths = { tank = config(), healer = config() }
+    deaths.tank.bosses.Supremus = true
+    T.Eq(deaths.healer.bosses.Supremus, nil, "separate tables, not one shared")
 end)
 
-T.Case("Deaths: switched off says nothing however the gate reads", function()
-    T.Eq(E.ShouldAnnounce({ isEnabled = false, bossOnly = false, override = "ON", selected = {} }, "Supremus"),
-        false, "off is off")
+T.Case("Deaths: seeding ticks every boss for tanks, once and only once", function()
+    -- The shipped default announces tank deaths everywhere, and an empty boss
+    -- list would silently mean nowhere.
+    local deaths = { tank = config(), healer = config() }
+    local bosses = { { name = "Supremus" }, { name = "Illidan Stormrage" } }
+
+    T.Eq(E.SeedDefaults(deaths, bosses), true, "seeded")
+    T.Eq(deaths.tank.bosses.Supremus, true, "ticked for tanks")
+    T.Eq(deaths.healer.bosses.Supremus, nil, "and not for healers")
+
+    -- Untick one and run again: a login must not undo a deliberate choice.
+    deaths.tank.bosses.Supremus = nil
+    T.Eq(E.SeedDefaults(deaths, bosses), false, "not seeded twice")
+    T.Eq(deaths.tank.bosses.Supremus, nil, "the untick stands")
 end)
 
 local H = MFD.Healers
@@ -3128,14 +3197,15 @@ T.Case("Actions: the ones with a state paint from it, the rest from the label", 
     local plain = A.BY_KEY.announce
     T.Eq(A.TextFor(plain), plain.label, "no state, so the label stands")
     T.Eq(type(A.BY_KEY.marking.status), "function", "marking shows whether it is on")
-    T.Eq(type(A.BY_KEY.deaths.status), "function", "so does the death override")
+    T.Eq(type(A.BY_KEY.deaths_tank.status), "function", "so does each death override")
+    T.Eq(type(A.BY_KEY.deaths_healer.status), "function", "both of them, separately")
 end)
 
 T.Case("Actions: a narrow panel wraps, a wide one does not", function()
     -- The floating panel and the tab are very different widths and share one
     -- layout rule rather than each guessing.
     local slots, rows = A.Layout(5, 220, 104, 6)
-    T.Eq(rows, 3, "two per row on the narrow panel")
+    T.Eq(rows, 3, "two per row when it is narrow")
     T.Eq(slots[1].row .. "," .. slots[1].column, "0,0", "first")
     T.Eq(slots[3].row .. "," .. slots[3].column, "1,0", "third wraps to the second row")
     T.Eq(slots[5].row .. "," .. slots[5].column, "2,0", "fifth starts a third row")

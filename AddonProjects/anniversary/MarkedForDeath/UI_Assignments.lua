@@ -10,9 +10,6 @@ local ROW_HEIGHT = 20            -- pixels
 local MAX_ROWS = 8               -- one per icon
 local REFRESH_SECONDS = 0.5      -- repaint cadence while shown
 
--- Wide enough for two action buttons side by side plus the frame's own inset.
-local PANEL_WIDTH = 236          -- pixels
-
 -- Kill icons first, matching how the raid reads a pack. Cosmetic only.
 local ICON_ORDER = { 8, 7, 6, 2, 5, 1, 4, 3 }
 
@@ -82,13 +79,11 @@ local function paint(view)
     end
 end
 
--- Repaints every view that is actually on screen, buttons included: "Marking
--- off" has to stay honest when it was switched off from somewhere else.
+-- Repaints every view that is actually on screen.
 function Panel:Refresh()
     for _, view in ipairs(views) do
         if view:IsShown() then
             paint(view)
-            MFD.Actions.RefreshBar(view)
         end
     end
 end
@@ -96,13 +91,9 @@ end
 -- Builds the panel into a container the main window owns, alongside the
 -- floating one rather than instead of it.
 function Panel:BuildInto(container)
-    -- The bar reports how tall it ended up so the list stops above it rather
-    -- than behind it, whatever width the container happens to be.
-    local barHeight = MFD.Actions.BuildBar(container, container:GetWidth() - 16)
-
     container.body = CreateFrame("Frame", nil, container)
     container.body:SetPoint("TOPLEFT", container, "TOPLEFT", 6, -6)
-    container.body:SetPoint("BOTTOMRIGHT", container, "BOTTOMRIGHT", -6, barHeight)
+    container.body:SetPoint("BOTTOMRIGHT", container, "BOTTOMRIGHT", -6, 6)
 
     container.empty = container:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     container.empty:SetPoint("TOPLEFT", container.body, "TOPLEFT", 8, -8)
@@ -127,10 +118,7 @@ end
 
 local function build()
     frame = CreateFrame("Frame", "MarkedForDeathAssignmentsFrame", UIParent, "BasicFrameTemplateWithInset")
-    -- Three rows of buttons at this width, which is the trade: a panel narrow
-    -- enough to leave beside the raid frames, with targets big enough to hit
-    -- while something is chewing on you.
-    frame:SetSize(PANEL_WIDTH, 30 + MAX_ROWS * ROW_HEIGHT + 16 + 106)
+    frame:SetSize(300, 30 + MAX_ROWS * ROW_HEIGHT + 16)
     frame:SetMovable(true)
     frame:EnableMouse(true)
     frame:RegisterForDrag("LeftButton")
@@ -145,11 +133,9 @@ local function build()
     frame.title:SetPoint("TOP", frame, "TOP", 0, -6)
     frame.title:SetText("Assignments")
 
-    local barHeight = MFD.Actions.BuildBar(frame, PANEL_WIDTH - 16)
-
     frame.body = CreateFrame("Frame", nil, frame)
     frame.body:SetPoint("TOPLEFT", frame, "TOPLEFT", 6, -26)
-    frame.body:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -6, barHeight)
+    frame.body:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -6, 6)
 
     frame.empty = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     frame.empty:SetPoint("TOPLEFT", frame.body, "TOPLEFT", 8, -8)
@@ -177,7 +163,7 @@ end
 -- One repaint driver for every view, rather than an OnUpdate on the floating
 -- window. That script only ran while the floating window was open, so the tab
 -- version of this panel went stale whenever it was the only one on screen, and
--- the action buttons would have gone stale with it. Paint is a cadence rather
+-- its rows would sit at whatever the last paint left. Paint is a cadence rather
 -- than a response to each published message so a burst of republishes costs one
 -- paint, and Refresh skips every view that is hidden.
 MFD.RegisterInit(function()

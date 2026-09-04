@@ -97,7 +97,7 @@ function Healers.KnownSpecs()
 end
 
 function Healers.ManualList()
-    return MFD.Tanks.ParseList(MFD.db.settings.deaths.healerNames)
+    return MFD.Tanks.ParseList(MFD.db.settings.deaths.healer.names)
 end
 
 -- Announces a healer's death once, from one client only, on the bosses you
@@ -110,7 +110,7 @@ function Healers:OnDeath(name, now)
     if not (MFD.Comms and MFD.Comms:IsAuthority()) then
         return
     end
-    if not MFD.Encounters.ShouldAnnounce(MFD.Encounters.ConfigFor("HEALER"), MFD.Encounters.active) then
+    if not MFD.Encounters.ShouldAnnounce(MFD.Encounters.Settings("healer"), MFD.Encounters.active) then
         return
     end
     if not Healers.IsHealer(name, Healers.KnownSpecs(), Healers.ManualList()) then

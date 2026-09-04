@@ -1,8 +1,8 @@
 -- The things you do mid-pull, defined once.
 --
 -- A raid leader tanking ten mobs cannot type. Every one of these is a button on
--- the assignment panel, a keybind, and a slash command, and all three run the
--- same function from this table so they can never drift apart.
+-- the action bar, a keybind, and a slash command, and all three run the same
+-- function from this table so they can never drift apart.
 --
 -- What belongs here is anything you would want between two globals of a fight.
 -- Anything you sit down and configure belongs on a tab instead.
@@ -14,8 +14,9 @@ local Actions = MFD.Actions
 local GREEN, RED, GREY, AMBER = "|cff66ff66", "|cffff4444", "|cff999999", "|cffffcc66"
 
 -- Lays out n buttons into rows that fit the width available. Returns an array
--- of { row, column } in order, and the number of rows. Pure, so the panel and
--- the tab can share one layout rule at two very different widths.
+-- of { row, column } in order, and the number of rows. Pure, and re-run on
+-- every resize: it is what makes the bar reflow from one long row into a block
+-- or a vertical strip as you drag its corner.
 function Actions.Layout(count, availableWidth, buttonWidth, gap)
     local perRow = math.floor((availableWidth + gap) / (buttonWidth + gap))
     if perRow < 1 then
@@ -85,26 +86,37 @@ Actions.LIST = {
             return isOn and (GREEN .. "Marking on|r") or (RED .. "Marking off|r")
         end,
     },
-    {
-        key = "deaths",
-        label = "Death calls",
-        binding = "Cycle death announcements",
-        tip = "Per boss follows the ticks on the Deaths tab. On everywhere announces on any boss. Off everywhere announces nothing. Trash is never announced.",
+}
+
+-- Tank and healer calls get a button each rather than one that moves both.
+-- They are configured apart, so a single control would be lying about what it
+-- does the first time you wanted one on and the other off.
+local function overrideAction(kind, label)
+    return {
+        key = "deaths_" .. kind,
+        label = label .. " calls",
+        binding = "Cycle " .. string.lower(label) .. " death announcements",
+        tip = "Per boss follows this kind's ticks on the Deaths tab, and its trash setting. "
+            .. "On everywhere announces every death of this kind, trash included. Off everywhere "
+            .. "announces none. The other kind is not affected.",
         run = function()
-            local settings = MFD.db.settings.deaths
-            settings.override = MFD.Encounters.NextOverride(settings.override)
-            MFD.Print("death announcements: " .. MFD.Encounters.OVERRIDE_LABELS[settings.override])
+            local config = MFD.Encounters.Settings(kind)
+            config.override = MFD.Encounters.NextOverride(config.override)
+            MFD.Print(label .. " death announcements: " .. MFD.Encounters.OVERRIDE_LABELS[config.override])
             if MFD.UI.Deaths and MFD.UI.Deaths.Refresh then
                 MFD.UI.Deaths:Refresh()
             end
         end,
         status = function()
-            local override = MFD.db.settings.deaths.override
+            local override = MFD.Encounters.Settings(kind).override
             local color = (override == "ON" and GREEN) or (override == "OFF" and RED) or AMBER
-            return color .. "Deaths: " .. MFD.Encounters.OVERRIDE_LABELS[override] .. "|r"
+            return color .. label .. ": " .. MFD.Encounters.OVERRIDE_LABELS[override] .. "|r"
         end,
-    },
-}
+    }
+end
+
+Actions.LIST[#Actions.LIST + 1] = overrideAction("tank", "Tank")
+Actions.LIST[#Actions.LIST + 1] = overrideAction("healer", "Healer")
 
 -- Looked up by key for the keybindings and the slash router.
 Actions.BY_KEY = {}
@@ -137,29 +149,21 @@ function Actions.Run(key)
     end
 end
 
--- Builds the action bar along the bottom of a container and returns its height
--- in pixels, so the caller can leave room for it.
---
 -- The buttons are deliberately large. This is the one surface that gets used
 -- with a boss on you, and a 60 pixel button is a miss.
 Actions.BUTTON_WIDTH = 104
 Actions.BUTTON_HEIGHT = 24
 Actions.BUTTON_GAP = 6
 
-function Actions.BuildBar(container, availableWidth)
-    local slots, rows = Actions.Layout(
-        #Actions.LIST, availableWidth, Actions.BUTTON_WIDTH, Actions.BUTTON_GAP)
-
+-- Creates the buttons on a container without placing them. Positioning is a
+-- separate step because the bar they live on can be resized, and a button that
+-- can only be placed once cannot follow.
+function Actions.BuildBar(container)
     container.actionButtons = {}
 
-    for index, action in ipairs(Actions.LIST) do
-        local slot = slots[index]
+    for _, action in ipairs(Actions.LIST) do
         local button = CreateFrame("Button", nil, container, "UIPanelButtonTemplate")
         button:SetSize(Actions.BUTTON_WIDTH, Actions.BUTTON_HEIGHT)
-        button:SetPoint("BOTTOMLEFT", container, "BOTTOMLEFT",
-            8 + slot.column * (Actions.BUTTON_WIDTH + Actions.BUTTON_GAP),
-            8 + (rows - 1 - slot.row) * (Actions.BUTTON_HEIGHT + Actions.BUTTON_GAP))
-
         button.action = action
         button:SetText(Actions.TextFor(action))
 
@@ -180,12 +184,30 @@ function Actions.BuildBar(container, availableWidth)
         container.actionButtons[#container.actionButtons + 1] = button
     end
 
-    return rows * Actions.BUTTON_HEIGHT + (rows - 1) * Actions.BUTTON_GAP + 16
+    return container.actionButtons
 end
 
--- Repaints the stateful buttons. Cheap enough to call on the panel's normal
--- refresh cadence, which is what keeps "Marking off" honest when it was turned
--- off from somewhere else.
+-- Places the buttons for the width given and returns the height they need.
+-- Called again on every resize, so the bar can be dragged from one long row to
+-- a narrow vertical strip and the buttons follow.
+function Actions.LayoutBar(container, availableWidth, originX, originY)
+    local buttons = container.actionButtons or {}
+    local slots, rows = Actions.Layout(
+        #buttons, availableWidth, Actions.BUTTON_WIDTH, Actions.BUTTON_GAP)
+
+    for index, button in ipairs(buttons) do
+        local slot = slots[index]
+        button:ClearAllPoints()
+        button:SetPoint("TOPLEFT", container, "TOPLEFT",
+            (originX or 0) + slot.column * (Actions.BUTTON_WIDTH + Actions.BUTTON_GAP),
+            (originY or 0) - slot.row * (Actions.BUTTON_HEIGHT + Actions.BUTTON_GAP))
+    end
+
+    return rows * Actions.BUTTON_HEIGHT + math.max(0, rows - 1) * Actions.BUTTON_GAP, rows
+end
+
+-- Repaints the stateful buttons. Cheap enough to call on a refresh cadence,
+-- which is what keeps "Marking off" honest when it was turned off elsewhere.
 function Actions.RefreshBar(container)
     for _, button in ipairs(container.actionButtons or {}) do
         if button.action.status then

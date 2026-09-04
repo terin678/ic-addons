@@ -10,7 +10,7 @@ local RC = MFD.RaidCheck
 
 local ROW_HEIGHT = 18     -- pixels
 local MAX_ROWS = 26       -- a full raid plus one
-local GRID_WIDTH = 860    -- pixels
+local GRID_WIDTH = 920    -- pixels
 
 -- Column layout: key, header label, x offset from the row's left edge, width.
 -- consumable names the requirement a column's header toggles, which is not
@@ -25,11 +25,12 @@ local COLUMNS = {
     { key = "AI",        label = "Int",       x = 296, w = 40 },
     { key = "MOTW",      label = "MotW",      x = 338, w = 40 },
     { key = "FORT",      label = "Fort",      x = 380, w = 40 },
-    { key = "SP",        label = "SProt",     x = 422, w = 40 },
-    { key = "BLESSINGS", label = "Blessings", x = 464, w = 210 },
-    { key = "DUR",       label = "Dur",       x = 676, w = 40 },
-    { key = "SPEC",      label = "Spec",      x = 718, w = 80 },
-    { key = "VER",       label = "Ver",       x = 800, w = 50 },
+    { key = "SPIRIT",    label = "Spirit",    x = 422, w = 40 },
+    { key = "SP",        label = "SProt",     x = 464, w = 40 },
+    { key = "BLESSINGS", label = "Blessings", x = 506, w = 210 },
+    { key = "DUR",       label = "Dur",       x = 718, w = 40 },
+    { key = "SPEC",      label = "Spec",      x = 760, w = 80 },
+    { key = "VER",       label = "Ver",       x = 842, w = 50 },
 }
 
 local GREEN, RED, GREY, AMBER = "|cff66ff66", "|cffff4444", "|cff999999", "|cffffcc66"
@@ -70,7 +71,7 @@ local function cellText(column, entry)
             return GREEN .. "flask|r"
         end
         return presence(state.guardian ~= nil, isShort)
-    elseif column == "AI" or column == "MOTW" or column == "FORT" or column == "SP" then
+    elseif MFD.Data.Auras.RAID_BUFFS[column] then
         return presence(state[column], missingSet[column])
     elseif column == "BLESSINGS" then
         -- Which ones they hold, named, plus how far short they are. Someone

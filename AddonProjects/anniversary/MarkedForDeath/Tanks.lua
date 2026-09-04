@@ -117,13 +117,12 @@ function Tanks:OnDeath(name, now)
     if not (MFD.Comms and MFD.Comms:IsAuthority()) then
         return
     end
-    -- Announces everywhere unless you ask for boss fights only, which is what
-    -- it has always done. The boss gate is shared with healer deaths so one
-    -- mid-raid override covers both.
-    if not MFD.Encounters.ShouldAnnounce(MFD.Encounters.ConfigFor("TANK"), MFD.Encounters.active) then
+    -- Tanks have their own trash setting, own boss list and own override, and
+    -- read none of the healer ones.
+    if not MFD.Encounters.ShouldAnnounce(MFD.Encounters.Settings("tank"), MFD.Encounters.active) then
         return
     end
-    if not Tanks.IsTank(name, Tanks.AssignedTanks(), Tanks.ParseList(MFD.db.settings.deaths.tankNames)) then
+    if not Tanks.IsTank(name, Tanks.AssignedTanks(), Tanks.ParseList(MFD.db.settings.deaths.tank.names)) then
         return
     end
     if not Tanks.ShouldAnnounce(name, announced, now, Tanks.REPEAT_SECONDS) then
