@@ -10,7 +10,7 @@ officer's copy converges on it, and a log of who barked when means the second
 officer does not add a second line four minutes after the first.
 ]]
 
-local VERSION = "0.1.3"
+local VERSION = "0.2.1"
 ns.VERSION = VERSION
 
 ns.SCHEMA = 1
@@ -107,6 +107,7 @@ ns.Defaults = {
     settings = {
         enabled = true,
         outputFrame = 1,
+        windowScale = 1,
         minimap = { hide = false },
         log = { kind = "all", source = "all" },
 
@@ -168,6 +169,9 @@ frame:RegisterEvent("CHAT_MSG_ADDON")
 
 frame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4)
     if event == "ADDON_LOADED" and arg1 == addonName then
+        -- Before we create it: whether the client handed us anything at all. This is the
+        -- one fact that separates "the file did not load" from "the addon cleared it".
+        local sawFile = GuildRecruitmentDB ~= nil and next(GuildRecruitmentDB) ~= nil
         GuildRecruitmentDB = GuildRecruitmentDB or {}
         GuildRecruitmentCharDB = GuildRecruitmentCharDB or {}
         ns.Migrate(GuildRecruitmentDB, ns.Migrations, ns.SCHEMA)
@@ -179,7 +183,54 @@ frame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4)
         -- Two teams up front, so the window has something in it rather than an
         -- empty page and no hint what to do with it. The guild's own name arrives
         -- later, on the first roster update.
+        -- What came back off disk, before anything else can touch it. A document that is
+        -- whole here and empty later was lost while running; one that is already empty was
+        -- never saved. Without this line those two look identical from the chat frame.
+        local loadedTeams, loadedNeeds = #ns.db.doc.teams, 0
+        for _, team in ipairs(ns.db.doc.teams) do
+            loadedNeeds = loadedNeeds + #(team.needs or {})
+        end
+
         SeedTeams()
+
+        --[[
+        Everything in the text, not the detail column: the detail is off the right edge of
+        a narrow window, and the team count is the whole point. Zero teams means the saved
+        variables never reached us; teams but no revision would mean something else again.
+
+        `sawFile` distinguishes the two states that matter. An account that has run this
+        addon before has settings written; a table with nothing in it at all is either a
+        first run or a load that did not happen.
+        ]]
+        ns.Log.Add("info", "Core", string.format(
+            "loaded rev %d, %s, %s, scale %d%%", ns.db.doc.rev or 0,
+            ns.Util.Plural(loadedTeams, loadedTeams .. " team"),
+            ns.Util.Plural(loadedNeeds, loadedNeeds .. " need"),
+            (ns.db.settings.windowScale or 1) * 100 + 0.5),
+            sawFile and "saved variables were present" or "SAVED VARIABLES WERE EMPTY")
+        if loadedTeams == 0 and (ns.db.doc.rev or 0) > 0 then
+            ns.Print("|cffffcc00the saved message has a revision but no teams,|r which "
+                .. "should not happen. /gr log has the detail.")
+        end
+
+        --[[
+        An empty table on an account that has used this addon before means the client did
+        not hand back what it saved. Say so BEFORE anything is edited, because the damage is
+        not the empty load -- it is the logout afterwards, which writes these defaults over
+        the file that still holds the real thing.
+
+        The previous session's file is still on disk as a .bak until the next save, so this
+        says where it is while it is still there.
+        ]]
+        if not sawFile and not ns.cdb.everRan then
+            ns.cdb.everRan = true
+        elseif not sawFile then
+            ns.Print("|cffff4444The saved settings did not load.|r This session started "
+                .. "empty even though this account has run the addon before.")
+            ns.Print("|cffff4444Do not log out or reload yet|r if the teams matter: that "
+                .. "writes these defaults over the file. The previous session is still in "
+                .. "WTF\\Account\\<account>\\SavedVariables\\GuildRecruitment.lua.bak")
+        end
 
         ns.Comm.Init()
         if ns.Minimap and ns.Minimap.Init then ns.Minimap.Init() end
@@ -251,6 +302,7 @@ local HELP = {
     { "test", "run the test suite" },
     { "enable | disable", "master switch" },
     { "out [n]", "print to ChatFrame n" },
+    { "scale [percent]", "window size, 50 to 125, or drag its bottom-right corner" },
     { "reset [doc|peers|log|all]", "restore defaults" },
     { "help", "this list" },
 }
@@ -399,6 +451,21 @@ local function HandleSlash(input)
         end
         ns.db.settings.outputFrame = math.max(1, math.min(10, math.floor(n)))
         ns.Printf("printing to ChatFrame %d.", ns.db.settings.outputFrame)
+
+    elseif cmd == "scale" then
+        local pct = tonumber(rest)
+        if not pct then
+            ns.Printf("window scale is %d%%. /gr scale <percent> sets it, or drag the grip "
+                .. "in the bottom-right corner.", (ns.db.settings.windowScale or 1) * 100 + 0.5)
+            return
+        end
+        local frame = ns.UI and ns.UI.frame
+        if not frame or not frame.SetWindowScale then
+            ns.Print("open the window first, then set the scale.")
+            return
+        end
+        local applied = frame:SetWindowScale(pct / 100)
+        ns.Printf("window scale set to %d%%.", applied * 100 + 0.5)
 
     elseif cmd == "reset" then
         local what = (rest ~= "" and rest or "peers"):lower()

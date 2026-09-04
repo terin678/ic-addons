@@ -64,9 +64,56 @@ recruit, or *"Threnody barked 4m ago"*. Underneath is who has been recruiting re
 Each need has a role, a class (or blank for any), a count and a priority. Priority is what
 decides what survives when the message will not fit.
 
+A raid leader can add, edit, reorder and remove both teams and needs from here. The buttons
+on a **team's heading row** are:
+
+| Button | What it does |
+| --- | --- |
+| Edit | Opens the team's name, tag and raid days in the panel above the list |
+| + Need | Adds a need to THAT team, rather than to whichever happens to be first |
+| On / Off | Leaves the team out of the message without deleting it or its needs |
+| ^ | Moves the team up. This is not cosmetic — the order decides which team leads the line |
+| X | Removes the team and everything it was asking for. The last team cannot be removed |
+
+The buttons on a **need row** are Edit, `^` to raise its priority, and X to remove it.
+
+**Add a need to a particular team with that team's own `+ Need` button.** The toolbar's
+"Add a need" has no team in mind, so it opens on the first one; the **belongs to** button in
+the editor changes which team a need is on, and moves an existing need between teams.
+
+Three things about editing a team are worth knowing:
+
+- **The tag is what actually goes in the message**, not the name — a 255-character line has
+  no room for "Tuesday Core Raid Team". Keep it short.
+- **Leave the tag blank and it builds itself** from the name's initials: "Molten Core"
+  becomes "MC". That is also how you make a tag follow a rename, since a tag you have typed
+  is never overwritten.
+- **Adding a team opens the editor straight away.** A new team is called "Team 3" and has no
+  raid days, which is not something you want going out to the guild.
+
+Names and days are capped at 24 characters and tags at 8, because everything here has to
+fit in one chat line alongside everything else.
+
 **Message** is raid-leader only. `{teams}` is where the teams go; `{guild}` and `{contacts}`
 fill themselves in. A second template says how one team is written, with `{tag}`, `{days}`
-and `{needs}`. The preview under it re-assembles as you type, with a length meter.
+and `{needs}`.
+
+Write that second template however you like — `{tag} {days}: {needs}` gives *"DN M/W: Shaman
+DPS"*, and `{needs} for our {days}` gives *"Shaman DPS for our M/W"*. It only has to contain
+one of the three tokens; a template naming none of them would repeat the same words once per
+team, so that one is refused and the default used instead. Anything else questionable is
+said under the preview rather than corrected behind your back — no `{needs}` and the line
+never says who you are after, and with two teams recruiting and neither `{tag}` nor `{days}`
+there is nothing to tell them apart.
+
+The preview beside the boxes re-assembles on every keystroke, with a length meter, and it is
+built from the boxes rather than from the saved message — so it shows what you are about to send,
+not what the guild already has. While the two differ the meter says **unsaved**. Nothing
+reaches anyone until **Save and push**; **Revert** puts the boxes back. Typing here does not
+move the revision every other officer is watching, which is why the two are kept apart.
+
+Team names, tags, days and needs come from the live document, so an edit made on the Teams
+tab shows up in this preview as soon as you come back to it.
 
 **Officers** is the tab that answers *"why is Threnody sending the old line"*. Green has your
 revision, amber is behind, blue is ahead of you.
@@ -139,6 +186,7 @@ and the panel says so rather than quietly showing you a short list.
 | `/gr test` | Run the test suite |
 | `/gr enable` / `disable` | Master switch |
 | `/gr out [n]` | Print to ChatFrame n |
+| `/gr scale [percent]` | Window size, 50 to 125. You can also drag the grip in the window's bottom-right corner |
 | `/gr reset [doc\|peers\|log\|all]` | Restore defaults |
 
 Two key bindings under **GuildRecruitment**: send the message, and open the window.

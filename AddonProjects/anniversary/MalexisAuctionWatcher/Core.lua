@@ -1,6 +1,6 @@
 -- MalexisAuctionWatcher Core - Main coordination and utilities
 local addonName = "MalexisAuctionWatcher"
-local VERSION = "1.18.0"
+local VERSION = "1.19.0"
 local MAW = {}
 
 -- Debug mode flag
@@ -212,6 +212,25 @@ local function SlashCommandHandler(msg)
         else
             print(addonName .. ": History retention is " .. MAW:GetHistoryDays() .. " days (use /maw retention <days>, min 7)")
         end
+    elseif command == "scale" then
+        if not MalexisAuctionWatcherUI then
+            print(addonName .. ": UI module not loaded")
+        else
+            local pct = tonumber(args[2])
+            if pct then
+                local applied, why = MalexisAuctionWatcherUI:SetScale(pct / 100)
+                if applied then
+                    print(string.format("%s: Window scale set to %d%%",
+                        addonName, applied * 100 + 0.5))
+                else
+                    print(addonName .. ": " .. (why or "could not set the scale"))
+                end
+            else
+                print(string.format("%s: Window scale is %d%%. Use /maw scale <percent> "
+                    .. "(50-125), or drag the grip in the bottom-right corner.",
+                    addonName, MalexisAuctionWatcherUI:GetScale() * 100 + 0.5))
+            end
+        end
     elseif command == "test" then
         MAW.Tests.Run()
     elseif command == "minimap" then
@@ -222,6 +241,7 @@ local function SlashCommandHandler(msg)
         print(addonName .. " Commands:")
         print("  /maw show (or /maw ui) - Toggle merchant price spreadsheet")
         print("  /maw minimap - Show/hide the minimap button")
+        print("  /maw scale <percent> - Resize the window, 50 to 125 (or drag its bottom-right corner)")
         print("  /maw test - Run the built-in checks")
         print("  /maw history [item name] - Open the price history chart")
         print("  /maw recipes - Open the material -> product profit table")

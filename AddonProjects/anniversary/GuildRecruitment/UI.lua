@@ -16,7 +16,7 @@ place instead of at every call site.
 local ICUI = LibStub("LibICUI-1.0")
 UI.Lib = ICUI
 
-local WIDTH, HEIGHT = 720, 560
+local WIDTH, HEIGHT = 720, 375
 local TAB_H, ROW_H = 22, 18
 local PAGE_INSET = 10
 
@@ -136,8 +136,22 @@ function UI.Create()
     local f = ICUI:Window("GuildRecruitmentFrame", {
         style = STYLE, width = WIDTH, height = HEIGHT,
         title = "Guild Recruitment " .. ns.VERSION,
+        scalable = true,
+        minScale = 0.5,
+        maxScale = 1.25,
+        onScaleChanged = function(_, scale)
+            ns.db.settings.windowScale = scale
+        end,
     })
     UI.frame = f
+
+    -- Guarded like any optional dependency: a stale ICLibs bundled in another addon can win
+    -- the LibStub race at an older MINOR, and this should cost us the grip, not the window.
+    -- No FitToScreen here: 720x375 already fits a 1024x768 UIParent with room to spare, so
+    -- the scale only moves when somebody asks for it.
+    if f.SetWindowScale then
+        f:SetWindowScale(ns.db.settings.windowScale or 1, true)
+    end
 
     local names = {}
     for i, page in ipairs(UI.Pages) do names[i] = page.name end
@@ -230,49 +244,52 @@ end
 --------------------------------------------------------------------------------
 
 UI.RegisterPage(90, "Settings", function(page)
-    local y = -4
+    -- Two columns, each with its own running y: who may do what and sync on the left,
+    -- sending on the right. Stacked, this page needed 450px of a 285px window.
+    local COL_W = 340
+    local RIGHT_X = 360
+    local ly, ry = -4, -4
 
-    local function Section(text)
+    local function Section(x, y, text)
         local fs = Label(page, text, "GameFontNormalSmall")
-        fs:SetPoint("TOPLEFT", 0, y)
-        y = y - 20
+        fs:SetPoint("TOPLEFT", x, y)
         return fs
     end
 
-    local function Row(text)
+    local function Row(x, y, width, text)
         local fs = Label(page, text, "GameFontHighlightSmall")
-        fs:SetPoint("TOPLEFT", 0, y)
-        fs:SetWidth(360)
+        fs:SetPoint("TOPLEFT", x, y)
+        fs:SetWidth(width)
         return fs
     end
 
-    Section("Who may do what")
+    Section(0, ly, "Who may do what")
+    ly = ly - 20
 
-    local authorLabel = Row("")
+    local authorLabel = Row(0, ly, 280, "")
     local authorDown = Button(page, "-", 24, 20)
-    authorDown:SetPoint("TOPLEFT", 380, y + 2)
+    authorDown:SetPoint("TOPLEFT", 290, ly + 2)
     local authorUp = Button(page, "+", 24, 20)
-    authorUp:SetPoint("TOPLEFT", 408, y + 2)
-    y = y - 26
+    authorUp:SetPoint("TOPLEFT", 318, ly + 2)
+    ly = ly - 26
 
-    local barkLabel = Row("")
+    local barkLabel = Row(0, ly, 280, "")
     local barkDown = Button(page, "-", 24, 20)
-    barkDown:SetPoint("TOPLEFT", 380, y + 2)
+    barkDown:SetPoint("TOPLEFT", 290, ly + 2)
     local barkUp = Button(page, "+", 24, 20)
-    barkUp:SetPoint("TOPLEFT", 408, y + 2)
-    y = y - 26
+    barkUp:SetPoint("TOPLEFT", 318, ly + 2)
+    ly = ly - 26
 
-    local rankNote = Label(page, "The guild window numbers ranks from 1; the game reports "
-        .. "them from 0, and this uses the game's numbering, so the guild master is 0 here "
-        .. "and 1 there. A lower number is a higher rank, and each name below is read off "
-        .. "your own roster.\nEveryone sets this for themselves, so an officer whose copy "
-        .. "disagrees with yours will accept messages yours ignores. The Officers tab shows "
+    -- The short form. Docs/GuildRecruitment.md has the whole argument.
+    local rankNote = Label(page, "The game numbers ranks from 0 and the guild window from 1; "
+        .. "this uses the game's, so the guild master is 0. Lower is higher. Names are read "
+        .. "off your own roster. Everyone sets this for themselves; the Officers tab shows "
         .. "who is out of step.",
         "GameFontDisableSmall")
-    rankNote:SetPoint("TOPLEFT", 0, y)
-    rankNote:SetWidth(UI.PAGE_W - 20)
+    rankNote:SetPoint("TOPLEFT", 0, ly)
+    rankNote:SetWidth(COL_W - 10)
     rankNote:SetSpacing(2)
-    y = y - 58
+    ly = ly - 62
 
     local function Bump(key, delta)
         return function()
@@ -285,68 +302,18 @@ UI.RegisterPage(90, "Settings", function(page)
     barkDown:SetScript("OnClick", Bump("barkRankIndex", -1))
     barkUp:SetScript("OnClick", Bump("barkRankIndex", 1))
 
-    Section("Sending")
-
-    local timer = CheckBox(page, "Remind me when it is time to recruit")
-    timer:SetPoint("TOPLEFT", 0, y)
-    timer:SetScript("OnClick", function(self)
-        ns.db.settings.bark.enabled = self:GetChecked() and true or false
-        ns.Bark.Restart()
-        UI.Refresh()
-    end)
-    y = y - 24
-
-    local combat = CheckBox(page, "Not in combat")
-    combat:SetPoint("TOPLEFT", 0, y)
-    combat:SetScript("OnClick", function(self)
-        ns.db.settings.bark.pauseCombat = self:GetChecked() and true or false
-        UI.Refresh()
-    end)
-    local instance = CheckBox(page, "Not in an instance")
-    instance:SetPoint("TOPLEFT", 200, y)
-    instance:SetScript("OnClick", function(self)
-        ns.db.settings.bark.pauseInstance = self:GetChecked() and true or false
-        UI.Refresh()
-    end)
-    y = y - 24
-
-    local confirm = CheckBox(page, "Make me read a new revision before I send it")
-    confirm:SetPoint("TOPLEFT", 0, y)
-    confirm:SetScript("OnClick", function(self)
-        ns.db.settings.bark.confirmNewRev = self:GetChecked() and true or false
-        UI.Refresh()
-    end)
-    y = y - 28
-
-    local channelLabel = Row("")
-    y = y - 22
-    local channel = EditBox(page, 200, 22)
-    channel:SetPoint("TOPLEFT", 0, y)
-    channel:SetScript("OnEnterPressed", function(self)
-        local text = ns.Util.Trim(self:GetText())
-        ns.db.settings.bark.channel = text ~= "" and text or "auto"
-        self:ClearFocus()
-        UI.Refresh()
-    end)
-    local channelHint = Label(page, "Type part of a channel's name and press Enter, "
-        .. "or \"auto\" to use the first of LookingForGroup, Trade, General you have joined.",
-        "GameFontDisableSmall")
-    channelHint:SetPoint("TOPLEFT", 210, y - 2)
-    channelHint:SetWidth(UI.PAGE_W - 230)
-    channelHint:SetSpacing(2)
-    y = y - 34
-
-    Section("Sync")
+    Section(0, ly, "Sync")
+    ly = ly - 20
 
     local syncOn = CheckBox(page, "Keep in step with the other officers")
-    syncOn:SetPoint("TOPLEFT", 0, y)
+    syncOn:SetPoint("TOPLEFT", 0, ly)
     syncOn:SetScript("OnClick", function(self)
         ns.db.settings.sync.enabled = self:GetChecked() and true or false
         UI.Refresh()
     end)
-    y = y - 28
+    ly = ly - 28
 
-    local bar = UI.Toolbar(page, { top = y, right = -26 })
+    local bar = UI.Toolbar(page, { top = ly, right = -(UI.PAGE_W - COL_W) })
     local probe = bar:Left(Button(bar, "Probe client", 100, 22))
     probe:SetScript("OnClick", function() ns.Probe.Run() end)
     local tests = bar:Left(Button(bar, "Run tests", 90, 22))
@@ -364,11 +331,63 @@ UI.RegisterPage(90, "Settings", function(page)
         ns.db.peers, ns.db.barks = {}, {}
         UI.Refresh()
     end)
-    y = y - 30
+
+    Section(RIGHT_X, ry, "Sending")
+    ry = ry - 20
+
+    local timer = CheckBox(page, "Remind me when it is time to recruit")
+    timer:SetPoint("TOPLEFT", RIGHT_X, ry)
+    timer:SetScript("OnClick", function(self)
+        ns.db.settings.bark.enabled = self:GetChecked() and true or false
+        ns.Bark.Restart()
+        UI.Refresh()
+    end)
+    ry = ry - 24
+
+    local combat = CheckBox(page, "Not in combat")
+    combat:SetPoint("TOPLEFT", RIGHT_X, ry)
+    combat:SetScript("OnClick", function(self)
+        ns.db.settings.bark.pauseCombat = self:GetChecked() and true or false
+        UI.Refresh()
+    end)
+    local instance = CheckBox(page, "Not in an instance")
+    instance:SetPoint("TOPLEFT", RIGHT_X + 170, ry)
+    instance:SetScript("OnClick", function(self)
+        ns.db.settings.bark.pauseInstance = self:GetChecked() and true or false
+        UI.Refresh()
+    end)
+    ry = ry - 24
+
+    local confirm = CheckBox(page, "Make me read a new revision before I send it")
+    confirm:SetPoint("TOPLEFT", RIGHT_X, ry)
+    confirm:SetScript("OnClick", function(self)
+        ns.db.settings.bark.confirmNewRev = self:GetChecked() and true or false
+        UI.Refresh()
+    end)
+    ry = ry - 28
+
+    local channelLabel = Row(RIGHT_X, ry, COL_W - 10, "")
+    ry = ry - 22
+    local channel = EditBox(page, 200, 22)
+    channel:SetPoint("TOPLEFT", RIGHT_X, ry)
+    channel:SetScript("OnEnterPressed", function(self)
+        local text = ns.Util.Trim(self:GetText())
+        ns.db.settings.bark.channel = text ~= "" and text or "auto"
+        self:ClearFocus()
+        UI.Refresh()
+    end)
+    ry = ry - 26
+    local channelHint = Label(page, "Type part of a channel's name and press Enter, "
+        .. "or \"auto\" to use the first of LookingForGroup, Trade, General you have joined.",
+        "GameFontDisableSmall")
+    channelHint:SetPoint("TOPLEFT", RIGHT_X, ry)
+    channelHint:SetWidth(COL_W - 10)
+    channelHint:SetSpacing(2)
+    ry = ry - 34
 
     local status = Label(page, "", "GameFontHighlightSmall")
-    status:SetPoint("TOPLEFT", 0, y)
-    status:SetWidth(UI.PAGE_W - 20)
+    status:SetPoint("TOPLEFT", RIGHT_X, ry)
+    status:SetWidth(COL_W - 10)
     status:SetSpacing(3)
 
     return function()
@@ -380,9 +399,9 @@ UI.RegisterPage(90, "Settings", function(page)
             if named then return string.format("|cffffcc00%d|r (%s)", index, named) end
             return string.format("|cffffcc00%d|r", index)
         end
-        authorLabel:SetText(string.format("Raid leaders: rank %s or better may change "
-            .. "the message", RankLabel(s.authorRankIndex)))
-        barkLabel:SetText(string.format("Officers: rank %s or better may send it",
+        authorLabel:SetText(string.format("Raid leaders may change it: rank %s and up",
+            RankLabel(s.authorRankIndex)))
+        barkLabel:SetText(string.format("Officers may send it: rank %s and up",
             RankLabel(s.barkRankIndex)))
 
         timer:SetChecked(s.bark.enabled)

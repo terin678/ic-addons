@@ -56,7 +56,7 @@ UI.RegisterPage(10, "Bark", function(page)
     previewLabel:SetPoint("TOPLEFT", 0, -58)
 
     local preview = UI.Panel(page)
-    preview:SetSize(UI.PAGE_W - 26, 52)
+    preview:SetSize(UI.PAGE_W - 26, 44)
     preview:SetPoint("TOPLEFT", 0, -74)
 
     local previewText = UI.Label(preview, "", "GameFontHighlightSmall")
@@ -65,13 +65,13 @@ UI.RegisterPage(10, "Bark", function(page)
     previewText:SetSpacing(2)
 
     local meter = UI.Label(page, "", "GameFontDisableSmall")
-    meter:SetPoint("TOPLEFT", 0, -132)
+    meter:SetPoint("TOPLEFT", 0, -124)
 
     local barksLabel = UI.Label(page, "Who has been recruiting", "GameFontDisableSmall")
-    barksLabel:SetPoint("TOPLEFT", 0, -156)
+    barksLabel:SetPoint("TOPLEFT", 0, -144)
 
     local t = UI.Table(page, {
-        top = -174,
+        top = -160,
         columns = {
             { key = "age", label = "Age", width = 44, justify = "RIGHT" },
             { key = "who", label = "Officer", width = 110 },
@@ -172,60 +172,84 @@ end)
 --------------------------------------------------------------------------------
 
 UI.RegisterPage(30, "Message", function(page)
+    -- Two columns: what is edited on the left, what it produces on the right. Stacked, this
+    -- page ran to 400px, and the window has 285 inside its chrome.
+    local COL_W = 340
+    local RIGHT_X = 360
+
     local intro = UI.Label(page,
-        "The whole guild sends this one line. {teams} is where the teams go, and each\n"
-        .. "team is written with the second template below.")
+        "The whole guild sends this one line. {teams} is where the teams go, and each "
+        .. "team is written with the second template.")
     intro:SetPoint("TOPLEFT", 0, -2)
-    intro:SetWidth(UI.PAGE_W - 20)
+    intro:SetWidth(COL_W - 10)
     intro:SetSpacing(3)
 
     local mainLabel = UI.Label(page, "Message  |cff888888{guild}  {teams}  {contacts}|r",
         "GameFontDisableSmall")
-    mainLabel:SetPoint("TOPLEFT", 0, -40)
+    mainLabel:SetPoint("TOPLEFT", 0, -36)
 
-    -- Full page width: TextBox reserves its own 26 for its scrollbar, so taking
-    -- 26 off first put this page's right edge 26 short of every other tab's.
-    local main = UI.TextBox(page, UI.PAGE_W, 54, { maxBytes = 255 })
-    main:SetPoint("TOPLEFT", 0, -56)
+    -- Assigned once every widget below exists. The boxes call it as they are typed in, so
+    -- the preview is of what is on screen rather than of what was last saved.
+    local UpdatePreview
+    -- Set the moment anybody types, cleared by Save and by Revert. Without it the refresh
+    -- reloads the boxes from the saved document whenever nothing has focus, so switching
+    -- to the Teams tab and back would throw away an unsaved edit without saying so.
+    local dirty = false
+    local function Typed()
+        dirty = true
+        if UpdatePreview then UpdatePreview() end
+    end
+
+    -- The whole column: TextBox reserves its own 26 for its scrollbar, so taking 26 off
+    -- first would leave it short of the preview panel's edge.
+    local main = UI.TextBox(page, COL_W, 66, { maxBytes = 255, onChange = Typed })
+    main:SetPoint("TOPLEFT", 0, -52)
 
     local teamLabel = UI.Label(page, "Each team  |cff888888{tag}  {days}  {needs}|r",
         "GameFontDisableSmall")
-    teamLabel:SetPoint("TOPLEFT", 0, -118)
+    teamLabel:SetPoint("TOPLEFT", 0, -126)
 
-    local team = UI.TextBox(page, UI.PAGE_W, 40, { maxBytes = 255 })
-    team:SetPoint("TOPLEFT", 0, -134)
+    local team = UI.TextBox(page, COL_W, 40, { maxBytes = 255, onChange = Typed })
+    team:SetPoint("TOPLEFT", 0, -142)
 
     local contactsLabel = UI.Label(page, "Whisper who  |cff888888comma separated|r",
         "GameFontDisableSmall")
-    contactsLabel:SetPoint("TOPLEFT", 0, -182)
+    contactsLabel:SetPoint("TOPLEFT", 0, -190)
 
     local contacts = UI.EditBox(page, 300, 22)
-    contacts:SetPoint("TOPLEFT", 0, -198)
+    contacts:SetPoint("TOPLEFT", 0, -206)
     contacts:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+    -- byUser only: LoadDraft's own SetText comes through here too, and re-previewing on
+    -- our own write would be work for nothing.
+    contacts:SetScript("OnTextChanged", function(_, byUser)
+        if byUser then Typed() end
+    end)
 
-    local bar = UI.Toolbar(page, { top = -230, right = -26 })
+    -- Spans the left column only, so the footer packs against the column's edge and not
+    -- against the preview on the far side.
+    local bar = UI.Toolbar(page, { top = -238, right = -(UI.PAGE_W - COL_W) })
     local save = bar:Left(UI.Button(bar, "Save and push", 120, 22, { kind = "accent" }))
     local revert = bar:Left(UI.Button(bar, "Revert", 80, 22))
     local footer = bar:Right(UI.Label(page, "", "GameFontDisableSmall"))
 
     local previewLabel = UI.Label(page, "Preview", "GameFontDisableSmall")
-    previewLabel:SetPoint("TOPLEFT", 0, -262)
+    previewLabel:SetPoint("TOPLEFT", RIGHT_X, -36)
 
     local preview = UI.Panel(page)
-    preview:SetSize(UI.PAGE_W - 26, 52)
-    preview:SetPoint("TOPLEFT", 0, -278)
+    preview:SetSize(COL_W - 26, 70)
+    preview:SetPoint("TOPLEFT", RIGHT_X, -52)
 
     local previewText = UI.Label(preview, "", "GameFontHighlightSmall")
     previewText:SetPoint("TOPLEFT", 8, -8)
-    previewText:SetWidth(UI.PAGE_W - 48)
+    previewText:SetWidth(COL_W - 48)
     previewText:SetSpacing(2)
 
     local meter = UI.Label(page, "", "GameFontDisableSmall")
-    meter:SetPoint("TOPLEFT", 0, -336)
+    meter:SetPoint("TOPLEFT", RIGHT_X, -128)
 
     local warning = UI.Label(page, "", "GameFontHighlightSmall")
-    warning:SetPoint("TOPLEFT", 0, -358)
-    warning:SetWidth(UI.PAGE_W - 20)
+    warning:SetPoint("TOPLEFT", RIGHT_X, -148)
+    warning:SetWidth(COL_W - 10)
     warning:SetSpacing(2)
 
     -- What is being edited, kept apart from the document so nothing is committed
@@ -239,6 +263,8 @@ UI.RegisterPage(30, "Message", function(page)
         main:SetText(draft.template)
         team:SetText(draft.teamTemplate)
         contacts:SetText(draft.contacts)
+        -- The boxes now match the document again, whoever asked for that.
+        dirty = false
     end
 
     local function Draft()
@@ -252,6 +278,71 @@ UI.RegisterPage(30, "Message", function(page)
             if clean ~= "" then copy.contacts[#copy.contacts + 1] = clean end
         end
         return copy
+    end
+
+    --[[
+    The preview and its length meter, off the boxes as they stand right now.
+
+    Separate from the page refresh because it runs on every keystroke: it reads the two
+    templates and the contacts from the widgets and the TEAMS from the live document, so
+    editing a team on the Teams tab shows up here as soon as this tab is drawn again, and
+    editing a template shows up as you type.
+
+    Assembling per keystroke is a handful of string operations over at most a few teams.
+    ]]
+    UpdatePreview = function()
+        local copy = Draft()
+        local msg, level, dropped, _, reason = ns.Message.Assemble(copy, ns.cdb.bark.cursor)
+        previewText:SetText(msg or ("|cff888888" .. tostring(reason) .. "|r"))
+
+        local length = msg and #msg or 0
+        local color = "|cff44ff44"
+        if length > ns.Message.MAX_LEN then color = "|cffff4444"
+        elseif length > ns.Message.MAX_LEN - 30 then color = "|cffffcc00" end
+        meter:SetText(string.format("%s%d|r / %d characters  \194\183  %s%s%s",
+            color, length, ns.Message.MAX_LEN,
+            level and (ns.Message.LEVEL_NAME[level] or "?") or "nothing to show",
+            (dropped or 0) > 0 and string.format("  \194\183  |cffffcc00%d needs left out|r",
+                dropped) or "",
+            -- The preview is of the boxes, so once they differ from the saved document it
+            -- has to say so, or this reads as a line the guild is already sending.
+            dirty and "  \194\183  |cffffcc00unsaved  \194\183  Save and push to send it|r"
+                or ""))
+
+        --[[
+        Advice about the templates, not enforcement. TeamFragment renders whatever it is
+        handed, and being quietly overruled by it is exactly what made a discarded template
+        so hard to spot -- so anything questionable is said here, as it is typed.
+        ]]
+        local notes = {}
+        local recruiting = 0
+        for _, t in ipairs(copy.teams or {}) do
+            if t.active ~= false and #(t.needs or {}) > 0 then recruiting = recruiting + 1 end
+        end
+        local badTeam = ns.Message.CheckTeamTemplate(copy.teamTemplate, recruiting)
+        if badTeam then
+            notes[#notes + 1] = "|cffffcc00Each team:|r " .. badTeam
+        end
+        if not (copy.template or ""):find("{teams}", 1, true) then
+            notes[#notes + 1] = "|cffffcc00Message:|r without {teams} in it the line never "
+                .. "mentions a team at all."
+        end
+
+        if not ns.Roster.ICanAuthor() then
+            notes[#notes + 1] = "|cffffcc00You can send this message but not change it.|r"
+        end
+        local _, _, ahead = ns.Doc.Agreement(ns.db.doc, ns.db.peers)
+        if ahead > 0 then
+            notes[#notes + 1] = string.format(
+                "|cffffcc00%d officer%s has a newer revision than yours.|r Press Sync on the "
+                .. "Bark tab before you edit, or your change will fight theirs.",
+                ahead, ahead == 1 and "" or "s")
+        end
+        if not ns.Comm.Status().available then
+            notes[#notes + 1] = "|cffff4444This client cannot send addon messages,|r so "
+                .. "nothing you save here reaches anyone else. /gr probe for detail."
+        end
+        warning:SetText(table.concat(notes, "\n"))
     end
 
     save:SetScript("OnClick", function()
@@ -296,43 +387,18 @@ UI.RegisterPage(30, "Message", function(page)
         UI.SetEditable(team, mine)
         UI.SetEditable(contacts, mine)
 
-        -- Never overwrite what somebody is halfway through typing.
-        if not (main.edit:HasFocus() or team.edit:HasFocus() or contacts:HasFocus()) then
+        -- Never overwrite what somebody is halfway through typing, and never throw away
+        -- an edit they have stopped typing but not yet saved. Focus is lost the moment
+        -- they click another tab, so focus alone is not enough to tell those apart.
+        local busy = main.edit:HasFocus() or team.edit:HasFocus() or contacts:HasFocus()
+        if not busy and not dirty then
             LoadDraft()
         end
 
-        local copy = Draft()
-        local msg, level, dropped, _, reason = ns.Message.Assemble(copy, ns.cdb.bark.cursor)
-        previewText:SetText(msg or ("|cff888888" .. tostring(reason) .. "|r"))
-
-        local length = msg and #msg or 0
-        local color = "|cff44ff44"
-        if length > ns.Message.MAX_LEN then color = "|cffff4444"
-        elseif length > ns.Message.MAX_LEN - 30 then color = "|cffffcc00" end
-        meter:SetText(string.format("%s%d|r / %d characters  \194\183  %s%s",
-            color, length, ns.Message.MAX_LEN,
-            level and (ns.Message.LEVEL_NAME[level] or "?") or "nothing to show",
-            (dropped or 0) > 0 and string.format("  \194\183  |cffffcc00%d needs left out|r",
-                dropped) or ""))
+        UpdatePreview()
 
         local same, behind, ahead = ns.Doc.Agreement(ns.db.doc, ns.db.peers)
         footer:SetText(string.format("|cff888888%s  \194\183  %d of %d officers have it|r",
             ns.Doc.Summary(ns.db.doc, now), same, same + behind + ahead))
-
-        local notes = {}
-        if not mine then
-            notes[#notes + 1] = "|cffffcc00You can send this message but not change it.|r"
-        end
-        if ahead > 0 then
-            notes[#notes + 1] = string.format(
-                "|cffffcc00%d officer%s has a newer revision than yours.|r Press Sync on the "
-                .. "Bark tab before you edit, or your change will fight theirs.",
-                ahead, ahead == 1 and "" or "s")
-        end
-        if not ns.Comm.Status().available then
-            notes[#notes + 1] = "|cffff4444This client cannot send addon messages,|r so "
-                .. "nothing you save here reaches anyone else. /gr probe for detail."
-        end
-        warning:SetText(table.concat(notes, "\n"))
     end
 end)

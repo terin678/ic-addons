@@ -197,4 +197,26 @@ T.Case("Recipe series: a TSM average is scaled like the line it belongs to", fun
     T.Eq(partial.tsm.value, nil, "and no TSM for the product means no level for the batch")
 end)
 
+T.Case("Window scale: a usable percentage survives, an unusable one is clamped", function()
+    local UI = _G.MalexisAuctionWatcherUI
+    if not UI or not UI.ClampScale then
+        error("UI module not loaded, so the scale clamp cannot be checked", 2)
+    end
+
+    T.Near(UI.ClampScale(1), 1, "the default is untouched")
+    T.Near(UI.ClampScale(0.75), 0.75, "the 25% reduction the window was asked for")
+
+    -- The command takes a percentage and divides by 100, so a fat-fingered "/maw scale 8"
+    -- arrives as 0.08. That must floor, not produce a window nobody can read.
+    T.Near(UI.ClampScale(0.08), 0.5, "far too small floors at the minimum")
+    T.Near(UI.ClampScale(8), 1.25, "far too large caps at the maximum")
+    T.Near(UI.ClampScale(0.5), 0.5, "the minimum itself is allowed")
+    T.Near(UI.ClampScale(1.25), 1.25, "and so is the maximum")
+
+    -- Refused rather than coerced: a nil scale would otherwise become the minimum and the
+    -- window would silently shrink on a typo.
+    T.Eq(UI.ClampScale(nil), nil, "no value is not a scale")
+    T.Eq(UI.ClampScale("wide"), nil, "and neither is a word")
+end)
+
 _G.MalexisAuctionWatcher = MAW

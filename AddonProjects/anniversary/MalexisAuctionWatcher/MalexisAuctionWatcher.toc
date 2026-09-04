@@ -2,7 +2,7 @@
 ## Title: Malexis Auction Watcher
 ## Notes: Tracks auction house prices for user-defined items with timestamps
 ## Author: Malexis
-## Version: 1.18.0
+## Version: 1.19.0
 ## IconTexture: Interface\AddOns\ICLibs\Textures\ImpulseControl-64.tga
 ## Group: MalexisAuctionWatcher
 ## Category: Impulse Control

@@ -2,7 +2,7 @@
 ## Title: Impulse Control |cff888888Core|r
 ## Notes: Shared libraries for the Impulse Control guild addons, and the head of their group in this list. Required by MalexisAuctionWatcher, TradeMaster, ICTemplate and GuildRecruitment.
 ## Author: Malexis
-## Version: 1.5.2
+## Version: 1.6.0
 ## IconTexture: Interface\AddOns\ICLibs\Textures\ImpulseControl-64.tga
 ## Group: ICLibs
 ## Category: Impulse Control

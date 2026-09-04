@@ -12,6 +12,9 @@ and every control wears the guild palette.
     UI:Hex(color) / UI:Logo(parent, size, large)
 
     UI:Window(name, opts)               -> f    (f.body, f.title, f.status)
+                                        opts.scalable adds a drag grip in the bottom-right
+                                        corner; f:SetWindowScale(s), f:GetWindowScale(),
+                                        f:FitToScreen() and opts.onScaleChanged(f, s)
     UI:TabStrip(parent, opts)           -> strip (strip:Select(name))
     UI:Button(parent, text, w, h, opts) -> b    (b:SetActive(on), b:SetKind(kind))
     UI:EditBox(parent, w, h, opts)
@@ -34,7 +37,7 @@ Set `theme = false` in a style to get plain Blizzard controls instead of the gui
 The palette is the default; nothing has to ask for it.
 ]]
 
-local MAJOR, MINOR = "LibICUI-1.0", 5
+local MAJOR, MINOR = "LibICUI-1.0", 6
 local Lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not Lib then return end
 
@@ -463,6 +466,177 @@ end
 --------------------------------------------------------------------------------
 
 --[[
+Window scaling, and the grip in the bottom-right corner that drives it.
+
+This scales the window rather than resizing it. A guild window's column widths are fixed
+at build time from `style.pageWidth`, so growing the frame would leave the lists the size
+they were; scaling makes everything smaller together and needs no page to re-lay itself
+out. The trade is that text shrinks with the window, which is the point when the complaint
+is that a 1024x700 window covers the monitor.
+
+Changing a frame's scale moves it, because SetPoint offsets are measured in the frame's own
+scaled units. So the visual top-left is captured before the change and re-anchored after,
+which keeps the corner under the cursor still while the opposite corner travels -- the way
+a real resize grip behaves.
+
+opts = { scalable, scale, minScale, maxScale, onScaleChanged(f, scale) }
+]]
+local GRIP_TEXTURE = "Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-"
+
+local function AddScaling(f, opts)
+    f.minScale = opts.minScale or 0.5
+    f.maxScale = opts.maxScale or 1.25
+
+    -- Pins the visual top-left across a scale change. GetLeft/GetTop are in the frame's
+    -- own units, so both sides are converted through the effective scale.
+    function f:SetWindowScale(scale, silent)
+        scale = math.max(self.minScale, math.min(self.maxScale, tonumber(scale) or 1))
+        local eff = self:GetEffectiveScale()
+        local left, top = self:GetLeft(), self:GetTop()
+        local screenLeft = left and (left * eff)
+        local screenTop = top and (top * eff)
+
+        self:SetScale(scale)
+
+        --[[
+        Only a window that is actually on screen gets re-anchored. A window that has never
+        been shown still carries whatever Lib:Window gave it -- usually SetPoint("CENTER")
+        -- and rewriting that into an absolute TOPLEFT here would mean it opens off-centre
+        the first time, at wherever centring happened to put it at the OLD scale.
+
+        The anchor is relative to the real parent, not to UIParent: a window parented to
+        something else (docked into a Blizzard frame, say) would otherwise jump the length
+        of that frame's offset the first time anybody scaled it.
+        ]]
+        if self:IsShown() and screenLeft and screenTop then
+            local parent = self:GetParent() or UIParent
+            local now = self:GetEffectiveScale()
+            local pEff = parent:GetEffectiveScale()
+            local pLeft = (parent:GetLeft() or 0) * pEff
+            local pBottom = (parent:GetBottom() or 0) * pEff
+            self:ClearAllPoints()
+            self:SetPoint("TOPLEFT", parent, "BOTTOMLEFT",
+                (screenLeft - pLeft) / now, (screenTop - pBottom) / now)
+        end
+        if not silent and self.onScaleChanged then self.onScaleChanged(self, scale) end
+        return scale
+    end
+
+    function f:GetWindowScale()
+        return self:GetScale()
+    end
+
+    -- Shrinks far enough to fit the usable screen, and never grows. Called on first open so
+    -- a window built for a big monitor is not simply off the edge of a small one.
+    function f:FitToScreen(margin)
+        margin = margin or 0.95
+        local fit = math.min(
+            UIParent:GetWidth() * margin / self:GetWidth(),
+            UIParent:GetHeight() * margin / self:GetHeight(), 1)
+        if fit < self:GetWindowScale() then return self:SetWindowScale(fit) end
+        return self:GetWindowScale()
+    end
+
+    -- Before the grip, so a window can be given a starting scale without also being
+    -- draggable -- which is what the option list above says it does.
+    if opts.scale then f:SetWindowScale(opts.scale, true) end
+
+    if not opts.scalable then return end
+    f.onScaleChanged = opts.onScaleChanged
+
+    local grip = CreateFrame("Frame", nil, f)
+    grip:SetSize(16, 16)
+    grip:SetPoint("BOTTOMRIGHT", -2, 2)
+    grip:EnableMouse(true)
+    grip:SetFrameLevel(f:GetFrameLevel() + 20)
+    f.sizeGrip = grip
+
+    local tex = grip:CreateTexture(nil, "OVERLAY")
+    tex:SetAllPoints()
+    tex:SetTexture(GRIP_TEXTURE .. "Up")
+    grip.texture = tex
+
+    -- Drag right and down to grow. Width and height are each asked what scale the cursor
+    -- implies and the two are averaged, so a diagonal drag tracks the corner rather than
+    -- favouring whichever axis moved further.
+    local StopDrag
+
+    local function OnUpdate(self)
+        -- The cursor leaves a 16px grip almost immediately, and a frame does not hold the
+        -- mouse, so the release usually lands somewhere else entirely and OnMouseUp never
+        -- reaches us. Watch the button itself instead: that ends the drag wherever it ends.
+        if not IsMouseButtonDown("LeftButton") then
+            StopDrag(self)
+            return
+        end
+        local ui = UIParent:GetEffectiveScale()
+        local x, y = GetCursorPosition()
+        x, y = x / ui, y / ui
+        local w, h = f:GetWidth(), f:GetHeight()
+        local byWidth  = (self.startScale * w + (x - self.startX)) / w
+        local byHeight = (self.startScale * h + (self.startY - y)) / h
+        f:SetWindowScale((byWidth + byHeight) / 2, true)
+        -- The tooltip reports a percentage, so it has to keep up with the drag it is
+        -- describing rather than showing whatever it said on the way in.
+        if GameTooltip:IsOwned(self) then self.ShowTip(self) end
+    end
+
+    StopDrag = function(self)
+        if not self.dragging then return end
+        self.dragging = false
+        self:SetScript("OnUpdate", nil)
+        f:SetClampedToScreen(true)
+        tex:SetTexture(self:IsMouseOver() and (GRIP_TEXTURE .. "Highlight") or (GRIP_TEXTURE .. "Up"))
+        if f.onScaleChanged then f.onScaleChanged(f, f:GetScale()) end
+    end
+
+    -- Docking or anything else that takes the window away mid-drag leaves the grip stuck
+    -- on the pressed texture and still clamping-disabled, so give the caller a way out.
+    f.StopSizing = function() StopDrag(grip) end
+
+    grip:SetScript("OnMouseDown", function(self, button)
+        -- A right-click would otherwise start a drag that ends on the very next frame,
+        -- writing a saved scale nobody asked to change.
+        if button and button ~= "LeftButton" then return end
+        local ui = UIParent:GetEffectiveScale()
+        local x, y = GetCursorPosition()
+        self.startX, self.startY = x / ui, y / ui
+        self.startScale = f:GetScale()
+        self.dragging = true
+        -- The clamp and the re-anchor fight each other: the clamp nudges the window at the
+        -- edge, the next frame reads that nudge as the position the player chose and pins
+        -- it there, and the window walks off up-left as you drag. Off for the drag, back
+        -- on after, so it still cannot be parked out of reach.
+        f:SetClampedToScreen(false)
+        tex:SetTexture(GRIP_TEXTURE .. "Down")
+        self:SetScript("OnUpdate", OnUpdate)
+    end)
+
+    grip:SetScript("OnMouseUp", StopDrag)
+
+    -- A grip that never says what it is reads as a stray pixel in the corner.
+    local function ShowTip(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOPLEFT")
+        GameTooltip:AddLine("Resize")
+        GameTooltip:AddLine(string.format("Drag to scale. Now %d%%.", (f:GetScale() * 100) + 0.5),
+            0.8, 0.8, 0.8)
+        GameTooltip:Show()
+    end
+    grip.ShowTip = ShowTip
+
+    grip:SetScript("OnEnter", function(self)
+        tex:SetTexture(GRIP_TEXTURE .. "Highlight")
+        ShowTip(self)
+    end)
+
+    grip:SetScript("OnLeave", function(self)
+        if not self.dragging then tex:SetTexture(GRIP_TEXTURE .. "Up") end
+        GameTooltip:Hide()
+    end)
+
+end
+
+--[[
 A movable, escapable window wearing the guild mark.
 opts = { width, height, title, style, parent, status = true, close = true, logo = true }
 Returns the frame with:
@@ -528,6 +702,8 @@ function Lib:Window(name, opts)
     f.body = CreateFrame("Frame", nil, f)
     f.body:SetPoint("TOPLEFT", 0, -barHeight)
     f.body:SetPoint("BOTTOMRIGHT", 0, 0)
+
+    AddScaling(f, opts)
 
     if name then
         -- A dialog rebuilt on every open would otherwise stack up entries here.

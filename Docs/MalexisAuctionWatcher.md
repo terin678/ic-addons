@@ -33,6 +33,23 @@ headers stay put while the rows scroll, a row is one line that truncates rather 
 wrapping, and the full text is in the hover tooltip. Rows are reused as you refresh
 instead of being rebuilt, so a long list no longer grows the frame count every scan.
 
+### Window size
+
+The window is 1024x700, which is what the Recipes tab needs to show both TSM profit columns
+at once. On a smaller monitor that covers most of the screen, so the window scales:
+
+- **Drag the grip in the bottom-right corner.** The corner you are holding stays put and the
+  window grows or shrinks away from it. Anything between 50% and 125% is allowed.
+- **`/maw scale 75`** sets it exactly. `/maw scale` on its own reports the current size.
+
+Whichever you use is saved for the account, so the window opens the same way next time. The
+first time you ever open it, it shrinks itself far enough to fit your screen rather than
+opening with its edges past the sides.
+
+This scales rather than resizes: everything gets smaller together, text included, and the
+columns keep their proportions. Docked in the auction house the window follows that frame's
+size instead, so the grip is hidden there and `/maw scale` says why.
+
 ## Adding items
 
 - Click "Add Item" on Materials or Products, or drag an item onto the drop row at the
@@ -255,6 +272,7 @@ open. "Refresh Table" recomputes without scanning.
 /maw add <name or link>   track an item (materials tab)
 /maw remove <name>        stop tracking
 /maw minimap              show or hide the minimap button
+/maw scale <percent>      window size, 50 to 125
 /maw debug                verbose chat output
 /maw test                 run the built-in checks
 /maw help

@@ -320,7 +320,45 @@ T.Case("Message: a team with nothing to ask for is not in the message", function
     doc.teams[1].active = false
     local none, _, _, _, reason = ns.Message.Assemble(doc, 1)
     T.Eq(none, nil, "with both off there is nothing to send")
-    T.Eq(reason, "nothing to recruit", "and it says so in words an officer can read")
+    T.Eq(reason, "every team is switched off: turn one back on with its On button",
+        "and it names the button that fixes it")
+end)
+
+T.Case("Message: having nothing to send says WHICH nothing", function()
+    -- All four of these used to be the single word "nothing to recruit". A new install
+    -- seeds two teams with no needs, so the useless one was the first thing anybody saw.
+    local function reasonFor(build)
+        local doc = TwoTeams()
+        build(doc)
+        local msg, _, _, _, why = ns.Message.Assemble(doc, 1)
+        T.Eq(msg, nil, "nothing assembles")
+        return why
+    end
+
+    local noTeams = reasonFor(function(doc) doc.teams = {} end)
+    T.Eq(noTeams, "no teams yet: add one on the Teams tab", "no teams at all")
+
+    -- What a fresh install looks like: SeedTeams makes two teams and no needs.
+    local noNeeds = reasonFor(function(doc)
+        for _, team in ipairs(doc.teams) do team.needs = {} end
+    end)
+    T.Eq(noNeeds, "no roles wanted yet: pick a team on the Teams tab and add a need",
+        "teams exist but want nobody")
+
+    local allOff = reasonFor(function(doc)
+        for _, team in ipairs(doc.teams) do team.active = false end
+    end)
+    T.Eq(allOff, "every team is switched off: turn one back on with its On button",
+        "teams want people but are switched off")
+
+    -- The mixed case: one team is on but wants nobody, the other wants people but is off.
+    -- Neither "no roles wanted" nor "every team is off" is true, and both would mislead.
+    local mixed = reasonFor(function(doc)
+        doc.teams[1].needs = {}
+        doc.teams[2].active = false
+    end)
+    T.Eq(mixed, "the only teams asking for anyone are switched off",
+        "one team on with no needs, one with needs switched off")
 end)
 
 T.Case("Message: a template with nowhere to put the teams is refused", function()
@@ -784,4 +822,187 @@ T.Case("UI: every page draws without erroring", function()
         local ok, err = pcall(page.refresh)
         T.Eq(ok, true, page.name .. " draws => " .. tostring(err))
     end
+end)
+
+--------------------------------------------------------------------------------
+-- Editing teams
+--------------------------------------------------------------------------------
+
+T.Case("Teams: editing writes the fields a raid leader can change", function()
+    local doc = TwoTeams()
+    local team = ns.Teams.ById(doc, 1)
+
+    ns.Teams.Edit(team, { name = "Molten Core", days = "Wed 9-12" })
+    T.Eq(team.name, "Molten Core", "the name is what was typed")
+    T.Eq(team.days, "Wed 9-12", "and so are the days")
+    T.Eq(team.tag, "T1", "a tag that was set by hand is left alone")
+
+    -- Clearing the tag is how you say "follow the name again": otherwise a tag built from
+    -- the old name sticks to the new one forever.
+    ns.Teams.Edit(team, { tag = "" })
+    T.Eq(team.tag, "MC", "a blank tag is rebuilt from the name's initials")
+end)
+
+T.Case("Teams: a team is never edited into something a message cannot carry", function()
+    local doc = TwoTeams()
+    local team = ns.Teams.ById(doc, 1)
+
+    ns.Teams.Edit(team, { name = string.rep("x", 200) })
+    T.Eq(#team.name, ns.Teams.MAX_NAME, "an over-long name is cut to the cap")
+
+    ns.Teams.Edit(team, { name = "   ", tag = "   " })
+    T.Eq(team.name, "Team 1", "a name of nothing but spaces falls back to the id")
+
+    ns.Teams.Edit(team, { days = string.rep("y", 200) })
+    T.Eq(#team.days, ns.Teams.MAX_DAYS, "and the days are capped too")
+end)
+
+T.Case("Teams: removing takes the right team, and never the last one", function()
+    local doc = TwoTeams()
+
+    local gone, why = ns.Teams.Remove(doc, 1)
+    T.Eq(gone, true, "the team was removed")
+    T.Eq(#doc.teams, 1, "one left")
+    T.Eq(doc.teams[1].id, 2, "and it is the OTHER one")
+
+    -- The last team cannot go: every screen reads doc.teams[1], and a document with
+    -- nothing to recruit for is not a state this addon has a page for.
+    gone, why = ns.Teams.Remove(doc, 2)
+    T.Eq(gone, false, "the last team stays")
+    T.Eq(#doc.teams, 1, "still one")
+    T.Eq(type(why), "string", "and it says why")
+
+    T.Eq(ns.Teams.Remove(TwoTeams(), 99), false, "an id nobody has removes nothing")
+end)
+
+T.Case("Teams: moving a team up reorders the document, not just the screen", function()
+    local doc = TwoTeams()
+
+    -- Array order is what Message.Rotate reads, so this decides which team leads the line.
+    local moved = ns.Teams.MoveUp(doc, 2)
+    T.Eq(moved, true, "the second team moved")
+    T.Eq(doc.teams[1].id, 2, "and is now first")
+    T.Eq(doc.teams[2].id, 1, "with the other one behind it")
+    T.Eq(#doc.teams, 2, "nothing was lost on the way")
+
+    local again, why = ns.Teams.MoveUp(doc, 2)
+    T.Eq(again, false, "the first team cannot go higher")
+    T.Eq(type(why), "string", "and it says so")
+    T.Eq(doc.teams[1].id, 2, "and nothing moved")
+end)
+
+T.Case("Teams: a new team is complete enough to put in a message", function()
+    local doc = TwoTeams()
+    local id = ns.Teams.NextId(doc)
+    T.Eq(id, 3, "one past the highest in use")
+
+    local team = ns.Teams.New(id, "Team " .. id)
+    T.Eq(team.active, true, "a new team is on")
+    T.Eq(team.tag ~= "", true, "and has a tag without anybody typing one")
+    T.Eq(#team.needs, 0, "and needs nothing yet")
+
+    -- NextId is highest-plus-one, not a counter: removing the highest team hands its id
+    -- straight back. Harmless, because Doc.Merge takes a whole document from one side or
+    -- the other and never merges teams one at a time -- but worth pinning so nobody
+    -- "fixes" it into a counter and breaks the wire format's assumption instead.
+    doc.teams[#doc.teams + 1] = team
+    T.Eq(ns.Teams.NextId(doc), 4, "with three teams the next id is 4")
+    ns.Teams.Remove(doc, 3)
+    T.Eq(ns.Teams.NextId(doc), 3, "and removing the highest gives that id back")
+end)
+
+T.Case("Message: the raid leader's team template is used, whatever tokens it has", function()
+    local team = { tag = "DN", days = "M/W",
+        needs = { { role = "DPS", class = "Shaman", count = 1, priority = 1 } } }
+
+    -- The bug this pins: a template with no {tag} was silently swapped for the default, so
+    -- "{needs} for our {days}" rendered as "DN M/W: Shaman DPS" and nothing said why.
+    T.Eq(ns.Message.TeamFragment(team, 1, "{needs} for our {days}"),
+        "Shaman DPS for our M/W", "a template without {tag} is still the author's")
+    T.Eq(ns.Message.TeamFragment(team, 1, "{tag} {days}: {needs}"),
+        "DN M/W: Shaman DPS", "and the default still reads as it always did")
+
+    -- A template naming no token would repeat one constant string once per team, which is
+    -- the only case worth overruling.
+    T.Eq(ns.Message.TeamFragment(team, 1, "we want people"),
+        "DN M/W: Shaman DPS", "a template with no tokens falls back to the default")
+    T.Eq(ns.Message.TeamFragment(team, 1, nil),
+        "DN M/W: Shaman DPS", "and so does no template at all")
+end)
+
+T.Case("Message: a team never renders to nothing and vanishes", function()
+    -- At the bottom of the ladder every need is gone, so "{needs}" on its own empties out.
+    -- Without a floor the team would drop out of the message without being counted as
+    -- dropped, which is the one failure the degrade ladder must not have.
+    local stripped = { tag = "DN", days = "M/W", needs = {} }
+    T.Eq(ns.Message.TeamFragment(stripped, ns.Message.LEVELS, "{needs}"), "DN",
+        "the tag is the floor")
+    -- Level 2 rather than the floor: the ladder drops {days} above level 2, so at the floor
+    -- this reads "for our" and the point about keeping the rest would be lost in it.
+    T.Eq(ns.Message.TeamFragment(stripped, 2, "{needs} for our {days}"),
+        "for our M/W", "anything else it still says is kept")
+    T.Eq(ns.Message.TeamFragment(stripped, ns.Message.LEVELS, "{needs} for our {days}"),
+        "for our", "and at the floor the days have gone too, but it is still not empty")
+
+    -- A team with no tag of its own falls back to its name, so the floor is never blank.
+    local unnamed = { name = "Sunday Alt", tag = "", needs = {} }
+    T.Eq(ns.Message.TeamFragment(unnamed, ns.Message.LEVELS, "{needs}"), "Sunday Alt",
+        "and the name stands in when there is no tag")
+end)
+
+T.Case("Message: a questionable team template is described, not corrected", function()
+    local Check = ns.Message.CheckTeamTemplate
+
+    T.Eq(Check("{tag} {days}: {needs}", 2), nil, "the default is fine")
+    T.Eq(Check("{needs} for our {days}", 2), nil, "and so is one without a tag")
+    T.Eq(Check("{needs}", 1), nil, "with a single team, {needs} alone is enough")
+
+    T.Eq(type(Check("", 1)), "string", "an empty template is called out")
+    T.Eq(type(Check("we are recruiting", 1)), "string", "and one with no tokens")
+    T.Eq(type(Check("{tag} {days}", 1)), "string",
+        "and one that never says who you are looking for")
+
+    -- Two teams run together with nothing to tell them apart reads as one long list.
+    T.Eq(type(Check("{needs}", 2)), "string", "two teams need something to tell them apart")
+end)
+
+T.Case("Teams: a need can be moved to another team", function()
+    local doc = TwoTeams()
+    local healer = doc.teams[1].needs[1]
+
+    T.Eq(ns.Teams.MoveNeed(doc, healer, 2), true, "it moved")
+    T.Eq(#doc.teams[1].needs, 1, "and left the team it was on")
+    T.Eq(#doc.teams[2].needs, 3, "and arrived at the other one")
+    T.Eq(doc.teams[2].needs[3], healer, "as the same need, not a copy")
+
+    -- Moving it where it already is did nothing, which is not a failure.
+    T.Eq(ns.Teams.MoveNeed(doc, healer, 2), true, "moving it onto its own team is fine")
+    T.Eq(#doc.teams[2].needs, 3, "and changes nothing")
+end)
+
+T.Case("Teams: a move that cannot happen leaves everything where it was", function()
+    local doc = TwoTeams()
+    local healer = doc.teams[1].needs[1]
+
+    local ok, why = ns.Teams.MoveNeed(doc, healer, 99)
+    T.Eq(ok, false, "there is no team 99")
+    T.Eq(type(why), "string", "and it says so")
+    T.Eq(#doc.teams[1].needs, 2, "the need stayed where it was")
+
+    T.Eq(ns.Teams.MoveNeed(doc, { role = "Tank" }, 1), false, "a need on no team moves nowhere")
+    T.Eq(ns.Teams.MoveNeed(doc, nil, 1), false, "and neither does nothing")
+
+    -- A full team refuses rather than taking one too many: the message has a size, and a
+    -- need that left one team without arriving at the other would just be gone.
+    local full = TwoTeams()
+    local first = full.teams[1].needs[1]
+    full.teams[2].needs = {}
+    for i = 1, ns.Doc.MAX_NEEDS do
+        full.teams[2].needs[i] = { role = "DPS", class = "", count = 1, priority = i }
+    end
+    local moved, reason = ns.Teams.MoveNeed(full, first, 2)
+    T.Eq(moved, false, "the target is full")
+    T.Eq(type(reason), "string", "and says which way it is full")
+    T.Eq(#full.teams[1].needs, 2, "so the need is still on its own team")
+    T.Eq(#full.teams[2].needs, ns.Doc.MAX_NEEDS, "and the full one did not grow")
 end)
