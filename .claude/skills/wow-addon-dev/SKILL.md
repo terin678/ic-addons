@@ -27,16 +27,32 @@ into `Professions.lua` profiles, not into the modules.
 
 ## Shared code: ICLibs
 
-Code two addons need (today: reading a profession window into a book) lives in the
-library addon `AddonProjects/anniversary/ICLibs` as a LibStub library
-(`LibICTradeSkill-1.0`). Addons that use it list `## Dependencies: ICLibs` in their TOC
-and fetch it with `LibStub("LibICTradeSkill-1.0")`. Bump the library's MINOR when its
-API changes. `scripts/package.ps1` bundles required addons into the zip and
-`scripts/deploy.ps1` links them; do not copy library files into an addon's own folder.
+Code more than one addon needs lives in the library addon
+`AddonProjects/anniversary/ICLibs` as LibStub libraries. There are two:
+
+- `LibICTradeSkill-1.0` (MINOR 2) reads a profession window into a book.
+- `LibICUI-1.0` (MINOR 5) is the window, tab, list and widget toolkit in the guild
+  palette, and carries the brand itself. Four addons depend on it.
+
+Addons that use either list `## Dependencies: ICLibs` in their TOC and fetch it with
+`LibStub("LibICUI-1.0")`. Bump the library's MINOR when its API changes, and record the
+new number in `Docs/ICLibs.md` so a reader can tell whether the bump happened.
+`scripts/package.ps1` bundles required addons into the zip and `scripts/deploy.ps1` links
+them; do not copy library files into an addon's own folder.
+
+## Starting a new addon
+
+`scripts/new-addon.ps1 -Name <Name> -Slash <slash> -Title "<Title>" [-Minimal]` copies
+ICTemplate, rewrites its three tokens, adds the three registration rows and lints the
+result. It defaults `## Category:` to the guild heading; pass `-Category` only for an addon
+that genuinely belongs elsewhere in the AddOns list. `Docs/ICTemplate.md` has the by-hand
+version and says what to throw away.
 
 ## While editing
 
 - New file: add it to the `.toc` in load order (data and logic before UI).
+- `Bindings.xml` ships but is never listed in the `.toc`: the client loads it by filename,
+  and listing it loads every binding twice. The linter fails on it.
 - New wait on the client: give it a state, a timeout, and a cancel path. Copy the pattern
   in `MalexisAuctionWatcher/Scanning.lua`.
 - New optional dependency call: guard the global and the function, `pcall` internals.
@@ -67,12 +83,23 @@ things stand in for that, in order:
 
 1. `python scripts/lint.py` before packaging. It parses every file, and catches the
    mistakes that have shipped: a local referenced inside its own assignment, a texture path
-   that does not resolve, a `.toc` out of step with the files on disk, and a version that
-   moved in one place but not the other three. Fix everything it prints.
-2. `TradeMaster/Tests.lua` runs in game with `/tm test` and holds 100 cases. Any decision
-   worth arguing about belongs in a pure function with a case here, and a case that asserts
-   an ordering must have that ordering worked out rather than assumed. MalexisAuctionWatcher
-   has no test file yet.
+   that does not resolve, a `.toc` out of step with the files on disk, a version that moved
+   in one of its three places but not the others, `Bindings.xml` listed in a `.toc` (the
+   client loads it by filename, so listing it loads the bindings twice), and a quoted
+   string that runs past the end of its line -- `luaparser` accepts that one and the client
+   refuses to load the file, so it is checked separately. Fix everything it prints.
+2. The addon's own cases, in game. Five addons carry a `Tests.lua`, loaded last:
+
+   | Command | Cases |
+   | --- | --- |
+   | `/tm test` (TradeMaster) | 128 |
+   | `/cm test` (CutMaster) | 135 |
+   | `/gr test` (GuildRecruitment) | 39 |
+   | `/ictpl test` (ICTemplate) | 27 |
+   | `/maw test` (MalexisAuctionWatcher) | 8 |
+
+   Any decision worth arguing about belongs in a pure function with a case here, and a case
+   that asserts an ordering must have that ordering worked out rather than assumed.
 3. The `wow-ui-reviewer` agent on every UI file touched.
 
 Then say plainly in the summary that nothing was run in the client, and give the player the
@@ -87,5 +114,7 @@ fail loudly in chat over ones that fail silently.
 4. Send the zip to the user with SendUserFile. `dist/` is git-ignored.
 5. Commit on the feature branch with an imperative subject and a body listing
    player-visible changes, then push the branch. `main` only accepts pull requests:
-   when the user wants it merged, `gh pr create --fill` and squash-merge after the
-   in-game checklist in the PR template is done.
+   when the user wants it merged, `gh pr create --fill`, then `gh pr merge --merge`
+   once the in-game checklist in the PR template is done. Never squash: each commit
+   here is written to stand on its own so a single change can be found and reverted
+   on its own, and a squash throws that away.
