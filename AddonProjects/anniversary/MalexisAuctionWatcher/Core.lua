@@ -1,5 +1,6 @@
 -- MalexisAuctionWatcher Core - Main coordination and utilities
 local addonName = "MalexisAuctionWatcher"
+local VERSION = "1.19.0"
 local MAW = {}
 
 -- Debug mode flag
@@ -211,6 +212,27 @@ local function SlashCommandHandler(msg)
         else
             print(addonName .. ": History retention is " .. MAW:GetHistoryDays() .. " days (use /maw retention <days>, min 7)")
         end
+    elseif command == "scale" then
+        if not MalexisAuctionWatcherUI then
+            print(addonName .. ": UI module not loaded")
+        else
+            local pct = tonumber(args[2])
+            if pct then
+                local applied, why = MalexisAuctionWatcherUI:SetScale(pct / 100)
+                if applied then
+                    print(string.format("%s: Window scale set to %d%%",
+                        addonName, applied * 100 + 0.5))
+                else
+                    print(addonName .. ": " .. (why or "could not set the scale"))
+                end
+            else
+                print(string.format("%s: Window scale is %d%%. Use /maw scale <percent> "
+                    .. "(50-125), or drag the grip in the bottom-right corner.",
+                    addonName, MalexisAuctionWatcherUI:GetScale() * 100 + 0.5))
+            end
+        end
+    elseif command == "test" then
+        MAW.Tests.Run()
     elseif command == "minimap" then
         if MalexisAuctionWatcherMinimap then
             MalexisAuctionWatcherMinimap:Toggle()
@@ -219,6 +241,8 @@ local function SlashCommandHandler(msg)
         print(addonName .. " Commands:")
         print("  /maw show (or /maw ui) - Toggle merchant price spreadsheet")
         print("  /maw minimap - Show/hide the minimap button")
+        print("  /maw scale <percent> - Resize the window, 50 to 125 (or drag its bottom-right corner)")
+        print("  /maw test - Run the built-in checks")
         print("  /maw history [item name] - Open the price history chart")
         print("  /maw recipes - Open the material -> product profit table")
         print("  /maw movers - What to buy, convert, and list right now")
@@ -258,7 +282,7 @@ eventFrame:SetScript("OnUpdate", function(self, elapsed) MAW:OnUpdateHandler(sel
 eventFrame:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" and arg1 == addonName then
         MAW:InitializeDB()
-        print(addonName .. " v1.13.0 loaded. Type /maw help for commands.")
+        print(addonName .. " v" .. VERSION .. " loaded. Type /maw help for commands.")
 
         -- Create minimap button
         if MalexisAuctionWatcherMinimap then
@@ -323,6 +347,9 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
             if professionName then
                 MAW:ScanProfessionRecipes(professionName)
             end
+            -- The full book (reagents, counts, quality) through ICLibs, kept
+            -- per character so recipes can be added without the window open.
+            if MAW.ScanOpenBook then MAW:ScanOpenBook({ silent = true }) end
         end)
     elseif event == "CRAFT_SHOW" then
         -- Scan craft recipes when enchanting window opens

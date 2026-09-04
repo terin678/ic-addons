@@ -289,4 +289,260 @@ function MAW:AnalyzePeriodicity(itemName, mode, span)
     }
 end
 
+--------------------------------------------------------------------------------
+-- What the History tab is looking at
+--------------------------------------------------------------------------------
+
+-- Saved, not session state. A view that comes back showing a different item than
+-- the one you left it on reads as lost work, not as a default.
+--   settings.history = { kind = "item"|"recipe", name = "...", mode = "daily30" }
+local function HistorySettings()
+    local settings = MalexisAuctionWatcherDB and MalexisAuctionWatcherDB.settings
+    if not settings then return nil end
+    settings.history = settings.history or { kind = "item", mode = "daily30" }
+    return settings.history
+end
+
+-- Materials before products, then display order. Ties break on name so the list
+-- does not shuffle between refreshes.
+function MAW:SortedTrackedItemNames()
+    local db = self:GetActiveDB()
+    local list = {}
+    for itemName, itemData in pairs(db.items or {}) do
+        list[#list + 1] = { name = itemName, data = itemData }
+    end
+    table.sort(list, function(a, b)
+        local ta = a.data.itemType or "material"
+        local tb = b.data.itemType or "material"
+        if ta ~= tb then return ta == "material" end
+        local oa, ob = a.data.order or 0, b.data.order or 0
+        if oa ~= ob then return oa < ob end
+        return a.name < b.name
+    end)
+    return list
+end
+
+-- Returns kind ("item"|"recipe") and name, or nil when nothing is tracked at all.
+-- Falls back to the first tracked item without writing that fallback back: a
+-- default nobody chose should stay derived, so it moves when the list does.
+function MAW:GetHistorySelection()
+    local h = HistorySettings()
+    local db = self:GetActiveDB()
+    if h and h.name then
+        if h.kind == "recipe" then
+            if self:FindRecipe(h.name) then return "recipe", h.name end
+        elseif db.items and db.items[h.name] then
+            return "item", h.name
+        end
+    end
+    local list = self:SortedTrackedItemNames()
+    if list[1] then return "item", list[1].name end
+    local recipes = self:GetRecipes()
+    if recipes[1] then return "recipe", recipes[1].name end
+    return nil, nil
+end
+
+function MAW:SetHistorySelection(kind, name)
+    local h = HistorySettings()
+    if not h then return end
+    h.kind, h.name = kind, name
+end
+
+function MAW:GetHistoryMode()
+    local h = HistorySettings()
+    return (h and h.mode) or "daily30"
+end
+
+function MAW:SetHistoryMode(key)
+    local h = HistorySettings()
+    if h then h.mode = key end
+end
+
+--------------------------------------------------------------------------------
+-- Recipe series: the product and its materials on one set of slots
+--------------------------------------------------------------------------------
+
+-- Pure, so the arithmetic can be tested without a database. input = {
+--   count, labels, cut, productName, productCount, productPoints, productTsm,
+--   mats = { { name, count, vendor, points, tsm } }, missing = { names } }
+--
+-- A `tsm` is { market, historical } straight off the item. They are levels, not
+-- series, so they are scaled the same way the lines are and handed back for the
+-- chart to draw flat: a batch of the product after the cut, a material times how
+-- many the recipe needs.
+--
+-- Every series for a given mode has the same slots in the same order, so the
+-- product and each material line up index for index and nothing here has to look
+-- at a history bucket.
+--
+-- A gap is nil, never zero. If a material you have to buy has no price in a slot
+-- then the batch cost for that slot is unknown, and an unknown cost drawn as zero
+-- reads as a free craft. The material's own line still draws wherever it does have
+-- a price, so you can see which one is missing.
+function MAW.ComposeRecipeSeries(input)
+    local count = input.count or 0
+    local cut = input.cut or 0
+    local productCount = input.productCount or 1
+    local out = {
+        count = count,
+        labels = input.labels or {},
+        cut = cut,
+        productName = input.productName,
+        productCount = productCount,
+        value = {}, cost = {}, margin = {},
+        mats = {},
+        vendorCost = 0,
+        missing = input.missing or {},
+        complete = 0,
+        tsm = {},
+    }
+
+    local function Scaled(ref, factor)
+        if not ref then return nil end
+        if not ref.market and not ref.historical then return nil end
+        return {
+            market = ref.market and ref.market * factor or nil,
+            historical = ref.historical and ref.historical * factor or nil,
+        }
+    end
+
+    out.tsm.value = Scaled(input.productTsm, productCount * (1 - cut))
+
+    local productPoints = input.productPoints or {}
+    for i = 1, count do
+        local p = productPoints[i]
+        if p and p.n and p.n > 0 and p.avg then
+            out.value[i] = p.avg * productCount * (1 - cut)
+        end
+    end
+
+    -- A vendor material costs the same every slot, so it is a constant folded into
+    -- the cost rather than a line that would draw flat across the chart.
+    for _, m in ipairs(input.mats or {}) do
+        local entry = { name = m.name, count = m.count or 1, vendor = m.vendor }
+        entry.tsm = Scaled(m.tsm, entry.count)
+        if m.vendor then
+            out.vendorCost = out.vendorCost + m.vendor * entry.count
+        else
+            entry.values = {}
+            local points = m.points or {}
+            for i = 1, count do
+                local p = points[i]
+                if p and p.n and p.n > 0 and p.avg then
+                    entry.values[i] = p.avg * entry.count
+                end
+            end
+        end
+        out.mats[#out.mats + 1] = entry
+    end
+
+    do
+        local total, known = out.vendorCost, false
+        for _, m in ipairs(out.mats) do
+            if not m.vendor then
+                if m.tsm and m.tsm.market then
+                    total = total + m.tsm.market
+                    known = true
+                else
+                    known = false
+                    break
+                end
+            end
+        end
+        if known then out.tsm.cost = { market = total } end
+    end
+
+    for i = 1, count do
+        local total, known = out.vendorCost, true
+        for _, m in ipairs(out.mats) do
+            if m.values then
+                local v = m.values[i]
+                if v then
+                    total = total + v
+                else
+                    known = false
+                end
+            end
+        end
+        if known then out.cost[i] = total end
+
+        if out.cost[i] and out.value[i] then
+            out.margin[i] = out.value[i] - out.cost[i]
+            out.complete = out.complete + 1
+            local slot = {
+                index = i, label = out.labels[i], margin = out.margin[i],
+                value = out.value[i], cost = out.cost[i],
+            }
+            if not out.best or slot.margin > out.best.margin then out.best = slot end
+            if not out.worst or slot.margin < out.worst.margin then out.worst = slot end
+        end
+    end
+
+    return out
+end
+
+-- Reads one series per item through GetSeries, which is the only thing that walks
+-- history buckets. An item that is not tracked at all returns no points and is
+-- named in `missing` instead.
+function MAW:GetRecipeSeries(recipe, mode, span)
+    local labels, count, missing = {}, 0, {}
+
+    local function series(itemName)
+        local points = self:GetSeries(itemName, mode, span)
+        if #points == 0 then
+            missing[#missing + 1] = itemName
+        elseif #points > count then
+            count = #points
+            labels = {}
+            for i, p in ipairs(points) do labels[i] = p.label end
+        end
+        return points
+    end
+
+    -- TSM has no daily history, only these two averages, so they arrive as
+    -- levels rather than as points on the series.
+    local db = self:GetActiveDB()
+    local tsmOn = self.sources and self.sources.tsm and self.sources.tsm.available
+        and self:IsSourceEnabled("tsm")
+    local function reference(itemName)
+        if not tsmOn then return nil end
+        local itemData = db.items and db.items[itemName]
+        return itemData and itemData.tsmRef or nil
+    end
+
+    local productPoints = series(recipe.product)
+    local mats = {}
+    for _, mat in ipairs(recipe.materials or {}) do
+        local m = { name = mat.item, count = mat.count or 1, vendor = mat.vendor }
+        if not mat.vendor then
+            m.points = series(mat.item)
+            m.tsm = reference(mat.item)
+        end
+        mats[#mats + 1] = m
+    end
+
+    return MAW.ComposeRecipeSeries({
+        count = count,
+        labels = labels,
+        cut = self:GetAHCut(),
+        productName = recipe.product,
+        productCount = recipe.productCount or 1,
+        productPoints = productPoints,
+        productTsm = reference(recipe.product),
+        mats = mats,
+        missing = missing,
+    })
+end
+
+-- The slot to describe as "now": the one asked for if it has a margin, else the
+-- most recent one that does. Walking back matters in the cyclic views, where the
+-- hour you are in may simply have no scan yet.
+function MAW.RecipeSlotAt(series, fromIndex)
+    local start = math.min(fromIndex or series.count, series.count)
+    for i = start, 1, -1 do
+        if series.margin[i] then return i end
+    end
+    return nil
+end
+
 _G.MalexisAuctionWatcher = MAW

@@ -13,11 +13,17 @@ local TOP_MARGIN = 8
 local RIGHT_MARGIN = 8
 local GRIDLINES = 4
 
+-- The coin API refuses a negative, and the recipe view's margin is negative
+-- whenever a craft loses money, so the sign is carried here rather than by every
+-- caller.
 local function FormatMoney(copper)
+    copper = tonumber(copper) or 0
+    local sign = copper < 0 and "-" or ""
+    copper = math.abs(copper)
     if _G.MalexisAuctionWatcherHelpers then
-        return _G.MalexisAuctionWatcherHelpers.FormatMoney(copper)
+        return sign .. _G.MalexisAuctionWatcherHelpers.FormatMoney(copper)
     end
-    return tostring(math.floor(copper or 0))
+    return sign .. tostring(math.floor(copper))
 end
 
 local ChartMixin = {}
@@ -40,20 +46,44 @@ function ChartMixin:AcquireBar(index)
         -- Anchor to the visible candle, not the full-height hit area
         GameTooltip:SetOwner(b, "ANCHOR_NONE")
         GameTooltip:ClearAllPoints()
-        GameTooltip:SetPoint("BOTTOM", b.range, "TOP", 0, 6)
+        -- Anchor to the visible candle, or to the slot itself when there is none
+        GameTooltip:SetPoint("BOTTOM", b.noBars and b or b.range, "TOP", 0, 6)
         GameTooltip:AddLine(b.tooltipTitle or p.label)
-        if p.n and p.n > 0 then
-            GameTooltip:AddDoubleLine("Low", FormatMoney(p.low), 1, 1, 1, 0.5, 1, 0.5)
-            GameTooltip:AddDoubleLine("Average", FormatMoney(p.avg), 1, 1, 1, 1, 1, 0.5)
-            GameTooltip:AddDoubleLine("High", FormatMoney(p.high), 1, 1, 1, 1, 0.5, 0.5)
-            GameTooltip:AddDoubleLine("Samples", tostring(p.n), 1, 1, 1, 0.8, 0.8, 0.8)
-            if p.src then
-                local MAW = _G.MalexisAuctionWatcher
-                local name = (MAW and MAW.SourceLabel) and MAW:SourceLabel(p.src) or p.src
-                GameTooltip:AddDoubleLine("Source", name, 1, 1, 1, 0.9, 0.7, 0.4)
+        if not b.noBars then
+            if p.n and p.n > 0 then
+                GameTooltip:AddDoubleLine("Low", FormatMoney(p.low), 1, 1, 1, 0.5, 1, 0.5)
+                GameTooltip:AddDoubleLine("Average", FormatMoney(p.avg), 1, 1, 1, 1, 1, 0.5)
+                GameTooltip:AddDoubleLine("High", FormatMoney(p.high), 1, 1, 1, 1, 0.5, 0.5)
+                GameTooltip:AddDoubleLine("Samples", tostring(p.n), 1, 1, 1, 0.8, 0.8, 0.8)
+                if p.src then
+                    local MAW = _G.MalexisAuctionWatcher
+                    local name = (MAW and MAW.SourceLabel) and MAW:SourceLabel(p.src) or p.src
+                    GameTooltip:AddDoubleLine("Source", name, 1, 1, 1, 0.9, 0.7, 0.4)
+                end
+            else
+                GameTooltip:AddLine("No data", 0.6, 0.6, 0.6)
             end
-        else
-            GameTooltip:AddLine("No data", 0.6, 0.6, 0.6)
+        end
+        -- Every line's value for this slot, including the ones that are listed but
+        -- not drawn (the margin), so hovering answers the whole question.
+        if b.lines and #b.lines > 0 then
+            GameTooltip:AddLine(" ")
+            for _, line in ipairs(b.lines) do
+                local v = line.values and line.values[b.slot]
+                local c = line.color or { 1, 1, 1 }
+                GameTooltip:AddDoubleLine(line.label or "", v and FormatMoney(v) or "no data",
+                    1, 1, 1, c[1], c[2], c[3])
+            end
+        end
+        -- Levels rather than series: a TSM average is one number for the whole
+        -- chart, so it belongs in every slot's tooltip and in none of the lines.
+        if b.tooltipRows and #b.tooltipRows > 0 then
+            GameTooltip:AddLine(" ")
+            for _, r in ipairs(b.tooltipRows) do
+                local c = r.color or { 0.8, 0.8, 0.8 }
+                GameTooltip:AddDoubleLine(r.label or "", r.value and FormatMoney(r.value) or "-",
+                    0.7, 0.7, 0.7, c[1], c[2], c[3])
+            end
         end
         GameTooltip:Show()
     end)
@@ -61,6 +91,20 @@ function ChartMixin:AcquireBar(index)
 
     self.bars[index] = bar
     return bar
+end
+
+-- A line is drawn as steps: a flat run across each slot, and an upright joining
+-- one run to the next. Every piece is axis-aligned, because the only way to slope
+-- a texture here is to supply artwork that is already sloped -- SetRotation turns
+-- the picture inside the rectangle, and a rectangle filled with one colour looks
+-- exactly the same turned. Steps also say the right thing: a value holds for the
+-- whole bucket, it is not a reading taken at one instant inside it.
+function ChartMixin:AcquireSegment(index)
+    local seg = self.segments[index]
+    if seg then return seg end
+    seg = self.plot:CreateTexture(nil, "OVERLAY")
+    self.segments[index] = seg
+    return seg
 end
 
 function ChartMixin:AcquireLabel(index)
@@ -75,7 +119,16 @@ function ChartMixin:AcquireLabel(index)
 end
 
 -- points: { {label, low, avg, high, n, src}, ... }
--- opts: { highlight = { best = i, worst = i }, maxLabels = n, tooltipTitle = fn(point) }
+-- opts: { highlight = { best = i, worst = i }, maxLabels = n, tooltipTitle = fn(point),
+--         refLines = { {value, label, color} }, markerIndex, markerLabel,
+--         noBars = true,   -- keep the slots and their hover targets, draw no candles
+--         lines = { { label, color, width, values = { [slot] = value }, plot } },
+--         tooltipRows = { { label, value, color } } }
+-- A reference line with subtle = true is drawn thin and unlabelled across the
+-- plot only: one per piece of a recipe would otherwise be a wall of captions.
+-- Lines are drawn as steps: a value holds across its whole slot.
+-- A line's values may have holes; plot = false lists it in the tooltip without
+-- drawing it, which is how the margin is shown without inventing a scale for it.
 function ChartMixin:SetData(points, opts)
     opts = opts or {}
     local plotW = self:GetWidth() - LEFT_MARGIN - RIGHT_MARGIN
@@ -88,6 +141,16 @@ function ChartMixin:SetData(points, opts)
         if p.n and p.n > 0 then
             if not minV or p.low < minV then minV = p.low end
             if not maxV or p.high > maxV then maxV = p.high end
+        end
+    end
+    -- Lines carry their own values, and a lines-only chart has no bars to take a
+    -- scale from. Counted as data, unlike reference lines, because they are data.
+    for _, line in ipairs(opts.lines or {}) do
+        if line.plot ~= false then
+            for _, v in pairs(line.values or {}) do
+                if not minV or v < minV then minV = v end
+                if not maxV or v > maxV then maxV = v end
+            end
         end
     end
     local hasData = minV ~= nil
@@ -143,9 +206,17 @@ function ChartMixin:SetData(points, opts)
         bar:SetPoint("BOTTOMLEFT", self.plot, "BOTTOMLEFT", x, 0)
         bar:SetSize(barW, plotH)
 
+        bar.noBars = opts.noBars
+        bar.lines = opts.lines
+        bar.tooltipRows = opts.tooltipRows
+        bar.slot = i
+
         bar.range:ClearAllPoints()
         bar.avg:ClearAllPoints()
-        if p.n and p.n > 0 then
+        if opts.noBars then
+            bar.range:Hide()
+            bar.avg:Hide()
+        elseif p.n and p.n > 0 then
             local yLow = YFor(p.low)
             local yHigh = YFor(p.high)
             local h = math.max(2, yHigh - yLow)
@@ -165,10 +236,12 @@ function ChartMixin:SetData(points, opts)
             bar.avg:SetPoint("BOTTOMLEFT", bar, "BOTTOMLEFT", 0, YFor(p.avg) - 1)
             bar.avg:SetWidth(barW)
             bar.avg:Show()
+            bar.range:Show()
         else
             bar.range:SetPoint("BOTTOMLEFT", bar, "BOTTOMLEFT", 0, 0)
             bar.range:SetSize(barW, 2)
             bar.range:SetColorTexture(COLOR_EMPTY[1], COLOR_EMPTY[2], COLOR_EMPTY[3], 0.6)
+            bar.range:Show()
             bar.avg:Hide()
         end
         bar:Show()
@@ -188,6 +261,50 @@ function ChartMixin:SetData(points, opts)
     for i = count + 1, #self.bars do
         self.bars[i]:Hide()
         if self.xLabels[i] then self.xLabels[i]:Hide() end
+    end
+
+    -- Lines. A slot with no value draws nothing and joins to nothing, so a gap in
+    -- the data stays a gap rather than a line running confidently through it.
+    local usedSegments = 0
+    local function Piece(x, y, w, h, color, sublevel)
+        usedSegments = usedSegments + 1
+        local seg = self:AcquireSegment(usedSegments)
+        seg:SetDrawLayer("OVERLAY", sublevel)
+        seg:SetColorTexture(color[1], color[2], color[3], 0.95)
+        seg:SetSize(math.max(w, 1), math.max(h, 1))
+        seg:ClearAllPoints()
+        seg:SetPoint("BOTTOMLEFT", self.plot, "BOTTOMLEFT", x, y)
+        seg:Show()
+    end
+
+    for li, line in ipairs(opts.lines or {}) do
+        if line.plot ~= false then
+            local color = line.color or COLOR_NEUTRAL
+            local width = line.width or 1
+            -- Later lines sit on top: the caller passes the thin material lines
+            -- first and the two bold ones last.
+            local sublevel = math.min(7, li)
+            local prevY
+            for i = 1, count do
+                local v = line.values and line.values[i]
+                if v then
+                    local y = YFor(v)
+                    local left = (i - 1) * slotW
+                    Piece(left, y - width / 2, slotW, width, color, sublevel)
+                    if prevY then
+                        -- The upright joining the two runs, on the slot boundary.
+                        local lo, hi = math.min(prevY, y), math.max(prevY, y)
+                        Piece(left - width / 2, lo, width, hi - lo, color, sublevel)
+                    end
+                    prevY = y
+                else
+                    prevY = nil
+                end
+            end
+        end
+    end
+    for i = usedSegments + 1, #self.segments do
+        self.segments[i]:Hide()
     end
 
     -- Reference lines (horizontal, e.g. TSM averages)
@@ -220,10 +337,17 @@ function ChartMixin:SetData(points, opts)
             self.refLines[i] = line
         end
         local c = ref.color or { 0.9, 0.6, 0.9 }
-        line.tex:SetColorTexture(c[1], c[2], c[3], 0.9)
+        line.tex:SetColorTexture(c[1], c[2], c[3], ref.subtle and 0.55 or 0.9)
         line.text:SetTextColor(c[1], c[2], c[3])
 
-        if ref.value and ref.value > 0 then
+        if ref.value and ref.value > 0 and ref.subtle then
+            local y = math.max(0, math.min(plotH, YFor(ref.value)))
+            line.tex:ClearAllPoints()
+            line.tex:SetPoint("BOTTOMLEFT", self.plot, "BOTTOMLEFT", 0, y)
+            line.tex:SetPoint("BOTTOMRIGHT", self.plot, "BOTTOMRIGHT", 0, y)
+            line.tex:Show()
+            line.text:Hide()
+        elseif ref.value and ref.value > 0 then
             local y = math.max(0, math.min(plotH, YFor(ref.value)))
             -- Span the full chart width, through the y-axis margin, so the line reads as a level
             line.tex:ClearAllPoints()
@@ -257,23 +381,42 @@ function ChartMixin:SetData(points, opts)
         self.refLines[i].text:Hide()
     end
 
-    -- Today marker: a line on the right edge of the current bucket, where the cycle wraps
+    -- Today marker. One line on the wrap edge left it ambiguous which of the two
+    -- buckets either side of it was the current one, so the bucket is bracketed:
+    -- a line down each edge with a faint band between them. The band sits on
+    -- BORDER, under the bars, so it tints the slot without dimming the data.
     if opts.markerIndex and opts.markerIndex >= 1 and opts.markerIndex <= count then
-        local x = opts.markerIndex * slotW
+        local right = opts.markerIndex * slotW
+        local left = math.max(0, right - slotW)
+
         self.marker:ClearAllPoints()
-        self.marker:SetPoint("BOTTOMLEFT", self.plot, "BOTTOMLEFT", x - 1, 0)
+        self.marker:SetPoint("BOTTOMLEFT", self.plot, "BOTTOMLEFT", right - 1, 0)
         self.marker:SetHeight(plotH)
         self.marker:Show()
+
+        self.markerStart:ClearAllPoints()
+        self.markerStart:SetPoint("BOTTOMLEFT", self.plot, "BOTTOMLEFT", left, 0)
+        self.markerStart:SetHeight(plotH)
+        self.markerStart:Show()
+
+        self.markerBand:ClearAllPoints()
+        self.markerBand:SetPoint("BOTTOMLEFT", self.plot, "BOTTOMLEFT", left, 0)
+        self.markerBand:SetSize(math.max(1, right - left), plotH)
+        self.markerBand:Show()
+
         self.markerText:ClearAllPoints()
+        -- The label goes outside the bracket, on whichever side has room.
         if opts.markerIndex > count / 2 then
-            self.markerText:SetPoint("TOPRIGHT", self.plot, "BOTTOMLEFT", x - 3, plotH - 2)
+            self.markerText:SetPoint("TOPRIGHT", self.plot, "BOTTOMLEFT", left - 3, plotH - 2)
         else
-            self.markerText:SetPoint("TOPLEFT", self.plot, "BOTTOMLEFT", x + 3, plotH - 2)
+            self.markerText:SetPoint("TOPLEFT", self.plot, "BOTTOMLEFT", right + 3, plotH - 2)
         end
         self.markerText:SetText(opts.markerLabel or "Today")
         self.markerText:Show()
     else
         self.marker:Hide()
+        self.markerStart:Hide()
+        self.markerBand:Hide()
         self.markerText:Hide()
     end
 
@@ -306,11 +449,19 @@ function MAWChart.Create(parent, width, height)
 
     frame.refLines = {}
 
-    -- Vertical "Today" marker for cyclic views (day of month, weekday, hour)
+    -- Vertical "Today" marker for cyclic views (day of month, weekday, hour).
+    -- Two lines and a band, so the current bucket is the one between them.
     frame.marker = frame.plot:CreateTexture(nil, "OVERLAY")
     frame.marker:SetWidth(2)
     frame.marker:SetColorTexture(1, 0.85, 0.3, 0.9)
     frame.marker:Hide()
+    frame.markerStart = frame.plot:CreateTexture(nil, "OVERLAY")
+    frame.markerStart:SetWidth(2)
+    frame.markerStart:SetColorTexture(1, 0.85, 0.3, 0.9)
+    frame.markerStart:Hide()
+    frame.markerBand = frame.plot:CreateTexture(nil, "BORDER")
+    frame.markerBand:SetColorTexture(1, 0.85, 0.3, 0.10)
+    frame.markerBand:Hide()
     frame.markerText = frame.plot:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     frame.markerText:SetTextColor(1, 0.85, 0.3)
     frame.markerText:Hide()
@@ -323,6 +474,7 @@ function MAWChart.Create(parent, width, height)
 
     frame.bars = {}
     frame.xLabels = {}
+    frame.segments = {}
 
     return frame
 end

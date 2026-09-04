@@ -1,0 +1,8 @@
+<Bindings>
+    <Binding name="GUILDRECRUITMENT_BARK" header="GUILDRECRUITMENT" description="Send the recruitment message">
+        GuildRecruitment_BarkNow()
+    </Binding>
+    <Binding name="GUILDRECRUITMENT_TOGGLE" description="Open or close the GuildRecruitment window">
+        GuildRecruitment_Toggle()
+    </Binding>
+</Bindings>

@@ -41,4 +41,18 @@ if ($Copy) {
     New-Item -ItemType Junction -Path $target -Target $source | Out-Null
     Write-Host "Linked $target -> $source"
 }
+# Required addons from the same flavor are linked too, so the game can load this one.
+$toc = Get-Content (Join-Path $source "$Addon.toc")
+$depLine = $toc | Where-Object { $_ -match '^## (Dependencies|RequiredDeps):\s*(.+)$' } | Select-Object -First 1
+if ($depLine -match '^## (Dependencies|RequiredDeps):\s*(.+)$') {
+    foreach ($dep in ($Matches[2] -split ',')) {
+        $dep = $dep.Trim()
+        $depSource = Join-Path $repoRoot "AddonProjects\$Flavor\$dep"
+        $depTarget = Join-Path $addonsDir $dep
+        if ($dep -and (Test-Path $depSource) -and -not (Test-Path $depTarget)) {
+            if ($Copy) { Copy-Item $depSource $depTarget -Recurse } else { New-Item -ItemType Junction -Path $depTarget -Target $depSource | Out-Null }
+            Write-Host "Linked dependency $depTarget -> $depSource"
+        }
+    }
+}
 Write-Host "Now /reload in game."

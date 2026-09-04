@@ -16,3 +16,7 @@ SavedVariables/
 
 # Local Claude settings (shared skills live in .claude/skills and are committed)
 .claude/settings.local.json
+
+# Python bytecode from scripts/
+__pycache__/
+*.pyc

@@ -167,8 +167,15 @@ function MAW:GetTabItems(tabName)
             for _, n in ipairs(self:GetRecipeItems(recipe)) do add(n) end
         end
     elseif tabName == "history" then
-        local ui = _G.MalexisAuctionWatcherUI
-        add(ui and ui.historyItem)
+        -- A recipe on screen means the whole recipe: scanning only the product
+        -- would leave half the chart unpriced.
+        local kind, name = self:GetHistorySelection()
+        if kind == "recipe" then
+            local recipe = self:FindRecipe(name)
+            for _, n in ipairs(recipe and self:GetRecipeItems(recipe) or {}) do add(n) end
+        else
+            add(name)
+        end
     else
         for name in pairs(db.items) do add(name) end
     end

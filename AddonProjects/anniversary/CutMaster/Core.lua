@@ -122,6 +122,9 @@ ns.Defaults = {
                 -- requireBuyerSignal, since none of the phrases above cover
                 -- this very ordinary "LF <gem> crafter/cutter" phrasing.
                 ["crafter"] = 2, ["cutter"] = 2,
+                -- "LF someone who can MAKE [gem]" is the same request as
+                -- "who can cut", just worded with a different verb.
+                ["who can make"] = 3,
             },
             -- Asking for the profession itself, with no gem named. Word order
             -- separates these from a competitor's "JC LFW".
@@ -156,6 +159,7 @@ ns.Defaults = {
             autoFillTrade = true,
             promptOnDone = true,
             keepDoneDays = 30,
+            pendingTimeoutSec = 300,
         },
         enabled = true,
         gemStats = true,
@@ -175,6 +179,7 @@ frame:RegisterEvent("TRADE_SKILL_CLOSE")
 frame:RegisterEvent("CHAT_MSG_CHANNEL")
 frame:RegisterEvent("CHAT_MSG_WHISPER")
 frame:RegisterEvent("GROUP_ROSTER_UPDATE")
+frame:RegisterEvent("CHAT_MSG_SYSTEM")
 frame:RegisterEvent("CHAT_MSG_RAID_LEADER")
 frame:RegisterEvent("CHAT_MSG_RAID")
 frame:RegisterEvent("CHAT_MSG_PARTY_LEADER")
@@ -190,6 +195,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
         ns.ApplyDefaults(CutMasterDB, ns.Defaults)
         ns.db = CutMasterDB
         if ns.db.settings.bark.enabled and ns.Enabled() then ns.Barker.Start() end
+        ns.Orders.StartExpiryTicker()
         if not ns.Enabled() then
             ns.Print("|cffff9900currently disabled.|r /cm enable to switch back on.")
         end
@@ -197,7 +203,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
         if ns.db.settings.tracker.shown then
             C_Timer.After(1, function() ns.Tracker.Show() end)
         end
-        ns.Print("v1.1.0 loaded. /cm opens the window, /cm help lists commands.")
+        ns.Print("v1.2.0 loaded. /cm opens the window, /cm help lists commands.")
     elseif event == "SKILL_LINES_CHANGED" then
         if ns.db then ns.db.bookDirty = true end
     elseif event == "TRADE_SKILL_SHOW" then
@@ -232,6 +238,19 @@ frame:SetScript("OnEvent", function(self, event, ...)
     elseif event == "GROUP_ROSTER_UPDATE" then
         if ns.db then
             ns.Orders.PromoteGrouped(GetServerTime and GetServerTime() or time())
+        end
+    elseif event == "CHAT_MSG_SYSTEM" then
+        local text = ...
+        local name = ns.db and ns.Inviter.DeclinedName(text, _G.ERR_DECLINE_GROUP_S)
+        if name then
+            local short = name:gsub("%-.*", "")
+            local o = ns.Orders.CancelPending(
+                short, GetServerTime and GetServerTime() or time())
+            if o then
+                ns.Print(string.format(
+                    "|cff888888%s declined the invite.|r Order #%d closed.", short, o.id))
+                if ns.Tracker then ns.Tracker.Refresh() end
+            end
         end
     elseif event == "CHAT_MSG_WHISPER_INFORM" then
         local text, target = ...
@@ -365,6 +384,24 @@ local function HandleSlash(input)
                 end
             end
             ns.Print("no order with that id.")
+        elseif sub == "removeitem" then
+            local id, name = arg:match("^(%S+)%s+(.+)$")
+            local o = id and ns.Orders.ByID(tonumber(id))
+            if not o then
+                ns.Print("usage: /cm order removeitem <id> <gem name>")
+            else
+                local itemID = ns.Orders.FindItemByName(o, name)
+                if not itemID then
+                    ns.Print(string.format(
+                        "no item matching '%s' on order #%d. It has: %s",
+                        name, o.id, ns.Orders.Summarise(o)))
+                else
+                    local e = ns.db.book[itemID]
+                    ns.Orders.RemoveItem(o, itemID)
+                    ns.Print(string.format("removed %s from order #%d.",
+                        e and (e.link or e.name) or tostring(itemID), o.id))
+                end
+            end
         elseif sub == "reopen" then
             local o = ns.Orders.ByID(tonumber(arg))
             if o then
@@ -384,7 +421,8 @@ local function HandleSlash(input)
             end
             ns.Print("no order with that id.")
         else
-            ns.Print("usage: /cm order add <player> | done <id> | cancel <id> | reopen <id>")
+            ns.Print("usage: /cm order add <player> | done <id> | cancel <id> "
+                .. "| reopen <id> | removeitem <id> <gem name>")
         end
     elseif cmd == "income" then
         ns.Ledger.Report()
