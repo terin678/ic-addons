@@ -75,6 +75,16 @@ function ChartMixin:AcquireBar(index)
                     1, 1, 1, c[1], c[2], c[3])
             end
         end
+        -- Levels rather than series: a TSM average is one number for the whole
+        -- chart, so it belongs in every slot's tooltip and in none of the lines.
+        if b.tooltipRows and #b.tooltipRows > 0 then
+            GameTooltip:AddLine(" ")
+            for _, r in ipairs(b.tooltipRows) do
+                local c = r.color or { 0.8, 0.8, 0.8 }
+                GameTooltip:AddDoubleLine(r.label or "", r.value and FormatMoney(r.value) or "-",
+                    0.7, 0.7, 0.7, c[1], c[2], c[3])
+            end
+        end
         GameTooltip:Show()
     end)
     bar:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -112,7 +122,10 @@ end
 -- opts: { highlight = { best = i, worst = i }, maxLabels = n, tooltipTitle = fn(point),
 --         refLines = { {value, label, color} }, markerIndex, markerLabel,
 --         noBars = true,   -- keep the slots and their hover targets, draw no candles
---         lines = { { label, color, width, values = { [slot] = value }, plot } } }
+--         lines = { { label, color, width, values = { [slot] = value }, plot } },
+--         tooltipRows = { { label, value, color } } }
+-- A reference line with subtle = true is drawn thin and unlabelled across the
+-- plot only: one per piece of a recipe would otherwise be a wall of captions.
 -- Lines are drawn as steps: a value holds across its whole slot.
 -- A line's values may have holes; plot = false lists it in the tooltip without
 -- drawing it, which is how the margin is shown without inventing a scale for it.
@@ -195,6 +208,7 @@ function ChartMixin:SetData(points, opts)
 
         bar.noBars = opts.noBars
         bar.lines = opts.lines
+        bar.tooltipRows = opts.tooltipRows
         bar.slot = i
 
         bar.range:ClearAllPoints()
@@ -323,10 +337,17 @@ function ChartMixin:SetData(points, opts)
             self.refLines[i] = line
         end
         local c = ref.color or { 0.9, 0.6, 0.9 }
-        line.tex:SetColorTexture(c[1], c[2], c[3], 0.9)
+        line.tex:SetColorTexture(c[1], c[2], c[3], ref.subtle and 0.55 or 0.9)
         line.text:SetTextColor(c[1], c[2], c[3])
 
-        if ref.value and ref.value > 0 then
+        if ref.value and ref.value > 0 and ref.subtle then
+            local y = math.max(0, math.min(plotH, YFor(ref.value)))
+            line.tex:ClearAllPoints()
+            line.tex:SetPoint("BOTTOMLEFT", self.plot, "BOTTOMLEFT", 0, y)
+            line.tex:SetPoint("BOTTOMRIGHT", self.plot, "BOTTOMRIGHT", 0, y)
+            line.tex:Show()
+            line.text:Hide()
+        elseif ref.value and ref.value > 0 then
             local y = math.max(0, math.min(plotH, YFor(ref.value)))
             -- Span the full chart width, through the y-axis margin, so the line reads as a level
             line.tex:ClearAllPoints()
