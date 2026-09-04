@@ -1549,4 +1549,35 @@ T.Case("Whisper: names exactly what one player is missing", function()
     T.Eq(MFD.RaidCheck.FormatWhisper(entryWith("Bob")), nil, "nothing to say")
 end)
 
+-- Durability from the shared LibDurability protocol, which most raiders answer
+-- through BigWigs, DBM or MRT whether or not they run this addon.
+T.Case("MergeRow: LibDurability fills durability when there is no self-report", function()
+    local row = MFD.RaidCheck.MergeRow(MFD.RaidCheck.Classify({}), nil, 73)
+    T.Eq(row.state.durability, 73, "taken from the shared protocol")
+    T.Eq(row.isReported, false, "but the row is still not an MFD-reported row")
+end)
+
+T.Case("MergeRow: a self-report wins over LibDurability for durability", function()
+    local row = MFD.RaidCheck.MergeRow(MFD.RaidCheck.Classify({}), { durability = 90 }, 73)
+    T.Eq(row.state.durability, 90, "the owning client's own report is authoritative")
+end)
+
+T.Case("MergeRow: a self-report without durability still falls back to LibDurability", function()
+    local row = MFD.RaidCheck.MergeRow(MFD.RaidCheck.Classify({}), { spec = "Fire" }, 73)
+    T.Eq(row.state.durability, 73, "report present but silent on durability, so the lib fills it")
+    T.Eq(row.state.spec, "Fire", "and the rest of the report still applies")
+end)
+
+T.Case("Durability: the shared protocol's response parses to percent and broken count", function()
+    local percent, broken = MFD.RaidCheck.ParseDurabilityMessage("85,1")
+    T.Eq(percent, 85, "percent")
+    T.Eq(broken, 1, "broken item count")
+end)
+
+T.Case("Durability: a request or rubbish does not parse as a response", function()
+    T.Eq(MFD.RaidCheck.ParseDurabilityMessage("R"), nil, "a request")
+    T.Eq(MFD.RaidCheck.ParseDurabilityMessage("lots,of,commas"), nil, "wrong shape")
+    T.Eq(MFD.RaidCheck.ParseDurabilityMessage(nil), nil, "nil")
+end)
+
 _G.MarkedForDeath = MFD

@@ -2,7 +2,7 @@
 ## Title: Marked For Death
 ## Notes: Automatic raid target icons for trash by kill priority and crowd control intent, plus a raid buff and consumable check.
 ## Author: dillon_newport
-## Version: 1.0.0
+## Version: 1.0.1
 ## SavedVariables: MarkedForDeathDB
 ## SavedVariablesPerCharacter: MarkedForDeathCharDB
 

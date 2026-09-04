@@ -149,9 +149,14 @@ are missing. The Call out button (or `/mfd callout`) posts to raid chat grouped 
 so the paladin reads the Kings line and the mage reads the Int line. Throttled to one
 per ten seconds.
 
-Some cells need the other player to be running the addon: weapon enchant, durability,
-spec and version cannot be seen from outside, so people without it show `?` there and
-their name is amber to say the row is scan-only. Everything else works on anyone.
+**Durability works on nearly everyone** without them running this addon. It comes over
+LibDurability, a shared protocol embedded in BigWigs, DBM and MRT, so anyone running any
+of those answers. If a player somehow runs none of them, their durability shows `?`.
+
+Three cells do need the other player to be running this addon: weapon enchant, spec and
+version cannot be seen from outside (this is true of MRT as well, whatever it looks
+like), so people without it show `?` there and their name is amber to say the row is
+scan-only. Everything else works on anyone.
 
 A buff nobody present can cast is never reported missing; with no mage in the raid,
 nobody is "missing Intellect". Blessings are shown, never judged: the grid tells you which

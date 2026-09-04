@@ -125,20 +125,24 @@ end
 local REPORT_ONLY = { "weapon", "durability", "spec", "version" }
 local FLAG_ONLY = { "AI", "MOTW", "FORT", "SP" }
 
--- Takes a scanned state and a reported state (or nil). Returns
+-- Takes a scanned state, a reported state (or nil) and a durability percent
+-- learned through the shared LibDurability protocol (or nil). Returns
 -- { state, isReported }. Pure.
 --
 -- The owning client is the authority on its own flags, so a non-nil reported
 -- flag overrides the scan. Names come only from the scan because the wire
--- carries flags, not names. Weapon, durability, spec and version come only
--- from the report because nothing else can see them.
-function RC.MergeRow(scanned, reported)
+-- carries flags, not names. Weapon, spec and version come only from the
+-- report because nothing else can see them. Durability prefers the report and
+-- falls back to LibDurability, which most raiders answer through BigWigs, DBM
+-- or MRT whether or not they run this addon.
+function RC.MergeRow(scanned, reported, libDurability)
     local state = {}
     for k, v in pairs(scanned) do
         state[k] = v
     end
 
     if not reported then
+        state.durability = libDurability
         return { state = state, isReported = false }
     end
 
@@ -152,7 +156,25 @@ function RC.MergeRow(scanned, reported)
         state[key] = reported[key]
     end
 
+    if state.durability == nil then
+        state.durability = libDurability
+    end
+
     return { state = state, isReported = true }
+end
+
+-- Takes a LibDurability message. Returns percent and broken-item count for a
+-- response, or nil for a request or anything else. The protocol is one line:
+-- "R" asks, "percent,broken" answers. Pure.
+function RC.ParseDurabilityMessage(msg)
+    if type(msg) ~= "string" then
+        return nil
+    end
+    local percent, broken = string.match(msg, "^(%d+),(%d+)$")
+    if not percent then
+        return nil
+    end
+    return tonumber(percent), tonumber(broken)
 end
 
 RC.CALLOUT_THROTTLE_SECONDS = 10  -- minimum gap between raid-chat callouts
@@ -428,7 +450,8 @@ function RC:ScanUnit(unit)
     local _, class = UnitClass(unit)
     local scanned = RC.Classify(RC.AuraNames(unit))
     local reported = RC.reports[name] and RC.reports[name].state or nil
-    local row = RC.MergeRow(scanned, reported)
+    local libDurability = RC.durability[name] and RC.durability[name].percent or nil
+    local row = RC.MergeRow(scanned, reported, libDurability)
     RC.rows[name] = {
         name = name,
         class = class,
@@ -441,6 +464,7 @@ end
 
 -- Rebuilds every row. Providers first, because Missing depends on them.
 function RC:Scan()
+    RC:RequestDurability()
     RC.providers = RC.Providers(MFD.Marker.CurrentRoster())
     wipe(RC.rows)
     for _, unit in ipairs(groupUnits()) do
@@ -503,6 +527,129 @@ function RC:Whisper(name)
         return
     end
     pcall(SendChatMessage, "[MFD] " .. text, "WHISPER", nil, name)
+end
+
+-- Durability learned through LibDurability, { [name] = { percent, broken, at } }.
+-- The library is embedded by BigWigs, DBM and MRT among others, so nearly
+-- every raider answers its request regardless of what else they run. It is
+-- used through LibStub when any loaded addon provides it, and the same
+-- one-line protocol is spoken directly when none does.
+RC.durability = {}
+RC.DURABILITY_PREFIX = "LibDRBLT"
+RC.DURABILITY_REQUEST_SECONDS = 10   -- minimum gap between our own requests
+RC.DURABILITY_RESPOND_SECONDS = 4    -- matches the library's own response throttle
+
+local libDurability
+local isDurabilityHooked = false
+local lastDurabilityRequestAt = 0
+local lastDurabilityResponseAt = 0
+local durabilityFrame
+
+local function durabilityChannel()
+    if IsInRaid and IsInRaid() then
+        return "RAID"
+    end
+    if IsInGroup and IsInGroup() then
+        return "PARTY"
+    end
+    return nil
+end
+
+local function recordDurability(percent, broken, sender)
+    local name = string.match(sender or "", "^([^%-]+)") or sender
+    if not name or name == "" then
+        return
+    end
+    RC.durability[name] = { percent = percent, broken = broken, at = GetTime() }
+    if RC.OnDataChanged then
+        RC.OnDataChanged()
+    end
+end
+
+-- Sends our own durability in the shared format, throttled the way the
+-- library throttles itself, so a client with no other addon providing the
+-- library still answers everyone else's requests.
+local function respondDurability(channel)
+    local now = GetTime()
+    if (now - lastDurabilityResponseAt) < RC.DURABILITY_RESPOND_SECONDS then
+        return
+    end
+    lastDurabilityResponseAt = now
+    local percent = durabilityPercent()
+    if not percent then
+        return
+    end
+    local sendFn = C_ChatInfo and C_ChatInfo.SendAddonMessage or SendAddonMessage
+    if type(sendFn) == "function" then
+        pcall(sendFn, RC.DURABILITY_PREFIX, string.format("%d,%d", percent, 0), channel)
+    end
+end
+
+-- Hooks into the durability source once: the library if present, else our
+-- own listener on its prefix. Guarded on every side per the repo standard.
+local function hookDurability()
+    if isDurabilityHooked then
+        return
+    end
+    isDurabilityHooked = true
+
+    if LibStub and type(LibStub.GetLibrary) == "function" then
+        local ok, lib = pcall(LibStub.GetLibrary, LibStub, "LibDurability", true)
+        if ok and lib and type(lib.Register) == "function" then
+            libDurability = lib
+            pcall(lib.Register, lib, "MarkedForDeath", function(percent, broken, sender)
+                recordDurability(percent, broken, sender)
+            end)
+            return
+        end
+    end
+
+    -- No library anywhere in the client: speak the protocol directly.
+    if C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix then
+        pcall(C_ChatInfo.RegisterAddonMessagePrefix, RC.DURABILITY_PREFIX)
+    end
+    durabilityFrame = CreateFrame("Frame")
+    durabilityFrame:RegisterEvent("CHAT_MSG_ADDON")
+    durabilityFrame:SetScript("OnEvent", function(_, _, prefix, msg, channel, sender)
+        if prefix ~= RC.DURABILITY_PREFIX then
+            return
+        end
+        if msg == "R" then
+            respondDurability(channel)
+            return
+        end
+        local percent, broken = RC.ParseDurabilityMessage(msg)
+        if percent then
+            recordDurability(percent, broken, sender)
+        end
+    end)
+end
+
+-- Asks the group for durability. Nothing is sent when solo, and requests are
+-- throttled because the answers arrive from everyone at once.
+function RC:RequestDurability()
+    hookDurability()
+
+    local channel = durabilityChannel()
+    if not channel then
+        return
+    end
+
+    local now = GetTime()
+    if (now - lastDurabilityRequestAt) < RC.DURABILITY_REQUEST_SECONDS then
+        return
+    end
+    lastDurabilityRequestAt = now
+
+    if libDurability then
+        pcall(libDurability.RequestDurability, libDurability, channel)
+        return
+    end
+
+    local sendFn = C_ChatInfo and C_ChatInfo.SendAddonMessage or SendAddonMessage
+    if type(sendFn) == "function" then
+        pcall(sendFn, RC.DURABILITY_PREFIX, "R", channel)
+    end
 end
 
 local heartbeat = 0
