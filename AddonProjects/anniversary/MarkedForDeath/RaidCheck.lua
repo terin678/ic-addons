@@ -473,7 +473,7 @@ RC.rows = {}
 RC.providers = {}
 
 -- Returns the unit tokens for everyone in the group, self included.
-local function groupUnits()
+function RC.GroupUnits()
     local units = {}
     if IsInRaid and IsInRaid() then
         for i = 1, GetNumGroupMembers() do
@@ -530,7 +530,7 @@ function RC:Scan()
     RC:RequestDurability()
     RC.providers = RC.Providers(MFD.Marker.CurrentRoster())
     wipe(RC.rows)
-    for _, unit in ipairs(groupUnits()) do
+    for _, unit in ipairs(RC.GroupUnits()) do
         RC:ScanUnit(unit)
     end
     if RC.OnDataChanged then

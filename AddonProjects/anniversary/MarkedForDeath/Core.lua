@@ -272,6 +272,54 @@ commands.config = {
     end,
 }
 
+commands.whycheck = {
+    desc = "explain why the raid check grid is empty or calling nobody out",
+    run = function()
+        MFD.Print("addon enabled: " .. tostring(MFD.IsEnabled())
+            .. (MFD.IsEnabled() and "" or "  |cffff4444Call out is switched off with it. /mfd on|r"))
+
+        local inRaid = IsInRaid and IsInRaid() or false
+        local inGroup = IsInGroup and IsInGroup() or false
+        MFD.Print(string.format("in raid: %s   in group: %s   members: %s",
+            tostring(inRaid), tostring(inGroup), tostring(GetNumGroupMembers and GetNumGroupMembers() or "?")))
+
+        local units = MFD.RaidCheck.GroupUnits()
+        local named = {}
+        for _, unit in ipairs(units) do
+            named[#named + 1] = unit .. "=" .. tostring(UnitName(unit))
+        end
+        MFD.Print("units the check will read (" .. #units .. "): "
+            .. (#named > 0 and table.concat(named, ", ") or "|cffff4444none|r"))
+
+        MFD.RaidCheck:Scan()
+        local rows = MFD.RaidCheck:SortedRows()
+        MFD.Print("rows after a scan: " .. #rows)
+
+        local roster = MFD.Marker.CurrentRoster()
+        local classes = {}
+        for _, member in ipairs(roster) do
+            classes[#classes + 1] = tostring(member.class)
+        end
+        MFD.Print("roster the provider check uses (" .. #roster .. "): "
+            .. (#classes > 0 and table.concat(classes, ", ") or "|cffff4444none|r"))
+
+        local providers = {}
+        for column, canProvide in pairs(MFD.RaidCheck.providers or {}) do
+            if canProvide then
+                providers[#providers + 1] = column
+            end
+        end
+        table.sort(providers)
+        MFD.Print("buffs somebody here can cast: "
+            .. (#providers > 0 and table.concat(providers, ", ")
+                or "|cff999999none, so no raid buff is reported missing|r"))
+
+        for _, entry in ipairs(rows) do
+            MFD.Print(string.format("  %s: %d missing", entry.name, #entry.missing))
+        end
+    end,
+}
+
 commands.conflicts = {
     desc = "check whether another addon is also placing raid icons",
     run = function()

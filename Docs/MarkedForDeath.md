@@ -211,6 +211,7 @@ Every command is in `/mfd help`.
 | `/mfd fixcvars` | Turn enemy nameplates on and set their range to 41 yards. |
 | `/mfd export` | A string of your own rules to paste to someone. |
 | `/mfd import` | Paste a rule string. It merges in; nothing of yours is deleted. |
+| `/mfd whycheck` | If the raid check grid is empty or calling nobody out, this says exactly why. |
 | `/mfd conflicts` | Check whether another addon is also placing raid icons. |
 | `/mfd coverage` | Mobs you have seen that the bundled database does not list. |
 | `/mfd readycheck` | Start a real ready check, the native one everybody sees. Raid leader or assistant. |
