@@ -7,4 +7,4 @@ Target interface: 20506. Client folder `_anniversary_`.
 | MalexisAuctionWatcher | 1.13.0 | [Docs/MalexisAuctionWatcher.md](../../Docs/MalexisAuctionWatcher.md) |
 | AuctionatorSellingTweaks | 1.0.0 | [Docs/AuctionatorSellingTweaks.md](../../Docs/AuctionatorSellingTweaks.md) |
 | CutMaster | 1.1.0 | [Docs/CutMaster.md](../../Docs/CutMaster.md) |
-| MarkedForDeath | 1.1.0 | [Docs/MarkedForDeath.md](../../Docs/MarkedForDeath.md) |
+| MarkedForDeath | 1.2.0 | [Docs/MarkedForDeath.md](../../Docs/MarkedForDeath.md) |

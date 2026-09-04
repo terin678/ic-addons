@@ -34,6 +34,20 @@ Change any of it in `/mfd config`. A job nobody in the group can do is skipped e
 with no mage present, sheep rules fall through to their fallback (usually kill) instead of
 producing an icon nobody will honour.
 
+## The minimap button
+
+Left click opens a menu with every window in it, plus quick toggles for automatic marking
+and pull announcements. Right click jumps straight to rules, middle click to the
+assignment panel.
+
+Settings are in that menu, at `/mfd options`, and in the game's own Interface options
+under AddOns, whichever you find first. Everything the addon can be told to do is in
+there: whether it marks at all, whether it announces on the pull, whether it warns about
+nameplate settings, the impossible-crowd-control sound, opening the grid on ready check,
+and the minimap button itself.
+
+`/mfd minimap` brings the button back if you hide it.
+
 ## First night
 
 1. Enemy nameplates must be on. The addon can only touch a mob it has a nameplate for.
@@ -76,6 +90,7 @@ Every command is in `/mfd help`.
 | `/mfd coverage` | Mobs you have seen that the bundled database does not list. |
 | `/mfd minimap` | Hide or show the minimap button. |
 | `/mfd sound` | Toggle the sound played when a rule cannot work on its target. |
+| `/mfd options` | Settings: every toggle the addon has, and buttons to every window. |
 | `/mfd check` | The full raid check grid: consumables, raid buffs, blessings, durability, spec and addon version for everyone. |
 | `/mfd buffs` | The quick buff board: only the people missing something. Works in a pug, no ready check needed. |
 | `/mfd missing` | The same as the buff board, as text in chat. |
