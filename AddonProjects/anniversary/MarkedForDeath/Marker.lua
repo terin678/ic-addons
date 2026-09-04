@@ -571,7 +571,16 @@ function Marker:Tick(elapsed)
     end
     accumulator = 0
 
-    if not MFD.IsEnabled() or not MFD.db.settings.isMarkingEnabled then
+    if not MFD.IsEnabled() then
+        return
+    end
+
+    -- Which boss is up gates the death announcements, which do not care
+    -- whether this client is the one marking, so it is read before the
+    -- marking switch rather than after it.
+    MFD.Encounters.Update(MFD.Candidates.ToList(MFD.Candidates.set))
+
+    if not MFD.db.settings.isMarkingEnabled then
         return
     end
 

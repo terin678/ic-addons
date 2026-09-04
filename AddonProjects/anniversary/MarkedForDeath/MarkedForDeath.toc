@@ -1,8 +1,8 @@
 ## Interface: 20506
 ## Title: Marked For Death
-## Notes: Automatic raid target icons for trash by kill priority and crowd control intent, plus a raid buff and consumable check.
+## Notes: Automatic raid target icons for trash by kill priority and crowd control intent, plus a raid buff and consumable check and per-boss death announcements.
 ## Author: dillon_newport
-## Version: 1.10.0
+## Version: 1.11.0
 ## SavedVariables: MarkedForDeathDB
 ## SavedVariablesPerCharacter: MarkedForDeathCharDB
 
@@ -15,6 +15,7 @@ Helpers.lua
 JSON.lua
 Data_Mobs.lua
 Data_Auras.lua
+Data_Bosses.lua
 Core.lua
 Roles.lua
 Rules.lua
@@ -24,11 +25,14 @@ Marker.lua
 Conflicts.lua
 Comms.lua
 RaidCheck.lua
+Encounters.lua
 Tanks.lua
+Healers.lua
 Tests.lua
 UI_Main.lua
 UI_Config.lua
 UI_Assignments.lua
 UI_RaidCheck.lua
 UI_Settings.lua
+UI_Deaths.lua
 Minimap.lua

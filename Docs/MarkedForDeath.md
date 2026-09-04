@@ -37,7 +37,7 @@ producing an icon nobody will honour.
 ## One window
 
 Everything you configure lives in a single window with tabs: **Roles**, **Rules**,
-**Raid check** and **Settings**. Open it by left clicking the minimap skull, or `/mfd`.
+**Raid check**, **Assignments**, **Deaths** and **Settings**. Open it by left clicking the minimap skull, or `/mfd`.
 Switching tabs never closes anything, so you can jump between the role plan and the rule
 list without losing your place.
 
@@ -115,24 +115,68 @@ own trash is taken from the contiguous id block those creatures occupy.
 Anything that could not be established either way was left out rather than guessed. A gap
 costs you a search suggestion and nothing else, because you can always type the name.
 
-## Main tank deaths
+## Death announcements
 
-When a main tank dies the raid gets `Dezedin has died` as a raid warning, posted by the
-Raid Lead's client only so it appears once.
+Everything about them lives on the **Deaths** tab: who counts, and which fights it applies
+to. The raid gets `Dezedin has died` as a raid warning, posted by the Raid Lead's client
+only so it appears once.
 
-**Whoever is set as Main Tank in the raid frame is picked up automatically.** You do not
-have to type anything. Right click a portrait, Set Main Tank, and they count.
-
-The text box on the Settings tab is only for tanks the raid does not flag, separated by
-commas:
+**Main tanks** are picked up automatically from the raid frame. Right click a portrait,
+Set Main Tank, and they count; you do not have to type anything. The Extra tanks box is
+only for tanks the raid does not flag, separated by commas:
 
 ```
 Dezedin, Moophie, Grimmtusk
 ```
 
-The line under it shows both sources: who the raid has assigned, and who you typed. With
-no tanks known from either, nothing is announced rather than the addon guessing at who
-tanks.
+Tank deaths announce everywhere, trash included, which is what they have always done.
+Tick **Tank deaths only on the bosses ticked below** to hold them to the boss list too.
+
+**Healers** are recognised by spec: Holy, Discipline or Restoration. There is no healer
+role on this client's raid roster the way there is a main tank flag, so spec is the honest
+source, and it is the reason a shadow priest is never mistaken for one. Specs come from
+the same inspection the raid check grid uses, so they fill in once you open the raid check
+tab or run a ready check. The line under the Extra healers box tells you exactly who is
+currently counted, which is worth reading before the pull rather than after somebody dies
+unannounced. Anyone the addon cannot see, type in.
+
+Healer deaths are **always limited to the bosses you tick**, never trash. That is the
+whole point of them: a healer dying on a trash pack is not news, and a raid night of
+announcements is how the feature gets turned off for good.
+
+### Picking the bosses
+
+The boss list on the Deaths tab is every TBC raid encounter, laid out by raid. Tick the
+ones worth calling out. You can set this up before you ever walk in: Naj'entus yes,
+Supremus no. **all / none** next to a raid heading does the whole instance at once.
+
+Two Karazhan encounters are missing on purpose: the Opera Event and the Chess Event. None
+of their mobs appear in the bundled mob database, and shipping a toggle that silently
+never fires would be worse than not offering it.
+
+### Changing your mind mid raid
+
+The **Right now** button at the top of the Deaths tab has three states:
+
+| State | What it does |
+| --- | --- |
+| Per boss | Follows the ticks. The default. |
+| On everywhere | Announces on any boss, ignoring the ticks. |
+| Off everywhere | Announces nothing at all. |
+
+Trash is never announced under any of the three. The button is also on the minimap
+shift-click menu, and `/mfd deaths` cycles it from a macro:
+
+```
+/mfd deaths
+```
+
+`/mfd deaths on`, `off` or `auto` set a specific state instead of cycling. `/mfd healers`
+prints who is currently counted as one.
+
+The fight you are in is worked out from the boss's nameplate, which the addon is already
+watching for marking. There is no encounter API on this client, so nameplates need to be
+on, the same as for everything else here.
 
 ## Sharing a rule set
 
@@ -208,6 +252,8 @@ Every command is in `/mfd help`.
 | `/mfd mark` | Force a full re-mark of the visible pack. |
 | `/mfd clear` | Clear every icon on visible mobs. |
 | `/mfd announce` | Post the current assignments to raid chat now, for calling a pack out before the pull. Macro friendly. |
+| `/mfd deaths [on|off|auto]` | Cycle or set the death announcement override. Macro friendly. |
+| `/mfd healers` | Who the addon currently counts as a healer, and why it might be nobody. |
 | `/mfd where` | Current zone, its map id, and how many rules are active here. |
 | `/mfd fixcvars` | Turn enemy nameplates on and set their range to 41 yards. |
 | `/mfd export` | A string of your own rules to paste to someone. |

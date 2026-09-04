@@ -2,11 +2,11 @@
 local MFD = _G.MarkedForDeath or {}
 
 -- Must match ## Version: in the toc and the packaged zip name.
-MFD.VERSION = "1.10.0"
+MFD.VERSION = "1.11.0"
 
 -- Bumped only when the saved-variable shape changes in a way that needs a
 -- migration. See MFD:MigrateDB.
-local SCHEMA_VERSION = 3
+local SCHEMA_VERSION = 4
 
 local CHAT_PREFIX = "|cff33ff99Marked For Death|r: "
 
@@ -51,9 +51,19 @@ local DB_DEFAULTS = {
         isIconReuseEnabled = true,
         isManualOverrideEnabled = true,
         isLateCCAlertEnabled = true,
-        isTankDeathAlertEnabled = true,
-        tankNames = "",
         minimap = { hide = false },
+        -- Death announcements, both kinds, and the boss gate they share.
+        -- override is the mid-raid escape hatch: AUTO follows the per-boss
+        -- ticks, ON and OFF ignore them.
+        deaths = {
+            isTankAlertEnabled = true,
+            isTankBossOnly = false,
+            isHealerAlertEnabled = false,
+            tankNames = "",
+            healerNames = "",
+            override = "AUTO",
+            bosses = {},
+        },
         raidCheck = {
             isAutoOpenEnabled = true,
             expected = { FOOD = true, ELIXIRS = true },
@@ -104,6 +114,24 @@ function MFD:MigrateDB()
         end
 
         db.schemaVersion = 3
+    end
+
+    -- Schema 4: the two tank death settings moved under settings.deaths, which
+    -- now holds healer deaths and the shared boss gate as well. Copied rather
+    -- than moved, per the repo standard of keeping the old keys for a version.
+    if db.schemaVersion < 4 then
+        local settings = db.settings
+        if settings then
+            settings.deaths = settings.deaths or {}
+            if settings.deaths.isTankAlertEnabled == nil and settings.isTankDeathAlertEnabled ~= nil then
+                settings.deaths.isTankAlertEnabled = settings.isTankDeathAlertEnabled
+            end
+            if settings.deaths.tankNames == nil and settings.tankNames ~= nil then
+                settings.deaths.tankNames = settings.tankNames
+            end
+        end
+
+        db.schemaVersion = 4
     end
 end
 
@@ -544,6 +572,41 @@ commands.mark = {
         wipe(MFD.Marker.locked)
         wipe(MFD.Marker.placed)
         MFD.Print("re-marking")
+    end,
+}
+
+commands.deaths = {
+    desc = "cycle death announcements: per boss, on everywhere, off everywhere",
+    run = function(rest)
+        local settings = MFD.db.settings.deaths
+        local wanted = rest and string.upper(string.match(rest, "^%s*(%S*)") or "") or ""
+
+        if wanted == "ON" or wanted == "OFF" or wanted == "AUTO" then
+            settings.override = wanted
+        elseif wanted == "" then
+            settings.override = MFD.Encounters.NextOverride(settings.override)
+        else
+            MFD.Error("use /mfd deaths, or /mfd deaths on|off|auto")
+            return
+        end
+
+        MFD.Print("death announcements: " .. MFD.Encounters.OVERRIDE_LABELS[settings.override])
+        if MFD.UI.Deaths and MFD.UI.Deaths.Refresh then
+            MFD.UI.Deaths:Refresh()
+        end
+    end,
+}
+
+commands.healers = {
+    desc = "list who the addon currently counts as a healer",
+    run = function()
+        local known = MFD.Healers.Known(MFD.Healers.KnownSpecs(), MFD.Healers.ManualList())
+        if #known == 0 then
+            MFD.Print("no healers recognised. Specs come from inspection, so open the raid check "
+                .. "tab or run a ready check, or type names on the Deaths tab.")
+            return
+        end
+        MFD.Print("healers: " .. table.concat(known, ", "))
     end,
 }
 

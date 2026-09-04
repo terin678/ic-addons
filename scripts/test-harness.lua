@@ -21,6 +21,7 @@ local files = {
     "JSON.lua",
     "Data_Mobs.lua",
     "Data_Auras.lua",
+    "Data_Bosses.lua",
     "Roles.lua",
     "Rules.lua",
     "Allocator.lua",
@@ -29,7 +30,9 @@ local files = {
     "Conflicts.lua",
     "Comms.lua",
     "RaidCheck.lua",
+    "Encounters.lua",
     "Tanks.lua",
+    "Healers.lua",
     "Tests.lua",
 }
 

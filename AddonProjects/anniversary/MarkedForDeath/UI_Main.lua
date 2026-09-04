@@ -24,6 +24,7 @@ local TABS = {
     { key = "check",  label = "Raid check", owner = function() return MFD.UI.RaidCheck end },
     { key = "buffs",  label = "Buffs",      owner = function() return MFD.UI.BuffBoard end },
     { key = "assign", label = "Assignments", owner = function() return MFD.UI.Assignments end },
+    { key = "deaths", label = "Deaths",   owner = function() return MFD.UI.Deaths end },
     { key = "settings", label = "Settings", owner = function() return MFD.UI.Settings end },
 }
 

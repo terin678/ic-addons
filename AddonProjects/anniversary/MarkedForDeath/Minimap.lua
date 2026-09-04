@@ -119,6 +119,20 @@ local function menuEntries()
             toggle = function() settings.isAnnounceEnabled = not settings.isAnnounceEnabled end,
         },
 
+        -- The mid-raid override, one click from anywhere. This is the one
+        -- setting somebody reaches for during a fight rather than before it,
+        -- so it is here and not only on its own tab.
+        {
+            text = "Death calls: " .. MFD.Encounters.OVERRIDE_LABELS[settings.deaths.override],
+            open = function()
+                settings.deaths.override = MFD.Encounters.NextOverride(settings.deaths.override)
+                MFD.Print("death announcements: " .. MFD.Encounters.OVERRIDE_LABELS[settings.deaths.override])
+                if MFD.UI.Deaths and MFD.UI.Deaths.Refresh then
+                    MFD.UI.Deaths:Refresh()
+                end
+            end,
+        },
+
         { separator = true },
 
         { text = "Settings", open = function() MFD.UI.Settings:Toggle() end },

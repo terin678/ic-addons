@@ -68,41 +68,10 @@ local TOGGLES = {
         set = function(v) MFD.db.settings.isWarningSoundEnabled = v end,
     },
 
-    { section = "Raid" },
+    { section = "Deaths" },
     {
-        label = "Announce when a main tank dies",
-        tip = "Posts \"Name has died\" as a raid warning. Only the Raid Lead's client announces, so the raid sees it once.",
-        get = function() return MFD.db.settings.isTankDeathAlertEnabled end,
-        set = function(v) MFD.db.settings.isTankDeathAlertEnabled = v end,
-    },
-    {
-        edit = true,
-        label = "Extra tanks, separated by commas (optional)",
-        tip = "Whoever is set as Main Tank in the raid frame is already picked up automatically. Only type names here for tanks the raid does not flag. Dezedin, Moophie, Grimmtusk.",
-        get = function() return MFD.db.settings.tankNames end,
-        set = function(v) MFD.db.settings.tankNames = v end,
-        preview = function(text)
-            local parts = {}
-
-            local assigned = {}
-            for name in pairs(MFD.Tanks.AssignedTanks()) do
-                assigned[#assigned + 1] = name
-            end
-            table.sort(assigned)
-
-            if #assigned > 0 then
-                parts[#parts + 1] = "|cff66ff66from the raid:|r " .. table.concat(assigned, ", ")
-            else
-                parts[#parts + 1] = "|cff999999nobody is set as Main Tank in the raid frame|r"
-            end
-
-            local typed = MFD.Tanks.ParseList(text)
-            if #typed > 0 then
-                parts[#parts + 1] = "|cff66ff66typed:|r " .. table.concat(typed, ", ")
-            end
-
-            return table.concat(parts, "   ")
-        end,
+        note = true,
+        label = "Tank and healer death announcements, and which bosses they apply to, are on the Deaths tab.",
     },
 
     { section = "Raid check" },
@@ -150,6 +119,15 @@ local function buildBody(parent)
             local heading = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
             heading:SetPoint("TOPLEFT", parent, "TOPLEFT", 16, y)
             heading:SetText(entry.section)
+            y = y - ROW_SPACING
+        elseif entry.note then
+            -- A pointer, not a control. Settings that moved elsewhere are worth
+            -- saying so, otherwise they read as removed.
+            local note = parent:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+            note:SetPoint("TOPLEFT", parent, "TOPLEFT", 24, y - 4)
+            note:SetPoint("RIGHT", parent, "RIGHT", -20, 0)
+            note:SetJustifyH("LEFT")
+            note:SetText(entry.label)
             y = y - ROW_SPACING
         elseif entry.edit then
             local label = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")

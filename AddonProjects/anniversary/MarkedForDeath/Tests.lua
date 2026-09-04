@@ -2835,4 +2835,127 @@ T.Case("Defense: a mark we placed and lost is still defended", function()
     T.Eq(diff.actions[1].isDefense, true, "as a defense, so the brake counts it")
 end)
 
+-- Death announcements: which fight you are in, and whether it counts.
+local E = MFD.Encounters
+
+T.Case("Bosses: every encounter has a name, an instance and at least one id", function()
+    T.Eq(#MFD.Data.Bosses > 0, true, "the table is not empty")
+    for _, boss in ipairs(MFD.Data.Bosses) do
+        T.Eq(type(boss.name), "string", "named")
+        T.Eq(type(boss.instance), "string", "filed under a raid")
+        T.Eq(#boss.ids > 0, true, boss.name .. " has no ids, so it could never be detected")
+    end
+end)
+
+T.Case("Bosses: no npcID belongs to two encounters", function()
+    local seen = {}
+    for _, boss in ipairs(MFD.Data.Bosses) do
+        for _, id in ipairs(boss.ids) do
+            T.Eq(seen[id], nil, "id " .. id .. " is in both " .. tostring(seen[id]) .. " and " .. boss.name)
+            seen[id] = boss.name
+        end
+    end
+end)
+
+T.Case("Bosses: every id is a mob the bundled table knows", function()
+    -- The ids were resolved by name against Data_Mobs. If one drifts, this is
+    -- the test that catches it rather than a boss silently never detecting.
+    for _, boss in ipairs(MFD.Data.Bosses) do
+        for _, id in ipairs(boss.ids) do
+            local mob = MFD.Data.Mobs[id]
+            T.Eq(mob ~= nil, true, boss.name .. " id " .. id .. " is not in the mob table")
+            T.Eq(mob[2], boss.instance, boss.name .. " id " .. id .. " is filed under " .. tostring(mob[2]))
+        end
+    end
+end)
+
+T.Case("Encounters: a boss on screen is the fight you are in", function()
+    local index = E.IndexByNpcID({ { name = "Supremus", instance = "BT", ids = { 22898 } } })
+    T.Eq(E.Detect({ { key = "1-A", npcID = 22898 } }, index), "Supremus", "detected")
+    T.Eq(E.Detect({ { key = "1-A", npcID = 99999 } }, index), nil, "trash is not a boss")
+    T.Eq(E.Detect({}, index), nil, "nothing on screen")
+end)
+
+T.Case("Encounters: a boss whose nameplate is gone is not the fight you are in", function()
+    local index = E.IndexByNpcID({ { name = "Supremus", instance = "BT", ids = { 22898 } } })
+    T.Eq(E.Detect({ { key = "1-A", npcID = 22898, isLost = true } }, index), nil, "walked off")
+end)
+
+T.Case("Encounters: bosses group by raid in the order written", function()
+    local groups = E.GroupByInstance(MFD.Data.Bosses)
+    T.Eq(groups[1].instance, "KARAZHAN", "first raid first")
+    T.Eq(groups[1].bosses[1].name, "Attumen the Huntsman", "and its first boss")
+end)
+
+local function gate(override, selected, encounter)
+    return E.PassesBossGate(override, selected, encounter)
+end
+
+T.Case("Gate: trash never passes, whatever the override says", function()
+    T.Eq(gate("AUTO", {}, nil), false, "auto")
+    T.Eq(gate("ON", {}, nil), false, "even forced on")
+    T.Eq(gate("OFF", {}, nil), false, "off")
+end)
+
+T.Case("Gate: on a boss, auto follows the ticks", function()
+    T.Eq(gate("AUTO", { Supremus = true }, "Supremus"), true, "ticked")
+    T.Eq(gate("AUTO", { Supremus = true }, "Mother Shahraz"), false, "not ticked")
+end)
+
+T.Case("Gate: the override ignores the ticks in both directions", function()
+    T.Eq(gate("ON", {}, "Supremus"), true, "nothing ticked, still on")
+    T.Eq(gate("OFF", { Supremus = true }, "Supremus"), false, "ticked, still off")
+end)
+
+T.Case("Gate: the override cycles through all three and back", function()
+    T.Eq(E.NextOverride("AUTO"), "ON", "first press")
+    T.Eq(E.NextOverride("ON"), "OFF", "second")
+    T.Eq(E.NextOverride("OFF"), "AUTO", "third comes home")
+end)
+
+T.Case("Deaths: healer alerts are boss gated, tank alerts are not by default", function()
+    local onTrash = nil
+
+    T.Eq(E.ShouldAnnounce({ isEnabled = true, bossOnly = true, override = "AUTO", selected = {} }, onTrash),
+        false, "healers say nothing on trash")
+    T.Eq(E.ShouldAnnounce({ isEnabled = true, bossOnly = false, override = "AUTO", selected = {} }, onTrash),
+        true, "tanks announce on trash, which is what they have always done")
+end)
+
+T.Case("Deaths: a tank alert held to the boss list obeys it", function()
+    T.Eq(E.ShouldAnnounce({ isEnabled = true, bossOnly = true, override = "AUTO", selected = {} }, "Supremus"),
+        false, "not ticked")
+    T.Eq(E.ShouldAnnounce(
+        { isEnabled = true, bossOnly = true, override = "AUTO", selected = { Supremus = true } }, "Supremus"),
+        true, "ticked")
+end)
+
+T.Case("Deaths: switched off says nothing however the gate reads", function()
+    T.Eq(E.ShouldAnnounce({ isEnabled = false, bossOnly = false, override = "ON", selected = {} }, "Supremus"),
+        false, "off is off")
+end)
+
+local H = MFD.Healers
+
+T.Case("Healers: a healing spec counts and a damage spec does not", function()
+    local specs = { Kaylia = "Holy", Grimmtusk = "Frost", Thok = "Restoration", Vex = "Shadow" }
+    T.Eq(H.IsHealer("Kaylia", specs, {}), true, "holy")
+    T.Eq(H.IsHealer("Thok", specs, {}), true, "resto")
+    T.Eq(H.IsHealer("Vex", specs, {}), false, "a shadow priest is not a healer")
+    T.Eq(H.IsHealer("Grimmtusk", specs, {}), false, "nor is a mage")
+end)
+
+T.Case("Healers: an unknown spec is not guessed at", function()
+    T.Eq(H.IsHealer("Nobody", {}, {}), false, "no spec, no claim")
+end)
+
+T.Case("Healers: a typed name counts without a spec, case insensitively", function()
+    T.Eq(H.IsHealer("Kaylia", {}, { "kaylia" }), true, "typed")
+end)
+
+T.Case("Healers: the known list merges both sources and sorts, without duplicates", function()
+    local known = H.Known({ Kaylia = "Holy", Vex = "Shadow", Thok = "Restoration" }, { "Kaylia", "Amara" })
+    T.Eq(table.concat(known, ","), "Amara,Kaylia,Thok", "sorted, deduplicated, no shadow priest")
+end)
+
 _G.MarkedForDeath = MFD
