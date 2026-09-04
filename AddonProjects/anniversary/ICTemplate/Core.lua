@@ -18,7 +18,7 @@ Everything else is namespaced. Every file opens with `local addonName, ns = ...`
 so no other file in the addon has to know what the addon is called.
 ]]
 
-local VERSION = "1.0.0"
+local VERSION = "1.0.1"
 ns.VERSION = VERSION
 
 -- Bumped when a saved-variable change needs code to read the old shape. See

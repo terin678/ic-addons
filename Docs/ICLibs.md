@@ -1,13 +1,20 @@
 # ICLibs
 
-Shared libraries for the ic-addons guild addons, packaged as a small library addon so the
-same code is loaded once and both MalexisAuctionWatcher and TradeMaster use it.
+Shared libraries for the Impulse Control guild addons, packaged as a small library addon
+so the same code is loaded once and MalexisAuctionWatcher, TradeMaster, ICTemplate and
+GuildRecruitment all use it.
 
 ## Install
 
 Extract the zip of any addon that needs it; the `ICLibs` folder is included. It must sit
 in `Interface\AddOns` next to the addon. The dependent addons list it under
 `## Dependencies`, so the game refuses to load them without it and says why.
+
+ICLibs also heads the family in the in-game AddOns list. Every guild addon carries
+`## Group: ICLibs`, which collects them under one collapsible heading, and the guild mark
+in front of each name is drawn from `Textures/ImpulseControl-64` in this folder.
+`Docs/client-reference.md` has the detail; the short version is that a group's value has to
+be a real addon folder name, and ICLibs is the one that is always installed.
 
 ## Contents
 

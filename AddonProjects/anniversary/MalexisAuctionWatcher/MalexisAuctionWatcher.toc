@@ -1,8 +1,11 @@
 ## Interface: 20506
-## Title: Malexis Auction Watcher
+## Title: |TInterface\AddOns\ICLibs\Textures\ImpulseControl-64:16|t Malexis Auction Watcher
 ## Notes: Tracks auction house prices for user-defined items with timestamps
 ## Author: Malexis
 ## Version: 1.17.0
+## IconTexture: Interface\AddOns\ICLibs\Textures\ImpulseControl-64.tga
+## Group: ICLibs
+## Category: Auctions
 ## SavedVariables: MalexisAuctionWatcherDB
 ## SavedVariablesPerCharacter: MalexisAuctionWatcherCharDB
 ## Dependencies: ICLibs

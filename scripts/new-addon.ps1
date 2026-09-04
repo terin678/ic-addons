@@ -15,15 +15,21 @@
     ICTEMPLATE   SLASH_*, the SlashCmdList key, the BINDING_* globals, Bindings.xml
     ictpl        the slash command itself, and every mention of it in help text
 
+  The guild mark at the front of the title and the `## Group: ICLibs` line are carried
+  over untouched, so a new addon joins the family in the in-game AddOns list on the day
+  it is made rather than whenever somebody notices it has not.
+
 .EXAMPLE
   .\scripts\new-addon.ps1 -Name GuildRecruitment -Slash gr -Title "Guild Recruitment" `
-      -Notes "Shared recruitment message and a log of who barked when" -Minimal -Deploy
+      -Notes "Shared recruitment message and a log of who barked when" `
+      -Category "Guild" -Minimal -Deploy
 #>
 param(
     [Parameter(Mandatory = $true)][string]$Name,
     [Parameter(Mandatory = $true)][string]$Slash,
     [string]$Title,
     [string]$Notes = "",
+    [string]$Category = "User Interface",
     [ValidateSet("era", "anniversary", "retail")][string]$Flavor = "anniversary",
     [string]$From = "ICTemplate",
     [string]$Version = "0.1.0",
@@ -108,7 +114,13 @@ foreach ($file in $files) {
 if (-not $WhatIf) {
     $tocPath = Join-Path $target "$Name.toc"
     $toc = Get-Content $tocPath -Raw
-    $toc = $toc -replace '(?m)^## Title:.*$', "## Title: $Title"
+    # The source addon's title carries the guild mark, and overwriting the whole
+    # line would drop it -- so the new addon would fall out of the group's look on
+    # the day it was made. Lift the |T...|t escape off the front and keep it.
+    $mark = ""
+    if ($toc -match '(?m)^## Title:\s*(\|T[^|]*\|t)') { $mark = $Matches[1] + " " }
+    $toc = $toc -replace '(?m)^## Title:.*$', "## Title: $mark$Title"
+    $toc = $toc -replace '(?m)^## Category:.*$', "## Category: $Category"
     if ($Notes) { $toc = $toc -replace '(?m)^## Notes:.*$', "## Notes: $Notes" }
     $toc = $toc -replace '(?m)^## Version:.*$', "## Version: $Version"
     $toc = $toc -replace '(?m)^## X-Category:.*\r?\n', ""
