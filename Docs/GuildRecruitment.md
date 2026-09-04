@@ -93,6 +93,14 @@ fit in one chat line alongside everything else.
 fill themselves in. A second template says how one team is written, with `{tag}`, `{days}`
 and `{needs}`.
 
+Write that second template however you like — `{tag} {days}: {needs}` gives *"DN M/W: Shaman
+DPS"*, and `{needs} for our {days}` gives *"Shaman DPS for our M/W"*. It only has to contain
+one of the three tokens; a template naming none of them would repeat the same words once per
+team, so that one is refused and the default used instead. Anything else questionable is
+said under the preview rather than corrected behind your back — no `{needs}` and the line
+never says who you are after, and with two teams recruiting and neither `{tag}` nor `{days}`
+there is nothing to tell them apart.
+
 The preview under it re-assembles on every keystroke, with a length meter, and it is built
 from the boxes rather than from the saved message — so it shows what you are about to send,
 not what the guild already has. While the two differ the meter says **unsaved**. Nothing

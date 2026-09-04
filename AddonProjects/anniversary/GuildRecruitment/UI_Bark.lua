@@ -301,6 +301,41 @@ UI.RegisterPage(30, "Message", function(page)
             -- has to say so, or this reads as a line the guild is already sending.
             dirty and "  \194\183  |cffffcc00unsaved  \194\183  Save and push to send it|r"
                 or ""))
+
+        --[[
+        Advice about the templates, not enforcement. TeamFragment renders whatever it is
+        handed, and being quietly overruled by it is exactly what made a discarded template
+        so hard to spot -- so anything questionable is said here, as it is typed.
+        ]]
+        local notes = {}
+        local recruiting = 0
+        for _, t in ipairs(copy.teams or {}) do
+            if t.active ~= false and #(t.needs or {}) > 0 then recruiting = recruiting + 1 end
+        end
+        local badTeam = ns.Message.CheckTeamTemplate(copy.teamTemplate, recruiting)
+        if badTeam then
+            notes[#notes + 1] = "|cffffcc00Each team:|r " .. badTeam
+        end
+        if not (copy.template or ""):find("{teams}", 1, true) then
+            notes[#notes + 1] = "|cffffcc00Message:|r without {teams} in it the line never "
+                .. "mentions a team at all."
+        end
+
+        if not ns.Roster.ICanAuthor() then
+            notes[#notes + 1] = "|cffffcc00You can send this message but not change it.|r"
+        end
+        local _, _, ahead = ns.Doc.Agreement(ns.db.doc, ns.db.peers)
+        if ahead > 0 then
+            notes[#notes + 1] = string.format(
+                "|cffffcc00%d officer%s has a newer revision than yours.|r Press Sync on the "
+                .. "Bark tab before you edit, or your change will fight theirs.",
+                ahead, ahead == 1 and "" or "s")
+        end
+        if not ns.Comm.Status().available then
+            notes[#notes + 1] = "|cffff4444This client cannot send addon messages,|r so "
+                .. "nothing you save here reaches anyone else. /gr probe for detail."
+        end
+        warning:SetText(table.concat(notes, "\n"))
     end
 
     save:SetScript("OnClick", function()
@@ -358,21 +393,5 @@ UI.RegisterPage(30, "Message", function(page)
         local same, behind, ahead = ns.Doc.Agreement(ns.db.doc, ns.db.peers)
         footer:SetText(string.format("|cff888888%s  \194\183  %d of %d officers have it|r",
             ns.Doc.Summary(ns.db.doc, now), same, same + behind + ahead))
-
-        local notes = {}
-        if not mine then
-            notes[#notes + 1] = "|cffffcc00You can send this message but not change it.|r"
-        end
-        if ahead > 0 then
-            notes[#notes + 1] = string.format(
-                "|cffffcc00%d officer%s has a newer revision than yours.|r Press Sync on the "
-                .. "Bark tab before you edit, or your change will fight theirs.",
-                ahead, ahead == 1 and "" or "s")
-        end
-        if not ns.Comm.Status().available then
-            notes[#notes + 1] = "|cffff4444This client cannot send addon messages,|r so "
-                .. "nothing you save here reaches anyone else. /gr probe for detail."
-        end
-        warning:SetText(table.concat(notes, "\n"))
     end
 end)

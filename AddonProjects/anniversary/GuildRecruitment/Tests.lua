@@ -910,3 +910,54 @@ T.Case("Teams: a new team is complete enough to put in a message", function()
     ns.Teams.Remove(doc, 3)
     T.Eq(ns.Teams.NextId(doc), 3, "and removing the highest gives that id back")
 end)
+
+T.Case("Message: the raid leader's team template is used, whatever tokens it has", function()
+    local team = { tag = "DN", days = "M/W",
+        needs = { { role = "DPS", class = "Shaman", count = 1, priority = 1 } } }
+
+    -- The bug this pins: a template with no {tag} was silently swapped for the default, so
+    -- "{needs} for our {days}" rendered as "DN M/W: Shaman DPS" and nothing said why.
+    T.Eq(ns.Message.TeamFragment(team, 1, "{needs} for our {days}"),
+        "Shaman DPS for our M/W", "a template without {tag} is still the author's")
+    T.Eq(ns.Message.TeamFragment(team, 1, "{tag} {days}: {needs}"),
+        "DN M/W: Shaman DPS", "and the default still reads as it always did")
+
+    -- A template naming no token would repeat one constant string once per team, which is
+    -- the only case worth overruling.
+    T.Eq(ns.Message.TeamFragment(team, 1, "we want people"),
+        "DN M/W: Shaman DPS", "a template with no tokens falls back to the default")
+    T.Eq(ns.Message.TeamFragment(team, 1, nil),
+        "DN M/W: Shaman DPS", "and so does no template at all")
+end)
+
+T.Case("Message: a team never renders to nothing and vanishes", function()
+    -- At the bottom of the ladder every need is gone, so "{needs}" on its own empties out.
+    -- Without a floor the team would drop out of the message without being counted as
+    -- dropped, which is the one failure the degrade ladder must not have.
+    local stripped = { tag = "DN", days = "M/W", needs = {} }
+    T.Eq(ns.Message.TeamFragment(stripped, ns.Message.LEVELS, "{needs}"), "DN",
+        "the tag is the floor")
+    T.Eq(ns.Message.TeamFragment(stripped, ns.Message.LEVELS, "{needs} for our {days}"),
+        "for our M/W", "anything else it still says is kept")
+
+    -- A team with no tag of its own falls back to its name, so the floor is never blank.
+    local unnamed = { name = "Sunday Alt", tag = "", needs = {} }
+    T.Eq(ns.Message.TeamFragment(unnamed, ns.Message.LEVELS, "{needs}"), "Sunday Alt",
+        "and the name stands in when there is no tag")
+end)
+
+T.Case("Message: a questionable team template is described, not corrected", function()
+    local Check = ns.Message.CheckTeamTemplate
+
+    T.Eq(Check("{tag} {days}: {needs}", 2), nil, "the default is fine")
+    T.Eq(Check("{needs} for our {days}", 2), nil, "and so is one without a tag")
+    T.Eq(Check("{needs}", 1), nil, "with a single team, {needs} alone is enough")
+
+    T.Eq(type(Check("", 1)), "string", "an empty template is called out")
+    T.Eq(type(Check("we are recruiting", 1)), "string", "and one with no tokens")
+    T.Eq(type(Check("{tag} {days}", 1)), "string",
+        "and one that never says who you are looking for")
+
+    -- Two teams run together with nothing to tell them apart reads as one long list.
+    T.Eq(type(Check("{needs}", 2)), "string", "two teams need something to tell them apart")
+end)

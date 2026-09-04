@@ -53,6 +53,48 @@ end
 
 Message.DEFAULT_TEAM_TEMPLATE = "{tag} {days}: {needs}"
 
+Message.TEAM_TOKENS = { "{tag}", "{days}", "{needs}" }
+
+-- Pure. Does this team template fill in anything at all, or is it one constant string that
+-- would be repeated once per team?
+function Message.HasToken(template)
+    template = tostring(template or "")
+    for _, token in ipairs(Message.TEAM_TOKENS) do
+        if template:find(token, 1, true) then return true end
+    end
+    return false
+end
+
+--[[
+Pure. What is wrong with a team template, in a sentence, or nil when nothing is.
+
+Advice, not enforcement: TeamFragment still renders whatever it is given, and the point of
+this is that the author is told rather than quietly overruled. `teams` is how many teams
+are actually recruiting, because whether a fragment has to identify its team depends on
+there being more than one of them.
+]]
+function Message.CheckTeamTemplate(template, teams)
+    template = tostring(template or "")
+    if ns.Util.Trim(template) == "" then
+        return "the team template is empty, so the default is used instead"
+    end
+    if not Message.HasToken(template) then
+        return "the team template has no {tag}, {days} or {needs} in it, so the default is "
+            .. "used instead"
+    end
+    if not template:find("{needs}", 1, true) then
+        return "the team template has no {needs} in it, so the message never says who you "
+            .. "are looking for"
+    end
+    if (teams or 0) > 1
+        and not template:find("{tag}", 1, true)
+        and not template:find("{days}", 1, true) then
+        return "with more than one team recruiting, a template with no {tag} and no {days} "
+            .. "runs them together with nothing to tell them apart"
+    end
+    return nil
+end
+
 --[[
 Pure. One team at one detail level. `team.needs` is taken as given and in order:
 Degrade sorts and trims before calling this.
@@ -64,8 +106,17 @@ leaves a trailing colon, and both of those are one gsub each.
 ]]
 function Message.TeamFragment(team, level, teamTemplate)
     team = team or {}
+    --[[
+    Any template that fills in at least one token is the raid leader's to write. This used
+    to demand {tag} and silently swap in the default when it did not find one, so
+    "{needs} for our {days}" was thrown away and the preview showed the default's wording
+    instead -- with nothing anywhere saying why. A template naming no token at all would
+    repeat one constant string per team, which is the one case worth refusing.
+
+    Message.CheckTeamTemplate is what tells the author about it; this is only the floor.
+    ]]
     local template = teamTemplate
-    if not template or not template:find("{tag}", 1, true) then
+    if not template or not Message.HasToken(template) then
         template = Message.DEFAULT_TEAM_TEMPLATE
     end
 
@@ -94,7 +145,14 @@ function Message.TeamFragment(team, level, teamTemplate)
     out = out:gsub("%s+", " ")
     out = out:gsub("%s+([:,])", "%1")
     out = out:gsub("[%s:,]+$", "")
-    return (out:gsub("^%s+", ""))
+    out = out:gsub("^%s+", "")
+
+    -- A team must never render to nothing. A template of just "{needs}" empties out at the
+    -- bottom of the ladder, once every need has been dropped, and the team would then
+    -- disappear from the message without being counted as dropped -- so the tag is the
+    -- floor, which is what the ladder's last rung was always meant to be.
+    if out == "" then out = tag end
+    return out
 end
 
 local function Total(fragments)
