@@ -153,6 +153,14 @@ per ten seconds.
 LibDurability, a shared protocol embedded in BigWigs, DBM and MRT, so anyone running any
 of those answers. If a player somehow runs none of them, their durability shows `?`.
 
+The durability cell shows `72% !1` in red when someone has a broken item, because a
+broken weapon at 70% overall matters more than 40% spread evenly.
+
+**Click a consumable column header** (Food, Flask, Battle, Guard, Weapon) to toggle
+whether the raid expects it. Greyed headers are not expected and their absences are never
+reported missing or called out. That is how you stop the addon nagging about battle
+elixirs on a farm night.
+
 **Spec works on anyone within about 28 yards**, no addon needed: the addon inspects
 people one at a time while a raid check window is open or for twenty seconds after a
 ready check, never in combat, and remembers each answer for a minute. Someone out of

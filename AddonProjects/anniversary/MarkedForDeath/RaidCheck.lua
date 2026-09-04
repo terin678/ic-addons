@@ -135,11 +135,16 @@ local FLAG_ONLY = { "AI", "MOTW", "FORT", "SP" }
 -- report because nothing else can see them. Durability prefers the report and
 -- falls back to LibDurability, which most raiders answer through BigWigs, DBM
 -- or MRT whether or not they run this addon.
-function RC.MergeRow(scanned, reported, libDurability, inspectedSpec)
+function RC.MergeRow(scanned, reported, libDurability, inspectedSpec, brokenItems)
     local state = {}
     for k, v in pairs(scanned) do
         state[k] = v
     end
+
+    -- Broken gear only ever comes from the shared durability protocol. Kept
+    -- separate from the percent because 40% with a broken weapon is a
+    -- different problem from 40% spread evenly across everything.
+    state.brokenItems = brokenItems
 
     if not reported then
         state.durability = libDurability
@@ -370,22 +375,28 @@ end
 -- repair vendor totals.
 local DURABILITY_SLOTS = { 1, 3, 5, 6, 7, 8, 9, 10, 16, 17, 18 }
 
+-- Returns the overall durability percent and how many equipped items are at
+-- zero, or nil when nothing is equipped. The broken count is reported
+-- separately because a broken weapon matters more than a low average.
 local function durabilityPercent()
     if not GetInventoryItemDurability then
         return nil
     end
-    local current, maximum = 0, 0
+    local current, maximum, broken = 0, 0, 0
     for _, slot in ipairs(DURABILITY_SLOTS) do
         local ok, cur, max = pcall(GetInventoryItemDurability, slot)
         if ok and cur and max and max > 0 then
             current = current + cur
             maximum = maximum + max
+            if cur == 0 then
+                broken = broken + 1
+            end
         end
     end
     if maximum == 0 then
         return nil
     end
-    return math.floor(current / maximum * 100)
+    return math.floor(current / maximum * 100), broken
 end
 
 local function specName()
@@ -501,8 +512,9 @@ function RC:ScanUnit(unit)
         reported = RC.reports[name] and RC.reports[name].state or nil
     end
     local libDurability = RC.durability[name] and RC.durability[name].percent or nil
+    local brokenItems = RC.durability[name] and RC.durability[name].broken or nil
     local inspectedSpec = RC.inspected[name] and RC.inspected[name].spec or nil
-    local row = RC.MergeRow(scanned, reported, libDurability, inspectedSpec)
+    local row = RC.MergeRow(scanned, reported, libDurability, inspectedSpec, brokenItems)
     RC.rows[name] = {
         name = name,
         class = class,
@@ -626,13 +638,13 @@ local function respondDurability(channel)
         return
     end
     lastDurabilityResponseAt = now
-    local percent = durabilityPercent()
+    local percent, broken = durabilityPercent()
     if not percent then
         return
     end
     local sendFn = C_ChatInfo and C_ChatInfo.SendAddonMessage or SendAddonMessage
     if type(sendFn) == "function" then
-        pcall(sendFn, RC.DURABILITY_PREFIX, string.format("%d,%d", percent, 0), channel)
+        pcall(sendFn, RC.DURABILITY_PREFIX, string.format("%d,%d", percent, broken or 0), channel)
     end
 end
 

@@ -77,6 +77,11 @@ local function cellText(column, entry)
         if d == nil then
             return GREY .. "?|r"
         end
+        -- Anything broken is red regardless of the percent: a broken weapon at
+        -- 70% overall matters more than 40% with everything still working.
+        if (state.brokenItems or 0) > 0 then
+            return RED .. d .. "% !" .. state.brokenItems .. "|r"
+        end
         local color = (d < 30 and RED) or (d < 60 and AMBER) or ""
         return color .. d .. "%" .. (color ~= "" and "|r" or "")
     elseif column == "SPEC" then

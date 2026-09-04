@@ -1775,4 +1775,22 @@ T.Case("Seats: resolution is cached against the roster and the plan", function()
     MFD.Marker.InvalidateRoster()
 end)
 
+-- Broken gear is the thing a durability column exists to catch: 40% overall
+-- with a broken weapon is a different problem from 40% spread evenly.
+T.Case("Durability: a broken item count rides along with the percent", function()
+    local row = MFD.RaidCheck.MergeRow(MFD.RaidCheck.Classify({}), nil, 42, nil, 2)
+    T.Eq(row.state.durability, 42, "percent")
+    T.Eq(row.state.brokenItems, 2, "broken count")
+end)
+
+T.Case("Durability: no broken data is nil rather than zero", function()
+    local row = MFD.RaidCheck.MergeRow(MFD.RaidCheck.Classify({}), nil, 42, nil, nil)
+    T.Eq(row.state.brokenItems, nil, "unknown, not none")
+end)
+
+T.Case("Durability: zero broken is reported as zero, not dropped", function()
+    local row = MFD.RaidCheck.MergeRow(MFD.RaidCheck.Classify({}), nil, 95, nil, 0)
+    T.Eq(row.state.brokenItems, 0, "known to be none")
+end)
+
 _G.MarkedForDeath = MFD
