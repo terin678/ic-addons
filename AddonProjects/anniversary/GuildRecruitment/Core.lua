@@ -8,83 +8,26 @@ this, each officer typed their own line into a channel, nobody knew who had
 posted last, and the wording drifted. So: raid leaders author one message, every
 officer's copy converges on it, and a log of who barked when means the second
 officer does not add a second line four minutes after the first.
+
+The plumbing -- Print, the saved-variable bootstrap, Util, Log, the test harness, the
+slash dispatcher -- is LibICCore's. This file is the version, the defaults, the
+commands that are this addon's own, and the events it listens to.
 ]]
 
-local VERSION = "0.2.1"
-ns.VERSION = VERSION
+local Core = LibStub("LibICCore-1.0")
 
-ns.SCHEMA = 1
-ns.CHAR_SCHEMA = 1
-
---------------------------------------------------------------------------------
--- Output
---------------------------------------------------------------------------------
-
-function ns.Print(msg)
-    local frame = DEFAULT_CHAT_FRAME
-    local idx = ns.db and ns.db.settings and ns.db.settings.outputFrame
-    if idx and idx > 1 then
-        local f = _G["ChatFrame" .. idx]
-        if f and f.AddMessage then frame = f end
-    end
-    frame:AddMessage("|cff33ff99GuildRecruitment|r: " .. tostring(msg))
-end
-
-function ns.Printf(fmt, ...)
-    ns.Print(string.format(fmt, ...))
-end
-
--- False means the addon says nothing of its own. Reading the window still works,
--- and so does sending by hand.
-function ns.Enabled()
-    return not ns.db or ns.db.settings.enabled ~= false
-end
-
-function ns.Now()
-    return GetServerTime and GetServerTime() or time()
-end
+local VERSION = "0.3.0"
+local SCHEMA = 1
+local CHAR_SCHEMA = 1
 
 --------------------------------------------------------------------------------
 -- Saved variables
 --------------------------------------------------------------------------------
 
-function ns.DeepCopy(t)
-    if type(t) ~= "table" then return t end
-    local out = {}
-    for k, v in pairs(t) do out[k] = ns.DeepCopy(v) end
-    return out
-end
-
-function ns.ApplyDefaults(target, defaults)
-    for k, v in pairs(defaults) do
-        if type(v) == "table" then
-            if type(target[k]) ~= "table" then target[k] = {} end
-            ns.ApplyDefaults(target[k], v)
-        elseif target[k] == nil then
-            target[k] = v
-        end
-    end
-    return target
-end
-
 -- Keyed by the schema each step upgrades FROM. Run before ApplyDefaults, always.
-ns.Migrations = {}
+local Migrations = {}
 
-function ns.Migrate(db, steps, head)
-    if db.schema == nil then
-        db.schema = next(db) == nil and head or 1
-    end
-    local ran = 0
-    while db.schema < head do
-        local step = steps[db.schema]
-        if step then step(db) end
-        db.schema = db.schema + 1
-        ran = ran + 1
-    end
-    return ran
-end
-
-ns.Defaults = {
+local Defaults = {
     -- The document is guild property, so it is account-wide: an officer's alt is
     -- the same officer, and this is exactly what Comm sends and receives.
     doc = {
@@ -100,8 +43,6 @@ ns.Defaults = {
 
     peers = {},     -- [name] = { rev, hash, seenAt, rank, barkedAt }
     barks = {},     -- newest first, ours and everyone else's
-    log = {},
-    capture = {},
     stats = { sent = 0, received = 0, rejected = {} },
 
     settings = {
@@ -133,7 +74,7 @@ ns.Defaults = {
     },
 }
 
-ns.CharDefaults = {
+local CharDefaults = {
     -- This character's own sending. In the account table, logging in on an alt
     -- would believe it had already barked.
     bark = { lastSentAt = 0, cursor = 1, confirmedRev = -1 },
@@ -155,120 +96,16 @@ local function SeedTeams()
     end
     if ns.db.doc.guild == "" then ns.db.doc.guild = ns.Roster.GuildName() end
 end
-
---------------------------------------------------------------------------------
--- Events
---------------------------------------------------------------------------------
-
-local frame = CreateFrame("Frame")
-frame:RegisterEvent("ADDON_LOADED")
-frame:RegisterEvent("PLAYER_LOGIN")
-frame:RegisterEvent("PLAYER_ENTERING_WORLD")
-frame:RegisterEvent("GUILD_ROSTER_UPDATE")
-frame:RegisterEvent("CHAT_MSG_ADDON")
-
-frame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4)
-    if event == "ADDON_LOADED" and arg1 == addonName then
-        -- Before we create it: whether the client handed us anything at all. This is the
-        -- one fact that separates "the file did not load" from "the addon cleared it".
-        local sawFile = GuildRecruitmentDB ~= nil and next(GuildRecruitmentDB) ~= nil
-        GuildRecruitmentDB = GuildRecruitmentDB or {}
-        GuildRecruitmentCharDB = GuildRecruitmentCharDB or {}
-        ns.Migrate(GuildRecruitmentDB, ns.Migrations, ns.SCHEMA)
-        ns.Migrate(GuildRecruitmentCharDB, {}, ns.CHAR_SCHEMA)
-        ns.ApplyDefaults(GuildRecruitmentDB, ns.Defaults)
-        ns.ApplyDefaults(GuildRecruitmentCharDB, ns.CharDefaults)
-        ns.db, ns.cdb = GuildRecruitmentDB, GuildRecruitmentCharDB
-
-        -- Two teams up front, so the window has something in it rather than an
-        -- empty page and no hint what to do with it. The guild's own name arrives
-        -- later, on the first roster update.
-        -- What came back off disk, before anything else can touch it. A document that is
-        -- whole here and empty later was lost while running; one that is already empty was
-        -- never saved. Without this line those two look identical from the chat frame.
-        local loadedTeams, loadedNeeds = #ns.db.doc.teams, 0
-        for _, team in ipairs(ns.db.doc.teams) do
-            loadedNeeds = loadedNeeds + #(team.needs or {})
-        end
-
-        SeedTeams()
-
-        --[[
-        Everything in the text, not the detail column: the detail is off the right edge of
-        a narrow window, and the team count is the whole point. Zero teams means the saved
-        variables never reached us; teams but no revision would mean something else again.
-
-        `sawFile` distinguishes the two states that matter. An account that has run this
-        addon before has settings written; a table with nothing in it at all is either a
-        first run or a load that did not happen.
-        ]]
-        ns.Log.Add("info", "Core", string.format(
-            "loaded rev %d, %s, %s, scale %d%%", ns.db.doc.rev or 0,
-            ns.Util.Plural(loadedTeams, loadedTeams .. " team"),
-            ns.Util.Plural(loadedNeeds, loadedNeeds .. " need"),
-            (ns.db.settings.windowScale or 1) * 100 + 0.5),
-            sawFile and "saved variables were present" or "SAVED VARIABLES WERE EMPTY")
-        if loadedTeams == 0 and (ns.db.doc.rev or 0) > 0 then
-            ns.Print("|cffffcc00the saved message has a revision but no teams,|r which "
-                .. "should not happen. /gr log has the detail.")
-        end
-
-        --[[
-        An empty table on an account that has used this addon before means the client did
-        not hand back what it saved. Say so BEFORE anything is edited, because the damage is
-        not the empty load -- it is the logout afterwards, which writes these defaults over
-        the file that still holds the real thing.
-
-        The previous session's file is still on disk as a .bak until the next save, so this
-        says where it is while it is still there.
-        ]]
-        if not sawFile and not ns.cdb.everRan then
-            ns.cdb.everRan = true
-        elseif not sawFile then
-            ns.Print("|cffff4444The saved settings did not load.|r This session started "
-                .. "empty even though this account has run the addon before.")
-            ns.Print("|cffff4444Do not log out or reload yet|r if the teams matter: that "
-                .. "writes these defaults over the file. The previous session is still in "
-                .. "WTF\\Account\\<account>\\SavedVariables\\GuildRecruitment.lua.bak")
-        end
-
-        ns.Comm.Init()
-        if ns.Minimap and ns.Minimap.Init then ns.Minimap.Init() end
-        ns.Bark.Restart()
-
-        ns.Printf("v%s loaded. /gr opens the window, /gr help lists commands.", VERSION)
-
-    elseif event == "PLAYER_LOGIN" then
-        ns.Roster.Refresh(true)
-
-    elseif event == "PLAYER_ENTERING_WORLD" then
-        -- One small "I hold rev N" a little while from now. The delay is not
-        -- politeness: the guild roster arrives asynchronously and a rank we have
-        -- not read yet is a rank that is allowed to do nothing.
-        if not ns.loginOffered then
-            ns.loginOffered = true
-            ns.Comm.ScheduleLogin()
-        end
-
-    elseif event == "GUILD_ROSTER_UPDATE" then
-        ns.Roster.Read()
-        SeedTeams()
-        if ns.UI then ns.UI.Refresh() end
-
-    elseif event == "CHAT_MSG_ADDON" then
-        ns.Comm.OnAddonMessage(arg1, arg2, arg3, arg4)
-    end
-end)
-
-ns.frame = frame
+ns.SeedTeams = SeedTeams
 
 --------------------------------------------------------------------------------
 -- Key bindings
 --------------------------------------------------------------------------------
 
-BINDING_HEADER_GUILDRECRUITMENT = "GuildRecruitment"
-BINDING_NAME_GUILDRECRUITMENT_BARK = "Send the recruitment message"
-BINDING_NAME_GUILDRECRUITMENT_TOGGLE = "Open or close the GuildRecruitment window"
+Core:Bindings("GUILDRECRUITMENT", "GuildRecruitment", {
+    BARK = "Send the recruitment message",
+    TOGGLE = "Open or close the GuildRecruitment window",
+})
 
 -- Called from Bindings.xml, which IS a hardware event, so the protected
 -- SendChatMessage is allowed here where the timer that armed it would be blocked.
@@ -304,16 +141,9 @@ local HELP = {
     { "out [n]", "print to ChatFrame n" },
     { "scale [percent]", "window size, 50 to 125, or drag its bottom-right corner" },
     { "reset [doc|peers|log|all]", "restore defaults" },
+    { "version", "addon and library versions" },
     { "help", "this list" },
 }
-
-local function PrintHelp()
-    ns.Print("commands:")
-    for _, row in ipairs(HELP) do
-        ns.Printf("  |cffffcc00/gr %s|r %s %s",
-            row[1], row[1] == "" and "" or "\194\183", row[2])
-    end
-end
 
 local function RequireAuthor()
     if ns.Roster.ICanAuthor() then return true end
@@ -323,187 +153,220 @@ local function RequireAuthor()
         rank == ns.Roster.UNKNOWN_RANK and "not read yet" or tostring(rank))
     return false
 end
+ns.RequireAuthor = RequireAuthor
 
-local function HandleSlash(input)
-    local raw = ns.Util.Trim(input or "")
-    local cmd, rest = raw:match("^(%S*)%s*(.*)$")
-    cmd = (cmd or ""):lower()
+-- Only what the library does not already do. help, log, probe, status, test, enable,
+-- disable, out, scale and version are built in; a key here overrides one.
+local COMMANDS = {}
 
-    if cmd == "" or cmd == "config" then
-        ns.UI.Toggle()
+COMMANDS.config = function() ns.UI.Toggle() end
 
-    elseif cmd == "send" or cmd == "bark" then
-        local ok, info = ns.Bark.Fire(true)
-        ns.Print(ok and ("sent: " .. tostring(info)) or ("not sent: " .. tostring(info)))
+local function Send()
+    local ok, info = ns.Bark.Fire(true)
+    ns.Print(ok and ("sent: " .. tostring(info)) or ("not sent: " .. tostring(info)))
+end
+COMMANDS.send, COMMANDS.bark = Send, Send
 
-    elseif cmd == "preview" then
-        local msg, level, dropped = ns.Bark.Preview()
-        if not msg then
-            local _, _, _, _, reason = ns.Message.Assemble(ns.db.doc, ns.cdb.bark.cursor)
-            ns.Print("nothing to send: " .. tostring(reason))
-            return
-        end
-        ns.Printf("%s  |cff888888(%d characters, %s%s)|r", msg, #msg,
-            ns.Message.LEVEL_NAME[level] or "?",
-            dropped > 0 and string.format(", %d needs left out", dropped) or "")
+COMMANDS.preview = function()
+    local msg, level, dropped = ns.Bark.Preview()
+    if not msg then
+        local _, _, _, _, reason = ns.Message.Assemble(ns.db.doc, ns.cdb.bark.cursor)
+        ns.Print("nothing to send: " .. tostring(reason))
+        return
+    end
+    ns.Printf("%s  |cff888888(%d characters, %s%s)|r", msg, #msg,
+        ns.Message.LEVEL_NAME[level] or "?",
+        dropped > 0 and string.format(", %d needs left out", dropped) or "")
+end
 
-    elseif cmd == "on" or cmd == "off" then
-        ns.db.settings.bark.enabled = (cmd == "on")
-        ns.Printf("the reminder timer is %s.", ns.Util.OnOff(ns.db.settings.bark.enabled))
+local function Reminder(_, cmd)
+    ns.db.settings.bark.enabled = (cmd == "on")
+    ns.Printf("the reminder timer is %s.", ns.Util.OnOff(ns.db.settings.bark.enabled))
+    ns.Bark.Restart()
+    ns.UI.Refresh()
+end
+COMMANDS.on, COMMANDS.off = Reminder, Reminder
+
+local function Timing(rest, cmd)
+    local mins = tonumber(rest)
+    local s = ns.db.settings.bark
+    if not mins then
+        ns.Printf("reminders every %d minutes, quiet for %d after another officer.",
+            math.floor(s.intervalSec / 60), math.floor(s.quietSec / 60))
+        return
+    end
+    if cmd == "every" then
+        s.intervalSec = ns.Bark.ClampInterval(mins * 60)
+        ns.Printf("reminding you every %d minutes.", math.floor(s.intervalSec / 60))
         ns.Bark.Restart()
-        ns.UI.Refresh()
-
-    elseif cmd == "every" or cmd == "quiet" then
-        local mins = tonumber(rest)
-        local s = ns.db.settings.bark
-        if not mins then
-            ns.Printf("reminders every %d minutes, quiet for %d after another officer.",
-                math.floor(s.intervalSec / 60), math.floor(s.quietSec / 60))
-            return
-        end
-        if cmd == "every" then
-            s.intervalSec = ns.Bark.ClampInterval(mins * 60)
-            ns.Printf("reminding you every %d minutes.", math.floor(s.intervalSec / 60))
-            ns.Bark.Restart()
-        else
-            s.quietSec = math.max(0, math.min(7200, math.floor(mins * 60)))
-            ns.Printf("staying quiet for %d minutes after another officer barks%s.",
-                math.floor(s.quietSec / 60), s.quietSec == 0 and " (off)" or "")
-        end
-        ns.UI.Refresh()
-
-    elseif cmd == "push" then
-        if not RequireAuthor() then return end
-        local ok, reason = ns.Comm.Broadcast()
-        ns.Print(ok and ("sent rev " .. ns.db.doc.rev .. " to the guild.")
-            or ("not sent: " .. tostring(reason)))
-
-    elseif cmd == "sync" then
-        local ok, reason = ns.Comm.Request()
-        ns.Print(ok and "asked the guild for a newer message."
-            or ("not asked: " .. tostring(reason)))
-
-    elseif cmd == "who" then
-        ns.Roster.Read()
-        local now = ns.Now()
-        local ours = ns.db.doc.rev or 0
-        ns.Printf("you hold %s", ns.Doc.Summary(ns.db.doc, now))
-        local any = false
-        for name, peer in pairs(ns.db.peers) do
-            any = true
-            local mark = "|cffffcc00"
-            if (peer.rev or 0) == ours then mark = "|cff44ff44"
-            elseif (peer.rev or 0) > ours then mark = "|cff88bbff" end
-            ns.Printf("  %s%-14s|r rev %-4s heard %s ago", mark, name,
-                tostring(peer.rev or "?"), ns.Util.Freshness(peer.seenAt, now, 0))
-        end
-        if not any then
-            ns.Print("  nobody else has said anything yet. /gr sync asks.")
-        end
-
-    elseif cmd == "rank" then
-        local which, value = rest:match("^(%a+)%s*(%-?%d*)$")
-        which = (which or ""):lower()
-        if which ~= "author" and which ~= "bark" then
-            ns.Print("which rank? /gr rank author <n> or /gr rank bark <n>. "
-                .. "0 is the guild master and larger numbers are lower ranks.")
-            return
-        end
-        local key = which == "author" and "authorRankIndex" or "barkRankIndex"
-        local n = tonumber(value)
-        if not n then
-            ns.Printf("%s rank is %d or better.", which, ns.db.settings[key])
-            return
-        end
-        ns.db.settings[key] = math.max(0, math.min(20, math.floor(n)))
-        ns.Printf("rank %d or better may %s.", ns.db.settings[key], which)
-        ns.UI.Refresh()
-
-    elseif cmd == "log" then
-        local n = tonumber(rest) or 10
-        local entries = ns.Log.Recent(n)
-        if #entries == 0 then ns.Print("the log is empty.") return end
-        for i = #entries, 1, -1 do
-            ns.Print(ns.Log.Describe(entries[i], ns.Now()))
-        end
-
-    elseif cmd == "probe" then
-        ns.Probe.Run(rest)
-
-    elseif cmd == "status" then
-        for _, line in ipairs(ns.Probe.Status()) do ns.Print(line) end
-
-    elseif cmd == "test" then
-        ns.Tests.Run()
-
-    elseif cmd == "enable" or cmd == "disable" then
-        ns.db.settings.enabled = (cmd == "enable")
-        ns.Printf("GuildRecruitment is %s.", ns.Util.OnOff(ns.db.settings.enabled))
-        ns.Bark.Restart()
-        ns.UI.Refresh()
-
-    elseif cmd == "out" then
-        local n = tonumber(rest)
-        if not n then
-            ns.Printf("printing to ChatFrame %d. /gr out <n> moves it.",
-                ns.db.settings.outputFrame or 1)
-            return
-        end
-        ns.db.settings.outputFrame = math.max(1, math.min(10, math.floor(n)))
-        ns.Printf("printing to ChatFrame %d.", ns.db.settings.outputFrame)
-
-    elseif cmd == "scale" then
-        local pct = tonumber(rest)
-        if not pct then
-            ns.Printf("window scale is %d%%. /gr scale <percent> sets it, or drag the grip "
-                .. "in the bottom-right corner.", (ns.db.settings.windowScale or 1) * 100 + 0.5)
-            return
-        end
-        local frame = ns.UI and ns.UI.frame
-        if not frame or not frame.SetWindowScale then
-            ns.Print("open the window first, then set the scale.")
-            return
-        end
-        local applied = frame:SetWindowScale(pct / 100)
-        ns.Printf("window scale set to %d%%.", applied * 100 + 0.5)
-
-    elseif cmd == "reset" then
-        local what = (rest ~= "" and rest or "peers"):lower()
-        if what == "doc" then
-            if not RequireAuthor() then return end
-            ns.db.doc = nil
-            ns.ApplyDefaults(ns.db, ns.Defaults)
-            SeedTeams()
-            ns.Print("the message is back to its default. Nothing was sent to anyone; "
-                .. "/gr push does that.")
-        elseif what == "peers" then
-            ns.db.peers, ns.db.barks = {}, {}
-            ns.Print("forgot every other officer's revision and every bark.")
-        elseif what == "log" then
-            ns.db.log, ns.db.capture = {}, {}
-            ns.Print("log cleared.")
-        elseif what == "all" then
-            GuildRecruitmentDB, GuildRecruitmentCharDB = {}, {}
-            ns.Migrate(GuildRecruitmentDB, ns.Migrations, ns.SCHEMA)
-            ns.Migrate(GuildRecruitmentCharDB, {}, ns.CHAR_SCHEMA)
-            ns.ApplyDefaults(GuildRecruitmentDB, ns.Defaults)
-            ns.ApplyDefaults(GuildRecruitmentCharDB, ns.CharDefaults)
-            ns.db, ns.cdb = GuildRecruitmentDB, GuildRecruitmentCharDB
-            SeedTeams()
-            ns.Print("everything reset.")
-        else
-            ns.Print("reset what? doc, peers, log, or all.")
-            return
-        end
-        ns.Bark.Restart()
-        ns.UI.Refresh()
-
     else
-        PrintHelp()
+        s.quietSec = math.max(0, math.min(7200, math.floor(mins * 60)))
+        ns.Printf("staying quiet for %d minutes after another officer barks%s.",
+            math.floor(s.quietSec / 60), s.quietSec == 0 and " (off)" or "")
+    end
+    ns.UI.Refresh()
+end
+COMMANDS.every, COMMANDS.quiet = Timing, Timing
+
+COMMANDS.push = function()
+    if not RequireAuthor() then return end
+    local ok, reason = ns.Comm.Broadcast()
+    ns.Print(ok and ("sent rev " .. ns.db.doc.rev .. " to the guild.")
+        or ("not sent: " .. tostring(reason)))
+end
+
+COMMANDS.sync = function()
+    local ok, reason = ns.Comm.Request()
+    ns.Print(ok and "asked the guild for a newer message."
+        or ("not asked: " .. tostring(reason)))
+end
+
+COMMANDS.who = function()
+    ns.Roster.Read()
+    local now = ns.Now()
+    local ours = ns.db.doc.rev or 0
+    ns.Printf("you hold %s", ns.Doc.Summary(ns.db.doc, now))
+    local any = false
+    for name, peer in pairs(ns.db.peers) do
+        any = true
+        local mark = "|cffffcc00"
+        if (peer.rev or 0) == ours then mark = "|cff44ff44"
+        elseif (peer.rev or 0) > ours then mark = "|cff88bbff" end
+        ns.Printf("  %s%-14s|r rev %-4s heard %s ago", mark, name,
+            tostring(peer.rev or "?"), ns.Util.Freshness(peer.seenAt, now, 0))
+    end
+    if not any then
+        ns.Print("  nobody else has said anything yet. /gr sync asks.")
     end
 end
 
-ns.slashTaken = SlashCmdList and SlashCmdList["GUILDRECRUITMENT"] ~= nil
-SLASH_GUILDRECRUITMENT1 = "/gr"
-SLASH_GUILDRECRUITMENT2 = "/guildrecruitment"
-SlashCmdList["GUILDRECRUITMENT"] = HandleSlash
+COMMANDS.rank = function(rest)
+    local which, value = rest:match("^(%a+)%s*(%-?%d*)$")
+    which = (which or ""):lower()
+    if which ~= "author" and which ~= "bark" then
+        ns.Print("which rank? /gr rank author <n> or /gr rank bark <n>. "
+            .. "0 is the guild master and larger numbers are lower ranks.")
+        return
+    end
+    local key = which == "author" and "authorRankIndex" or "barkRankIndex"
+    local n = tonumber(value)
+    if not n then
+        ns.Printf("%s rank is %d or better.", which, ns.db.settings[key])
+        return
+    end
+    ns.db.settings[key] = math.max(0, math.min(20, math.floor(n)))
+    ns.Printf("rank %d or better may %s.", ns.db.settings[key], which)
+    ns.UI.Refresh()
+end
+
+-- Over the library's: the document is guild property, so resetting it is gated on
+-- being allowed to author, and "peers" forgets the barks too.
+COMMANDS.reset = function(rest)
+    local what = (rest ~= "" and rest or "peers"):lower()
+    if what == "doc" then
+        if not RequireAuthor() then return end
+        ns.Reset("doc")
+        ns.Print("the message is back to its default. Nothing was sent to anyone; "
+            .. "/gr push does that.")
+    elseif what == "peers" then
+        ns.db.peers, ns.db.barks = {}, {}
+        ns.Print("forgot every other officer's revision and every bark.")
+    elseif what == "log" or what == "all" then
+        local _, msg = ns.Reset(what)
+        ns.Print(msg)
+    else
+        ns.Print("reset what? doc, peers, log, or all.")
+        return
+    end
+    ns.Bark.Restart()
+    ns.UI.Refresh()
+end
+
+--------------------------------------------------------------------------------
+-- Attach
+--------------------------------------------------------------------------------
+
+Core:Attach(ns, {
+    name = addonName,
+    prefix = "GuildRecruitment",
+    version = VERSION,
+    db = "GuildRecruitmentDB",
+    cdb = "GuildRecruitmentCharDB",
+    defaults = Defaults,
+    charDefaults = CharDefaults,
+    schema = SCHEMA,
+    charSchema = CHAR_SCHEMA,
+    migrations = Migrations,
+    slash = { "/gr", "/guildrecruitment" },
+    slashKey = "GUILDRECRUITMENT",
+    help = HELP,
+    commands = COMMANDS,
+    loadedHint = "/gr opens the window, /gr help lists commands.",
+    -- One colour per kind everywhere: green happened, amber waiting, red failed.
+    logKinds = {
+        sent = "|cff44ff44",        -- we put a line in a channel
+        armed = "|cffffcc00",       -- the timer says it is time
+        skipped = "|cff888888",     -- we could have and did not, with a reason
+        remote = "|cff88bbff",      -- another officer did something
+        doc = "|cffdf9c33",         -- the message itself changed
+    },
+
+    onLoad = function()
+        -- What came back off disk, before anything else can touch it. A document that
+        -- is whole here and empty later was lost while running; one that is already
+        -- empty was never saved. The library's own line says whether the file loaded.
+        local teams, needs = #ns.db.doc.teams, 0
+        for _, team in ipairs(ns.db.doc.teams) do needs = needs + #(team.needs or {}) end
+        ns.Log.Add("info", "Core", string.format("rev %d, %s, %s, scale %d%%",
+            ns.db.doc.rev or 0,
+            ns.Util.Plural(teams, teams .. " team"),
+            ns.Util.Plural(needs, needs .. " need"),
+            (ns.db.settings.windowScale or 1) * 100 + 0.5))
+        if teams == 0 and (ns.db.doc.rev or 0) > 0 then
+            ns.Print("|cffffcc00the saved message has a revision but no teams,|r which "
+                .. "should not happen. /gr log has the detail.")
+        end
+
+        SeedTeams()
+        ns.Comm.Init()
+        if ns.Minimap and ns.Minimap.Init then ns.Minimap.Init() end
+        ns.Bark.Restart()
+    end,
+    onToggle = function() ns.Bark.Restart() end,
+    onReset = function(what)
+        if what == "doc" or what == "all" then SeedTeams() end
+    end,
+})
+
+--------------------------------------------------------------------------------
+-- Events that are this addon's own
+--------------------------------------------------------------------------------
+
+local frame = CreateFrame("Frame")
+frame:RegisterEvent("PLAYER_LOGIN")
+frame:RegisterEvent("PLAYER_ENTERING_WORLD")
+frame:RegisterEvent("GUILD_ROSTER_UPDATE")
+frame:RegisterEvent("CHAT_MSG_ADDON")
+
+frame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4)
+    if event == "PLAYER_LOGIN" then
+        ns.Roster.Refresh(true)
+
+    elseif event == "PLAYER_ENTERING_WORLD" then
+        -- One small "I hold rev N" a little while from now. The delay is not
+        -- politeness: the guild roster arrives asynchronously and a rank we have
+        -- not read yet is a rank that is allowed to do nothing.
+        if not ns.loginOffered then
+            ns.loginOffered = true
+            ns.Comm.ScheduleLogin()
+        end
+
+    elseif event == "GUILD_ROSTER_UPDATE" then
+        ns.Roster.Read()
+        SeedTeams()
+        if ns.UI then ns.UI.Refresh() end
+
+    elseif event == "CHAT_MSG_ADDON" then
+        ns.Comm.OnAddonMessage(arg1, arg2, arg3, arg4)
+    end
+end)

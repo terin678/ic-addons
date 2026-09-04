@@ -4,13 +4,13 @@ Target interface: 20506. Client folder `_anniversary_`.
 
 | Addon | Version | Guide |
 | --- | --- | --- |
-| MalexisAuctionWatcher | 1.19.0 | [Docs/MalexisAuctionWatcher.md](../../Docs/MalexisAuctionWatcher.md) |
+| MalexisAuctionWatcher | 1.20.0 | [Docs/MalexisAuctionWatcher.md](../../Docs/MalexisAuctionWatcher.md) |
 | AuctionatorSellingTweaks | 1.0.1 | [Docs/AuctionatorSellingTweaks.md](../../Docs/AuctionatorSellingTweaks.md) |
-| TradeMaster | 1.13.1 | [Docs/TradeMaster.md](../../Docs/TradeMaster.md) |
+| TradeMaster | 1.14.0 | [Docs/TradeMaster.md](../../Docs/TradeMaster.md) |
 | CutMaster | 1.2.0 | [Docs/CutMaster.md](../../Docs/CutMaster.md) |
-| ICLibs | 1.6.0 | [Docs/ICLibs.md](../../Docs/ICLibs.md) |
-| ICTemplate | 1.0.2 | [Docs/ICTemplate.md](../../Docs/ICTemplate.md) |
-| GuildRecruitment | 0.2.1 | [Docs/GuildRecruitment.md](../../Docs/GuildRecruitment.md) |
+| ICLibs | 1.7.0 | [Docs/ICLibs.md](../../Docs/ICLibs.md) |
+| ICTemplate | 1.1.0 | [Docs/ICTemplate.md](../../Docs/ICTemplate.md) |
+| GuildRecruitment | 0.3.0 | [Docs/GuildRecruitment.md](../../Docs/GuildRecruitment.md) |
 
 `ICLibs` is a library addon. MalexisAuctionWatcher, TradeMaster, ICTemplate and
 GuildRecruitment list it under `## Dependencies`, so it must be installed alongside them;

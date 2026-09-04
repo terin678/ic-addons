@@ -1,42 +1,10 @@
 local addonName, ns = ...
 
-ns.Tests = ns.Tests or {}
+-- The harness -- Case, Eq, True, Near, With, Run -- is LibICCore's. What lives here are
+-- the cases, run in game with /tm test; the result goes to SavedVariables so failures
+-- can be read off disk after a /reload.
+
 local T = ns.Tests
-T.cases = {}
-
-function T.Case(name, fn)
-    T.cases[#T.cases + 1] = { name = name, fn = fn }
-end
-
-function T.Eq(actual, expected, label)
-    if actual ~= expected then
-        error(string.format("%s: expected [%s], got [%s]",
-            tostring(label or "value"), tostring(expected), tostring(actual)), 2)
-    end
-end
-
-function T.Run()
-    local pass, fail = 0, 0
-    -- Written to SavedVariables so failures can be read off disk after a /reload.
-    ns.db.lastTestRun = { at = ns.Now(), failures = {} }
-
-    for _, c in ipairs(T.cases) do
-        local ok, err = pcall(c.fn)
-        if ok then
-            pass = pass + 1
-        else
-            fail = fail + 1
-            ns.Print("|cffff4444FAIL|r " .. c.name .. " => " .. tostring(err))
-            local f = ns.db.lastTestRun.failures
-            f[#f + 1] = { name = c.name, err = tostring(err) }
-        end
-    end
-    ns.db.lastTestRun.passed = pass
-    ns.db.lastTestRun.failed = fail
-    ns.Print(string.format("Tests: |cff44ff44%d passed|r, %s%d failed|r",
-        pass, fail > 0 and "|cffff4444" or "|cff44ff44", fail))
-    return pass, fail
-end
 
 --------------------------------------------------------------------------------
 -- Fixtures

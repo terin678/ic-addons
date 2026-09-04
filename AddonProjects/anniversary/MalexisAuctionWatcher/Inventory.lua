@@ -65,7 +65,7 @@ function MAW:ScanBankCache()
     end
 
     if self.debugMode then
-        print(addonName .. " [DEBUG]: Bank cache updated")
+        MAW.Debug("%s", "Bank cache updated")
     end
 end
 
@@ -105,7 +105,7 @@ function MAW:ScanAuctionHouseCache()
     end
 
     if self.debugMode then
-        print(addonName .. " [DEBUG]: Auction house cache updated")
+        MAW.Debug("%s", "Auction house cache updated")
     end
 end
 

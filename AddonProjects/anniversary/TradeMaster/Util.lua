@@ -1,31 +1,9 @@
 local addonName, ns = ...
 
-ns.Util = ns.Util or {}
+-- Trim, StripEscapes and Normalize come from LibICCore, installed on ns.Util by
+-- Core.lua before this file runs. What is here is the chat-reading half that only
+-- this addon needs.
 local Util = ns.Util
-
-function Util.Trim(s)
-    if not s then return "" end
-    return (s:gsub("^%s*(.-)%s*$", "%1"))
-end
-
-function Util.StripEscapes(s)
-    if not s then return "" end
-    s = s:gsub("|c%x%x%x%x%x%x%x%x", "")
-    s = s:gsub("|r", "")
-    s = s:gsub("|H.-|h(.-)|h", "%1")
-    s = s:gsub("|T.-|t", "")
-    s = s:gsub("|A.-|a", "")
-    return s
-end
-
-function Util.Normalize(s)
-    if not s then return "" end
-    s = Util.StripEscapes(s)
-    s = s:lower()
-    s = s:gsub("[^%w%s]", " ")
-    s = s:gsub("%s+", " ")
-    return Util.Trim(s)
-end
 
 function Util.ExtractItemIDs(raw)
     local ids = {}

@@ -1,69 +1,16 @@
 local addonName, ns = ...
 
-ns.Tests = ns.Tests or {}
-local T = ns.Tests
-T.cases = {}
-
 --[[
-The harness came from ICTemplate. What is worth reading here are the cases: two
-officers editing in the same minute have to end up agreeing, and they have to
-agree on the SAME answer without saying another word to each other. That rule is
-Doc.Compare, and it is the reason most of this file exists.
+The harness -- Case, Eq, True, With, Run -- is LibICCore's. What is worth reading
+here are the cases: two officers editing in the same minute have to end up agreeing,
+and they have to agree on the SAME answer without saying another word to each other.
+That rule is Doc.Compare, and it is the reason most of this file exists.
 
 Written in game with /gr test, and the result goes to SavedVariables so it can be
 read after a /reload took the chat frame with it.
 ]]
 
-function T.Case(name, fn)
-    T.cases[#T.cases + 1] = { name = name, fn = fn }
-end
-
-function T.Eq(actual, expected, label)
-    if actual ~= expected then
-        error(string.format("%s: expected [%s], got [%s]",
-            tostring(label or "value"), tostring(expected), tostring(actual)), 2)
-    end
-end
-
-function T.True(value, label)
-    if not value then
-        error(string.format("%s: expected something true, got [%s]",
-            tostring(label or "value"), tostring(value)), 2)
-    end
-end
-
--- Runs fn against a made-up saved-variables table and puts the real one back
--- afterwards, whatever fn does.
-function T.With(db, cdb, fn)
-    local realDB, realCDB = ns.db, ns.cdb
-    ns.db, ns.cdb = db, cdb or {}
-    local ok, err = pcall(fn)
-    ns.db, ns.cdb = realDB, realCDB
-    if not ok then error(err, 2) end
-end
-
-function T.Run()
-    local pass, fail = 0, 0
-    ns.db.lastTestRun = { at = ns.Now(), failures = {} }
-
-    for _, case in ipairs(T.cases) do
-        local ok, err = pcall(case.fn)
-        if ok then
-            pass = pass + 1
-        else
-            fail = fail + 1
-            ns.Print("|cffff4444FAIL|r " .. case.name .. " => " .. tostring(err))
-            local f = ns.db.lastTestRun.failures
-            f[#f + 1] = { name = case.name, err = tostring(err) }
-        end
-    end
-
-    ns.db.lastTestRun.passed, ns.db.lastTestRun.failed = pass, fail
-    ns.Printf("Tests: |cff44ff44%d passed|r, %s%d failed|r",
-        pass, fail > 0 and "|cffff4444" or "|cff44ff44", fail)
-    if ns.UI then ns.UI.Refresh() end
-    return pass, fail
-end
+local T = ns.Tests
 
 --------------------------------------------------------------------------------
 -- Fixtures

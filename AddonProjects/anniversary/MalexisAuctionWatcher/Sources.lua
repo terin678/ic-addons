@@ -287,7 +287,7 @@ function MAW:PullExternalPrices(reason, only, verbose)
         and self.sources.tsm.available and self:IsSourceEnabled("tsm")
     if not useAtr and not useTsm then
         if verbose then
-            print(addonName .. ": No external source is available and enabled (" .. self:DescribeSources() .. ")")
+            MAW.Print("No external source is available and enabled (" .. self:DescribeSources() .. ")")
         end
         return 0
     end
@@ -301,14 +301,14 @@ function MAW:PullExternalPrices(reason, only, verbose)
             local ok, detail = self:PullAuctionator(itemName, itemData)
             got = got or ok
             if verbose then
-                print(string.format("  %s%s|r %s: %s", ok and "|cff80ff80" or "|cffff8080", "[Auctionator]", itemName, detail or ""))
+                MAW.Print(string.format("  %s%s|r %s: %s", ok and "|cff80ff80" or "|cffff8080", "[Auctionator]", itemName, detail or ""))
             end
         end
         if useTsm then
             local ok, detail = self:PullTSM(itemName, itemData)
             got = got or ok
             if verbose then
-                print(string.format("  %s%s|r %s: %s", ok and "|cff80ff80" or "|cffff8080", "[TSM]", itemName, detail or ""))
+                MAW.Print(string.format("  %s%s|r %s: %s", ok and "|cff80ff80" or "|cffff8080", "[TSM]", itemName, detail or ""))
             end
         end
         if got then
@@ -317,7 +317,7 @@ function MAW:PullExternalPrices(reason, only, verbose)
     end
 
     if verbose or self.debugMode then
-        print(addonName .. ": External pull (" .. tostring(reason) .. ") found data for " .. count .. " of " .. total .. " items")
+        MAW.Print("External pull (" .. tostring(reason) .. ") found data for " .. count .. " of " .. total .. " items")
     end
     if count > 0 then
         self:FireCallbacks("onScanComplete")

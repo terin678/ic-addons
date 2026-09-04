@@ -7,6 +7,7 @@
 -- reuses frames instead of building new ones.
 local addonName = "MalexisAuctionWatcher"
 local MAWUI = {}
+local MAW = _G.MalexisAuctionWatcher
 
 local ICUI = LibStub("LibICUI-1.0")
 
@@ -1088,7 +1089,7 @@ local function BuildHistoryPage(page)
     view.pullAtr:SetPoint("LEFT", top, "LEFT", 265, 0)
     view.pullAtr:SetScript("OnClick", function()
         local MAW = _G.MalexisAuctionWatcher
-        print("Malexis Auction Watcher: Pulling from Auctionator...")
+        MAW.Print("Pulling from Auctionator...")
         MAW:PullExternalPrices("button", "auctionator", true)
         MAWUI:RefreshData()
     end)
@@ -1097,7 +1098,7 @@ local function BuildHistoryPage(page)
     view.pullTsm:SetPoint("LEFT", view.pullAtr, "RIGHT", 6, 0)
     view.pullTsm:SetScript("OnClick", function()
         local MAW = _G.MalexisAuctionWatcher
-        print("Malexis Auction Watcher: Pulling from TSM...")
+        MAW.Print("Pulling from TSM...")
         MAW:PullExternalPrices("button", "tsm", true)
         MAWUI:RefreshData()
     end)
@@ -1828,7 +1829,7 @@ function MAWUI:CreateUI()
     -- addon can win the LibStub race at an older MINOR, and an unguarded call would take
     -- the whole window down rather than just costing us the scaling.
     if not mainFrame.SetWindowScale then
-        print("Malexis Auction Watcher: an older ICLibs is loaded, so the window cannot be "
+        MAW.Print("an older ICLibs is loaded, so the window cannot be "
             .. "resized. Update ICLibs to 1.6.0 or later.")
     elseif saved then
         mainFrame:SetWindowScale(saved, true)
@@ -2063,7 +2064,7 @@ function MAWUI:ShowHistory(name)
         elseif MAW:FindRecipe(name) then
             MAW:SetHistorySelection("recipe", name)
         else
-            print("Malexis Auction Watcher: Not tracking " .. name)
+            MAW.Print("Not tracking " .. name)
         end
     end
     currentTab = "history"
