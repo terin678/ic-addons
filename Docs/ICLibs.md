@@ -53,7 +53,7 @@ local UI = LibStub("LibICUI-1.0")
 | `UI:Style(name, style)` | Registers an addon's look (row height, fonts, colours) and fills in the rest from the default. Pass the name or the table as `opts.style`. |
 | `UI:Window(name, opts)` | A movable, escapable window wearing the guild mark. `f.body` is the area under the title bar, plus `f.title` and `f.status`. |
 | `UI:TabStrip(parent, opts)` | A row of tab buttons; the live one goes gold. `strip:Select(name or index)` calls `onSelect`. |
-| `UI:Button(parent, text, w, h, opts)` | A palette button. `opts.kind` is `"normal"`, `"accent"` or `"danger"`; `opts.template` adds a frame template such as `SecureActionButtonTemplate`. `SetText`, `Enable`, `Disable` and `SetEnabled` work as on a Blizzard button, and `b:SetActive(on)` shows a toggle's state. |
+| `UI:Button(parent, text, w, h, opts)` | A palette button. A disabled one still shows its tooltip, so a greyed control can say why. `opts.kind` is `"normal"`, `"accent"` or `"danger"`; `opts.template` adds a frame template such as `SecureActionButtonTemplate`. `SetText`, `Enable`, `Disable` and `SetEnabled` work as on a Blizzard button, and `b:SetActive(on)` shows a toggle's state. |
 | `UI:EditBox(parent, w, h, opts)` | A single-line text box in the palette. |
 | `UI:TextBox(parent, w, h, opts)` | A multi-line text area that scrolls: `box:SetText(s)`, `box:GetText()`, `box:SelectAllAndFocus()` for a Copy button, `opts.readOnly` and `opts.maxBytes`. |
 | `UI:CheckBox(parent, label, opts)` | Blizzard's check button with a palette label; `opts.labelSide = "LEFT"` puts the label before it. |

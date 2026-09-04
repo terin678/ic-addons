@@ -34,7 +34,7 @@ Set `theme = false` in a style to get plain Blizzard controls instead of the gui
 The palette is the default; nothing has to ask for it.
 ]]
 
-local MAJOR, MINOR = "LibICUI-1.0", 4
+local MAJOR, MINOR = "LibICUI-1.0", 5
 local Lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not Lib then return end
 
@@ -241,10 +241,17 @@ function Lib:Button(parent, text, w, h, opts)
     b:SetText(text or "")
     RepaintButton(b)
 
+    -- A disabled Button is given no mouse scripts at all unless it asks for them,
+    -- and a greyed control that cannot say why it is greyed reads as a broken
+    -- addon. The hover paint is for a button you can press; the tooltip is for one
+    -- you cannot, which is when a reader most needs telling.
+    if b.SetMotionScriptsWhileDisabled then b:SetMotionScriptsWhileDisabled(true) end
+
     b:SetScript("OnEnter", function(self)
-        if not self:IsEnabled() then return end
-        local _, hover = KindColors(self.icStyle, self.icKind)
-        self:SetBackdropColor(hover.r, hover.g, hover.b, hover.a or 1)
+        if self:IsEnabled() then
+            local _, hover = KindColors(self.icStyle, self.icKind)
+            self:SetBackdropColor(hover.r, hover.g, hover.b, hover.a or 1)
+        end
         if self.icOnEnter then self.icOnEnter(self) end
     end)
     b:SetScript("OnLeave", function(self)

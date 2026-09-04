@@ -117,6 +117,12 @@ Keep, always:
 Throw away as soon as it is in the way: `Demos.lua`, `Snippet.lua`, `UI_Gallery.lua`,
 `UI_Table.lua`, and `Pulse.lua` if your addon never says anything on a timer.
 
+**If you delete `Pulse.lua`, its key binding goes with it.** `Bindings.xml` is not in the
+`.toc` and the script does not touch it beyond renaming the tokens, so a binding pointing at
+`<Addon>_PulseNow()` survives the deletion and errors the first time somebody presses the
+key. Building GuildRecruitment found this the hard way. Delete or repoint the `<Binding>`,
+its `BINDING_NAME_*` global in `Core.lua`, and the global function it calls, together.
+
 ## Rules it is demonstrating
 
 These come from `CODING_STANDARDS.md`, and the template is where they are all in one place.
