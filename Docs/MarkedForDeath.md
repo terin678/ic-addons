@@ -207,6 +207,7 @@ Every command is in `/mfd help`.
 | `/mfd debug` | If marking is not happening, this says exactly why, most fundamental reason first. |
 | `/mfd mark` | Force a full re-mark of the visible pack. |
 | `/mfd clear` | Clear every icon on visible mobs. |
+| `/mfd announce` | Post the current assignments to raid chat now, for calling a pack out before the pull. Macro friendly. |
 | `/mfd where` | Current zone, its map id, and how many rules are active here. |
 | `/mfd fixcvars` | Turn enemy nameplates on and set their range to 41 yards. |
 | `/mfd export` | A string of your own rules to paste to someone. |
@@ -270,11 +271,39 @@ Editing a merged rule copies it into your own set first. From then on it is your
 - Before the pull, marks may re-shuffle if a higher priority mob walks into range.
 - The moment combat starts, assignments freeze to their mobs. Nothing moves except by
   death, which frees the role for the next mob of that job.
-- If someone clears or changes an icon the addon placed, it puts it back. After three
-  corrections in five seconds it backs off and says so, rather than fighting a person
-  who is changing it on purpose.
+- If someone clears an icon the addon placed, it puts it back. After three corrections in
+  five seconds it backs off and says so, rather than fighting whatever keeps wiping it.
 - On pull, the marker posts one line to raid chat: `[MFD] Skull>Kill | Moon>Sheep Grimmtusk`.
   For the people not running the addon. Throttled to one per five seconds.
+
+## Marking something yourself
+
+Put an icon on a mob by hand and it stays. The addon reads it as your decision, holds that
+mob on that icon, and allocates everything else around it: mark a mob Skull yourself and
+whatever the rules would have given Skull to drops to Cross instead. It works whether or
+not the icon has a role in your plan, so a hand-placed Circle holds too.
+
+The icon you reached for decides the job, not the mob's rule. Moon on something your rules
+call a kill is read as a sheep call and announced to whoever owns Moon.
+
+Take your mark off again and the mob goes back to the addon. Holds you placed survive the
+end of combat, so marking the next pack before pulling it works. `/mfd clear` and zoning
+clear them along with everything else. Turn the whole behaviour off in Settings under
+**A mark placed by hand wins**.
+
+## Calling the pack out before you pull it
+
+The **Announce to raid** button on the assignment panel posts the current assignments to
+raid chat on demand, the same line the pull announcement uses. `/mfd announce` does the
+same thing and is what you want in a macro:
+
+```
+/mfd announce
+```
+
+It recomputes rather than repeating the last line, so what it posts is what is on the mobs
+right now. Only the marking client announces; a backup pressing it is told why nothing was
+sent instead of the raid getting the line twice.
 
 ## Raid check
 
@@ -308,10 +337,16 @@ of those answers. If a player somehow runs none of them, their durability shows 
 The durability cell shows `72% !1` in red when someone has a broken item, because a
 broken weapon at 70% overall matters more than 40% spread evenly.
 
-**Click a consumable column header** (Food, Flask, Battle, Guard, Weapon) to toggle
-whether the raid expects it. Greyed headers are not expected and their absences are never
-reported missing or called out. That is how you stop the addon nagging about battle
-elixirs on a farm night.
+**Flask or both elixirs, never both.** A flask fills both elixir slots, so it is one
+requirement with two ways to meet it and the addon checks it as one. A flask on its own is
+fine. A battle elixir and a guardian elixir together is fine. One elixir on its own is
+half the job and reads as missing. The three columns are still shown separately so you can
+see what somebody is actually running; they just answer to one requirement.
+
+**Click a consumable column header** (Food, or Flask for the flask-or-elixirs
+requirement) to toggle whether the raid expects it. Greyed headers are not expected and
+their absences are never reported missing or called out. That is how you stop the addon
+nagging about elixirs on a farm night.
 
 **Spec works on anyone within about 28 yards**, no addon needed: the addon inspects
 people one at a time while a raid check window is open or for twenty seconds after a

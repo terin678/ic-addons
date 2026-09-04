@@ -39,11 +39,13 @@ end
 --   rulesByNpcID  { [npcID] = { intent, rank, fallback, maxCount } }
 --   roles         the table returned by MFD.Roles.Resolve
 --   locked        { [key] = icon } or nil, assignments frozen at combat start
+--   manualKeys    { [key] = true } or nil, locks a person placed by hand
 --
 -- Returns { list = array of { key, icon, intent, owner }, byKey = { [key] = icon } }.
 -- Has no side effects and does not mutate any argument.
-function Allocator.Compute(candidates, rulesByNpcID, roles, locked, allowIconReuse)
+function Allocator.Compute(candidates, rulesByNpcID, roles, locked, allowIconReuse, manualKeys)
     locked = locked or {}
+    manualKeys = manualKeys or {}
 
     local usedIcons, countByNpcID = {}, {}
     local list, byKey = {}, {}
@@ -72,9 +74,28 @@ function Allocator.Compute(candidates, rulesByNpcID, roles, locked, allowIconReu
         local candidate = byKeyCandidate[key]
         local icon = locked[key]
         local role = roles.byIcon[icon]
-        if candidate and role and not usedIcons[icon] then
+        local isManual = manualKeys[key] == true
+
+        -- A hand-placed icon holds its mob whether or not the plan has a role
+        -- for that icon. Dropping it here would leave the mob eligible, the
+        -- allocator would want a different icon on it, and the addon would
+        -- spend the pull arguing with the tank who marked it.
+        if candidate and (role or isManual) and not usedIcons[icon] then
             local rule = rulesByNpcID[candidate.npcID]
-            record(key, icon, rule and rule.intent or role.intent, role.owner, candidate.npcID)
+            local intent, owner
+
+            if isManual then
+                -- Whoever placed it meant the icon, not the mob's rule. Moon on
+                -- something the rules call a kill is a sheep call, and reading
+                -- it as a kill would announce the wrong job to the wrong person.
+                intent = role and role.intent or "MANUAL"
+                owner = role and role.owner
+            else
+                intent = rule and rule.intent or role.intent
+                owner = role.owner
+            end
+
+            record(key, icon, intent, owner, candidate.npcID)
         end
     end
 

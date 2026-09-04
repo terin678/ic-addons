@@ -29,10 +29,17 @@ Marker.LIMITS = {
 -- Assignments frozen at combat start, { [key] = icon }.
 Marker.locked = {}
 
--- Keys this client has actually applied an icon to. Separating this from the
--- observed icons is what lets the brake tell "we marked it and someone wiped
--- it" apart from "this mob simply has no icon yet"; both read as 0.
+-- The icon this client last applied per mob, { [key] = icon }. Separating this
+-- from the observed icons is what lets the brake tell "we marked it and someone
+-- wiped it" apart from "this mob simply has no icon yet"; both read as 0. It
+-- holds the icon rather than a flag so a mark that changed under us can be
+-- recognised as somebody else's.
 Marker.placed = {}
+
+-- Icons a person put on a mob by hand, { [key] = icon }, and when this client
+-- last wrote to each mob, { [key] = time }.
+Marker.manual = {}
+Marker.wroteAt = {}
 
 -- The authority's most recently published map, { [key] = icon }, with the
 -- intent and owner alongside and the time each key first appeared. Backups
@@ -88,6 +95,41 @@ function Marker.BackupActions(published, actual, firstSeenAt, now, delay)
     return actions
 end
 
+-- How long after writing an icon a mob is exempt from manual detection. The
+-- server round-trip means GetRaidTargetIndex can still report the previous
+-- icon for a moment, and reading that as a person's doing would lock the mob
+-- to an icon nobody chose.
+Marker.MANUAL_SETTLE_SECONDS = 1.0
+
+-- Decides which icons on screen were put there by a person rather than by us.
+--
+-- placed holds the icon we last wrote per mob, so the test is exact: an icon
+-- that is not the one we wrote is somebody else's. A tank marking Skull by
+-- hand wins the argument outright instead of being fought for three ticks and
+-- then grudgingly conceded, which is what the defense brake alone did.
+--
+-- Takes the observed actual map, what we last placed, the manual locks already
+-- held, when each mob was last written to, the current time and the settle
+-- window. Returns { added = { [key] = icon }, removed = array of key }. Pure.
+function Marker.DetectManualMarks(actual, placed, manual, wroteAt, now, settleSeconds)
+    local added, removed = {}, {}
+
+    for _, key in ipairs(MFD.H.SortedKeys(actual)) do
+        local icon = actual[key]
+        local isSettling = (now - (wroteAt[key] or 0)) < settleSeconds
+
+        if icon ~= 0 and icon ~= placed[key] and not isSettling and manual[key] ~= icon then
+            added[key] = icon
+        elseif icon == 0 and manual[key] and not isSettling then
+            -- They took their own mark off. That releases the mob back to the
+            -- allocator; holding it would be the addon refusing to let go.
+            removed[#removed + 1] = key
+        end
+    end
+
+    return { added = added, removed = removed }
+end
+
 -- Takes the desired map, the observed actual map, the set of keys we have
 -- placed, a mutable defense counter table, the current time and the limits.
 -- Returns { actions = array of { key, icon, isDefense }, yielded = array of key }.
@@ -111,7 +153,7 @@ function Marker.ComputeDiff(desired, actual, placed, defense, now, limits)
             -- Either we put an icon here and it is gone or changed, or someone
             -- else has put a different icon on it. Both mean we are contesting
             -- the mob rather than marking it for the first time.
-            local isDefense = placed[key] == true or present ~= 0
+            local isDefense = placed[key] ~= nil or present ~= 0
 
             if not isDefense then
                 actions[#actions + 1] = { key = key, icon = wanted, isDefense = false }
@@ -274,6 +316,9 @@ function Marker:ClearAll()
     wipe(Marker.locked)
     wipe(Marker.placed)
     wipe(Marker.borrowed)
+    -- Clearing every icon includes the hand-placed ones, so the holds they
+    -- were given go with them.
+    wipe(Marker.manual)
     return cleared
 end
 
@@ -407,7 +452,7 @@ function Marker:Desired()
     -- ids, so name rules are matched onto the mobs actually on screen first.
     local rules = MFD.Rules.ResolveForCandidates(MFD.Rules.Active(), candidates)
     local allowReuse = MFD.db.settings.isIconReuseEnabled
-    local desired = MFD.Allocator.Compute(candidates, rules, roles, Marker.locked, allowReuse)
+    local desired = MFD.Allocator.Compute(candidates, rules, roles, Marker.locked, allowReuse, Marker.manual)
 
     -- Which mobs wanted crowd control and got nothing. The tick uses this to
     -- take a borrowed icon back and shout about it.
@@ -535,6 +580,8 @@ function Marker:Tick(elapsed)
     for _, key in ipairs(MFD.Candidates.Prune(MFD.Candidates.set, now, MFD.Candidates.GRACE_SECONDS)) do
         Marker.locked[key] = nil
         Marker.placed[key] = nil
+        Marker.manual[key] = nil
+        Marker.wroteAt[key] = nil
         defense[key] = nil
         MFD.Comms.reportedSightings[key] = nil
     end
@@ -561,7 +608,8 @@ function Marker:Tick(elapsed)
                 local unit = units[action.key]
                 if unit then
                     SetRaidTarget(unit, action.icon)
-                    Marker.placed[action.key] = true
+                    Marker.placed[action.key] = action.icon
+                    Marker.wroteAt[action.key] = now
                     MFD.Comms:Send("C", { action.key })
                 end
             end
@@ -574,15 +622,40 @@ function Marker:Tick(elapsed)
         return
     end
 
-    local desired = Marker:Desired()
+    -- Read the board before deciding anything. A person who marked a mob by
+    -- hand has already made the decision for that mob, and the allocator needs
+    -- to know that before it works out where everything else goes.
     local actual, units = readActual()
+
+    if MFD.db.settings.isManualOverrideEnabled then
+        local manual = Marker.DetectManualMarks(
+            actual, Marker.placed, Marker.manual, Marker.wroteAt, now, Marker.MANUAL_SETTLE_SECONDS)
+
+        for _, key in ipairs(MFD.H.SortedKeys(manual.added)) do
+            local icon = manual.added[key]
+            Marker.manual[key] = icon
+            Marker.locked[key] = icon
+            -- Whoever did it wins, so the brake has nothing left to argue
+            -- about. Clearing the counter also means an honest fight later
+            -- still gets its full budget.
+            defense[key] = nil
+        end
+
+        for _, key in ipairs(manual.removed) do
+            Marker.manual[key] = nil
+            Marker.locked[key] = nil
+        end
+    end
+
+    local desired = Marker:Desired()
     local diff = Marker.ComputeDiff(desired.byKey, actual, Marker.placed, defense, now, Marker.LIMITS)
 
     for _, action in ipairs(diff.actions) do
         local unit = units[action.key]
         if unit then
             SetRaidTarget(unit, action.icon)
-            Marker.placed[action.key] = true
+            Marker.placed[action.key] = action.icon
+            Marker.wroteAt[action.key] = now
         end
     end
 
@@ -687,9 +760,18 @@ MFD.RegisterInit(function()
             wipe(Marker.locked)
             wipe(Marker.alertedCrowdControl)
             Marker.pullCrowdControl = nil
+
+            -- A mark somebody placed by hand is not a combat freeze and does
+            -- not thaw with one. Marking the next pack before pulling it is
+            -- the whole point of doing it by hand.
+            for key, icon in pairs(Marker.manual) do
+                Marker.locked[key] = icon
+            end
         elseif event == "PLAYER_ENTERING_WORLD" then
             wipe(Marker.locked)
             wipe(Marker.placed)
+            wipe(Marker.manual)
+            wipe(Marker.wroteAt)
             wipe(Marker.alertedCrowdControl)
             Marker.pullCrowdControl = nil
             Marker.InvalidateRoster()
@@ -706,6 +788,8 @@ MFD.RegisterInit(function()
                 if key then
                     Marker.locked[key] = nil
                     Marker.placed[key] = nil
+                    Marker.manual[key] = nil
+                    Marker.wroteAt[key] = nil
                     defense[key] = nil
                     MFD.Candidates.set[key] = nil
                 end
@@ -741,7 +825,11 @@ function Announce.Format(assignments)
     for _, icon in ipairs(ANNOUNCE_ORDER) do
         local a = byIcon[icon]
         if a then
-            local label = MFD.Roles.INTENTS[a.intent] and MFD.Roles.INTENTS[a.intent].label or a.intent
+            -- MANUAL is not a role in the plan: it is an icon somebody placed
+            -- on a mob the plan has nothing to say about. Naming it as such
+            -- beats printing the raw word at the raid.
+            local def = MFD.Roles.INTENTS[a.intent]
+            local label = (def and def.label) or (a.intent == "MANUAL" and "manual") or a.intent
             parts[#parts + 1] = ICON_NAMES[icon] .. ">" .. label .. (a.owner and (" " .. a.owner) or "")
         end
     end
@@ -792,6 +880,52 @@ function Announce.Post(desired, now)
 
     Announce.lastAt = now
     pcall(SendChatMessage, "[MFD] " .. line, target)
+end
+
+-- Double-click guard for the manual announce. Short, because a raid leader who
+-- presses the button twice usually means it.
+Announce.MANUAL_THROTTLE_SECONDS = 2
+
+-- Posts the pack on demand, for calling assignments out before the pull rather
+-- than as it starts. Returns true when something was sent, false and a reason
+-- when it was not, so the button and the slash command can both say why.
+--
+-- Recomputes rather than reusing the last published map: out of combat the
+-- allocator is still re-optimising, and announcing a stale line before a pull
+-- is worse than announcing nothing.
+function Announce.PostNow()
+    if not MFD.IsEnabled() then
+        return false, "the addon is switched off"
+    end
+
+    local target = (IsInRaid and IsInRaid() and "RAID") or (IsInGroup and IsInGroup() and "PARTY") or nil
+    if not target then
+        return false, "you are not in a group"
+    end
+
+    if not MFD.Comms:IsAuthority() then
+        return false, "somebody else is the raid lead for marking, so their client announces"
+    end
+
+    local now = GetTime()
+    if (now - (Announce.lastManualAt or 0)) <= Announce.MANUAL_THROTTLE_SECONDS then
+        return false, "just announced, give it a second"
+    end
+
+    local ok, desired = pcall(function() return MFD.Marker:Desired() end)
+    if not ok or not desired then
+        return false, "could not work out the assignments"
+    end
+
+    local line = Announce.Format(desired.list)
+    if line == "" then
+        return false, "nothing is marked right now"
+    end
+
+    Announce.lastManualAt = now
+    Announce.lastAt = now
+    pcall(SendChatMessage, "[MFD] " .. line, target)
+    return true
 end
 
 _G.MarkedForDeath = MFD

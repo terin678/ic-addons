@@ -1403,10 +1403,10 @@ T.Case("Missing: consumables are reported only when flagged as expected", functi
     local none = MFD.RaidCheck.Missing(state, {}, {})
     T.Eq(#none, 0, "nothing expected, nothing missing")
 
-    local some = MFD.RaidCheck.Missing(state, {}, { FOOD = true, FLASK = true })
+    local some = MFD.RaidCheck.Missing(state, {}, { FOOD = true, ELIXIRS = true })
     T.Eq(#some, 2, "two expected, both absent")
     T.Eq(some[1].column, "FOOD", "fixed order")
-    T.Eq(some[2].column, "FLASK", "fixed order")
+    T.Eq(some[2].column, "ELIXIRS", "fixed order")
 end)
 
 T.Case("Missing: a present consumable is not reported even when expected", function()
@@ -1479,9 +1479,9 @@ T.Case("MergeRow: a reported false does not erase a scanned present name", funct
     T.Eq(row.state.flask, "Flask of Blinding Light", "present in the scan wins for names")
 end)
 
-T.Case("Missing: a flask satisfies both elixir slots", function()
+T.Case("Missing: a flask satisfies the elixir requirement on its own", function()
     local state = MFD.RaidCheck.Classify({ "Flask of Relentless Assault" })
-    local missing = MFD.RaidCheck.Missing(state, {}, { BATTLE = true, GUARDIAN = true })
+    local missing = MFD.RaidCheck.Missing(state, {}, { ELIXIRS = true })
     T.Eq(#missing, 0, "a flask is both elixirs")
 end)
 
@@ -2682,6 +2682,157 @@ end)
 T.Case("Weapon: asking for it explicitly no longer reports anything", function()
     local state = MFD.RaidCheck.Classify({})
     T.Eq(#MFD.RaidCheck.Missing(state, {}, { WEAPON = true }), 0, "a stale setting cannot resurrect it")
+end)
+
+-- A flask fills both elixir slots, so it is one requirement with two ways to
+-- meet it: a flask, or a battle elixir and a guardian elixir together.
+local function elixirState(...)
+    return MFD.RaidCheck.Classify({ ... })
+end
+
+T.Case("Elixirs: a flask on its own satisfies it", function()
+    T.Eq(#MFD.RaidCheck.Missing(elixirState("Flask of Relentless Assault"), {}, { ELIXIRS = true }), 0, "flask")
+end)
+
+T.Case("Elixirs: both elixirs together satisfy it", function()
+    T.Eq(#MFD.RaidCheck.Missing(
+        elixirState("Elixir of Major Agility", "Elixir of Major Fortitude"), {}, { ELIXIRS = true }), 0, "one of each")
+end)
+
+T.Case("Elixirs: only one of the two is not enough", function()
+    T.Eq(#MFD.RaidCheck.Missing(elixirState("Elixir of Major Agility"), {}, { ELIXIRS = true }), 1, "battle only")
+    T.Eq(#MFD.RaidCheck.Missing(elixirState("Elixir of Major Fortitude"), {}, { ELIXIRS = true }), 1, "guardian only")
+end)
+
+T.Case("Elixirs: nothing at all is reported", function()
+    local missing = MFD.RaidCheck.Missing(elixirState(), {}, { ELIXIRS = true })
+    T.Eq(#missing, 1, "one thing missing")
+    T.Eq(missing[1].column, "ELIXIRS", "the combined requirement")
+    T.Eq(missing[1].label, "Flask or elixirs", "named so the callout reads plainly")
+end)
+
+T.Case("Elixirs: the three old separate checks are gone", function()
+    for _, column in ipairs(MFD.RaidCheck.CONSUMABLE_ORDER) do
+        if column == "FLASK" or column == "BATTLE" or column == "GUARDIAN" then
+            error(column .. " is still checked on its own")
+        end
+    end
+end)
+
+T.Case("Elixirs: not expected means never reported", function()
+    T.Eq(#MFD.RaidCheck.Missing(elixirState(), {}, {}), 0, "the raid does not ask for them")
+end)
+
+-- A person who marks a mob has already decided that mob. The addon's job from
+-- there is to work around them, not to win an argument with a tank.
+local function detect(actual, placed, manual, wroteAt, now)
+    return MFD.Marker.DetectManualMarks(actual, placed or {}, manual or {}, wroteAt or {}, now or 100, 1.0)
+end
+
+T.Case("Manual: an icon we never placed belongs to whoever placed it", function()
+    local result = detect({ ["1-A"] = 8 })
+    T.Eq(result.added["1-A"], 8, "their skull is now a lock")
+end)
+
+T.Case("Manual: the icon we placed ourselves is not somebody else's", function()
+    local result = detect({ ["1-A"] = 8 }, { ["1-A"] = 8 })
+    T.Eq(result.added["1-A"], nil, "our own work")
+end)
+
+T.Case("Manual: a mob changed out from under us is theirs now", function()
+    local result = detect({ ["1-A"] = 7 }, { ["1-A"] = 8 })
+    T.Eq(result.added["1-A"], 7, "we wrote skull, cross is on it, somebody moved it")
+end)
+
+T.Case("Manual: an unmarked mob is nobody's doing", function()
+    local result = detect({ ["1-A"] = 0 }, { ["1-A"] = 8 })
+    T.Eq(result.added["1-A"], nil, "cleared, not claimed")
+    T.Eq(#result.removed, 0, "and it was never a manual lock to release")
+end)
+
+T.Case("Manual: our own write is not read back as theirs while it settles", function()
+    -- SetRaidTarget is not instant. Reading the previous icon back a tick later
+    -- and calling it a person's doing would lock mobs to icons nobody chose.
+    local result = detect({ ["1-A"] = 7 }, { ["1-A"] = 8 }, {}, { ["1-A"] = 99.5 }, 100)
+    T.Eq(result.added["1-A"], nil, "inside the settle window")
+
+    local later = detect({ ["1-A"] = 7 }, { ["1-A"] = 8 }, {}, { ["1-A"] = 98 }, 100)
+    T.Eq(later.added["1-A"], 7, "once it has had time to land")
+end)
+
+T.Case("Manual: a lock already held is not re-reported every tick", function()
+    local result = detect({ ["1-A"] = 8 }, {}, { ["1-A"] = 8 })
+    T.Eq(result.added["1-A"], nil, "already ours to respect")
+end)
+
+T.Case("Manual: taking the mark off hands the mob back", function()
+    local result = detect({ ["1-A"] = 0 }, {}, { ["1-A"] = 8 })
+    T.Eq(result.removed[1], "1-A", "released")
+end)
+
+local function manualRoles()
+    return MFD.Roles.Resolve({
+        [8] = { intent = "KILL", ordinal = 1 },
+        [7] = { intent = "KILL", ordinal = 2 },
+        [5] = { intent = "SHEEP", ordinal = 1, pin = "Grimmtusk" },
+    }, { { name = "Grimmtusk", class = "MAGE" } })
+end
+
+T.Case("Manual: a hand-placed icon takes the mob out of the running", function()
+    local result = MFD.Allocator.Compute(
+        { { key = "1-A", npcID = 1 }, { key = "1-B", npcID = 1 } },
+        { [1] = { intent = "KILL", rank = 1 } },
+        manualRoles(), { ["1-B"] = 8 }, false, { ["1-B"] = true })
+
+    T.Eq(result.byKey["1-B"], 8, "their skull stays where they put it")
+    T.Eq(result.byKey["1-A"], 7, "and the mob that would have had skull moves down")
+end)
+
+T.Case("Manual: an icon with no role in the plan still holds its mob", function()
+    -- Circle is not in this plan at all. Dropping the lock would leave the mob
+    -- eligible, the allocator would want cross on it, and the addon would spend
+    -- the pull overwriting the icon somebody deliberately placed.
+    local result = MFD.Allocator.Compute(
+        { { key = "1-A", npcID = 1 } },
+        { [1] = { intent = "KILL", rank = 1 } },
+        manualRoles(), { ["1-A"] = 2 }, false, { ["1-A"] = true })
+
+    T.Eq(result.byKey["1-A"], 2, "circle held")
+    T.Eq(result.list[1].intent, "MANUAL", "named for what it is")
+    T.Eq(MFD.Announce.Format(result.list), "Circle>manual", "and read plainly at the raid")
+end)
+
+T.Case("Manual: the icon's role decides the job, not the mob's rule", function()
+    -- Moon on something the rules call a kill is a sheep call. Announcing it as
+    -- a kill would send the wrong job to the wrong person.
+    local result = MFD.Allocator.Compute(
+        { { key = "1-A", npcID = 1 } },
+        { [1] = { intent = "KILL", rank = 1 } },
+        manualRoles(), { ["1-A"] = 5 }, false, { ["1-A"] = true })
+
+    T.Eq(result.list[1].intent, "SHEEP", "the icon they reached for says sheep")
+    T.Eq(result.list[1].owner, "Grimmtusk", "and it is his job")
+end)
+
+T.Case("Manual: a combat lock still reads the job from the mob's rule", function()
+    -- Unchanged behaviour for locks the addon froze itself at the pull.
+    local result = MFD.Allocator.Compute(
+        { { key = "1-A", npcID = 1 } },
+        { [1] = { intent = "KILL", rank = 1 } },
+        manualRoles(), { ["1-A"] = 5 }, false, nil)
+
+    T.Eq(result.list[1].intent, "KILL", "frozen as what it was allocated for")
+end)
+
+T.Case("Defense: a mark we placed and lost is still defended", function()
+    -- The manual override is about foreign icons. An icon of ours wiped to
+    -- nothing is the case the brake was written for, and it keeps that job.
+    local defense = {}
+    local diff = MFD.Marker.ComputeDiff(
+        { ["1-A"] = 8 }, { ["1-A"] = 0 }, { ["1-A"] = 8 }, defense, 100, MFD.Marker.LIMITS)
+
+    T.Eq(#diff.actions, 1, "re-applied")
+    T.Eq(diff.actions[1].isDefense, true, "as a defense, so the brake counts it")
 end)
 
 _G.MarkedForDeath = MFD

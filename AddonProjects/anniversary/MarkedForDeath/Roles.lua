@@ -140,6 +140,10 @@ function Roles.Resolve(rolePlan, roster)
         local role = rolePlan[icon]
         local record = {
             icon = icon,
+            -- Carried on the record as well as being the key into byIntent, so
+            -- a lookup that starts from the icon can still say what the icon is
+            -- for. Reading an icon somebody placed by hand needs exactly that.
+            intent = role.intent,
             ordinal = role.ordinal,
             pin = role.pin,
             isLastResort = role.isLastResort,

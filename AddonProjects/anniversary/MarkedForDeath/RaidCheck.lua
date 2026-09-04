@@ -60,10 +60,13 @@ function RC.Classify(auraNames)
     return state
 end
 
-RC.CONSUMABLE_ORDER = { "FOOD", "FLASK", "BATTLE", "GUARDIAN" }
+-- What the raid can be asked to bring. Flask and the two elixirs are one
+-- requirement, not three: a flask fills both elixir slots, so nobody can hold a
+-- flask and an elixir at once. Asking for all three separately would report
+-- half the raid missing something they physically cannot have.
+RC.CONSUMABLE_ORDER = { "FOOD", "ELIXIRS" }
 RC.CONSUMABLE_LABELS = {
-    FOOD = "Food", FLASK = "Flask", BATTLE = "Battle elixir",
-    GUARDIAN = "Guardian elixir",
+    FOOD = "Food", ELIXIRS = "Flask or elixirs",
 }
 
 -- Takes the roster ({ name, class } array). Returns { [column] = bool } saying
@@ -129,13 +132,12 @@ function RC.Missing(state, providers, expected)
         }
     end
 
-    -- A flask occupies both elixir slots, so it satisfies both.
-    local hasFlask = state.flask ~= nil
+    -- Two ways to meet the elixir requirement and they are exclusive in the
+    -- game: a flask, or a battle elixir and a guardian elixir together. One
+    -- elixir on its own is half the job and is reported.
     local present = {
         FOOD = state.food ~= nil,
-        FLASK = hasFlask,
-        BATTLE = hasFlask or state.battle ~= nil,
-        GUARDIAN = hasFlask or state.guardian ~= nil,
+        ELIXIRS = state.flask ~= nil or (state.battle ~= nil and state.guardian ~= nil),
     }
 
     for _, column in ipairs(RC.CONSUMABLE_ORDER) do

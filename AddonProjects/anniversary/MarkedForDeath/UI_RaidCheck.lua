@@ -13,10 +13,13 @@ local MAX_ROWS = 26       -- a full raid plus one
 local GRID_WIDTH = 860    -- pixels
 
 -- Column layout: key, header label, x offset from the row's left edge, width.
+-- consumable names the requirement a column's header toggles, which is not
+-- always the column itself: Flask, Battle and Guard are three views of the one
+-- flask-or-both-elixirs requirement, so the Flask header governs all three.
 local COLUMNS = {
     { key = "NAME",      label = "Name",      x = 0,   w = 110 },
-    { key = "FOOD",      label = "Food",      x = 112, w = 44 },
-    { key = "FLASK",     label = "Flask",     x = 158, w = 44 },
+    { key = "FOOD",      label = "Food",      x = 112, w = 44, consumable = "FOOD" },
+    { key = "FLASK",     label = "Flask",     x = 158, w = 44, consumable = "ELIXIRS" },
     { key = "BATTLE",    label = "Battle",    x = 204, w = 44 },
     { key = "GUARDIAN",  label = "Guard",     x = 250, w = 44 },
     { key = "AI",        label = "Int",       x = 296, w = 40 },
@@ -48,20 +51,25 @@ local function cellText(column, entry)
     local state, missingSet = entry.row.state, entry.missingSet
     local hasFlask = state.flask ~= nil
 
+    -- All three of these read the one flask-or-both-elixirs requirement, so an
+    -- absence is only red when the requirement as a whole is unmet. Someone
+    -- running both elixirs has an empty Flask cell and owes nothing.
+    local isShort = missingSet.ELIXIRS
+
     if column == "FOOD" then
         return presence(state.food ~= nil, missingSet.FOOD)
     elseif column == "FLASK" then
-        return presence(hasFlask, missingSet.FLASK)
+        return presence(hasFlask, isShort)
     elseif column == "BATTLE" then
         if hasFlask and state.battle == nil then
             return GREEN .. "flask|r"
         end
-        return presence(state.battle ~= nil, missingSet.BATTLE)
+        return presence(state.battle ~= nil, isShort)
     elseif column == "GUARDIAN" then
         if hasFlask and state.guardian == nil then
             return GREEN .. "flask|r"
         end
-        return presence(state.guardian ~= nil, missingSet.GUARDIAN)
+        return presence(state.guardian ~= nil, isShort)
     elseif column == "AI" or column == "MOTW" or column == "FORT" or column == "SP" then
         return presence(state[column], missingSet[column])
     elseif column == "BLESSINGS" then
@@ -237,9 +245,9 @@ function Grid:BuildInto(container)
     frame.header:SetPoint("RIGHT", frame, "RIGHT", -14, 0)
     frame.header:SetHeight(16)
 
-    -- The five consumable headers double as the expected-or-not toggle. Putting
-    -- the control directly above the column it governs beats a settings screen,
-    -- and it is the only way to change this without editing saved variables.
+    -- The consumable headers double as the expected-or-not toggle. Putting the
+    -- control directly above the column it governs beats a settings screen, and
+    -- it is the only way to change this without editing saved variables.
     local isConsumable = {}
     for _, key in ipairs(RC.CONSUMABLE_ORDER) do
         isConsumable[key] = true
@@ -248,7 +256,7 @@ function Grid:BuildInto(container)
     frame.headerToggles = {}
 
     for _, column in ipairs(COLUMNS) do
-        if isConsumable[column.key] then
+        if column.consumable and isConsumable[column.consumable] then
             local button = CreateFrame("Button", nil, frame.header)
             button:SetSize(column.w, 16)
             button:SetPoint("LEFT", frame.header, "LEFT", column.x, 0)
@@ -258,7 +266,7 @@ function Grid:BuildInto(container)
 
             button:SetScript("OnClick", function()
                 local expected = MFD.db.settings.raidCheck.expected
-                expected[column.key] = not expected[column.key]
+                expected[column.consumable] = not expected[column.consumable]
                 RC:Scan()
                 Grid:RefreshHeader()
             end)
@@ -266,7 +274,7 @@ function Grid:BuildInto(container)
             button:SetScript("OnEnter", function(self)
                 GameTooltip:SetOwner(self, "ANCHOR_BOTTOMLEFT")
                 GameTooltip:AddLine(column.label)
-                GameTooltip:AddLine(MFD.db.settings.raidCheck.expected[column.key]
+                GameTooltip:AddLine(MFD.db.settings.raidCheck.expected[column.consumable]
                     and "The raid expects this. Click to stop reporting it missing."
                     or "Not expected. Click to start reporting it missing.", 1, 1, 1, true)
                 GameTooltip:Show()
@@ -276,7 +284,7 @@ function Grid:BuildInto(container)
             end)
 
             button.columnLabel = column.label
-            frame.headerToggles[column.key] = button
+            frame.headerToggles[column.consumable] = button
         else
             local label = frame.header:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
             label:SetPoint("LEFT", frame.header, "LEFT", column.x, 0)

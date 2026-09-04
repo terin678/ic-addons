@@ -26,6 +26,38 @@ local function addView(container)
     return container
 end
 
+-- Adds the announce button along the bottom of a container. Both the floating
+-- window and the tab get one, since which of the two is open when the raid
+-- leader wants to call the pack out is not something to have to think about.
+local function addAnnounceButton(container)
+    local button = CreateFrame("Button", nil, container, "UIPanelButtonTemplate")
+    button:SetSize(140, 22)
+    button:SetPoint("BOTTOMLEFT", container, "BOTTOMLEFT", 8, 8)
+    button:SetText("Announce to raid")
+
+    button:SetScript("OnClick", function()
+        local ok, reason = MFD.Announce.PostNow()
+        if not ok then
+            MFD.Print("nothing announced: " .. reason)
+        end
+    end)
+
+    button:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOPLEFT")
+        GameTooltip:AddLine("Announce to raid")
+        GameTooltip:AddLine("Posts the current assignments in raid chat now, so you can call a pack "
+            .. "out before pulling it. The same thing happens automatically on the pull.", 1, 1, 1, true)
+        GameTooltip:AddLine("For a macro: /mfd announce", 0.6, 0.8, 1, true)
+        GameTooltip:Show()
+    end)
+    button:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+
+    container.announce = button
+    return button
+end
+
 local function buildRow(row)
     if row.isBuilt then
         return
@@ -93,11 +125,12 @@ end
 function Panel:BuildInto(container)
     container.body = CreateFrame("Frame", nil, container)
     container.body:SetPoint("TOPLEFT", container, "TOPLEFT", 6, -6)
-    container.body:SetPoint("BOTTOMRIGHT", container, "BOTTOMRIGHT", -6, 6)
+    container.body:SetPoint("BOTTOMRIGHT", container, "BOTTOMRIGHT", -6, 36)
 
     container.empty = container:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     container.empty:SetPoint("TOPLEFT", container.body, "TOPLEFT", 8, -8)
 
+    addAnnounceButton(container)
     addView(container)
 end
 
@@ -118,7 +151,7 @@ end
 
 local function build()
     frame = CreateFrame("Frame", "MarkedForDeathAssignmentsFrame", UIParent, "BasicFrameTemplateWithInset")
-    frame:SetSize(300, 30 + MAX_ROWS * ROW_HEIGHT + 16)
+    frame:SetSize(300, 30 + MAX_ROWS * ROW_HEIGHT + 16 + 30)
     frame:SetMovable(true)
     frame:EnableMouse(true)
     frame:RegisterForDrag("LeftButton")
@@ -135,10 +168,12 @@ local function build()
 
     frame.body = CreateFrame("Frame", nil, frame)
     frame.body:SetPoint("TOPLEFT", frame, "TOPLEFT", 6, -26)
-    frame.body:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -6, 6)
+    frame.body:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -6, 36)
 
     frame.empty = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     frame.empty:SetPoint("TOPLEFT", frame.body, "TOPLEFT", 8, -8)
+
+    addAnnounceButton(frame)
 
     -- Repaint on a cadence rather than per published message, so a burst of
     -- republishes costs one paint. Only runs while shown.

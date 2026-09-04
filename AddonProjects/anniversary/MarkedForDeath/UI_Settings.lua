@@ -50,6 +50,12 @@ local TOGGLES = {
         set = function(v) MFD.db.settings.isIconReuseEnabled = v end,
     },
     {
+        label = "A mark placed by hand wins",
+        tip = "If a tank marks a mob themselves, the addon keeps their icon on that mob and works everything else around it, instead of arguing with them. Take the mark off again and the addon takes the mob back.",
+        get = function() return MFD.db.settings.isManualOverrideEnabled end,
+        set = function(v) MFD.db.settings.isManualOverrideEnabled = v end,
+    },
+    {
         label = "Raid warning when crowd control turns up late",
         tip = "If a sheep or banish target appears after the pull, take its icon back, post a raid warning and whisper whoever owns that job.",
         get = function() return MFD.db.settings.isLateCCAlertEnabled end,

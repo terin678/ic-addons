@@ -2,11 +2,11 @@
 local MFD = _G.MarkedForDeath or {}
 
 -- Must match ## Version: in the toc and the packaged zip name.
-MFD.VERSION = "1.9.0"
+MFD.VERSION = "1.10.0"
 
 -- Bumped only when the saved-variable shape changes in a way that needs a
 -- migration. See MFD:MigrateDB.
-local SCHEMA_VERSION = 2
+local SCHEMA_VERSION = 3
 
 local CHAT_PREFIX = "|cff33ff99Marked For Death|r: "
 
@@ -49,13 +49,14 @@ local DB_DEFAULTS = {
         isCvarWarnEnabled = true,
         isWarningSoundEnabled = true,
         isIconReuseEnabled = true,
+        isManualOverrideEnabled = true,
         isLateCCAlertEnabled = true,
         isTankDeathAlertEnabled = true,
         tankNames = "",
         minimap = { hide = false },
         raidCheck = {
             isAutoOpenEnabled = true,
-            expected = { FOOD = true, FLASK = true, BATTLE = false, GUARDIAN = false },
+            expected = { FOOD = true, ELIXIRS = true },
         },
     },
     lastTestRun = {},
@@ -90,6 +91,19 @@ function MFD:MigrateDB()
         end
 
         db.schemaVersion = 2
+    end
+
+    -- Schema 3: the separate FLASK, BATTLE and GUARDIAN expectations became one
+    -- ELIXIRS requirement, met by a flask or by both elixirs. Anyone who asked
+    -- for any of the three was asking for elixirs, so that carries over. The
+    -- old keys stay for one version.
+    if db.schemaVersion < 3 then
+        local expected = db.settings and db.settings.raidCheck and db.settings.raidCheck.expected
+        if expected and expected.ELIXIRS == nil then
+            expected.ELIXIRS = (expected.FLASK or expected.BATTLE or expected.GUARDIAN) and true or false
+        end
+
+        db.schemaVersion = 3
     end
 end
 
@@ -530,6 +544,16 @@ commands.mark = {
         wipe(MFD.Marker.locked)
         wipe(MFD.Marker.placed)
         MFD.Print("re-marking")
+    end,
+}
+
+commands.announce = {
+    desc = "call the current assignments out in raid chat now, before the pull",
+    run = function()
+        local ok, reason = MFD.Announce.PostNow()
+        if not ok then
+            MFD.Print("nothing announced: " .. reason)
+        end
     end,
 }
 
