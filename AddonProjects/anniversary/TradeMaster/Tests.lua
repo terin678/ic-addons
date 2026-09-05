@@ -540,6 +540,104 @@ T.Case("Trade.Classify separates raw mats from finished products", function()
     T.Eq(delivered[24048], 2, "delivered")
 end)
 
+--------------------------------------------------------------------------------
+-- Materials check
+--------------------------------------------------------------------------------
+
+-- Haste Potion: 2 Primal Fire-ish (22789), 1 of 22791, 1 vial (18256), one per craft.
+-- Major Fire Protection: 1 of 21884, 3 of 22793, 5 vials; five per craft.
+local function haste(qty, source)
+    return { items = { { itemID = 22838, qty = qty or 1, qtySource = source or "default" } } }
+end
+
+T.Case("MatsNeeded sums reagents across items and rounds crafts up by batch size", function()
+    local need = ns.Orders.MatsNeeded(haste(2, "manual"), alchBook())
+    T.Eq(need[22789].need, 4, "two crafts of two")
+    T.Eq(need[22791].need, 2, "two crafts of one")
+    T.Eq(need[18256].need, 2, "vials")
+    -- 10 potions at five per craft is two crafts; 11 is three.
+    local o = { items = { { itemID = 22841, qty = 11, qtySource = "manual" } } }
+    T.Eq(ns.Orders.MatsNeeded(o, alchBook())[22793].need, 9, "three crafts of three")
+    -- Two items sharing the vial add up.
+    local both = { items = { { itemID = 22838, qty = 1, qtySource = "manual" },
+                             { itemID = 22841, qty = 5, qtySource = "manual" } } }
+    T.Eq(ns.Orders.MatsNeeded(both, alchBook())[18256].need, 6, "one plus five vials")
+end)
+
+T.Case("MatsNeeded names a reagent it could not identify instead of dropping it", function()
+    local book = {
+        [1] = { itemID = 1, name = "Thing", numMade = 1, reagents = { [10] = 2 },
+                reagentList = { { itemID = 10, name = "Leather", count = 2 },
+                                { name = "Rune Thread", count = 1 } } },
+    }
+    local need, unknown = ns.Orders.MatsNeeded({ items = { { itemID = 1, qty = 1, qtySource = "manual" } } }, book)
+    T.Eq(need[10].need, 2, "the known reagent")
+    T.Eq(need[10].name, "Leather", "named off the reagent list")
+    T.Eq(unknown[1], "Rune Thread", "the uncached one is named")
+end)
+
+T.Case("MatsCheck measures a stated count exactly", function()
+    local exact = ns.Orders.MatsCheck(haste(2, "manual"), alchBook(), { [22789] = 4, [22791] = 2, [18256] = 2 })
+    T.Eq(exact.verdict, "exact", "exact")
+    T.Eq(#exact.rows, 3, "three reagents")
+    T.Eq(exact.rows[1].delta, 0, "no delta")
+
+    local short = ns.Orders.MatsCheck(haste(2, "manual"), alchBook(), { [22789] = 4, [22791] = 1, [18256] = 2 })
+    T.Eq(short.verdict, "short", "short")
+    local over = ns.Orders.MatsCheck(haste(2, "manual"), alchBook(), { [22789] = 6, [22791] = 2, [18256] = 2 })
+    T.Eq(over.verdict, "over", "over")
+    local mixed = ns.Orders.MatsCheck(haste(2, "manual"), alchBook(), { [22789] = 6, [22791] = 1, [18256] = 2 })
+    T.Eq(mixed.verdict, "mixed", "mixed")
+    T.Eq(ns.Orders.MatsCheck(haste(2, "text"), alchBook(), { [22789] = 4, [22791] = 2, [18256] = 2 }).verdict,
+        "exact", "a count from their text is a stated count")
+end)
+
+T.Case("MatsCheck measures a guessed count against the most generous reagent", function()
+    -- Six of the two-per reagent supports three crafts; one of the one-per supports one.
+    local c = ns.Orders.MatsCheck(haste(1, "default"), alchBook(), { [22789] = 6, [22791] = 1, [18256] = 3 })
+    T.Eq(c.crafts[22838], 3, "three crafts implied")
+    T.Eq(c.verdict, "short", "the thread is short")
+    local byID = {}
+    for _, row in ipairs(c.rows) do byID[row.id] = row end
+    T.Eq(byID[22791].delta, -2, "short by two")
+    T.Eq(byID[22789].delta, 0, "the reagent that set the count is exact")
+    T.Eq(c.setBy[22838] == 22789 or c.setBy[22838] == 18256, true, "set by one of the two that tie")
+
+    -- Nothing in the window: one craft's worth is listed, and the verdict says so.
+    local empty = ns.Orders.MatsCheck(haste(1, "default"), alchBook(), {})
+    T.Eq(empty.verdict, "nothing", "nothing")
+    T.Eq(empty.crafts[22838], 1, "one craft assumed")
+    T.Eq(byID[22789].need, 6, "the guessed order asked for six once three crafts were implied")
+end)
+
+T.Case("MatsCheck reports mats that belong to no recipe on the order", function()
+    local c = ns.Orders.MatsCheck(haste(1, "manual"), alchBook(), { [22789] = 2, [22791] = 1, [18256] = 1, [99999] = 4 })
+    T.Eq(c.verdict, "over", "extra counts as over")
+    T.Eq(#c.unexpected, 1, "one unexpected")
+    T.Eq(c.unexpected[1].have, 4, "with its count")
+    T.True(ns.Orders.DescribeCheck(c):find("not on this order", 1, true), "described")
+end)
+
+T.Case("MatsCheck refuses to measure two guessed items that share a reagent", function()
+    local o = { items = { { itemID = 24033, qty = 1, qtySource = "default" },
+                          { itemID = 24048, qty = 1, qtySource = "default" } } }
+    local c = ns.Orders.MatsCheck(o, reagentBook(), { [23436] = 3 })
+    T.Eq(c.verdict, "ambiguous", "ambiguous")
+    T.Eq(c.rows[1].have, 3, "still lists what is in the window")
+    -- Both stated: the shared reagent just adds up.
+    o.items[1].qtySource, o.items[1].qty = "manual", 2
+    o.items[2].qtySource, o.items[2].qty = "manual", 1
+    T.Eq(ns.Orders.MatsCheck(o, reagentBook(), { [23436] = 3 }).verdict, "exact", "stated counts add up")
+end)
+
+T.Case("DescribeCheck says what is short and what is over", function()
+    local c = ns.Orders.MatsCheck(haste(2, "manual"), alchBook(), { [22789] = 6, [22791] = 1, [18256] = 2 })
+    local text = ns.Orders.DescribeCheck(c)
+    T.True(text:find("short 1", 1, true), "short named")
+    T.True(text:find("2 over", 1, true), "over named")
+    T.Eq(ns.Orders.DescribeCheck(ns.Orders.MatsCheck(haste(1, "default"), alchBook(), {})), "nothing in the window", "empty")
+end)
+
 T.Case("Ledger.SumSince counts recent entries and the legacy gems field", function()
     local entries = {
         { at = 1000, copper = 5000, units = { [1] = 2 } },

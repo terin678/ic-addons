@@ -294,6 +294,224 @@ function Orders.InferQuantities(order, matsReceived, book, ambiguityMax)
 end
 
 --------------------------------------------------------------------------------
+-- Materials check
+--------------------------------------------------------------------------------
+
+-- Pure. How many times the recipe runs for `qty` of an item that makes `numMade` per
+-- craft. The same rounding Crafter.CraftCount does, without its mats cap.
+local function CraftsFor(qty, numMade)
+    local per = (numMade and numMade > 0) and numMade or 1
+    return math.ceil((qty or 1) / per)
+end
+
+-- The customer said how many (or the user set it). Anything else is the x1? guess
+-- the tracker shows, and a guess is not something to measure a stack of mats against.
+local function QtyKnown(it)
+    return it.qtySource == "manual" or it.qtySource == "text"
+end
+
+-- A reagent's name and link, off whichever entry lists it. reagentList is in window
+-- order and carries names even for a reagent whose itemID was not cached at scan time.
+local function ReagentLabel(book, reagentID)
+    for _, e in pairs(book or {}) do
+        for _, r in ipairs(e.reagentList or {}) do
+            if r.itemID == reagentID then return r.name, r.link end
+        end
+    end
+    return nil, nil
+end
+
+--[[
+Pure. What the order's items need, one row per reagent, keyed by reagent itemID:
+{ need, per, name, link }. `crafts` is optional, { [itemID] = crafts }, and overrides the
+count derived from each item's qty; MatsCheck uses it for the implied count.
+
+Returns need, unknown. `unknown` names the reagents that never reached e.reagents because
+their itemID was not cached when the book was scanned (LibICTradeSkill only maps a reagent
+it can identify), so the panel can say "and Rune Thread, count unknown" instead of
+pretending the recipe has no thread in it.
+]]
+function Orders.MatsNeeded(order, book, crafts)
+    local need, unknown, seen = {}, {}, {}
+    for _, it in ipairs((order or {}).items or {}) do
+        local e = book and book[it.itemID]
+        if e then
+            local n = crafts and crafts[it.itemID] or CraftsFor(it.qty, e.numMade)
+            for reagentID, per in pairs(e.reagents or {}) do
+                local row = need[reagentID]
+                if not row then
+                    local name, link = ReagentLabel(book, reagentID)
+                    row = { need = 0, per = per, name = name, link = link }
+                    need[reagentID] = row
+                end
+                row.need = row.need + n * per
+            end
+            for _, r in ipairs(e.reagentList or {}) do
+                if not r.itemID and r.name and not seen[r.name] then
+                    seen[r.name] = true
+                    unknown[#unknown + 1] = r.name
+                end
+            end
+        end
+    end
+    return need, unknown
+end
+
+--[[
+Pure. What the customer put in the trade window against what the order needs.
+
+`have` is the snapshot's raw mats (Trade.Classify), { [reagentID] = count }. Returns
+{ rows, unexpected, unknown, verdict, crafts, setBy, ambiguous }:
+
+    rows        one per reagent the order needs or the window holds, in the order the
+                recipes list them: { id, name, link, need, have, delta }
+    unexpected  rows for mats on no recipe of this order
+    verdict     "exact", "short", "over", "mixed", "nothing" (window empty), or
+                "ambiguous"
+    crafts      { [itemID] = crafts } the rows were measured against
+    setBy       for an item whose count was implied, the reagent that set it
+
+The target count is the point. An order's qty is usually the x1? guess, and measuring a
+stack of leather against a guess reports "over" on every trade. So an item whose count
+the customer stated (or the user set) is measured as stated, and any other item is
+measured against the count its most generous reagent supports: six leather and one
+thread, with two threads a craft, reads "thread short by 5", which is the question being
+asked. With nothing in the window yet a guessed item is measured as one craft, so the
+panel still lists what a craft takes.
+
+Two items sharing a reagent, with either count guessed, cannot be told apart from the
+mats alone; that is the existing split rule, and the check says "ambiguous" and leaves
+it to the Orders tab rather than measuring against a number it made up.
+]]
+function Orders.MatsCheck(order, book, have)
+    have = have or {}
+    local items = (order or {}).items or {}
+    local out = { rows = {}, unexpected = {}, unknown = {}, crafts = {}, setBy = {} }
+
+    -- Which item each reagent feeds, to spot a shared one.
+    local feeds = {}
+    for _, it in ipairs(items) do
+        local e = book and book[it.itemID]
+        for reagentID in pairs(e and e.reagents or {}) do
+            feeds[reagentID] = (feeds[reagentID] or 0) + 1
+        end
+    end
+
+    for _, it in ipairs(items) do
+        local e = book and book[it.itemID]
+        if e then
+            if QtyKnown(it) then
+                out.crafts[it.itemID] = CraftsFor(it.qty, e.numMade)
+            else
+                for reagentID in pairs(e.reagents or {}) do
+                    if feeds[reagentID] > 1 then
+                        out.ambiguous = true
+                    end
+                end
+                -- The most generous reagent sets the count, ties to the lowest id so
+                -- the answer does not move between two reads of the same window.
+                local best, bestBy = 0, nil
+                for reagentID, per in pairs(e.reagents or {}) do
+                    local n = math.floor((have[reagentID] or 0) / per)
+                    if n > best or (n == best and bestBy and reagentID < bestBy) then
+                        best, bestBy = n, reagentID
+                    end
+                end
+                out.crafts[it.itemID] = math.max(1, best)
+                if best > 0 then out.setBy[it.itemID] = bestBy end
+            end
+        end
+    end
+
+    if out.ambiguous then
+        out.verdict = "ambiguous"
+        for reagentID, count in pairs(have) do
+            local name, link = ReagentLabel(book, reagentID)
+            out.rows[#out.rows + 1] = { id = reagentID, name = name, link = link, have = count }
+        end
+        table.sort(out.rows, function(a, b) return a.id < b.id end)
+        return out
+    end
+
+    local need, unknown = Orders.MatsNeeded(order, book, out.crafts)
+    out.unknown = unknown
+
+    -- Rows in recipe order, each reagent once, then whatever else is in the window.
+    local placed = {}
+    for _, it in ipairs(items) do
+        local e = book and book[it.itemID]
+        local ordered = {}
+        for _, r in ipairs(e and e.reagentList or {}) do
+            if r.itemID then ordered[#ordered + 1] = r.itemID end
+        end
+        if #ordered == 0 then
+            for reagentID in pairs(e and e.reagents or {}) do ordered[#ordered + 1] = reagentID end
+            table.sort(ordered)
+        end
+        for _, reagentID in ipairs(ordered) do
+            local row = need[reagentID]
+            if row and not placed[reagentID] then
+                placed[reagentID] = true
+                local count = have[reagentID] or 0
+                out.rows[#out.rows + 1] = {
+                    id = reagentID, name = row.name, link = row.link,
+                    need = row.need, have = count, delta = count - row.need,
+                }
+            end
+        end
+    end
+    local extra = {}
+    for reagentID in pairs(have) do
+        if not need[reagentID] then extra[#extra + 1] = reagentID end
+    end
+    table.sort(extra)
+    for _, reagentID in ipairs(extra) do
+        local name, link = ReagentLabel(book, reagentID)
+        out.unexpected[#out.unexpected + 1] = { id = reagentID, name = name, link = link, have = have[reagentID] }
+    end
+
+    local total, short, over = 0, false, false
+    for _, row in ipairs(out.rows) do
+        total = total + row.have
+        if row.delta < 0 then short = true elseif row.delta > 0 then over = true end
+    end
+    for _, row in ipairs(out.unexpected) do
+        total = total + row.have
+        over = true
+    end
+    if total == 0 then out.verdict = "nothing"
+    elseif short and over then out.verdict = "mixed"
+    elseif short then out.verdict = "short"
+    elseif over then out.verdict = "over"
+    else out.verdict = "exact" end
+    return out
+end
+
+-- Pure. One line for chat: "short 2 Rune Thread; 3 Knothide Leather over".
+function Orders.DescribeCheck(check)
+    if not check then return "" end
+    if check.verdict == "ambiguous" then
+        return "mats fit more than one item they asked for; set the split first"
+    end
+    if check.verdict == "nothing" then return "nothing in the window" end
+    if check.verdict == "exact" then return "|cff44ff44exact|r" end
+    local parts = {}
+    for _, row in ipairs(check.rows) do
+        local label = row.link or row.name or tostring(row.id)
+        if row.delta < 0 then
+            parts[#parts + 1] = string.format("|cffff4444short %d|r %s", -row.delta, label)
+        elseif row.delta > 0 then
+            parts[#parts + 1] = string.format("|cffffcc00%d over|r %s", row.delta, label)
+        end
+    end
+    for _, row in ipairs(check.unexpected) do
+        parts[#parts + 1] = string.format("|cff888888%d %s not on this order|r",
+            row.have, row.link or row.name or tostring(row.id))
+    end
+    return table.concat(parts, "; ")
+end
+
+--------------------------------------------------------------------------------
 -- Maintenance
 --------------------------------------------------------------------------------
 
