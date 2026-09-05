@@ -192,7 +192,11 @@ function Classifier.Evaluate(ctx)
         return result
     end
 
-    if filter.requireBuyerSignal and result.buyerScore < 1 then
+    -- The question mark weighs against a seller but does not stand as the ask on its
+    -- own: "[Nightscape Pants]?" in Trade is as often an offer as a request, and the
+    -- one word that would tell them apart is the one that is missing.
+    if filter.requireBuyerSignal
+        and result.buyerScore - (result.buyerHits.question or 0) < 1 then
         result.verdict = "lowscore"
         result.reason = "no buyer signal"
         return result

@@ -772,6 +772,20 @@ T.Case("Classifier reads WTB of a material as shopping, not a craft", function()
         "a whisper keeps its own path")
 end)
 
+T.Case("Classifier vetoes giveaways and does not invite on a question mark alone", function()
+    local r = classify("anyone want for a lvl 41 alt " .. RUBY_LINK .. "?")
+    T.Eq(r.verdict, "vetoed", "an offer is not a customer")
+    T.Eq(r.reason, "anyone want", "and the log says which words")
+    T.Eq(classify("giving away " .. RUBY_LINK .. " to whoever").reason, "giving away", "giveaway")
+    T.Eq(classify("anyone need " .. RUBY_LINK .. "? free").reason, "anyone need", "offer phrased as need")
+    local q = classify(RUBY_LINK .. "?")
+    T.Eq(q.verdict, "lowscore", "a link and a question mark is not an ask")
+    T.Eq(q.reason, "no buyer signal", "reason")
+    T.Eq(q.buyerHits.question, 1, "the question still scored against sellers")
+    T.Eq(classify("any jc able to cut " .. RUBY_LINK .. "?").verdict, "invite", "a question with the ask in it still invites")
+    T.Eq(classify(RUBY_LINK .. "?", { isDirect = true }).verdict, "invite", "a whispered link and question mark still does")
+end)
+
 --------------------------------------------------------------------------------
 -- Market saturation
 --------------------------------------------------------------------------------

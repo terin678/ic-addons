@@ -126,7 +126,10 @@ names, since "haste" on its own is ordinary chat. Understands `LF JC`, `LF alch`
 
 ### Ignores competing crafters
 
-Hard vetoes (`LFW`, `WTS`, `will cut`, `will brew`, ...) never invite. Beyond that, seller
+Hard vetoes (`LFW`, `WTS`, `will cut`, `will brew`, and the giveaway phrases `anyone
+want`, `who wants`, `giving away`, `for free`, ...) never invite. A trailing `?` counts
+against a seller but never stands as the request on its own: `[item]?` in Trade is as
+often an offer as an ask. Beyond that, seller
 signals (`all cuts`, `all potions`, a linked `Design:`/`Recipe:`/`Pattern:`/`Plans:`/
 `Schematic:` item, three-plus links in one message) are weighed against buyer signals
 (`WTB`, `need`, `have mats`, a trailing `?`) and the net decides. A player who posts the

@@ -25,7 +25,13 @@ local function BuildVocab(spec)
     for _, a in ipairs(spec.abbrevs) do names[#names + 1] = a end
     for _, p in ipairs(spec.personNouns) do names[#names + 1] = p end
 
-    local veto = { "lfw", "lf work", "looking for work", "wts", "selling" }
+    local veto = { "lfw", "lf work", "looking for work", "wts", "selling",
+        -- Giving something away. "anyone want for a lvl 41 alt [Nightscape Pants]?"
+        -- matched the pants and scored only its question mark, and an order was
+        -- opened. A buyer asks who can make; these are the words of somebody who
+        -- already has it. (1.14.3)
+        "anyone want", "who wants", "anyone need", "anyone needs",
+        "giving away", "give away", "for free", "free to" }
     for _, a in ipairs(spec.abbrevs) do veto[#veto + 1] = a .. " lfw" end
     for _, v in ipairs(verbs) do
         veto[#veto + 1] = "will " .. v

@@ -6,7 +6,7 @@ Target interface: 20506. Client folder `_anniversary_`.
 | --- | --- | --- |
 | MalexisAuctionWatcher | 1.20.0 | [Docs/MalexisAuctionWatcher.md](../../Docs/MalexisAuctionWatcher.md) |
 | AuctionatorSellingTweaks | 1.0.1 | [Docs/AuctionatorSellingTweaks.md](../../Docs/AuctionatorSellingTweaks.md) |
-| TradeMaster | 1.14.2 | [Docs/TradeMaster.md](../../Docs/TradeMaster.md) |
+| TradeMaster | 1.14.3 | [Docs/TradeMaster.md](../../Docs/TradeMaster.md) |
 | CutMaster | 1.2.0 | [Docs/CutMaster.md](../../Docs/CutMaster.md) |
 | ICLibs | 1.7.0 | [Docs/ICLibs.md](../../Docs/ICLibs.md) |
 | ICTemplate | 1.1.0 | [Docs/ICTemplate.md](../../Docs/ICTemplate.md) |
