@@ -8,6 +8,31 @@ local MANY_LINKS = 3
 local GUARDED_CAN_CRAFT_WEIGHT = 3
 local QUESTION_WEIGHT = 1
 
+-- Buyer words that say "I am purchasing" and nothing about crafting. Against an item
+-- that is a material rather than a product, these alone describe somebody shopping.
+local PURCHASE_ONLY = {
+    wtb = true, ["want to buy"] = true, buying = true, paying = true, ["pay for"] = true,
+    need = true, lf = true, ["looking for"] = true, question = true,
+}
+
+--[[
+Pure. True when something matched and none of it is a product of the profession.
+
+A leatherworker's book holds Thick Leather because leather converts, and Thick Leather
+is what "WTB 5 stacks [Thick Leather], 15g" links -- a link match at the top tier, and a
+purchase of raw material that no crafter is being asked for. The profile's productClasses
+(armour and bags for leatherworking, gems for jewelcrafting) is what tells the two apart;
+a profile with no product classes treats everything as a product, as IsProduct does.
+]]
+function Classifier.MaterialsOnly(matched, book, profile)
+    if not matched or #matched == 0 then return false end
+    for _, h in ipairs(matched) do
+        local e = book and book[h.itemID]
+        if not e or ns.Prof.IsProduct(profile, e) then return false end
+    end
+    return true
+end
+
 -- "can cut" is a seller phrase in "I can cut that" but a buyer phrase in
 -- "anyone who can cut this?". Look back two tokens to tell them apart. The
 -- verb comes from the profession (cut, brew, craft, ...).
@@ -171,6 +196,24 @@ function Classifier.Evaluate(ctx)
         result.verdict = "lowscore"
         result.reason = "no buyer signal"
         return result
+    end
+
+    -- "WTB 5 stacks [Thick Leather], offering 15g" matched the leather because leather
+    -- converts, and WTB is a buyer word; an order was opened for one Thick Leather. In
+    -- Trade, a material with nothing but purchase words around it is somebody shopping.
+    -- Anything that speaks of crafting -- a verb, a crafter, mats in hand, the profession
+    -- itself -- is still the ask. Whispers keep their own path: a direct "can you make
+    -- thick leather" is real, and goes through confirmation anyway.
+    if ctx.materialsOnly and not ctx.isDirect then
+        local craftSignal = false
+        for key in pairs(result.buyerHits) do
+            if not PURCHASE_ONLY[key] then craftSignal = true end
+        end
+        if not craftSignal then
+            result.verdict = "lowscore"
+            result.reason = "buying materials, not a craft"
+            return result
+        end
     end
 
     result.verdict = "invite"

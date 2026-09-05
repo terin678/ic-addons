@@ -130,7 +130,13 @@ Hard vetoes (`LFW`, `WTS`, `will cut`, `will brew`, ...) never invite. Beyond th
 signals (`all cuts`, `all potions`, a linked `Design:`/`Recipe:`/`Pattern:`/`Plans:`/
 `Schematic:` item, three-plus links in one message) are weighed against buyer signals
 (`WTB`, `need`, `have mats`, a trailing `?`) and the net decides. A player who posts the
-same message twice inside the bark window is auto-flagged as a competitor. Every decision
+same message twice inside the bark window is auto-flagged as a competitor. Someone
+buying a **material** you happen to be able to make -- `WTB 5 stacks [Thick Leather]`,
+which a leatherworker's book holds because leather converts -- is shopping, not asking
+for a craft, and is dropped as *buying materials* unless something in the line speaks
+of crafting: a verb, a crafter, mats in hand, or the profession's name. What counts as a
+product is the profile's item classes (armour and bags for leatherworking, gems for
+jewelcrafting). Every decision
 is in the **Log** tab with the signals that fired. The whole vocabulary is editable per
 profession in **Filter**.
 

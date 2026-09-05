@@ -71,10 +71,13 @@ local function classify(text, over)
     local norm = ns.Util.Normalize(text)
     local filter = over.filter or filterFor(profile)
     if over.isDirect then filter.requireBuyerSignal = false end
+    local book = over.book or (profile == ALCH and alchBook() or jcBook())
+    local matched = ns.Matcher.Match(text, norm, index)
     return ns.Classifier.Evaluate({
         norm = norm,
         raw = text,
-        matched = ns.Matcher.Match(text, norm, index),
+        matched = matched,
+        materialsOnly = ns.Classifier.MaterialsOnly(matched, book, profile),
         linkCount = #ns.Util.ExtractItemIDs(text),
         hasRecipeLink = over.hasRecipeLink or false,
         namedUnknownItem = over.namedUnknownItem or false,
@@ -743,6 +746,30 @@ T.Case("Classifier scores LF item and a bare craft verb as buyer signals", funct
     T.Eq(classify("JC LFW cut anything " .. RUBY_LINK).reason, "lfw", "lfw still vetoed")
     T.Eq(classify("Can cut " .. RUBY_LINK .. " mats + tip").verdict, "lowscore", "can cut still a seller")
     T.Eq(classify(RUBY_LINK).reason, "no buyer signal", "a bare link is still nothing")
+end)
+
+T.Case("Classifier reads WTB of a material as shopping, not a craft", function()
+    -- A book with a trade good in it, the way a leatherworker's holds converted leather.
+    -- Jewelcrafting's products are gems (class 3), so class 7 is a material here too.
+    local LEATHER_LINK = link(4304, "Thick Leather")
+    local book = jcBook()
+    book[4304] = { itemID = 4304, name = "Thick Leather", classID = 7, bindType = 0, match = true, aliases = {} }
+
+    local r = classify("wtb 5 stacks " .. LEATHER_LINK .. " - offering 15g for 5 stacks", { book = book })
+    T.Eq(r.verdict, "lowscore", "shopping is not a customer")
+    T.Eq(r.reason, "buying materials, not a craft", "and says so")
+    T.Eq(r.buyerHits.wtb, 3, "wtb still scored, so the log shows why it was close")
+
+    T.Eq(classify("need " .. LEATHER_LINK .. " anyone?", { book = book }).verdict, "lowscore",
+        "need and a question are still shopping")
+    T.Eq(classify("wtb " .. LEATHER_LINK .. " anyone cut some? have mats", { book = book }).verdict, "invite",
+        "a craft verb or mats in hand is the ask")
+    T.Eq(classify("lf jc " .. LEATHER_LINK, { book = book }).verdict, "invite",
+        "naming the profession is the ask")
+    T.Eq(classify("wtb " .. RUBY_LINK .. " have gold", { book = book }).verdict, "invite",
+        "a product bought with WTB is a customer")
+    T.Eq(classify("wtb " .. LEATHER_LINK, { book = book, isDirect = true }).verdict, "invite",
+        "a whisper keeps its own path")
 end)
 
 --------------------------------------------------------------------------------

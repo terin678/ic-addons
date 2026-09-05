@@ -265,6 +265,7 @@ function Events.Process(text, author, source, opts)
         raw = text,
         wrongSpec = wrongSpec,
         matched = matched,
+        materialsOnly = ns.Classifier.MaterialsOnly(matched, book, profile),
         linkCount = #ns.Util.ExtractItemIDs(text),
         hasRecipeLink = HasRecipeLink(text, profile),
         namedUnknownItem = namedUnknownItem,
