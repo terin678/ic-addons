@@ -74,6 +74,9 @@ local Defaults = {
             autoAdvanceMats = true,
             autoFillTrade = true,
             promptOnDone = true,
+            -- The panel beside the trade window: what they put in against what the
+            -- order needs. Off, the check still runs at commit and lands on the order.
+            matsCheck = true,
             showFinished = false,
             keepDoneDays = 30,
             -- How long a customer has to accept the invite before the order is
@@ -658,6 +661,8 @@ frame:RegisterEvent("CHAT_MSG_WHISPER_INFORM")
 frame:RegisterEvent("TRADE_CLOSED")
 frame:RegisterEvent("TRADE_ACCEPT_UPDATE")
 frame:RegisterEvent("TRADE_SHOW")
+frame:RegisterEvent("TRADE_TARGET_ITEM_CHANGED")
+frame:RegisterEvent("TRADE_UPDATE")
 frame:SetScript("OnEvent", function(self, event, ...)
     if event == "PLAYER_LOGIN" then
         local loaded = (C_AddOns and C_AddOns.IsAddOnLoaded) or IsAddOnLoaded
@@ -727,7 +732,8 @@ frame:SetScript("OnEvent", function(self, event, ...)
             ns.Orders.AddTranscript(target, "out", text, ns.Now())
         end
     elseif event == "TRADE_SHOW" or event == "TRADE_ACCEPT_UPDATE"
-        or event == "TRADE_CLOSED" then
+        or event == "TRADE_CLOSED" or event == "TRADE_TARGET_ITEM_CHANGED"
+        or event == "TRADE_UPDATE" then
         ns.Trade.OnEvent(event, ...)
     end
 end)
