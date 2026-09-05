@@ -147,3 +147,18 @@ test helper that merges an overrides table silently applies no override and the 
 its default. This passed a Python port of the same cases -- a dict really can hold a `None`
 -- and failed the first time it ran in the client. Clear the field on the built table
 instead: `local s = state(); s.channel = nil`.
+
+## The trade window
+
+**`GetTradeTargetItemLink(slot)` and `GetTradeTargetItemInfo(slot)` read what the other
+side has put in**, slots 1 to 6; slot 7 is the "will not be traded" slot and is deliberately
+excluded. The count is the **third** return of `GetTradeTargetItemInfo`; the item id comes
+off the link. `GetTradePlayerItemLink/Info` are our side. `GetTargetTradeMoney()` and
+`GetPlayerTradeMoney()` are the money, in copper.
+
+**`TRADE_TARGET_ITEM_CHANGED(slot)` fires on every slot the other side touches**, and
+`TRADE_UPDATE` on any change; either is the moment to re-read the window. `TRADE_ACCEPT_UPDATE`
+carries `playerAccepted, targetAccepted` as 0/1, and the trade has gone through only when
+`TRADE_CLOSED` follows a snapshot taken with both at 1. `TradeFrame` is the Blizzard frame
+and a panel can anchor to its `TOPRIGHT`. TradeMaster's `Trade.lua` is the working reference.
+

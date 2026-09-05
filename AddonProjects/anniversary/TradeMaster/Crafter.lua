@@ -225,6 +225,11 @@ local PROBE = {
     { "TradeSkillInputBox", "typing the craft count in for you" },
     { "TradeSkillListScrollFrame", "scrolling the list to the selection" },
     { "FauxScrollFrame_SetOffset", "scrolling the list to the selection" },
+    -- The trade window, for the mats check.
+    { "GetTradeTargetItemLink", "reading what the customer put in the trade window" },
+    { "GetTradeTargetItemInfo", "how many of it; the count is the third return" },
+    { "GetTargetTradeMoney", "the money side of a trade" },
+    { "TradeFrame", "the frame the mats panel anchors to" },
 }
 
 function Crafter.Probe()

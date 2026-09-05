@@ -58,6 +58,14 @@ function UI.BuildOrders(page)
     end)
     bar:Left(showDone)
 
+    local matsPanel = UI.Button(bar, "Mats panel: on", 110, 22)
+    matsPanel:SetScript("OnClick", function()
+        local o = ns.db.settings.orders
+        o.matsCheck = not o.matsCheck
+        UI.RefreshOrders()
+    end)
+    bar:Left(matsPanel)
+
     -- An empty list must never read as lost data: say how many are held back.
     local hiddenLabel = UI.Label(bar, "", "GameFontDisableSmall")
     hiddenLabel:SetWordWrap(false)
@@ -219,6 +227,12 @@ function UI.BuildOrders(page)
         r.action:SetPoint("LEFT", 378, 0)
         r.remove = UI.Button(r, "x", 18, 16, { kind = "danger" })
         r.remove:SetPoint("LEFT", 486, 0)
+        -- What they have handed over for this line against what it needs.
+        r.mats = UI.Label(r, "", "GameFontHighlightSmall")
+        r.mats:SetPoint("LEFT", 510, 0)
+        r.mats:SetWidth(108)
+        r.mats:SetJustifyH("LEFT")
+        r.mats:SetWordWrap(false)
         r.picks = {}
         for b = 1, 3 do
             local btn = UI.Button(r, "", 84, 16)
@@ -230,8 +244,28 @@ function UI.BuildOrders(page)
         return r
     end
 
+    -- One line's mats, measured on its own against everything received. Shared
+    -- reagents land on both lines, which the header's order-wide verdict corrects.
+    local function ItemMatsText(o, it, book)
+        if not next(o.matsReceived or {}) then return "" end
+        local c = ns.Orders.MatsCheck({ items = { it } }, book, o.matsReceived)
+        local short, over = 0, 0
+        for _, row in ipairs(c.rows) do
+            if (row.delta or 0) < 0 then short = short - row.delta
+            elseif (row.delta or 0) > 0 then over = over + row.delta end
+        end
+        if short > 0 and over > 0 then
+            return string.format("|cffff4444short %d|r |cffffcc00over %d|r", short, over)
+        elseif short > 0 then
+            return string.format("|cffff4444short %d|r", short)
+        elseif over > 0 then
+            return string.format("|cffffcc00over %d|r", over)
+        end
+        return "|cff44ff44mats ok|r"
+    end
+
     local function RenderDetail(o)
-        for _, r in ipairs(detailRows) do r:Hide() end
+        for _, r in ipairs(detailRows) do r:Hide() r.mats:Hide() end
         if addChoices and (not o or addChoices.orderID ~= o.id) then addChoices = nil end
 
         if not o then
@@ -252,9 +286,12 @@ function UI.BuildOrders(page)
         local book = ns.Orders.BookFor(o)
         local profName = o.profession and ns.Prof.ByKey(o.profession)
             and ns.Prof.ByKey(o.profession).name or ""
-        detailHead:SetText(string.format("|cffffffff#%d  %s|r  |cff888888%s|r%s",
+        local mats = o.matsCheck and o.matsCheck.verdict ~= "nothing"
+            and ("   mats: " .. o.matsCheck.text) or ""
+        detailHead:SetText(string.format("|cffffffff#%d  %s|r  |cff888888%s|r%s%s",
             o.id, o.player, profName,
-            o.needsSplit and "   |cffff9900mats fit more than one item: set the split below|r" or ""))
+            o.needsSplit and "   |cffff9900mats fit more than one item: set the split below|r" or "",
+            mats))
 
         local used, y = 0, 0
 
@@ -264,6 +301,8 @@ function UI.BuildOrders(page)
             local e = book[it.itemID]
             r.label:SetText(e and (e.link or e.name) or tostring(it.itemID))
             r.count:SetText(string.format("%d%s", it.qty or 0, it.qtySource == "mats" and "" or "?"))
+            r.mats:SetText(ItemMatsText(o, it, book))
+            r.mats:Show()
             r.minus:SetScript("OnClick", function()
                 it.qty = math.max(0, (it.qty or 0) - 1)
                 it.qtySource = "manual"
@@ -450,6 +489,7 @@ function UI.BuildOrders(page)
         local showFinished = ns.db.settings.orders.showFinished
         local list, hidden = ns.Orders.Visible(ns.db.orders, showFinished)
         showDone:SetText(showFinished and "Finished: shown" or "Finished: hidden")
+        matsPanel:SetText(ns.db.settings.orders.matsCheck and "Mats panel: on" or "Mats panel: off")
         hiddenLabel:SetText(hidden > 0 and ("|cff888888" .. hidden .. " hidden|r") or "")
 
         -- Keep the selection if it is still listed, else take whatever needs
@@ -469,8 +509,10 @@ function UI.BuildOrders(page)
 
         t:Render(list, function(row, o)
             local color = STATUS_COLOR[o.status] or "|cffffffff"
+            local short = o.matsCheck and (o.matsCheck.verdict == "short" or o.matsCheck.verdict == "mixed")
             local flag = (o.needsSplit and " |cffff9900split|r")
-                or (next(o.unmatchedMats or {}) and " |cffff9900pick|r") or ""
+                or (next(o.unmatchedMats or {}) and " |cffff9900pick|r")
+                or (short and " |cffff4444short|r") or ""
             local profName = o.profession and ns.Prof.ByKey(o.profession)
                 and ns.Prof.ByKey(o.profession).name or ""
 

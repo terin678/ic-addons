@@ -221,6 +221,29 @@ Orders waiting on someone to join get their own rows too, right-clickable to can
 not counted as open work — they may never join — but a static "waiting for them to join" line
 with nothing clickable on it left the full Orders tab as the only way to close one out.
 
+### Checks the mats
+
+While a trade is open with someone who has an order, a panel beside the trade window
+lists each reagent the order needs with what they have put in: green is exact, amber is
+over, red is short, and anything on no recipe of the order is grey. It redraws as they
+move stacks, before either of you accepts, so a missing thread is seen while it can still
+be added. When the trade completes the same check runs against everything they have
+handed over so far and is kept on the order: the Orders tab shows it in the header, each
+line gets a `mats ok` / `short 2` / `over 1`, the list flags an order that is *short*, and
+the tracker says so next to the name. `/tm order mats <id>` prints it after the fact.
+
+What it measures against matters. An order's count is usually a guess (`x1?`), and a stack
+of leather measured against a guess would read *over* every time. So a count the customer
+stated, or you set, is measured as stated; any other line is measured against the count
+its most generous reagent supports, and the other reagents are judged against that: six
+leather and one thread, with two threads a craft, reads *thread short by 5*. Two lines that
+share a reagent, with either count guessed, cannot be told apart from the mats alone, and
+the panel says so rather than measuring against a number it made up; set the split first.
+
+Nothing is refused or cancelled. The trade is yours to accept; this only says what it sees.
+**Mats panel** on the Orders toolbar hides the panel; the check on completion runs
+regardless.
+
 ### Gives up on a customer who never came
 
 A pending order expires after five minutes if the customer never joins the group
@@ -380,6 +403,7 @@ For Jewelcrafting, gem names in the profession window are replaced with what the
 | `/tm log` / `/tm clearflags` | Recent decisions; clear competitor flags |
 | `/tm orders` / `/tm order add\|done\|cancel\|reopen <id>` | Manage orders |
 | `/tm order removeitem <id> <item name>` | Drop one line from an order, matched on part of the name |
+| `/tm order mats <id>` | What they have handed over against what the order needs, per reagent |
 | `/tm tracker` / `/tm income` | Tracker window; earnings summary |
 | `/tm try <msg>` / `/tm trywhisper <msg>` / `/tm tryparty <msg>` | Test the classifier for the active profession. Sends nothing. |
 | `/tm capture` | Record every Trade message and its verdict |

@@ -13,7 +13,7 @@ player and verdict, not on kind and source, so the library's Log is switched off
 
 local Core = LibStub("LibICCore-1.0")
 
-local VERSION = "1.14.4"
+local VERSION = "1.15.0"
 
 -- Bumped when a saved-variable change needs code to read the old shape. Every table
 -- saved before 1.14.0 has no schema stamp at all and is treated as schema 1, so the
@@ -213,6 +213,7 @@ local HELP = {
     { "invite", "toggle invites for every scanned profession" },
     { "orders", "list open orders" },
     { "order add|done|cancel|reopen|removeitem", "manage one order" },
+    { "order mats <id>", "what they have handed over against what the order needs" },
     { "craft", "focus the profession window on the current order" },
     { "spec [auto|none|off|<name>]", "the active profession's specialization" },
     { "tracker", "toggle the order tracker" },
@@ -431,6 +432,26 @@ COMMANDS.order = function(rest)
                 if ns.Tracker then ns.Tracker.Refresh() end
             end
         end
+    elseif sub == "mats" then
+        local o = ns.Orders.ByID(tonumber(arg))
+        if not o then ns.Print("no order with that id.") return end
+        local check = ns.Orders.MatsCheck(o, ns.Orders.BookFor(o), o.matsReceived or {})
+        ns.Print(string.format("order #%d mats: %s", o.id, ns.Orders.DescribeCheck(check)))
+        for _, row in ipairs(check.rows) do
+            local label = row.link or row.name or tostring(row.id)
+            if check.verdict == "ambiguous" then
+                ns.Print(string.format("  %d  %s", row.have, label))
+            else
+                ns.Print(string.format("  %d / %d  %s", row.have, row.need, label))
+            end
+        end
+        for _, row in ipairs(check.unexpected) do
+            ns.Print(string.format("  |cff888888%d  %s  not on this order|r", row.have,
+                row.link or row.name or tostring(row.id)))
+        end
+        for _, name in ipairs(check.unknown) do
+            ns.Print("  |cff888888?  " .. name .. "  count unknown; rescan the book|r")
+        end
     elseif sub == "done" or sub == "cancel" or sub == "reopen" then
         local o = ns.Orders.ByID(tonumber(arg))
         if not o then ns.Print("no order with that id.") return end
@@ -439,7 +460,7 @@ COMMANDS.order = function(rest)
         ns.Print(string.format("order #%d %s.", o.id, sub == "reopen" and "reopened" or (sub == "done" and "closed" or "cancelled")))
     else
         ns.Print("usage: /tm order add <player> | done <id> | cancel <id> "
-            .. "| reopen <id> | removeitem <id> <item name>")
+            .. "| reopen <id> | removeitem <id> <item name> | mats <id>")
     end
 end
 
