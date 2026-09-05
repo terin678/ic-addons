@@ -145,6 +145,11 @@ profession in **Filter**.
 
 ### Talks to customers
 
+Every reply below answers a **whisper** (or a party line). A Trade post is never
+replied to: it gets a group invite, with the invite's own one-line whisper saying why,
+or nothing at all. Somebody posting `WTB [Belt of Deep Shadow]` in Trade has not spoken
+to you, and "not enough Nether Vortex, sorry" arriving from a stranger reads as spam.
+
 | They say | TradeMaster replies |
 | --- | --- |
 | Names an item you have | Invites, whispers that it's on the way |

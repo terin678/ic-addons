@@ -304,8 +304,11 @@ function Events.Process(text, author, source, opts)
     local willInvite = Events.ShouldInvite(result, #craftable, #matched)
     local nounS = profile.craftNoun[1]
 
-    -- Everything they named needs a Bind on Pickup reagent you don't hold.
-    -- Tell them, on any channel where an invite would otherwise have gone out.
+    -- Everything they named needs a Bind on Pickup reagent you don't hold. No invite,
+    -- and a line in your own chat saying why, on any channel. The whisper back goes
+    -- only to somebody who spoke to us first: "WTB [Belt of Deep Shadow], 700g" in
+    -- Trade got "Not enough Nether Vortex ... sorry" whispered at a stranger who had
+    -- not asked us anything. A Trade post gets an invite or nothing. (1.14.4)
     if #matched > 0 and #craftable == 0 and not opts.dryRun and result.verdict ~= "vetoed"
         and (isDirect or result.verdict == "invite") then
         local w = ps.invite.whisper
@@ -321,7 +324,7 @@ function Events.Process(text, author, source, opts)
         local itemText = table.concat(items, " ")
         ns.Print(string.format("|cffffcc00%s asked for %s but you lack %s.|r Not invited.",
             short, itemText, ns.Scanner.DescribeMissing(noMats[1].missing, true)))
-        if w.enabled and w.autoReply then
+        if isDirect and w.enabled and w.autoReply then
             ns.Inviter.Say(short, w.noMatsTemplate,
                 { mats = table.concat(mats, ", "), item = itemText }, profile)
         end
