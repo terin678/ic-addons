@@ -50,11 +50,20 @@ local function BuildVocab(spec)
         -- covered by the per-verb phrases below for a jeweller who cuts or an
         -- alchemist who brews. (CutMaster 1.2.0)
         ["who can make"] = 3, ["anyone make"] = 3,
+        -- "LF [item] craft" named the item, said it was looking, and said what for,
+        -- and scored nothing: the profession forms ("lf jc") and "crafter" were
+        -- the only LF phrases, and the verb alone was not a word. LF with an item we
+        -- make is the ask. (1.14.1)
+        ["lf"] = 2, ["looking for"] = 2,
     }
     for _, p in ipairs(spec.personNouns) do buyer[p] = 2 end
     for _, v in ipairs(verbs) do
         buyer["anyone " .. v] = 3
         buyer["who can " .. v] = 3
+        -- The verb on its own, after an item we make: "[item] craft", "need this cut".
+        -- Weight 1, enough to clear requireBuyerSignal and nothing more; a seller's
+        -- "can craft", "will craft" and "crafting for" are caught before it counts.
+        buyer[v] = 1
     end
     for _, a in ipairs(spec.abbrevs) do
         buyer["any " .. a] = 2

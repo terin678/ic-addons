@@ -729,6 +729,22 @@ T.Case("Classifier scores LF item crafter as a buyer signal", function()
     T.Eq(r2.verdict, "invite", "cutter verdict")
 end)
 
+T.Case("Classifier scores LF item and a bare craft verb as buyer signals", function()
+    -- The line that was missed: LF, a link to something we make, and the verb.
+    local r = classify("LF " .. RUBY_LINK .. " cut")
+    T.Eq(r.verdict, "invite", "LF item verb invites")
+    T.Eq(r.buyerHits.lf, 2, "lf scored")
+    T.Eq(r.buyerHits.cut, 1, "the verb scored")
+    -- The same line with a capital I for the L, which the chat font hides. Only the
+    -- verb can carry it, and it does.
+    T.Eq(classify("If " .. RUBY_LINK .. " cut").verdict, "invite", "typo still invites")
+    T.Eq(classify("LF " .. RUBY_LINK).verdict, "invite", "LF and the item alone is enough")
+    -- The verb alone does not turn a seller into a buyer.
+    T.Eq(classify("JC LFW cut anything " .. RUBY_LINK).reason, "lfw", "lfw still vetoed")
+    T.Eq(classify("Can cut " .. RUBY_LINK .. " mats + tip").verdict, "lowscore", "can cut still a seller")
+    T.Eq(classify(RUBY_LINK).reason, "no buyer signal", "a bare link is still nothing")
+end)
+
 --------------------------------------------------------------------------------
 -- Market saturation
 --------------------------------------------------------------------------------
