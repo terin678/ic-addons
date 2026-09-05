@@ -1658,6 +1658,14 @@ T.Case("Specializations: they want a transmute master and you brew potions", fun
 
     T.Eq(ns.Prof.SpecWanted(ALCH, "LF elixir master to make an elixir", set("potion")),
         "Elixir Master", "the same for elixirs, named the way people say it")
+    -- The words the other way round: "LF Master elixir to craft [...]" was invited by a
+    -- potion master because only "elixir master" was in the list.
+    T.Eq(ns.Prof.SpecWanted(ALCH, "LF Master elixir to craft", set("potion")), "Elixir Master",
+        "master before the noun")
+    T.Eq(ns.Prof.SpecWanted(ALCH, "LF Master elixir to craft", set("elixir")), nil,
+        "unless it is us")
+    T.Eq(ns.Prof.SpecWanted(ALCH, "master transmute needed", set("potion")), "Transmutation Master",
+        "and for the other specs")
     T.Eq(ns.Prof.SpecWanted(ALCH, "lf alch to make a potion", set("potion")), nil,
         "an ordinary request names no specialization")
 

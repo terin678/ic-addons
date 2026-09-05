@@ -13,7 +13,7 @@ player and verdict, not on kind and source, so the library's Log is switched off
 
 local Core = LibStub("LibICCore-1.0")
 
-local VERSION = "1.15.0"
+local VERSION = "1.15.1"
 
 -- Bumped when a saved-variable change needs code to read the old shape. Every table
 -- saved before 1.14.0 has no schema stamp at all and is treated as schema 1, so the
