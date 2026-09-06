@@ -423,8 +423,10 @@ local function RecipeTooltip(hit, calc)
         end
         GameTooltip:AddLine("Materials per batch:", 0.8, 0.8, 0.8)
         for _, m in ipairs(calc.materials) do
-            local right = m.unit and (m.count .. " x " .. FormatMoney(m.unit) .. " = " .. FormatMoney(m.cost)) or "no price"
-            local src = m.vendor and " (vendor)" or (m.source and (" (" .. (MAW.SourceLabel and MAW:SourceLabel(m.source) or m.source) .. (m.when and (", " .. m.when) or "") .. ")") or "")
+            local right = m.unit and (m.count .. " x " .. FormatMoney(m.unit) .. " = " .. FormatMoney(m.cost))
+                or (m.bop and (m.count .. " x bind on pickup")) or "no price"
+            local src = m.vendor and " (vendor)" or m.bop and " (not on the AH)"
+                or (m.source and (" (" .. (MAW.SourceLabel and MAW:SourceLabel(m.source) or m.source) .. (m.when and (", " .. m.when) or "") .. ")") or "")
             GameTooltip:AddDoubleLine("  " .. m.item .. src, right, 1, 1, 1, 1, 0.8, 0.5)
         end
         GameTooltip:AddLine(" ")
@@ -437,6 +439,10 @@ local function RecipeTooltip(hit, calc)
                 calc.profit >= 0 and 0.5 or 1, calc.profit >= 0 and 1 or 0.5, 0.5)
         else
             GameTooltip:AddLine("Missing prices: " .. table.concat(calc.missing, ", "), 1, 0.5, 0.5)
+        end
+        if #calc.bop > 0 then
+            GameTooltip:AddLine("Needs bind on pickup: " .. table.concat(calc.bop, ", ")
+                .. ". The cost is without it; you bring it.", 1, 0.8, 0.4, true)
         end
         if calc.canMake then
             GameTooltip:AddDoubleLine("Batches you can make now", tostring(calc.canMake), 1, 1, 1, 1, 1, 0.5)
@@ -1258,7 +1264,8 @@ local function BuildHistoryPage(page)
             .. "|cfffa736bRed|r = its materials. Thin lines = each material x how many."
             .. "\nA break in a line is a slot with no price for that item; the cost "
             .. "line breaks whenever any material does. Vendor materials are folded "
-            .. "into the cost at their fixed price. Flat pale lines are each "
+            .. "into the cost at their fixed price; bind-on-pickup ones are left out "
+            .. "of it. Flat pale lines are each "
             .. "piece's TSM 14d average; hover a slot for its 60d.",
             recipe.product or "the product", cutPct))
 
@@ -1342,6 +1349,10 @@ local function BuildHistoryPage(page)
         if #series.missing > 0 then
             parts[#parts + 1] = "|cffffcc00Not tracked:|r " .. table.concat(series.missing, ", ")
                 .. " - add them, or use Scan Tab to price the whole recipe."
+        end
+        if #series.bop > 0 then
+            parts[#parts + 1] = "|cffffcc00Bind on pickup:|r " .. table.concat(series.bop, ", ")
+                .. " - never on the auction house, so the cost is without it."
         end
         if series.best and series.worst and series.best.index ~= series.worst.index then
             parts[#parts + 1] = string.format("Best %s %s, worst %s %s.",
@@ -1579,7 +1590,10 @@ local function BuildRecipesPage(page)
 
             for _, col in ipairs(columns) do
                 if col.key == "name" then
-                    t:Set(row, col.key, calc.recipe.name, BONE)
+                    -- A recipe priced without a bind-on-pickup reagent says so on the
+                    -- row, since its cost reads like anyone else's.
+                    t:Set(row, col.key, calc.recipe.name
+                        .. (#calc.bop > 0 and "  |cffffcc00BoP|r" or ""), BONE)
                     RecipeTooltip(row.hit.name, calc)
                 elseif col.key == "matCost" then
                     t:Set(row, col.key, (calc.complete or #calc.missing == 0) and FormatMoney(calc.matCost) or "?", WHITE)

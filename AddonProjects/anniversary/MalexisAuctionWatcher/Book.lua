@@ -47,13 +47,16 @@ end
 -- The shape ImportProfessionRecipe expects. The recipe keeps the window's
 -- line name ("Transmute: Primal Might"), the product is the item it makes.
 function MAW:BookRowToImport(row)
+    -- The bind type rides along where the scan captured it, so a Primal Nether is
+    -- imported as bind on pickup rather than as a material with no price.
+    local binds = row.reagentBind or {}
     local reagents = {}
     for _, r in ipairs(row.reagentList or {}) do
-        reagents[#reagents + 1] = { item = r.name, id = r.itemID, count = r.count }
+        reagents[#reagents + 1] = { item = r.name, id = r.itemID, count = r.count, bind = binds[r.itemID] }
     end
     if #reagents == 0 then
         for id, count in pairs(row.reagents or {}) do
-            reagents[#reagents + 1] = { item = GetItemInfo(id) or ("item " .. id), id = id, count = count }
+            reagents[#reagents + 1] = { item = GetItemInfo(id) or ("item " .. id), id = id, count = count, bind = binds[id] }
         end
     end
     return {

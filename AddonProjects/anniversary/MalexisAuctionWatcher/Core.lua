@@ -6,7 +6,7 @@
 -- `local addonName, ns = ...` pair. LibICCore attaches to that table just the same, so
 -- MAW.Print, MAW.db, MAW.Util and the rest are the same names the other addons use.
 local addonName = "MalexisAuctionWatcher"
-local VERSION = "1.20.0"
+local VERSION = "1.21.0"
 local Core = LibStub("LibICCore-1.0")
 local MAW = {}
 
