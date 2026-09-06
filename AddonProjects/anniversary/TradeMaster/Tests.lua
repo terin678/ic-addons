@@ -1798,3 +1798,205 @@ T.Case("Players: declining stamps the clock, clearing unstamps it", function()
     ns.Players.ClearDeclined(state)
     T.Eq(state.declinedAt, nil, "Clear Flags lets them back in")
 end)
+
+--------------------------------------------------------------------------------
+-- Decide: the plan for a line, per channel
+--------------------------------------------------------------------------------
+
+-- A plan for one line on one channel, against a fixture book. Everything Decide reads
+-- comes in through ctx, so nothing here touches the saved tables.
+local function decide(text, source, over)
+    over = over or {}
+    local profile = over.profile or JC
+    local book = over.book or (profile == ALCH and alchBook() or jcBook())
+    local settings = ns.Prof.DefaultSettings(profile)
+    if over.confirm then settings.invite.confirm = over.confirm end
+    if over.fromWhisper ~= nil then settings.invite.fromWhisper = over.fromWhisper end
+    return ns.Events.Decide({ text = text, short = over.short or "Customer", source = source }, {
+        candidates = { { key = profile.key, index = ns.Matcher.BuildIndex(book, profile),
+                         book = book, profile = profile, settings = settings } },
+        now = over.now or 100000,
+        state = over.state or {},
+        settings = over.settings or {
+            orders = { autoFromInvite = true, autoFromWhisper = true, autoFromParty = true, captureTranscript = true },
+            captureAll = false, debug = false,
+        },
+        inGroup = over.inGroup or false,
+        groupSize = over.groupSize or 0,
+        invitesOn = over.invitesOn ~= false,
+    })
+end
+
+local CHANNELS = { "trade", "whisper", "party" }
+
+-- The lines from one afternoon in Trade, and the shapes around them.
+local function corpus()
+    local book = jcBook()
+    book[4304] = { itemID = 4304, name = "Thick Leather", classID = 7, bindType = 0, match = true, aliases = {} }
+    -- Something we make but lack a Bind on Pickup reagent for, held by nobody.
+    book[24028].reagents = { [999999] = 1 }
+    book[24028].reagentBind = { [999999] = 1 }
+    return book, {
+        "LF " .. RUBY_LINK .. " cut",
+        "wtb 5 stacks " .. link(4304, "Thick Leather") .. " - offering 15g",
+        "anyone want for a lvl 41 alt " .. RUBY_LINK .. "?",
+        "WTB " .. link(24028, "Solid Star of Elune") .. ", 700g",
+        "WTB bold ruby have mats",
+        "JC LFW all cuts pst " .. RUBY_LINK,
+        RUBY_LINK,
+        "LF JC",
+        "any jc able to cut " .. RUBY_LINK .. "?",
+        "hey whats up",
+    }
+end
+
+T.Case("Decide: no Trade line ever gets a whisper back", function()
+    local book, lines = corpus()
+    for _, text in ipairs(lines) do
+        local plan = decide(text, "trade", { book = book })
+        T.Eq(plan.actions.whisper, nil, "trade never whispers: " .. text)
+        T.Eq(plan.actions.transcript, false, "trade has no transcript: " .. text)
+    end
+end)
+
+T.Case("Decide: party gets the no-mats note and no other reply", function()
+    local book, lines = corpus()
+    for _, text in ipairs(lines) do
+        local plan = decide(text, "party", { book = book })
+        local w = plan.actions.whisper
+        T.Eq(w == nil or w.kind == "noMats", true, "party reply kind: " .. text)
+    end
+    local belt = "WTB " .. link(24028, "Solid Star of Elune") .. ", 700g"
+    T.Eq(decide(belt, "party", { book = book }).actions.whisper.kind, "noMats", "party is told about mats")
+    T.Eq(decide(belt, "whisper", { book = book }).actions.whisper.kind, "noMats", "so is a whisper")
+    T.Eq(decide(belt, "trade", { book = book }).actions.whisper, nil, "Trade is not")
+    T.Eq(decide(belt, "trade", { book = book }).why.whisper ~= nil, true, "and the plan says why")
+end)
+
+T.Case("Decide: a whisper does not need a buyer signal, Trade does", function()
+    local w = decide(RUBY_LINK, "whisper")
+    T.Eq(w.result.verdict, "invite", "a whispered link is a request")
+    T.Eq(w.actions.invite, true, "and is invited")
+    T.Eq(w.actions.order, true, "with an order")
+    local t = decide(RUBY_LINK, "trade")
+    T.Eq(t.result.reason, "no buyer signal", "a bare link in Trade is nothing")
+    T.Eq(t.actions.invite, nil, "no invite")
+    T.Eq(t.actions.order, nil, "no order")
+    T.True(t.why.invite:find("no buyer signal", 1, true), "why says so")
+end)
+
+T.Case("Decide: a vetoed line does nothing on any channel", function()
+    local book = corpus()
+    for _, source in ipairs(CHANNELS) do
+        for _, text in ipairs({ "anyone want for a lvl 41 alt " .. RUBY_LINK .. "?",
+                                "JC LFW all cuts pst " .. RUBY_LINK }) do
+            local plan = decide(text, source, { book = book })
+            T.Eq(plan.result.verdict, "vetoed", source .. ": vetoed: " .. text)
+            T.Eq(plan.actions.invite, nil, source .. ": no invite")
+            T.Eq(plan.actions.order, nil, source .. ": no order")
+            T.Eq(plan.actions.whisper, nil, source .. ": no whisper")
+            T.Eq(plan.actions.log, true, source .. ": but it is logged")
+        end
+    end
+end)
+
+T.Case("Decide: the afternoon's lines, as plans", function()
+    local book = corpus()
+    local lf = decide("LF " .. RUBY_LINK .. " cut", "trade", { book = book })
+    T.Eq(lf.actions.invite, true, "LF item verb invites")
+    T.Eq(lf.actions.order, true, "and opens an order")
+    T.Eq(lf.actions.pushRecent, true, "a matched Trade line is remembered")
+    local leather = decide("wtb 5 stacks " .. link(4304, "Thick Leather") .. " - offering 15g", "trade", { book = book })
+    T.Eq(leather.result.reason, "buying materials, not a craft", "shopping")
+    T.Eq(leather.actions.invite, nil, "no invite")
+    T.Eq(leather.actions.order, nil, "no order")
+    local chat = decide("hey whats up", "trade", { book = book })
+    T.Eq(chat.actions.log, false, "chat that names nothing is not logged")
+    T.Eq(chat.actions.pushRecent, false, "nor remembered")
+    T.Eq(chat.actions.market, true, "but it counts toward saturation")
+end)
+
+T.Case("Decide: the operational block is in the plan, dry run or not", function()
+    local told = decide("LF " .. RUBY_LINK .. " cut", "trade", { state = { declinedAt = 100000 - 60 } })
+    T.Eq(told.blocked, "told them no just now", "block computed from the record")
+    T.Eq(told.actions.invite, nil, "so no invite")
+    T.Eq(told.why.invite, "told them no just now", "and why says so")
+    T.Eq(told.actions.order, true, "the order is still booked, as before")
+    T.Eq(decide("LF " .. RUBY_LINK .. " cut", "trade", { inGroup = true }).blocked, "already grouped", "grouped")
+    T.Eq(decide("LF " .. RUBY_LINK .. " cut", "trade", { invitesOn = false }).blocked, "invites off", "invites off")
+    T.Eq(decide(RUBY_LINK, "whisper", { fromWhisper = false }).blocked, "whisper invites disabled", "the whisper gate")
+    T.Eq(decide(RUBY_LINK, "party", { fromWhisper = false }).blocked, nil, "which party does not have")
+end)
+
+T.Case("Decide: a repeat flags the seller on this very line", function()
+    local state = { lastMsg = ns.Util.Normalize("gems here " .. RUBY_LINK .. " 5g"), lastMsgAt = 100000 - 30 }
+    local plan = decide("gems here " .. RUBY_LINK .. " 7g", "trade", { state = state })
+    T.Eq(plan.actions.observe.isRepeat, true, "seen as a repeat")
+    T.Eq(plan.result.verdict, "vetoed", "and vetoed as a flagged seller")
+    T.Eq(plan.result.reason, "flagged seller", "reason")
+    T.Eq(state.flaggedSeller, nil, "without Decide having written the record")
+    local whispered = decide("gems here " .. RUBY_LINK .. " 7g", "whisper", { state = state })
+    T.Eq(whispered.actions.observe, nil, "a whisper is not a broadcast")
+end)
+
+T.Case("Decide: the confirm setting turns an invite into a question", function()
+    -- A profession request carrying a specific it could not place: nothing matched,
+    -- and "frobnicator" is left over once the known words are taken out.
+    local odd = "LF jc for a frobnicator"
+    T.Eq(decide(odd, "trade", { confirm = "never" }).actions.invite, true, "never asks")
+    local unsure = decide(odd, "trade", { confirm = "unsure" })
+    T.Eq(unsure.actions.confirm ~= nil, true, "unsure asks about the leftover")
+    T.Eq(unsure.actions.invite, nil, "and does not invite yet")
+    T.Eq(decide("LF jc " .. RUBY_LINK, "trade", { confirm = "unsure" }).actions.invite, true,
+        "a line it understood is not asked about")
+    T.Eq(decide("LF jc " .. RUBY_LINK, "trade", { confirm = "always" }).actions.confirm ~= nil, true, "always asks")
+end)
+
+T.Case("Act performs the plan in order and skips what the plan left out", function()
+    local calls = {}
+    local saved = {
+        Note = ns.Players.Note, PushRecent = ns.Players.PushRecent, Record = ns.Orders.Record,
+        Invite = ns.Inviter.Invite, Say = ns.Inviter.Say, SayComposed = ns.Inviter.SayComposed,
+        Ask = ns.Confirm.Ask, Add = ns.Log.Add, Print = ns.Print,
+    }
+    ns.Players.Note = function() calls[#calls + 1] = "note" end
+    ns.Players.PushRecent = function() calls[#calls + 1] = "remember" end
+    ns.Orders.Record = function() calls[#calls + 1] = "order" end
+    ns.Inviter.Invite = function() calls[#calls + 1] = "invite" end
+    ns.Inviter.Say = function() calls[#calls + 1] = "whisper" end
+    ns.Inviter.SayComposed = function() calls[#calls + 1] = "whisper" end
+    ns.Confirm.Ask = function() calls[#calls + 1] = "confirm" end
+    ns.Log.Add = function() calls[#calls + 1] = "log" end
+    ns.Print = function() end
+
+    local ok, err = pcall(function()
+        T.With({ players = {}, log = {}, capture = {}, orders = {}, settings = { debug = false } }, nil, function()
+            local plan = decide("LF " .. RUBY_LINK .. " cut", "trade")
+            ns.Events.Act(plan)
+            T.Eq(table.concat(calls, " "), "note remember log order invite", "trade: memory, log, order, invite")
+            calls = {}
+            ns.Events.Act(decide("anyone want for a lvl 41 alt " .. RUBY_LINK .. "?", "trade"))
+            T.Eq(table.concat(calls, " "), "note remember log", "a vetoed line that named an item is remembered and logged, nothing more")
+            calls = {}
+            local book = corpus()
+            ns.Events.Act(decide("WTB " .. link(24028, "Solid Star of Elune") .. ", 700g", "whisper", { book = book }))
+            T.Eq(table.concat(calls, " "), "remember log whisper", "no-mats whisper: no order, no invite, the note goes out")
+        end)
+    end)
+    for k, v in pairs(saved) do
+        if k == "Note" or k == "PushRecent" then ns.Players[k] = v
+        elseif k == "Record" then ns.Orders.Record = v
+        elseif k == "Ask" then ns.Confirm.Ask = v
+        elseif k == "Add" then ns.Log.Add = v
+        elseif k == "Print" then ns.Print = v
+        else ns.Inviter[k] = v end
+    end
+    if not ok then error(err, 0) end
+end)
+
+T.Case("Describe prints a plan a person can read", function()
+    local lines = ns.Events.Describe(decide(RUBY_LINK, "trade"))
+    T.Eq(#lines >= 3, true, "three lines at least")
+    T.True(lines[1]:find("no buyer signal", 1, true), "the verdict line carries the reason")
+    T.True(lines[2]:find("invite", 1, true) and lines[2]:find("no buyer signal", 1, true), "the invite line says why not")
+end)

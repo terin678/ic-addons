@@ -3,11 +3,64 @@ local addonName, ns = ...
 ns.Events = ns.Events or {}
 local Events = ns.Events
 
+--[[
+A line of chat comes in; something happens back. This file is that in two halves:
+
+    Events.Decide(line, ctx) -> plan     pure: reads, never writes
+    Events.Act(plan)                     the effects, in one fixed order
+
+Decide reads the line, the books, the settings and the player's memory, classifies it,
+and returns a plan: the verdict, and for every effect the addon could take -- remember,
+log, open an order, whisper, invite, ask first -- whether it will, and when it will not,
+why. Act performs the plan. Nothing in Decide touches a frame, a timer, the saved tables
+or chat, so a plan can be built for a made-up line in a test and read in full; /tm try
+prints one, which is how a dry run and the live path can never disagree.
+
+The channel is looked up once, in POLICY. Before this split "what may we do back on this
+channel" was answered at four separate places, and one of them answered differently.
+]]
+
 -- How far back to look when stitching together a fragmented request.
 local CONTEXT_WINDOW = 90
 
 -- A message this short naming a family is a fragment, not conversation.
 local FRAGMENT_WORDS = 5
+
+--[[
+One policy per channel, and the only place a channel name is compared.
+
+    requireBuyerSignal  a matched item is not enough on its own; the line has to ask
+    stitch              a line naming nothing is read with what they said just before
+    observeRepeats      the same advertisement twice inside the window flags a seller
+    market              the line counts toward Trade saturation
+    remember            "always" keeps every line for stitching; "matched" only a hit
+    transcript          the line goes on the order's transcript
+    orderSetting        the settings.orders key that switches order-opening here
+                        (autoFromTrade is the trade WINDOW's switch, Trade.lua, not this)
+    inviteGate          a per-profession invite setting that can refuse this channel
+    replies             which of the whispers back may go: noMats, reply, askWhich,
+                        suggest, none, drop. A channel with none of them is never
+                        replied to; it gets an invite, with the invite's own line, or
+                        nothing.
+]]
+Events.POLICY = {
+    trade = {
+        label = "Trade", requireBuyerSignal = true, stitch = false, observeRepeats = true,
+        market = true, remember = "matched", transcript = false, orderSetting = "autoFromInvite",
+        replies = {},
+    },
+    whisper = {
+        label = "a whisper", requireBuyerSignal = false, stitch = true, observeRepeats = false,
+        market = false, remember = "always", transcript = true, orderSetting = "autoFromWhisper",
+        inviteGate = "fromWhisper",
+        replies = { noMats = true, reply = true, askWhich = true, suggest = true, none = true, drop = true },
+    },
+    party = {
+        label = "party chat", requireBuyerSignal = false, stitch = true, observeRepeats = false,
+        market = false, remember = "always", transcript = true, orderSetting = "autoFromParty",
+        replies = { noMats = true },
+    },
+}
 
 -- Only the recipe ITEM ("Design: Bold Living Ruby", "Recipe: Haste Potion") is a
 -- seller tell. Craft spell links are not: real trade chat shows buyers using
@@ -34,9 +87,9 @@ function Events.RebuildIndex()
     return Events.index
 end
 
--- Pure. candidates = { { key = <profession>, index = <matcher index> }, ... }
--- in priority order. Returns the candidate with the most matches and its hits;
--- the first candidate with no hits when nothing matches anywhere.
+-- Pure. candidates = { { key, index, book, profile, settings }, ... } in priority
+-- order. Returns the candidate with the most matches and its hits; the first
+-- candidate with no hits when nothing matches anywhere.
 function Events.PickProfession(raw, norm, candidates)
     local best, bestHits = nil, {}
     for _, c in ipairs(candidates) do
@@ -46,22 +99,29 @@ function Events.PickProfession(raw, norm, candidates)
     return best or candidates[1], bestHits
 end
 
--- Active profession first, then every other scanned book. Falls back to the
+-- Active profession first, then every other scanned book, each carrying its book,
+-- profile and settings so Decide never has to look them up. Falls back to the
 -- active index alone (a generic, empty one before any scan) so the classifier
 -- can still be exercised with /tm try.
 local function Candidates()
     if not Events.indexes then Events.RebuildIndex() end
     local list = {}
+    local function add(key)
+        local pd = ns.Prof.DB(key)
+        list[#list + 1] = {
+            key = key, index = Events.indexes[key],
+            book = pd.book, profile = ns.Prof.ByKey(key), settings = pd.settings,
+        }
+    end
     local active = ns.db.activeProfession
-    if active and Events.indexes[active] then
-        list[1] = { key = active, index = Events.indexes[active] }
-    end
+    if active and Events.indexes[active] then add(active) end
     for _, key in ipairs(ns.Prof.Known()) do
-        if key ~= active and Events.indexes[key] then
-            list[#list + 1] = { key = key, index = Events.indexes[key] }
-        end
+        if key ~= active and Events.indexes[key] then add(key) end
     end
-    if #list == 0 then list[1] = { key = nil, index = Events.index } end
+    if #list == 0 then
+        list[1] = { key = nil, index = Events.index, book = ns.Book(),
+                    profile = ns.Prof.Current(), settings = ns.PS() }
+    end
     return list
 end
 
@@ -78,55 +138,60 @@ local function IsProductItem(profile, itemID)
     return ns.Prof.IsProduct(profile, { classID = classID })
 end
 
--- source is "trade", "whisper" or "party". A whisper naming an item is a
--- request by definition, so the buyer-signal requirement and the
--- broadcast-shaped seller signals are dropped for that channel.
-function Events.Process(text, author, source, opts)
-    opts = opts or {}
-    if not ns.db then return end
-    local candidates = Candidates()
+--------------------------------------------------------------------------------
+-- Decide
+--------------------------------------------------------------------------------
 
-    -- Which book is answering. Set once the request has been matched.
+--[[
+line = { text, short, source }. ctx = { candidates, now, state, settings, inGroup,
+groupSize, invitesOn }; `state` is the player's record and is only read.
+
+Returns the plan:
+
+    result          Classifier.Evaluate's table, with source and profession
+    profile, book, matched, craftable, noMats, canDo, cannotDo, usedContext, norm
+    blocked         the operational reason, if any; computed for a dry run too
+    actions         observe = { isRepeat }, pushRecent, market, capture, log,
+                    clearAwaiting, transcript, order, decline = { names }, drop,
+                    whisper = { kind, template, vars } or { kind, text }, confirm =
+                    { leftover }, invite
+    why             for each action not taken, the reason, by name
+    prints          the lines for the user's own chat
+]]
+function Events.Decide(line, ctx)
+    local text, short, source = line.text, line.short, line.source
+    local P = Events.POLICY[source] or Events.POLICY.trade
+    local isDirect = source ~= "trade"
+    local isWhisper = source == "whisper"
+    local state = ctx.state or {}
+    local now = ctx.now
+    local settings = ctx.settings
+    local candidates = ctx.candidates
+
     local pick, profile, book, ps
     local function Use(c)
-        pick = c
-        local pd = c.key and ns.Prof.DB(c.key)
-        profile = c.key and ns.Prof.ByKey(c.key) or ns.Prof.Current()
-        book = pd and pd.book or ns.Book()
-        ps = pd and pd.settings or ns.PS()
+        pick, profile, book, ps = c, c.profile, c.book, c.settings
     end
 
-    local short = (author or ""):gsub("%-.*", "")
-    if short == "" then return end
-
-    -- Master switch. /tm try still works so the classifier can be tested
-    -- while the addon is otherwise silent.
-    if not opts.dryRun and not ns.Enabled() then return end
-
-    local isWhisper = (source == "whisper")
-    local isParty = (source == "party")
-    local isDirect = isWhisper or isParty
-
-    -- Our own barks are not input. Bail before touching any state.
-    if not opts.dryRun and short == UnitName("player") then return end
-
     local norm = ns.Util.Normalize(text)
-    local now = ns.Now()
     local first, matched = Events.PickProfession(text, norm, candidates)
     Use(first)
 
-    -- A dry run must never touch persistent player state.
-    local state = opts.dryRun and {} or ns.Players.Get(ns.db, short)
+    local plan = { source = source, short = short, text = text, actions = {}, why = {}, prints = {} }
+    local A, why = plan.actions, plan.why
+    local function say(fmt, ...) plan.prints[#plan.prints + 1] = string.format(fmt, ...) end
 
-    -- Repeat detection ONLY applies to item-mentioning trade chat.
+    -- The same advertisement again inside the window. Trade only: a whisper is not
+    -- a broadcast.
     local isRepeat = false
-    if #matched > 0 and not isDirect then
-        _, isRepeat = ns.Players.Observe(state, norm, now, ps.filter.repeatWindowSec)
+    if P.observeRepeats and #matched > 0 then
+        isRepeat = ns.Players.Repeat(state, norm, now, ps.filter.repeatWindowSec)
+        A.observe = { isRepeat = isRepeat }
     end
 
-    -- Fragmented requests across two messages, direct channels only.
+    -- Fragmented requests across two messages: "Shifting Shadowsong?" then "Amethyst".
     local usedContext, contextText = false, nil
-    if isDirect and #matched == 0 then
+    if P.stitch and #matched == 0 then
         local combined = ns.Players.RecentText(state, now, CONTEXT_WINDOW)
         if combined ~= "" then
             combined = combined .. " " .. text
@@ -141,16 +206,13 @@ function Events.Process(text, author, source, opts)
             end
         end
     end
-    -- A Trade post that named a real item is remembered too, not just
-    -- whispers: someone posts "LF [Delicate Living Ruby] crafter" in Trade,
-    -- then whispers only "delicate" and "all 9". Gated on an actual match so
-    -- raid ads and unrelated chat do not fill the buffer. (CutMaster 1.1.0)
-    if not opts.dryRun and (isDirect or #matched > 0) then
-        ns.Players.PushRecent(state, text, now)
-    end
+    -- A Trade post that named a real item is remembered too, not just whispers: someone
+    -- posts "LF [Delicate Living Ruby] crafter" in Trade, then whispers only "delicate"
+    -- and "all 9". Gated on a match so raid ads do not fill the buffer. (CutMaster 1.1.0)
+    A.pushRecent = (P.remember == "always") or #matched > 0
 
-    -- Matches you can't make for lack of a Bind on Pickup reagent are split
-    -- off: they still count for classification, but never for inviting.
+    -- Matches you can't make for lack of a Bind on Pickup reagent are split off: they
+    -- still count for classification, but never for inviting.
     local craftable, noMats = {}, {}
     for _, h in ipairs(matched) do
         local e = book[h.itemID]
@@ -163,17 +225,14 @@ function Events.Process(text, author, source, opts)
     end
 
     local filter = ps.filter
-    if isDirect then
+    if not P.requireBuyerSignal then
         filter = ns.DeepCopy(filter)
         filter.requireBuyerSignal = false
     end
 
-    -- Did they name something specific that no book of ours answers?
-    --
-    -- Nothing matched, so whatever is in brackets is not ours: an item link, a
-    -- recipe link, or a typed-out name, all of them a request for one thing in
-    -- particular. Answering that with "what item do you need?" is the reply that
-    -- reads as though nobody was listening, and it is worth no invite either.
+    -- Did they name something specific that no book of ours answers? Nothing matched,
+    -- so whatever is in brackets is not ours: a request for one thing in particular.
+    -- "What item do you need?" is the reply that reads as though nobody was listening.
     local namedUnknownItem = false
     if #matched == 0 then
         namedUnknownItem = #ns.Util.BracketNames(text) > 0
@@ -200,22 +259,16 @@ function Events.Process(text, author, source, opts)
             end
         end
 
-        -- A recipe link carries no item id, so the loop above walks straight past
-        -- the most specific request there is, which is how two linked recipes got
-        -- answered by naming one of them.
-        --
-        -- Read out of the link rather than out of the raw text: this list is
-        -- quoted back to the customer, and every [...] in a message also catches
-        -- player names, guild names and asides. "[Malexis] said u can make [X]"
-        -- must not answer "but I don't have Malexis".
+        -- A recipe link carries no item id, so the loop above walks straight past the
+        -- most specific request there is. Read out of the link rather than the raw
+        -- text: every [...] in a message also catches player names and asides, and
+        -- "[Malexis] said u can make [X]" must not answer "but I don't have Malexis".
         local answered = {}
         for _, h in ipairs(matched) do
             local e = book[h.itemID]
             if e and e.name then answered[e.name:lower()] = true end
         end
         for bracket in text:gmatch("|H%a+:.-|h%[(.-)%]|h") do
-            -- "Leatherworking: Bindings of Lightning Reflexes" names the same item
-            -- as "Bindings of Lightning Reflexes".
             local plain = bracket:gsub("^[^:]+:%s*", "")
             if plain == "" then plain = bracket end
             if plain ~= "" and not answered[bracket:lower()] and not answered[plain:lower()]
@@ -225,40 +278,41 @@ function Events.Process(text, author, source, opts)
         end
     end
 
+    -- Operational state. Computed for a dry run as well, so /tm try says what the live
+    -- path would have refused and why, rather than an invite it would not have sent.
     local blocked
-    if not opts.dryRun then
-        if isWhisper and not ps.invite.fromWhisper then
-            blocked = "whisper invites disabled"
-        elseif UnitInParty(short) or UnitInRaid(short) then
-            blocked = "already grouped"
-        elseif not ns.InvitesOn() then
-            blocked = "invites off"
-        elseif ns.Players.WasDeclined(state, norm, ns.Util.BracketNames(text)) then
-            blocked = "already told them no"
-        elseif #matched > 0 and #craftable == 0 then
-            blocked = "not enough " .. ns.Scanner.DescribeMissing(noMats[1].missing)
-        else
-            blocked = ns.Inviter.BlockReason(state, now, GetNumGroupMembers() or 0, ps.invite)
-        end
+    if P.inviteGate and not ps.invite[P.inviteGate] then
+        blocked = "whisper invites disabled"
+    elseif ctx.inGroup then
+        blocked = "already grouped"
+    elseif not ctx.invitesOn then
+        blocked = "invites off"
+    elseif ns.Players.WasDeclined(state, norm, ns.Util.BracketNames(text)) then
+        blocked = "already told them no"
+    elseif #matched > 0 and #craftable == 0 then
+        blocked = "not enough " .. ns.Scanner.DescribeMissing(noMats[1].missing)
+    else
+        blocked = ns.Inviter.BlockReason(state, now, ctx.groupSize or 0, ps.invite)
     end
 
-    -- A request for a specialization we do not hold. Checked against the line
-    -- with everything they named cut out, so an item whose name happens to carry
-    -- a specialization word is still an ordinary request for that item.
+    -- A request for a specialization we do not hold, read off the line with everything
+    -- they named cut out, so an item whose name carries a specialization word is still
+    -- an ordinary request for that item.
     local wrongSpec
     if pick.key then
-        local have, source = ns.Prof.SpecSet(pick.key)
-        if source ~= "off" then
+        local have, specSource = ns.Prof.SpecSet(pick.key)
+        if specSource ~= "off" then
             local names = {}
             for _, h in ipairs(matched) do
                 local e = book[h.itemID]
                 if e and e.name then names[#names + 1] = e.name end
             end
-            -- The stitched line when they said it across two messages, so
-            -- "LF transmute master" then "[Primal Might]" is still read as one.
             wrongSpec = ns.Prof.SpecWanted(profile, contextText or text, have, names)
         end
     end
+
+    -- The player as the classifier should see them: a repeat this very line flags them.
+    local view = { flaggedSeller = state.flaggedSeller or isRepeat, neverInvite = state.neverInvite }
 
     local result = ns.Classifier.Evaluate({
         norm = norm,
@@ -271,47 +325,45 @@ function Events.Process(text, author, source, opts)
         namedUnknownItem = namedUnknownItem,
         isRepeat = isRepeat,
         isDirect = isDirect,
-        playerState = state,
+        playerState = view,
         blocked = blocked,
         filter = filter,
     })
     result.source = source
     result.profession = profile.key
 
-    -- Market saturation counts every Trade line, including the ones the log
-    -- drops for matching no item: a competitor's bark for another profession
-    -- is exactly that case.
-    if not opts.dryRun and source == "trade" and ns.Market then
-        ns.Market.Observe(ns.db, now, short, text, norm, result, #matched > 0)
-    end
+    plan.result, plan.profile, plan.book, plan.norm = result, profile, book, norm
+    plan.matched, plan.craftable, plan.noMats = matched, craftable, noMats
+    plan.canDo, plan.cannotDo, plan.usedContext, plan.blocked = canDo, cannotDo, usedContext, blocked
+    plan.settings = ps
 
-    if ns.db.settings.captureAll and not opts.dryRun then
-        ns.Log.Capture(short, text, result, now)
-    end
-
-    if result.reason ~= "no item match" and not opts.dryRun then
-        ns.Log.Add(short, text, matched, result, now, book)
-        if ns.db.settings.debug then
-            ns.Print(ns.Log.Describe(ns.db.log[1]))
-            ns.Print(ns.Log.DescribeHits(ns.db.log[1]))
-        end
-    end
-
-    if isParty and not opts.dryRun and #matched > 0 then
-        state.awaitingItem = nil
-    end
+    A.market = P.market
+    A.capture = settings.captureAll and true or false
+    A.log = result.reason ~= "no item match"
+    if isDirect and #matched > 0 then A.clearAwaiting = true end
 
     local willInvite = Events.ShouldInvite(result, #craftable, #matched)
     local nounS = profile.craftNoun[1]
+    local w = ps.invite.whisper
 
-    -- Everything they named needs a Bind on Pickup reagent you don't hold. No invite,
-    -- and a line in your own chat saying why, on any channel. The whisper back goes
-    -- only to somebody who spoke to us first: "WTB [Belt of Deep Shadow], 700g" in
-    -- Trade got "Not enough Nether Vortex ... sorry" whispered at a stranger who had
-    -- not asked us anything. A Trade post gets an invite or nothing. (1.14.4)
-    if #matched > 0 and #craftable == 0 and not opts.dryRun and result.verdict ~= "vetoed"
+    -- One place decides whether a whisper goes back. The channel first, then the
+    -- switches; the reason it did not is kept for the plan.
+    local function Whisper(kind, template, vars, composed)
+        if not P.replies[kind] then
+            why.whisper = "a " .. kind .. " reply does not go to " .. P.label
+            return
+        end
+        if not (w.enabled and w.autoReply) then
+            why.whisper = "auto replies are off"
+            return
+        end
+        A.whisper = { kind = kind, template = template, vars = vars, text = composed }
+    end
+
+    -- Everything they named needs a Bind on Pickup reagent you don't hold. No invite, a
+    -- line in your own chat saying why, and a whisper only where the channel allows one.
+    if #matched > 0 and #craftable == 0 and result.verdict ~= "vetoed"
         and (isDirect or result.verdict == "invite") then
-        local w = ps.invite.whisper
         local items, mats = {}, {}
         for i = 1, math.min(#noMats, 3) do
             local nm = noMats[i]
@@ -322,65 +374,50 @@ function Events.Process(text, author, source, opts)
             end
         end
         local itemText = table.concat(items, " ")
-        ns.Print(string.format("|cffffcc00%s asked for %s but you lack %s.|r Not invited.",
-            short, itemText, ns.Scanner.DescribeMissing(noMats[1].missing, true)))
-        if isDirect and w.enabled and w.autoReply then
-            ns.Inviter.Say(short, w.noMatsTemplate,
-                { mats = table.concat(mats, ", "), item = itemText }, profile)
-        end
-        if isDirect and ns.db.settings.orders.captureTranscript then
-            ns.Orders.AddTranscript(short, "in", text, now)
-        end
-        return result
+        say("|cffffcc00%s asked for %s but you lack %s.|r Not invited.",
+            short, itemText, ns.Scanner.DescribeMissing(noMats[1].missing, true))
+        Whisper("noMats", w.noMatsTemplate, { mats = table.concat(mats, ", "), item = itemText })
+        A.transcript = P.transcript and settings.orders.captureTranscript or false
+        why.invite, why.order = "not enough mats", "not enough mats"
+        return plan
     end
 
-    if isWhisper and not opts.dryRun and result.verdict ~= "vetoed" then
-        local w = ps.invite.whisper
-
+    -- The conversation: only a channel that allows replies has one.
+    if P.replies.reply and result.verdict ~= "vetoed" then
         if #matched > 0 then
-            -- One composer decides the sentence from what we can cover across
-            -- everything they named. Taking matched[1] here is what answered two
-            -- linked recipes with one item's name.
+            -- One composer decides the sentence from what we can cover across everything
+            -- they named; matched[1] alone is what answered two recipes with one name.
+            -- craftable, not matched: an item we lack reagents for is already in cannotDo.
             local reply = ns.Reply.Compose({
-                book = book,
-                -- craftable, not matched: an item we matched but have no reagents
-                -- for is already in cannotDo, and offering it and withdrawing it
-                -- in one sentence is worse than either.
-                matched = craftable,
-                cannotDo = cannotDo,
-                whisper = w,
-                profile = profile,
-                player = short,
-                base = "reply",
+                book = book, matched = craftable, cannotDo = cannotDo, whisper = w,
+                profile = profile, player = short, base = "reply",
                 withPatterns = not ns.Util.HasCraftLink(text),
             })
-
-            if not willInvite and w.enabled and w.autoReply
-                and (#cannotDo > 0 or state.awaitingItem) then
-                ns.Inviter.SayComposed(short, reply.text, profile)
+            plan.reply = reply
+            if not willInvite and (#cannotDo > 0 or state.awaitingItem) then
+                Whisper("reply", nil, nil, reply.text)
                 if #reply.lack > 0 then
-                    ns.Print(string.format(
-                        "|cffffcc00%s asked for %d %s, you have %d.|r Cannot do: %s",
+                    say("|cffffcc00%s asked for %d %s, you have %d.|r Cannot do: %s",
                         short, #reply.have + #reply.lack, profile.craftNoun[2],
-                        #reply.have, table.concat(reply.lack, " ")))
+                        #reply.have, table.concat(reply.lack, " "))
                 end
                 if reply.dropped > 0 or reply.lackDropped > 0
                     or reply.patternsDropped > 0 or reply.overLength then
-                    ns.Print(string.format(
-                        "|cff888888(whisper cap: %d item(s) and %d unknown left unnamed, "
+                    say("|cff888888(whisper cap: %d item(s) and %d unknown left unnamed, "
                         .. "%d pattern link(s) left off%s)|r",
                         reply.dropped, reply.lackDropped, reply.patternsDropped,
-                        reply.overLength and ", and it still overran" or ""))
+                        reply.overLength and ", and it still overran" or "")
                 end
+            elseif willInvite then
+                why.whisper = "the invite carries its own line"
+            else
+                why.whisper = "nothing to say: everything they named is covered"
             end
-            state.awaitingItem = nil
-
+            A.clearAwaiting = true
         else
             local asked = ns.Util.IsAvailabilityQuestion(text, norm, ps.filter.askPhrases)
-            -- We asked what they needed and this is the answer. Saying nothing to
-            -- that is the one reply that is always wrong: they are sitting in the
-            -- group waiting for one, and the only way to find out was to search
-            -- the book by hand.
+            -- We asked what they needed and this is the answer. Saying nothing to that is
+            -- the one reply that is always wrong: they are in the group waiting for one.
             local answering = state.awaitingItem and true or false
             local mayReply = w.enabled and w.autoReply
                 and (w.autoSuggest or answering or (asked and w.answerQuestions))
@@ -391,64 +428,53 @@ function Events.Process(text, author, source, opts)
                 local b = book[id]
                 if b and (b.link or b.name) then links[#links + 1] = b.link or b.name end
             end
-
             local fragment = family and not exactFamily and #links > 0
                 and (asked or #ns.Util.Tokenize(norm) <= FRAGMENT_WORDS)
 
-            if fragment and w.enabled and w.autoReply then
+            if fragment then
                 local show = {}
                 for i = 1, math.min(3, #links) do show[i] = links[i] end
-                ns.Inviter.Say(short, w.askWhichTemplate, { items = table.concat(show, " ") }, profile)
-                ns.Print(string.format(
-                    "|cffffcc00%s typed a partial %s name.|r Asked which of: %s",
-                    short, nounS, table.concat(show, " ")))
+                Whisper("askWhich", w.askWhichTemplate, { items = table.concat(show, " ") })
+                say("|cffffcc00%s typed a partial %s name.|r Asked which of: %s",
+                    short, nounS, table.concat(show, " "))
                 result.reason = "asked which " .. nounS
-                ns.Log.Add(short, text, matched, result, now, book)
-                return result
+                A.log = true
+                why.invite, why.order = "asked which", "asked which"
+                return plan
             end
 
             if #links > 0 or ((asked or answering) and namedUnknownItem) then
                 if #links > 0 then
-                    ns.Print(string.format(
-                        "|cffffcc00%s asked about a %s you do not know.|r You can do: %s",
-                        short, nounS, table.concat(links, " ")))
+                    say("|cffffcc00%s asked about a %s you do not know.|r You can do: %s",
+                        short, nounS, table.concat(links, " "))
                 else
-                    ns.Print(string.format(
-                        "|cffffcc00%s asked for a %s you do not have.|r", short, nounS))
+                    say("|cffffcc00%s asked for a %s you do not have.|r", short, nounS)
                 end
                 result.reason = "unknown " .. nounS
-                ns.Log.Add(short, text, matched, result, now, book)
+                A.log = true
 
                 if mayReply then
                     if w.autoSuggest and #links > 0 then
                         while #links > 3 do table.remove(links) end
-                        ns.Inviter.Say(short, w.suggestTemplate, { items = table.concat(links, " ") }, profile)
+                        Whisper("suggest", w.suggestTemplate, { items = table.concat(links, " ") })
                     else
-                        ns.Inviter.Say(short, w.noneTemplate, {}, profile)
+                        Whisper("none", w.noneTemplate, {})
                     end
+                else
+                    why.whisper = "auto suggest is off and this was not a question"
                 end
 
                 if answering and #links == 0 then
-                    -- Nothing we can offer, so remember the answer and give the
-                    -- group slot back. A repost is then blocked rather than
-                    -- invited into the same conversation again.
-                    ns.Players.Decline(state, norm, ns.Util.BracketNames(text), now)
-                    local hours = math.floor((ps.invite.declinedCooldownSec or 86400) / 3600)
-                    if ps.invite.dropOnNoMatch ~= false and ns.Inviter.Drop(short) then
-                        ns.Print(string.format("|cff888888removed %s from the group.|r "
-                            .. "No invites for %dh; Clear Flags on the Log tab undoes it.",
-                            short, hours))
-                    else
-                        ns.Print(string.format("|cff888888%s asked for something you do not "
-                            .. "have.|r No invites for %dh.", short, hours))
-                    end
+                    -- Nothing we can offer: remember the answer and give the group slot
+                    -- back. A repost is then blocked rather than invited again.
+                    A.decline = { names = ns.Util.BracketNames(text) }
+                    A.declineHours = math.floor((ps.invite.declinedCooldownSec or 86400) / 3600)
+                    A.drop = P.replies.drop and ps.invite.dropOnNoMatch ~= false or false
                 end
-                state.awaitingItem = nil
+                A.clearAwaiting = true
             else
-                -- Last resort: a bare prefix with none of its base words
-                -- ("looking for jagged..."). Genuinely ambiguous, so this is
-                -- local only; guessing which one to whisper about would be
-                -- worse than staying quiet. (CutMaster 1.1.0)
+                -- Last resort: a bare prefix with none of its base words ("looking for
+                -- jagged..."). Genuinely ambiguous, so this is local only. (CutMaster 1.1.0)
                 local prefixWord, prefixIDs = ns.Matcher.PrefixNearMiss(norm, pick.index)
                 if prefixWord then
                     local pl = {}
@@ -457,52 +483,172 @@ function Events.Process(text, author, source, opts)
                         if b and (b.link or b.name) then pl[#pl + 1] = b.link or b.name end
                     end
                     if #pl > 0 then
-                        ns.Print(string.format(
-                            "|cffffcc00%s mentioned \"%s\", could be:|r %s",
-                            short, prefixWord, table.concat(pl, " ")))
+                        say("|cffffcc00%s mentioned \"%s\", could be:|r %s",
+                            short, prefixWord, table.concat(pl, " "))
                         result.reason = "ambiguous prefix"
-                        ns.Log.Add(short, text, matched, result, now, book)
+                        A.log = true
                     end
                 end
             end
         end
+    elseif not P.replies.reply then
+        why.whisper = "no reply goes to " .. P.label
     end
 
-    if not opts.dryRun then
-        local o = ns.db.settings.orders
-        local wanted = (isWhisper and o.autoFromWhisper)
-            or (isParty and o.autoFromParty)
-            or (not isDirect and o.autoFromInvite)
-        if wanted and Events.ShouldOpenOrder(result, #craftable, #matched, isDirect) then
-            if usedContext then
-                ns.Print(string.format("|cff888888(matched %s using their previous message)|r", short))
-            end
-            ns.Orders.Record(short, source, text, craftable, now, profile.key)
-        end
-        if isDirect and o.captureTranscript then
-            ns.Orders.AddTranscript(short, "in", text, now)
-        end
+    -- The order.
+    if not settings.orders[P.orderSetting] then
+        why.order = P.orderSetting .. " is off"
+    elseif not Events.ShouldOpenOrder(result, #craftable, #matched, isDirect) then
+        why.order = result.verdict ~= "invite" and ("verdict " .. result.verdict) or "nothing we can make"
+    else
+        A.order = true
     end
+    A.transcript = P.transcript and settings.orders.captureTranscript or false
 
-    if willInvite and not opts.dryRun then
-        local ctx = { cannotDo = cannotDo, profession = profile.key, text = text }
-        -- "LF LW" on its own is answered at once: asking what they need is exactly
-        -- right when they named nothing. A line carrying a specific we could not
-        -- place gets read by a person first, because asking the same question
-        -- there says we were not listening.
+    -- The invite, or the question first. "LF LW" on its own is answered at once; a line
+    -- carrying a specific we could not place gets read by a person first, because asking
+    -- the same question there says we were not listening.
+    if willInvite then
         local leftover = ns.Confirm.Leftover(norm, ns.Confirm.Phrases(profile, ps.filter))
         local understood = ns.Confirm.Understood(#craftable, leftover)
         if ns.Confirm.Required(ps.invite.confirm, understood) then
-            ns.Confirm.Ask({
-                player = short, source = source, text = text, leftover = leftover,
-                matched = craftable, cannotDo = cannotDo, profession = profile.key,
-            })
+            A.confirm = { leftover = leftover }
+            why.invite = "asking you first"
         else
-            ns.Inviter.Invite(short, craftable, ctx)
+            A.invite = true
         end
+    elseif result.blocked then
+        why.invite = result.blocked
+    elseif result.verdict ~= "invite" then
+        why.invite = string.format("verdict %s: %s", result.verdict, tostring(result.reason))
+    else
+        why.invite = "nothing we can make"
     end
 
-    return result
+    return plan
+end
+
+--------------------------------------------------------------------------------
+-- Act
+--------------------------------------------------------------------------------
+
+-- The effects of a plan, in one fixed order: memory, market, log, the user's own chat,
+-- transcript, order, decline, then the invite or the question, then the whisper. Each
+-- effect exists here once. A dry run never reaches this.
+function Events.Act(plan)
+    local A, short, now = plan.actions, plan.short, ns.Now()
+    local state = ns.Players.Get(ns.db, short)
+    local ctx = { cannotDo = plan.cannotDo, profession = plan.profile.key, text = plan.text }
+
+    if A.observe then ns.Players.Note(state, plan.norm, now, A.observe.isRepeat) end
+    if A.pushRecent then ns.Players.PushRecent(state, plan.text, now) end
+    if A.market and ns.Market then
+        ns.Market.Observe(ns.db, now, short, plan.text, plan.norm, plan.result, #plan.matched > 0)
+    end
+    if A.capture then ns.Log.Capture(short, plan.text, plan.result, now) end
+    if A.log then
+        ns.Log.Add(short, plan.text, plan.matched, plan.result, now, plan.book)
+        if ns.db.settings.debug then
+            ns.Print(ns.Log.Describe(ns.db.log[1]))
+            ns.Print(ns.Log.DescribeHits(ns.db.log[1]))
+        end
+    end
+    for _, line in ipairs(plan.prints) do ns.Print(line) end
+    if A.clearAwaiting then state.awaitingItem = nil end
+    if A.transcript then ns.Orders.AddTranscript(short, "in", plan.text, now) end
+    if A.order then
+        if plan.usedContext then
+            ns.Print(string.format("|cff888888(matched %s using their previous message)|r", short))
+        end
+        ns.Orders.Record(short, plan.source, plan.text, plan.craftable, now, plan.profile.key)
+    end
+    if A.decline then
+        ns.Players.Decline(state, plan.norm, A.decline.names, now)
+        if A.drop and ns.Inviter.Drop(short) then
+            ns.Print(string.format("|cff888888removed %s from the group.|r "
+                .. "No invites for %dh; Clear Flags on the Log tab undoes it.", short, A.declineHours))
+        else
+            ns.Print(string.format("|cff888888%s asked for something you do not "
+                .. "have.|r No invites for %dh.", short, A.declineHours))
+        end
+    end
+    if A.confirm then
+        ns.Confirm.Ask({
+            player = short, source = plan.source, text = plan.text, leftover = A.confirm.leftover,
+            matched = plan.craftable, cannotDo = plan.cannotDo, profession = plan.profile.key,
+        })
+    elseif A.invite then
+        ns.Inviter.Invite(short, plan.craftable, ctx)
+    end
+    if A.whisper then
+        if A.whisper.text then
+            ns.Inviter.SayComposed(short, A.whisper.text, plan.profile)
+        else
+            ns.Inviter.Say(short, A.whisper.template, A.whisper.vars, plan.profile)
+        end
+    end
+end
+
+-- Pure. The plan as lines for chat: the verdict, then each effect, yes or the reason
+-- it is no. What /tm try prints.
+function Events.Describe(plan)
+    local A, why, r = plan.actions, plan.why, plan.result
+    local function yn(on, key)
+        if on then return "|cff44ff44yes|r" end
+        return "|cff888888no|r" .. (why[key] and (" (" .. why[key] .. ")") or "")
+    end
+    local whisper = A.whisper and ("|cff44ff44yes|r (" .. A.whisper.kind .. ")") or yn(false, "whisper")
+    local lines = {
+        string.format("%s from %s: verdict |cffffffff%s|r (%s), seller %d buyer %d net %d%s",
+            plan.source, plan.short, r.verdict, tostring(r.reason),
+            r.sellerScore or 0, r.buyerScore or 0, r.netScore or 0,
+            plan.blocked and ("  blocked: " .. plan.blocked) or ""),
+        string.format("  invite %s   order %s   whisper %s",
+            A.confirm and "|cffffcc00ask me first|r" or yn(A.invite, "invite"),
+            yn(A.order, "order"), whisper),
+        string.format("  log %s   transcript %s   remember %s%s",
+            A.log and "yes" or "no", A.transcript and "yes" or "no", A.pushRecent and "yes" or "no",
+            A.observe and A.observe.isRepeat and "   |cffffcc00repeat|r" or ""),
+    }
+    for _, line in ipairs(plan.prints) do lines[#lines + 1] = "  " .. line end
+    return lines
+end
+
+--------------------------------------------------------------------------------
+-- Process: read the client, decide, act
+--------------------------------------------------------------------------------
+
+-- source is "trade", "whisper" or "party". opts.dryRun builds the plan and returns
+-- it without acting; /tm try prints it.
+function Events.Process(text, author, source, opts)
+    opts = opts or {}
+    if not ns.db then return end
+
+    local short = (author or ""):gsub("%-.*", "")
+    if short == "" then return end
+
+    -- Master switch. /tm try still works so the classifier can be tested while the
+    -- addon is otherwise silent. Our own barks are not input.
+    if not opts.dryRun and not ns.Enabled() then return end
+    if not opts.dryRun and short == UnitName("player") then return end
+
+    -- A dry run reads the real record too, so its plan is the live one; it just never
+    -- creates one for a name that has none.
+    local state = opts.dryRun and ((ns.db.players or {})[short] or {}) or ns.Players.Get(ns.db, short)
+
+    local plan = Events.Decide({ text = text, short = short, source = source }, {
+        candidates = Candidates(),
+        now = ns.Now(),
+        state = state,
+        settings = ns.db.settings,
+        inGroup = (UnitInParty(short) or UnitInRaid(short)) and true or false,
+        groupSize = GetNumGroupMembers() or 0,
+        invitesOn = ns.InvitesOn(),
+    })
+    plan.result.plan = plan
+
+    if not opts.dryRun then Events.Act(plan) end
+    return plan.result
 end
 
 -- Pure. Invite when the content says customer, nothing operational blocks it, and

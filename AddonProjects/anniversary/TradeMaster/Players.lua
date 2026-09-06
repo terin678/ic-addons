@@ -12,20 +12,31 @@ function Players.Similar(a, b)
     return ca == cb
 end
 
-function Players.Observe(state, norm, now, windowSec)
+-- Pure. Is this the same advertisement again, inside the window?
+function Players.Repeat(state, norm, now, windowSec)
     state = state or {}
-    local isRepeat = false
-
-    if state.lastMsg and state.lastMsgAt
+    return state.lastMsg ~= nil and state.lastMsgAt ~= nil
         and (now - state.lastMsgAt) <= windowSec
-        and Players.Similar(state.lastMsg, norm) then
-        isRepeat = true
+        and Players.Similar(state.lastMsg, norm)
+end
+
+-- The effect half: remembers the line, and a repeat flags the seller. Decide asks
+-- Repeat; Act calls this.
+function Players.Note(state, norm, now, isRepeat)
+    if isRepeat then
         state.repeats = (state.repeats or 0) + 1
         state.flaggedSeller = true
     end
-
     state.lastMsg = norm
     state.lastMsgAt = now
+    return state
+end
+
+-- Both halves at once, for callers that decide and act in one breath.
+function Players.Observe(state, norm, now, windowSec)
+    state = state or {}
+    local isRepeat = Players.Repeat(state, norm, now, windowSec)
+    Players.Note(state, norm, now, isRepeat)
     return state, isRepeat
 end
 
