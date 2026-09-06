@@ -17,38 +17,20 @@ clamping to each client's own idea of now would make Compare answer differently
 on different machines, and that is the one thing this cannot afford.
 ]]
 
-local MAX_TEMPLATE = 255
-local MAX_CONTACTS = 6
-local MAX_TEAMS = 4
-local MAX_NEEDS = 8
+-- The line itself. SendChatMessage takes 255 bytes, and the document holds the line
+-- as it will be sent, so the two limits are one number and this is where it lives.
+local MAX_TEXT = 255
 local FUTURE_GRACE = 300        -- seconds of clock difference between guildmates
 local OLDEST_SANE = 1700000000  -- late 2023; anything before this is a broken clock
 
-Doc.MAX_TEAMS, Doc.MAX_NEEDS, Doc.MAX_TEMPLATE = MAX_TEAMS, MAX_NEEDS, MAX_TEMPLATE
+Doc.MAX_TEXT = MAX_TEXT
 
--- Pure. A stable string for everything a reader would call "the message". rev,
--- author and updatedAt are deliberately not in it: two clients can hold the same
--- message under different revisions, and the hash is how they notice.
+-- Pure. A stable string for everything a reader would call "the message", which is
+-- the text and nothing else. rev, author and updatedAt are deliberately not in it:
+-- two clients can hold the same message under different revisions, and the hash is
+-- how they notice.
 function Doc.Hash(doc)
-    doc = doc or {}
-    local teams = {}
-    for i, team in ipairs(doc.teams or {}) do
-        local needs = {}
-        for j, need in ipairs(ns.Teams.Sorted(team.needs)) do
-            needs[j] = { role = need.role, class = need.class,
-                         count = need.count, priority = need.priority }
-        end
-        teams[i] = {
-            id = team.id, name = team.name, tag = team.tag, days = team.days,
-            active = team.active ~= false, priority = team.priority, needs = needs,
-        }
-    end
-    return ns.Util.Serialize({
-        template = doc.template or "",
-        teamTemplate = doc.teamTemplate or "",
-        contacts = doc.contacts or {},
-        teams = teams,
-    })
+    return ns.Util.Serialize({ text = (doc or {}).text or "" })
 end
 
 --[[
@@ -143,39 +125,17 @@ function Doc.Sanitize(incoming, sender, guild, now)
     if not at or at < OLDEST_SANE then return nil, "timestamp is impossible" end
     if at > now + FUTURE_GRACE then return nil, "timestamp is in the future" end
 
+    -- Clean is what the Message tab runs on the author's own box before saving, so a
+    -- line hashes the same on the client that wrote it and on the one that received
+    -- it. Escapes and pipes come out (a public channel refuses them anyway), control
+    -- bytes become spaces, runs of space close up, and the length is ours.
     local doc = {
         rev = math.floor(rev),
         author = ns.Util.Clean(author, 24),
         updatedAt = math.floor(at),
         guild = ns.Util.Clean(incoming.guild, 64),
-        template = ns.Util.Clean(incoming.template, MAX_TEMPLATE),
-        teamTemplate = ns.Util.Clean(incoming.teamTemplate, MAX_TEMPLATE),
-        contacts = {},
-        teams = {},
+        text = ns.Util.Clean(incoming.text, MAX_TEXT),
     }
-
-    for _, name in ipairs(incoming.contacts or {}) do
-        if #doc.contacts >= MAX_CONTACTS then break end
-        local clean = ns.Util.Clean(name, 24)
-        if clean ~= "" then doc.contacts[#doc.contacts + 1] = clean end
-    end
-
-    for _, team in ipairs(incoming.teams or {}) do
-        if #doc.teams >= MAX_TEAMS then break end
-        local copy = ns.Teams.Normalize({
-            id = tonumber(team.id) or (#doc.teams + 1),
-            name = team.name, tag = team.tag, days = team.days,
-            active = team.active, priority = team.priority, needs = {},
-        })
-        for _, need in ipairs(team.needs or {}) do
-            if #copy.needs >= MAX_NEEDS then break end
-            copy.needs[#copy.needs + 1] = ns.Teams.NormalizeNeed({
-                role = need.role, class = need.class,
-                count = need.count, priority = need.priority,
-            })
-        end
-        doc.teams[#doc.teams + 1] = copy
-    end
 
     doc.hash = Doc.Hash(doc)
     return doc

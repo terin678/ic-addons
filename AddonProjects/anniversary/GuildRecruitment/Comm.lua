@@ -24,15 +24,20 @@ and never code. What is checked, and in what order, is in Comm.Accept.
 ]]
 
 local PREFIX = "ICGR"
-local PROTO = 1
+-- 2 since 0.4.0, when the document became one line of text. A 0.3 client's S
+-- payload has a template where this one has the text, and taking it would put
+-- "<{guild}> is recruiting: {teams}" in a channel, so the two versions refuse each
+-- other's envelopes outright rather than misreading them.
+local PROTO = 2
 
 local WIRE_MAX = 255            -- bytes in one addon message
 local CHUNK_BYTES = 200         -- payload per chunk; the rest is envelope and slack
--- Eight chunks is 1600 bytes, which is what the largest document the UI will let
--- anyone build actually encodes to: four teams of eight needs with long names.
--- A transport that cannot carry the biggest legal document is a transport that
--- silently stops syncing for whoever fills the form in.
-local MAX_CHUNKS = 8
+-- Six chunks is 1200 bytes. The worst legal document is every byte of the line, the
+-- author and the guild name escaping to three: 255 + 24 + 64 bytes of text at %XX
+-- is 1029, plus two numbers and four separators. A transport that cannot carry the
+-- biggest legal document is a transport that silently stops syncing for whoever
+-- wrote it.
+local MAX_CHUNKS = 6
 local CHUNK_GAP = 0.2           -- seconds between chunks; back to back disconnects people
 local CHUNK_TIMEOUT = 10        -- seconds before a half-built message is dropped
 -- Above CHUNK_BYTES * MAX_CHUNKS, so a legal message can never trip the guard that
@@ -63,9 +68,8 @@ Everything outside this class is percent-encoded, which covers ^, ~, |, %, every
 control byte and every high byte. Everything a raid leader is likely to type is
 inside it and encodes to itself, so the common case costs nothing.
 
-Braces and brackets are in it on purpose. They are not separators, and a template
-is mostly {guild}, {teams} and {contacts}: leaving them out tripled the size of
-the one field the message is built from and pushed a full document past the wire.
+Braces and brackets are in it on purpose: they are not separators, and each byte
+left out of this class costs three on the wire instead of one.
 ]]
 local UNSAFE = "[^%w %-%.,:!%?%(%)'/+#&{}%[%]<>=_*;$@\"]"
 
@@ -112,8 +116,11 @@ function Comm.ParseEnvelope(text)
     local f = Comm.Split(text, "^", 6)
     if #f < 6 then return nil, "short" end
 
+    -- Exactly this version. Older is not "still readable": the payload grammar
+    -- changed under the same op letters, so a 0.3 client's document would decode
+    -- into something that is not its message.
     local proto = tonumber(f[1])
-    if not proto or proto < 1 or proto > PROTO then return nil, "proto" end
+    if proto ~= PROTO then return nil, "proto" end
     if not f[2]:match("^[VSRB]$") then return nil, "op" end
 
     local msgid, seq, total = tonumber(f[3]), tonumber(f[4]), tonumber(f[5])
@@ -191,109 +198,34 @@ end
 -- Pure: the document on the wire
 --------------------------------------------------------------------------------
 
-local function EscapeList(list)
-    local out = {}
-    for _, item in ipairs(list or {}) do out[#out + 1] = Comm.Escape(item) end
-    return table.concat(out, "~")
-end
-
 --[[
-Pure. Teams and needs go out FLAT rather than nested, each as its own ^ field,
-because that keeps the whole format to two levels of separator and one decoder.
-A third level is where a hand-rolled format starts needing a parser.
+Pure. The whole document is five fields, and the text is the last of them so a
+^ inside it could never be mistaken for a separator even before escaping.
 
-    rev^author^updatedAt^guild^template^teamTemplate^contacts^T^team..^N^need..
-    team = id~name~tag~days~active~priority   need = teamId~role~class~count~priority
+    rev^author^updatedAt^guild^text
 ]]
 function Comm.EncodeState(doc)
-    local parts = {
+    return table.concat({
         tostring(math.floor(doc.rev or 0)),
         Comm.Escape(doc.author),
         tostring(math.floor(doc.updatedAt or 0)),
         Comm.Escape(doc.guild),
-        Comm.Escape(doc.template),
-        Comm.Escape(doc.teamTemplate),
-        EscapeList(doc.contacts),
-        "T",
-    }
-    for _, team in ipairs(doc.teams or {}) do
-        parts[#parts + 1] = table.concat({
-            tostring(math.floor(team.id or 0)),
-            Comm.Escape(team.name), Comm.Escape(team.tag), Comm.Escape(team.days),
-            team.active ~= false and "1" or "0",
-            tostring(math.floor(team.priority or 1)),
-        }, "~")
-    end
-    parts[#parts + 1] = "N"
-    for _, team in ipairs(doc.teams or {}) do
-        for _, need in ipairs(ns.Teams.Sorted(team.needs)) do
-            parts[#parts + 1] = table.concat({
-                tostring(math.floor(team.id or 0)),
-                Comm.Escape(need.role), Comm.Escape(need.class),
-                tostring(math.floor(need.count or 1)),
-                tostring(math.floor(need.priority or 1)),
-            }, "~")
-        end
-    end
-    return table.concat(parts, "^")
+        Comm.Escape(doc.text),
+    }, "^")
 end
 
 -- Pure. Returns a raw document, or nil and a reason. Nothing here trusts a value;
 -- Doc.Sanitize does the trimming and the range checks afterwards.
 function Comm.DecodeState(payload)
-    local f = Comm.Split(payload, "^", MAX_FIELDS)
-    if #f < 8 then return nil, "short" end
-
-    local doc = {
+    local f = Comm.Split(payload, "^", 5)
+    if #f < 5 then return nil, "short" end
+    return {
         rev = tonumber(f[1]),
         author = Comm.Unescape(f[2]),
         updatedAt = tonumber(f[3]),
         guild = Comm.Unescape(f[4]),
-        template = Comm.Unescape(f[5]),
-        teamTemplate = Comm.Unescape(f[6]),
-        contacts = {},
-        teams = {},
+        text = Comm.Unescape(f[5]),
     }
-    if f[7] ~= "" then
-        for _, name in ipairs(Comm.Split(f[7], "~", 8)) do
-            doc.contacts[#doc.contacts + 1] = Comm.Unescape(name)
-        end
-    end
-
-    local byId, section = {}, nil
-    for i = 8, #f do
-        local field = f[i]
-        if field == "T" or field == "N" then
-            section = field
-        elseif section == "T" then
-            local t = Comm.Split(field, "~", 7)
-            if #t >= 6 then
-                local team = {
-                    id = tonumber(t[1]),
-                    name = Comm.Unescape(t[2]), tag = Comm.Unescape(t[3]),
-                    days = Comm.Unescape(t[4]), active = t[5] == "1",
-                    priority = tonumber(t[6]),
-                    needs = {},
-                }
-                doc.teams[#doc.teams + 1] = team
-                if team.id then byId[team.id] = team end
-            end
-        elseif section == "N" then
-            local n = Comm.Split(field, "~", 6)
-            if #n >= 5 then
-                local team = byId[tonumber(n[1])]
-                if team then
-                    team.needs[#team.needs + 1] = {
-                        role = Comm.Unescape(n[2]), class = Comm.Unescape(n[3]),
-                        count = tonumber(n[4]), priority = tonumber(n[5]),
-                    }
-                end
-            end
-        end
-    end
-
-    if not section then return nil, "no sections" end
-    return doc
 end
 
 -- Pure. "I hold rev N", and the same grammar for a request.
@@ -684,9 +616,8 @@ function Comm.Broadcast()
 
     local payload = Comm.EncodeState(doc)
     if #payload > Comm.MAX_PAYLOAD then
-        return false, string.format("the message is %d bytes and the limit is %d. "
-            .. "Shorten the team names, or ask for fewer roles.",
-            #payload, Comm.MAX_PAYLOAD)
+        return false, string.format("the message is %d bytes on the wire and the limit "
+            .. "is %d. Shorten the message.", #payload, Comm.MAX_PAYLOAD)
     end
 
     local ok, reason = Comm.SendChunked("S", payload)

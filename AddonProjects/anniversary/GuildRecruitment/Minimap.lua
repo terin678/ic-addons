@@ -39,8 +39,6 @@ function M.Init()
             local same, behind, ahead = ns.Doc.Agreement(ns.db.doc, ns.db.peers)
             tt:AddLine(string.format("|cffffffff%d|r in step, |cffffcc00%d|r behind, "
                 .. "|cff88bbff%d|r ahead", same, behind, ahead))
-            tt:AddLine(string.format("|cffffffff%d|r still needed",
-                ns.Teams.TotalNeeded(ns.db.doc)))
 
             local blocked = ns.Bark.BlockReason(ns.Bark.ReadState())
             if ns.Bark.pending then

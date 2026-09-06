@@ -3,11 +3,11 @@ local addonName, ns = ...
 --[[
 GuildRecruitment. Built from ICTemplate; see Docs/ICTemplate.md for the shape.
 
-The guild runs two raid teams and every raid officer recruits for both. Before
-this, each officer typed their own line into a channel, nobody knew who had
-posted last, and the wording drifted. So: raid leaders author one message, every
-officer's copy converges on it, and a log of who barked when means the second
-officer does not add a second line four minutes after the first.
+Every raid officer recruits, and before this each of them typed their own line
+into a channel: nobody knew who had posted last, and the wording drifted. So: raid
+leaders write one line, every officer's copy converges on it, and a log of who
+barked when means the second officer does not add a second line four minutes
+after the first.
 
 The plumbing -- Print, the saved-variable bootstrap, Util, Log, the test harness, the
 slash dispatcher -- is LibICCore's. This file is the version, the defaults, the
@@ -16,27 +16,33 @@ commands that are this addon's own, and the events it listens to.
 
 local Core = LibStub("LibICCore-1.0")
 
-local VERSION = "0.3.0"
-local SCHEMA = 1
-local CHAR_SCHEMA = 1
+local VERSION = "0.4.0"
+local SCHEMA = 2
+local CHAR_SCHEMA = 2
 
 --------------------------------------------------------------------------------
 -- Saved variables
 --------------------------------------------------------------------------------
 
 -- Keyed by the schema each step upgrades FROM. Run before ApplyDefaults, always.
-local Migrations = {}
+local Migrations = {
+    -- 0.4.0: the document is one line of text. The teams, needs and templates that
+    -- were here cannot be turned into it, so the message starts empty and a raid
+    -- leader types the new line once. rev restarts at 0 with it; highestSeenRev is
+    -- kept, so that first edit still outranks whatever an old client is holding.
+    [1] = function(db) db.doc = nil end,
+}
+
+local CharMigrations = {
+    -- 0.4.0: the cursor chose which team led the line, and there are no teams.
+    [1] = function(cdb) if cdb.bark then cdb.bark.cursor = nil end end,
+}
 
 local Defaults = {
     -- The document is guild property, so it is account-wide: an officer's alt is
     -- the same officer, and this is exactly what Comm sends and receives.
-    doc = {
-        rev = 0, author = "", updatedAt = 0, guild = "", hash = "",
-        template = "<{guild}> is recruiting: {teams}. Whisper {contacts}!",
-        teamTemplate = "{tag} {days}: {needs}",
-        contacts = {},
-        teams = {},
-    },
+    -- text is the line, exactly as it goes out; Doc.MAX_TEXT bounds it.
+    doc = { rev = 0, author = "", updatedAt = 0, guild = "", hash = "", text = "" },
     -- The largest rev heard from anyone, kept whether or not that document was
     -- taken. An edit made after seeing rev 9 still has to outrank rev 9.
     highestSeenRev = 0,
@@ -77,26 +83,20 @@ local Defaults = {
 local CharDefaults = {
     -- This character's own sending. In the account table, logging in on an alt
     -- would believe it had already barked.
-    bark = { lastSentAt = 0, cursor = 1, confirmedRev = -1 },
+    bark = { lastSentAt = 0, confirmedRev = -1 },
     ui = { tab = 1 },
 }
 
--- The two teams the guild actually runs, made on first login so the window has
--- something in it rather than an empty page and no hint what to do.
-local function SeedTeams()
-    -- Only while nothing has ever been authored. Past rev 0 the document is
-    -- shared, and editing it here would move its hash without moving its rev,
-    -- which is how one client quietly stops agreeing with everyone else.
+-- The guild's name goes on the document as soon as the roster can supply it, because
+-- Comm drops a document from another guild by that field. Only while nothing has
+-- ever been authored: past rev 0 the document is shared, and editing it here would
+-- move its hash without moving its rev, which is how one client quietly stops
+-- agreeing with everyone else.
+local function FillGuild()
     if (ns.db.doc.rev or 0) > 0 then return end
-    if #ns.db.doc.teams == 0 then
-        ns.db.doc.teams = {
-            ns.Teams.New(1, "Team One"),
-            ns.Teams.New(2, "Team Two"),
-        }
-    end
     if ns.db.doc.guild == "" then ns.db.doc.guild = ns.Roster.GuildName() end
 end
-ns.SeedTeams = SeedTeams
+ns.FillGuild = FillGuild
 
 --------------------------------------------------------------------------------
 -- Key bindings
@@ -168,15 +168,12 @@ end
 COMMANDS.send, COMMANDS.bark = Send, Send
 
 COMMANDS.preview = function()
-    local msg, level, dropped = ns.Bark.Preview()
+    local msg, reason = ns.Bark.Preview()
     if not msg then
-        local _, _, _, _, reason = ns.Message.Assemble(ns.db.doc, ns.cdb.bark.cursor)
         ns.Print("nothing to send: " .. tostring(reason))
         return
     end
-    ns.Printf("%s  |cff888888(%d characters, %s%s)|r", msg, #msg,
-        ns.Message.LEVEL_NAME[level] or "?",
-        dropped > 0 and string.format(", %d needs left out", dropped) or "")
+    ns.Printf("%s  |cff888888(%d characters)|r", msg, #msg)
 end
 
 local function Reminder(_, cmd)
@@ -266,8 +263,8 @@ COMMANDS.reset = function(rest)
     if what == "doc" then
         if not RequireAuthor() then return end
         ns.Reset("doc")
-        ns.Print("the message is back to its default. Nothing was sent to anyone; "
-            .. "/gr push does that.")
+        ns.Print("the message is empty again. Nothing was sent to anyone; the next "
+            .. "Save and push does that.")
     elseif what == "peers" then
         ns.db.peers, ns.db.barks = {}, {}
         ns.Print("forgot every other officer's revision and every bark.")
@@ -297,6 +294,7 @@ Core:Attach(ns, {
     schema = SCHEMA,
     charSchema = CHAR_SCHEMA,
     migrations = Migrations,
+    charMigrations = CharMigrations,
     slash = { "/gr", "/guildrecruitment" },
     slashKey = "GUILDRECRUITMENT",
     help = HELP,
@@ -315,26 +313,18 @@ Core:Attach(ns, {
         -- What came back off disk, before anything else can touch it. A document that
         -- is whole here and empty later was lost while running; one that is already
         -- empty was never saved. The library's own line says whether the file loaded.
-        local teams, needs = #ns.db.doc.teams, 0
-        for _, team in ipairs(ns.db.doc.teams) do needs = needs + #(team.needs or {}) end
-        ns.Log.Add("info", "Core", string.format("rev %d, %s, %s, scale %d%%",
-            ns.db.doc.rev or 0,
-            ns.Util.Plural(teams, teams .. " team"),
-            ns.Util.Plural(needs, needs .. " need"),
+        ns.Log.Add("info", "Core", string.format("rev %d, %d characters, scale %d%%",
+            ns.db.doc.rev or 0, #(ns.db.doc.text or ""),
             (ns.db.settings.windowScale or 1) * 100 + 0.5))
-        if teams == 0 and (ns.db.doc.rev or 0) > 0 then
-            ns.Print("|cffffcc00the saved message has a revision but no teams,|r which "
-                .. "should not happen. /gr log has the detail.")
-        end
 
-        SeedTeams()
+        FillGuild()
         ns.Comm.Init()
         if ns.Minimap and ns.Minimap.Init then ns.Minimap.Init() end
         ns.Bark.Restart()
     end,
     onToggle = function() ns.Bark.Restart() end,
     onReset = function(what)
-        if what == "doc" or what == "all" then SeedTeams() end
+        if what == "doc" or what == "all" then FillGuild() end
     end,
 })
 
@@ -363,7 +353,7 @@ frame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4)
 
     elseif event == "GUILD_ROSTER_UPDATE" then
         ns.Roster.Read()
-        SeedTeams()
+        FillGuild()
         if ns.UI then ns.UI.Refresh() end
 
     elseif event == "CHAT_MSG_ADDON" then
