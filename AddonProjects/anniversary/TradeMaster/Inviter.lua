@@ -98,7 +98,7 @@ function Inviter.Invite(name, matched, ctx)
     DoInvite(short)
 
     local state = ns.Players.Get(ns.db, short)
-    state.lastInviteAt = now
+    ns.Players.Invited(state, now)
 
     if PlaySound and SOUNDKIT then PlaySound(SOUNDKIT.MAP_PING) end
 
@@ -111,10 +111,10 @@ function Inviter.Invite(name, matched, ctx)
 
     local last = state.lastWhisperAt or 0
     if (now - last) < plan.settings.whisper.cooldownSec then return end
-    state.lastWhisperAt = now
+    ns.Players.Whispered(state, now)
 
     -- With nothing named, their next line is the answer to our question.
-    if not plan.haveText then state.awaitingItem = now end
+    if not plan.haveText then ns.Players.Awaiting(state, now) end
 
     local override = ctx and ctx.whisperText
     C_Timer.After(WHISPER_DELAY, function()

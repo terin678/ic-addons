@@ -752,6 +752,8 @@ T.Case("Util: how long ago, and how long left", function()
 end)
 
 T.Case("UI: every page draws without erroring", function()
+    -- A page draws with real widgets or not at all; the headless stub has none.
+    if IC_HEADLESS then return end
     -- The Settings page read settings.channel for a field that lives on
     -- settings.bark, and nothing caught it until somebody opened the tab. A page
     -- refresher is not pure, so no other case in this file reaches one; building

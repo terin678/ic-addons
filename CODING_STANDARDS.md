@@ -20,6 +20,10 @@ AddonName/
 ```
 
 - The `.toc` file list is load order. Data and logic files load before UI files.
+- A decision that has a side effect is two functions: one that decides and returns a
+  plan, pure, and one that performs it. `TradeMaster/Events.lua` is the shape: `Decide`
+  is what the tests and `/tm try` read, `Act` is the only place chat, invites and the
+  saved tables are touched, and the per-channel rules are one table.
 - `Bindings.xml` is loaded by the client by filename. Listing it in the `.toc` loads every
   binding twice; `scripts/lint.py` fails on it.
 - A guild addon carries `## Category: Impulse Control` and a `## Group:` naming the addon

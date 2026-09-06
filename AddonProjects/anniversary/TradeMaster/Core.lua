@@ -13,7 +13,7 @@ player and verdict, not on kind and source, so the library's Log is switched off
 
 local Core = LibStub("LibICCore-1.0")
 
-local VERSION = "1.15.1"
+local VERSION = "1.16.0"
 
 -- Bumped when a saved-variable change needs code to read the old shape. Every table
 -- saved before 1.14.0 has no schema stamp at all and is treated as schema 1, so the
@@ -205,7 +205,7 @@ local HELP = {
     { "scan", "scan the open profession window into the book" },
     { "book", "how many recipes the active book holds" },
     { "match <text or link>", "what the classifier would match this to" },
-    { "try | trywhisper | tryparty <msg>", "dry-run a Trade, whisper or party line" },
+    { "try | trywhisper | tryparty <msg>", "the plan for a Trade, whisper or party line; sends nothing" },
     { "bark [secs]", "toggle barking, or set its interval and start it" },
     { "send", "send a bark now" },
     { "preview", "print the next bark" },
@@ -511,10 +511,11 @@ local function Try(rest, cmd)
     local fn = (cmd == "try" and ns.Events.OnTradeMessage)
         or (cmd == "trywhisper" and ns.Events.OnWhisper) or ns.Events.OnParty
     local r = fn(rest, "TestDummy", { dryRun = true })
-    if r then
-        ns.Print(string.format("verdict |cffffffff%s|r (%s), seller %d buyer %d net %d",
-            r.verdict, r.reason, r.sellerScore or 0, r.buyerScore or 0, r.netScore or 0))
-        ns.Print(ns.Log.DescribeHits(r))
+    if r and r.plan then
+        -- The whole plan, not just the verdict: what would have been done, and for
+        -- everything that would not, why.
+        for _, line in ipairs(ns.Events.Describe(r.plan)) do ns.Print(line) end
+        ns.Print("  " .. ns.Log.DescribeHits(r))
     end
 end
 COMMANDS.try, COMMANDS.trywhisper, COMMANDS.tryparty = Try, Try, Try

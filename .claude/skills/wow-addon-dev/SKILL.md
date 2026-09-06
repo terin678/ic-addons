@@ -89,8 +89,7 @@ version and says what to throw away.
 
 ## Verifying
 
-There is no Lua interpreter on the machine, so nothing here runs outside the game. Three
-things stand in for that, in order:
+Four things, in order:
 
 1. `python scripts/lint.py` before packaging. It parses every file, and catches the
    mistakes that have shipped: a local referenced inside its own assignment, a texture path
@@ -99,19 +98,26 @@ things stand in for that, in order:
    client loads it by filename, so listing it loads the bindings twice), and a quoted
    string that runs past the end of its line -- `luaparser` accepts that one and the client
    refuses to load the file, so it is checked separately. Fix everything it prints.
-2. The addon's own cases, in game. Five addons carry a `Tests.lua`, loaded last:
+2. `scripts/run-tests.ps1 -Flavor anniversary -Addon <Addon>`: the addon's cases under
+   LuaJIT against a stub client (`scripts/test-harness.lua`). It loads ICLibs, then the
+   addon's `.toc` in order, delivers ADDON_LOADED so LibICCore boots `ns.db`, and runs
+   `ns.Tests.Run()`. A file that calls the client at file scope fails here by name,
+   which is the standard being enforced; a case that needs real widgets returns early
+   on `IC_HEADLESS`. Runs in a second; use it before every `/reload`.
+3. The same cases in game. Six addons carry a `Tests.lua`, loaded last:
 
    | Command | Cases |
    | --- | --- |
-   | `/tm test` (TradeMaster) | 128 |
+   | `/tm test` (TradeMaster) | 138 |
    | `/cm test` (CutMaster) | 135 |
    | `/gr test` (GuildRecruitment) | 50 |
    | `/ictpl test` (ICTemplate) | 27 |
    | `/maw test` (MalexisAuctionWatcher) | 9 |
+   | `/mfd selftest` (MarkedForDeath) | 397 |
 
    Any decision worth arguing about belongs in a pure function with a case here, and a case
    that asserts an ordering must have that ordering worked out rather than assumed.
-3. The `wow-ui-reviewer` agent on every UI file touched.
+4. The `wow-ui-reviewer` agent on every UI file touched.
 
 Then say plainly in the summary that nothing was run in the client, and give the player the
 in-game steps: `/reload`, the commands to run, and to check BugSack. Prefer changes that

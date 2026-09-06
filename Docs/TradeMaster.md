@@ -145,10 +145,21 @@ profession in **Filter**.
 
 ### Talks to customers
 
-Every reply below answers a **whisper** (or a party line). A Trade post is never
-replied to: it gets a group invite, with the invite's own one-line whisper saying why,
-or nothing at all. Somebody posting `WTB [Belt of Deep Shadow]` in Trade has not spoken
-to you, and "not enough Nether Vortex, sorry" arriving from a stranger reads as spam.
+Every reply below answers a **whisper**. A Trade post is never replied to: it gets a
+group invite, with the invite's own one-line whisper saying why, or nothing at all.
+Somebody posting `WTB [Belt of Deep Shadow]` in Trade has not spoken to you, and "not
+enough Nether Vortex, sorry" arriving from a stranger reads as spam. Party chat sits
+between the two: an invite, an order, the transcript, and the note about missing mats,
+but none of the suggestions.
+
+**How a line is handled.** Every line, on every channel, goes through the same two
+steps. First it is *decided*: classified, and turned into a plan that says, for each
+thing the addon could do back (remember it, log it, open an order, whisper, invite, ask
+you first), whether it will and, when it will not, why. Then the plan is *acted on*, in
+one fixed order. What each channel is allowed is one table, and `/tm try`, `/tm
+trywhisper` and `/tm tryparty` print the whole plan for a line without acting on it,
+including the operational reason an invite would have been refused, so what a dry run
+says and what the live path does can no longer differ.
 
 | They say | TradeMaster replies |
 | --- | --- |
@@ -405,7 +416,7 @@ For Jewelcrafting, gem names in the profession window are replaced with what the
 | `/tm order removeitem <id> <item name>` | Drop one line from an order, matched on part of the name |
 | `/tm order mats <id>` | What they have handed over against what the order needs, per reagent |
 | `/tm tracker` / `/tm income` | Tracker window; earnings summary |
-| `/tm try <msg>` / `/tm trywhisper <msg>` / `/tm tryparty <msg>` | Test the classifier for the active profession. Sends nothing. |
+| `/tm try <msg>` / `/tm trywhisper <msg>` / `/tm tryparty <msg>` | The plan for a line on that channel: verdict, then invite, order, whisper, each yes or why not. Sends nothing. |
 | `/tm capture` | Record every Trade message and its verdict |
 | `/tm test` | Run the built-in self test |
 | `/tm help` / `/tm version` | Every command with a line each; addon and library versions |
