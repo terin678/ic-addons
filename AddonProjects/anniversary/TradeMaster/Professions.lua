@@ -490,6 +490,15 @@ end
 -- Mooncloth]" is an item and "mooncloth tailor" is a specialization, and the word
 -- is the same one. Reading the whole line would refuse the customer who wanted
 -- the item.
+-- "elixir master" and "master elixir" are the same ask, and "LF Master elixir to craft"
+-- walked straight past a list that carried only the first. Every "<x> master" word is
+-- tried the other way round as well, so the lists keep carrying one of them. (1.15.1)
+local function SpecForms(word)
+    local noun = word:match("^(.-) master$")
+    if noun then return { word, "master " .. noun } end
+    return { word }
+end
+
 function Prof.SpecWanted(profile, raw, have, matchedNames)
     if not profile or not profile.specs or not raw then return nil end
     local norm = ns.Util.Normalize((raw:gsub("%[.-%]", " ")))
@@ -500,8 +509,10 @@ function Prof.SpecWanted(profile, raw, have, matchedNames)
     for _, spec in ipairs(profile.specs) do
         if not (have or {})[spec.key] then
             for _, word in ipairs(spec.words) do
-                if ns.Util.HasPhrase(norm, word) then
-                    return spec.label or spec.name, spec.key
+                for _, form in ipairs(SpecForms(word)) do
+                    if ns.Util.HasPhrase(norm, form) then
+                        return spec.label or spec.name, spec.key
+                    end
                 end
             end
         end

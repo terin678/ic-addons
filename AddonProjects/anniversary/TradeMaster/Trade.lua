@@ -48,7 +48,7 @@ function Trade.Classify(snapshot, book)
     return rawMats, products, delivered
 end
 
-local function Commit(snapshot)
+function Trade.Commit(snapshot)
     if not ns.Enabled() then return end
     local now = ns.Now()
     local player = snapshot.partner
@@ -114,6 +114,16 @@ local function Commit(snapshot)
             ns.Print(string.format("  |cffff9900%d x %s could be any of %d %s (%s%s). Add the right one in the Orders tab.|r",
                 info.count, snapshot.incomingLinks[rawID] or tostring(rawID), #info.options, nounP,
                 table.concat(names, ", "), #info.options > 4 and ", ..." or ""))
+        end
+
+        -- Measured against everything they have handed over so far, since an order
+        -- that does not fit one window takes two trades. Kept on the order so the
+        -- Orders tab can show it after the window is gone. Nothing is refused: the
+        -- trade was the user's to accept, and this only says what it saw.
+        local check = ns.Orders.MatsCheck(order, book, order.matsReceived)
+        order.matsCheck = { at = now, verdict = check.verdict, text = ns.Orders.DescribeCheck(check) }
+        if check.verdict ~= "nothing" then
+            ns.Print(string.format("  mats: %s", order.matsCheck.text))
         end
     end
 
@@ -291,25 +301,141 @@ function Trade.AutoFill()
     end)
 end
 
+--------------------------------------------------------------------------------
+-- The mats panel beside the trade window
+--------------------------------------------------------------------------------
+
+--[[
+While a trade is open with somebody who has an order, one row per reagent: what is in
+the window against what the order needs, green exact, amber over, red short, and the
+verdict underneath. TRADE_TARGET_ITEM_CHANGED fires on every slot they touch, so this
+follows the window live; the same check runs once more at commit and is kept on the order.
+
+Built through the addon's own wrappers (UI.lua loads after this file, so lazily), fixed
+single-line rows, anchored to the right of Blizzard's TradeFrame.
+]]
+
+local PANEL_W, PANEL_ROW_H, PANEL_MAX_ROWS = 300, 16, 12
+local PANEL_COLOR = { exact = "|cff44ff44", short = "|cffff4444", over = "|cffffcc00", extra = "|cff888888" }
+local panel
+
+local function BuildPanel()
+    if panel then return panel end
+    local UI = ns.UI
+    panel = UI.Lib:Panel(UIParent, { style = UI.Style })
+    panel:SetSize(PANEL_W, 60)
+    panel:SetFrameStrata("HIGH")
+    panel.title = UI.Label(panel, "", "GameFontNormalSmall")
+    panel.title:SetPoint("TOPLEFT", 8, -6)
+    panel.rows = {}
+    for i = 1, PANEL_MAX_ROWS do
+        local fs = UI.Label(panel, "", "GameFontHighlightSmall")
+        fs:SetPoint("TOPLEFT", 8, -(6 + PANEL_ROW_H * i))
+        fs:SetWidth(PANEL_W - 16)
+        fs:SetJustifyH("LEFT")
+        fs:SetWordWrap(false)
+        fs:Hide()
+        panel.rows[i] = fs
+    end
+    panel.footer = UI.Label(panel, "", "GameFontHighlightSmall")
+    panel.footer:SetWidth(PANEL_W - 16)
+    panel.footer:SetJustifyH("LEFT")
+    panel.footer:SetWordWrap(false)
+    panel:Hide()
+    return panel
+end
+
+local function RowLabel(row)
+    local name = row.link or row.name
+    if not name and GetItemInfo then name = GetItemInfo(row.id) end
+    return name or tostring(row.id)
+end
+
+function Trade.HidePanel()
+    if panel then panel:Hide() end
+end
+
+-- Reads the window and redraws. Hidden when there is no order for the partner, the
+-- window is gone, or the setting is off.
+function Trade.RefreshPanel()
+    if not ns.db.settings.orders.matsCheck then return Trade.HidePanel() end
+    local order = Trade.partner and ns.Orders.Open(Trade.partner)
+    if not order or not TradeFrame or not TradeFrame:IsShown() or not ns.UI then
+        return Trade.HidePanel()
+    end
+
+    local p = BuildPanel()
+    local book = ns.Orders.BookFor(order)
+    local rawMats = ns.Trade.Classify(Trade.Snapshot(), book)
+    local check = ns.Orders.MatsCheck(order, book, rawMats)
+    Trade.lastCheck = check
+
+    p.title:SetText(string.format("Mats for order #%d, %s", order.id, order.player))
+
+    local n, overflow = 0, 0
+    local function put(text)
+        n = n + 1
+        local fs = p.rows[n]
+        if fs then fs:SetText(text) fs:Show() else overflow = overflow + 1 end
+    end
+
+    if check.verdict == "ambiguous" then
+        for _, row in ipairs(check.rows) do
+            put(string.format("%s%d|r  %s", PANEL_COLOR.extra, row.have, RowLabel(row)))
+        end
+    else
+        for _, row in ipairs(check.rows) do
+            local c = row.delta == 0 and PANEL_COLOR.exact
+                or (row.delta < 0 and PANEL_COLOR.short or PANEL_COLOR.over)
+            put(string.format("%s%d / %d|r  %s%s", c, row.have, row.need, RowLabel(row),
+                row.delta ~= 0 and string.format("  %s%+d|r", c, row.delta) or ""))
+        end
+        for _, row in ipairs(check.unexpected) do
+            put(string.format("%s%d  %s  not on this order|r", PANEL_COLOR.extra, row.have, RowLabel(row)))
+        end
+        for _, name in ipairs(check.unknown) do
+            put(string.format("%s?  %s  count unknown; rescan the book|r", PANEL_COLOR.extra, name))
+        end
+    end
+    local shown = math.min(n, PANEL_MAX_ROWS)
+    for i = shown + 1, PANEL_MAX_ROWS do p.rows[i]:Hide() end
+
+    local footer = ns.Orders.DescribeCheck(check)
+    if overflow > 0 then footer = footer .. string.format("  |cff888888+%d more|r", overflow) end
+    p.footer:SetText(footer)
+    p.footer:ClearAllPoints()
+    p.footer:SetPoint("TOPLEFT", 8, -(6 + PANEL_ROW_H * (shown + 1) + 4))
+    p:SetHeight(6 + PANEL_ROW_H * (shown + 1) + 4 + PANEL_ROW_H + 6)
+    p:ClearAllPoints()
+    p:SetPoint("TOPLEFT", TradeFrame, "TOPRIGHT", 0, -12)
+    p:Show()
+end
+
 function Trade.OnEvent(event, ...)
     if event == "TRADE_SHOW" then
         Trade.partner = UnitName("NPC") or UnitName("npc")
         Trade.bothAccepted = false
         Trade.pending = nil
         C_Timer.After(0.2, Trade.AutoFill)
+        -- The frame is up by then, and the first read shows what a craft takes.
+        C_Timer.After(0.25, Trade.RefreshPanel)
+    elseif event == "TRADE_TARGET_ITEM_CHANGED" or event == "TRADE_UPDATE" then
+        Trade.RefreshPanel()
     elseif event == "TRADE_ACCEPT_UPDATE" then
         local playerAccepted, targetAccepted = ...
         if playerAccepted == 1 and targetAccepted == 1 then
             Trade.bothAccepted = true
             Trade.pending = Trade.Snapshot()
         end
+        Trade.RefreshPanel()
     elseif event == "TRADE_CLOSED" then
         if Trade.bothAccepted and Trade.pending then
-            Commit(Trade.pending)
+            Trade.Commit(Trade.pending)
         end
         Trade.bothAccepted = false
         Trade.pending = nil
         Trade.partner = nil
         Trade.StopFill()
+        Trade.HidePanel()
     end
 end

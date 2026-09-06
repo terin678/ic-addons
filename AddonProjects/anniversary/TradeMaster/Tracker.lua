@@ -16,6 +16,13 @@ local STATUS_SHORT = {
     mats    = "|cff44ff44mats in|r",
 }
 
+-- The last trade's verdict, only when it is something to act on.
+local MATS_WORD = { short = "|cffff4444short|r", mixed = "|cffff4444short|r", over = "|cffffcc00over|r" }
+local function MatsWord(o)
+    local c = o.matsCheck
+    return (c and MATS_WORD[c.verdict]) and ("  " .. MATS_WORD[c.verdict]) or ""
+end
+
 local function Save()
     local f = Tracker.frame
     if not f then return end
@@ -148,7 +155,8 @@ function Tracker.Refresh()
         local head = GetRow(used)
         head.check:Hide()
         head.text:SetPoint("LEFT", 2, 0)
-        head.text:SetText(string.format("|cffffffff%s|r  %s", o.player, STATUS_SHORT[o.status] or o.status))
+        head.text:SetText(string.format("|cffffffff%s|r  %s%s", o.player,
+            STATUS_SHORT[o.status] or o.status, MatsWord(o)))
         head:SetScript("OnMouseUp", function(_, button)
             if button ~= "RightButton" then return end
             ns.Orders.SetStatus(o, "cancelled", ns.Now())
