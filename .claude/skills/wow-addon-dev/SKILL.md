@@ -112,7 +112,7 @@ Four things, in order:
    | `/cm test` (CutMaster) | 135 |
    | `/gr test` (GuildRecruitment) | 50 |
    | `/ictpl test` (ICTemplate) | 27 |
-   | `/maw test` (MalexisAuctionWatcher) | 11 |
+   | `/maw test` (MalexisAuctionWatcher) | 15 |
    | `/mfd selftest` (MarkedForDeath) | 397 |
 
    Any decision worth arguing about belongs in a pure function with a case here, and a case
