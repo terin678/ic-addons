@@ -126,15 +126,29 @@ names, since "haste" on its own is ordinary chat. Understands `LF JC`, `LF alch`
 
 ### Ignores competing crafters
 
-Hard vetoes (`LFW`, `WTS`, `will cut`, `will brew`, ...) never invite. Beyond that, seller
+Hard vetoes (`LFW`, `WTS`, `will cut`, `will brew`, and the giveaway phrases `anyone
+want`, `who wants`, `giving away`, `for free`, ...) never invite. A trailing `?` counts
+against a seller but never stands as the request on its own: `[item]?` in Trade is as
+often an offer as an ask. Beyond that, seller
 signals (`all cuts`, `all potions`, a linked `Design:`/`Recipe:`/`Pattern:`/`Plans:`/
 `Schematic:` item, three-plus links in one message) are weighed against buyer signals
 (`WTB`, `need`, `have mats`, a trailing `?`) and the net decides. A player who posts the
-same message twice inside the bark window is auto-flagged as a competitor. Every decision
+same message twice inside the bark window is auto-flagged as a competitor. Someone
+buying a **material** you happen to be able to make -- `WTB 5 stacks [Thick Leather]`,
+which a leatherworker's book holds because leather converts -- is shopping, not asking
+for a craft, and is dropped as *buying materials* unless something in the line speaks
+of crafting: a verb, a crafter, mats in hand, or the profession's name. What counts as a
+product is the profile's item classes (armour and bags for leatherworking, gems for
+jewelcrafting). Every decision
 is in the **Log** tab with the signals that fired. The whole vocabulary is editable per
 profession in **Filter**.
 
 ### Talks to customers
+
+Every reply below answers a **whisper** (or a party line). A Trade post is never
+replied to: it gets a group invite, with the invite's own one-line whisper saying why,
+or nothing at all. Somebody posting `WTB [Belt of Deep Shadow]` in Trade has not spoken
+to you, and "not enough Nether Vortex, sorry" arriving from a stranger reads as spam.
 
 | They say | TradeMaster replies |
 | --- | --- |
