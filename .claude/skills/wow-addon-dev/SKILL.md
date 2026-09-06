@@ -110,7 +110,7 @@ Four things, in order:
    | --- | --- |
    | `/tm test` (TradeMaster) | 138 |
    | `/cm test` (CutMaster) | 135 |
-   | `/gr test` (GuildRecruitment) | 50 |
+   | `/gr test` (GuildRecruitment) | 31 |
    | `/ictpl test` (ICTemplate) | 27 |
    | `/maw test` (MalexisAuctionWatcher) | 9 |
    | `/mfd selftest` (MarkedForDeath) | 397 |

@@ -3,10 +3,13 @@
 One recruitment message the raid leaders set and every officer sends, kept in step across
 the guild, with a log of who barked when.
 
-The problem it solves: two raid teams, every raid officer recruiting for both, everyone
-typing their own line into a channel. Nobody knows who posted last, so two officers post
-four minutes apart, and the wording drifts until the two teams are advertised differently by
-different people.
+The problem it solves: every raid officer recruiting, everyone typing their own line into a
+channel. Nobody knows who posted last, so two officers post four minutes apart, and the
+wording drifts until the guild is advertised differently by different people.
+
+The message is one line of plain text, at most 255 characters, sent exactly as a raid
+leader wrote it. There are no teams to set up, no templates and no tokens: the line usually
+ends in "/w me", and that is the whole of it.
 
 ## Install
 
@@ -19,14 +22,16 @@ Then `/reload`, and `/gr` opens the window.
 
 ## Quick start
 
-1. A raid leader opens the **Teams** tab and says what each team is short of. Roles and
-   classes are free text — "Feral Druid" is a thing you can ask for.
-2. They open **Message**, write the line, and press **Save and push**. Every officer who is
-   online and running the addon takes it within a few seconds.
-3. Any officer opens **Bark**, reads the line, and presses **Send now**.
+1. A raid leader opens the **Message** tab, writes the line, and presses **Save and push**.
+   Every officer who is online and running the addon takes it within a few seconds.
+2. Any officer opens **Bark**, reads the line, and presses **Send now**.
 
 Barking is off by default. Turning the reminder on means a sound and a chat line when it is
 time; it does not send anything by itself, and it cannot (see below).
+
+**Updating from 0.3.** The message starts empty: the teams, needs and templates of the old
+model cannot be turned into a line, so a raid leader types the new one once. Old and new
+clients do not read each other's messages at all, so update everyone together.
 
 ## Who may do what
 
@@ -35,7 +40,7 @@ number is a **lower** rank, so both settings are ceilings.
 
 | Setting | Default | Means |
 | --- | --- | --- |
-| Raid leaders | rank 2 or better | may change the message and the teams, and push them |
+| Raid leaders | rank 2 or better | may change the message and push it |
 | Officers | rank 4 or better | may send the message |
 
 **The two numberings do not agree.** The guild window lists ranks from 1; the game reports
@@ -57,63 +62,17 @@ who is holding which revision, which is how a mismatch becomes visible instead o
 **Bark** is the tab every officer lives on. The exact line that will go out is shown right
 above the button that sends it — deliberately, because nobody should put something in a
 public channel under their own name without reading it. Above that is one line saying either
-"Ready" or the single reason it will not send: no channel, wrong rank, in combat, nothing to
-recruit, or *"Threnody barked 4m ago"*. Underneath is who has been recruiting recently.
+"Ready" or the single reason it will not send: no channel, wrong rank, in combat, no message
+set yet, or *"Threnody barked 4m ago"*. Underneath is who has been recruiting recently.
 
-**Teams** is one table, not one per team: a heading row per team with its needs underneath.
-Each need has a role, a class (or blank for any), a count and a priority. Priority is what
-decides what survives when the message will not fit.
-
-A raid leader can add, edit, reorder and remove both teams and needs from here. The buttons
-on a **team's heading row** are:
-
-| Button | What it does |
-| --- | --- |
-| Edit | Opens the team's name, tag and raid days in the panel above the list |
-| + Need | Adds a need to THAT team, rather than to whichever happens to be first |
-| On / Off | Leaves the team out of the message without deleting it or its needs |
-| ^ | Moves the team up. This is not cosmetic — the order decides which team leads the line |
-| X | Removes the team and everything it was asking for. The last team cannot be removed |
-
-The buttons on a **need row** are Edit, `^` to raise its priority, and X to remove it.
-
-**Add a need to a particular team with that team's own `+ Need` button.** The toolbar's
-"Add a need" has no team in mind, so it opens on the first one; the **belongs to** button in
-the editor changes which team a need is on, and moves an existing need between teams.
-
-Three things about editing a team are worth knowing:
-
-- **The tag is what actually goes in the message**, not the name — a 255-character line has
-  no room for "Tuesday Core Raid Team". Keep it short.
-- **Leave the tag blank and it builds itself** from the name's initials: "Molten Core"
-  becomes "MC". That is also how you make a tag follow a rename, since a tag you have typed
-  is never overwritten.
-- **Adding a team opens the editor straight away.** A new team is called "Team 3" and has no
-  raid days, which is not something you want going out to the guild.
-
-Names and days are capped at 24 characters and tags at 8, because everything here has to
-fit in one chat line alongside everything else.
-
-**Message** is raid-leader only. `{teams}` is where the teams go; `{guild}` and `{contacts}`
-fill themselves in. A second template says how one team is written, with `{tag}`, `{days}`
-and `{needs}`.
-
-Write that second template however you like — `{tag} {days}: {needs}` gives *"DN M/W: Shaman
-DPS"*, and `{needs} for our {days}` gives *"Shaman DPS for our M/W"*. It only has to contain
-one of the three tokens; a template naming none of them would repeat the same words once per
-team, so that one is refused and the default used instead. Anything else questionable is
-said under the preview rather than corrected behind your back — no `{needs}` and the line
-never says who you are after, and with two teams recruiting and neither `{tag}` nor `{days}`
-there is nothing to tell them apart.
-
-The preview beside the boxes re-assembles on every keystroke, with a length meter, and it is
-built from the boxes rather than from the saved message — so it shows what you are about to send,
-not what the guild already has. While the two differ the meter says **unsaved**. Nothing
-reaches anyone until **Save and push**; **Revert** puts the boxes back. Typing here does not
-move the revision every other officer is watching, which is why the two are kept apart.
-
-Team names, tags, days and needs come from the live document, so an edit made on the Teams
-tab shows up in this preview as soon as you come back to it.
+**Message** is raid-leader only: one box, and the line in it is what the whole guild sends.
+Pipes and line breaks come out and runs of spaces close up, because a chat channel refuses
+the first and the second would make two clients disagree about a line that reads the same;
+nothing else is changed. The meter under the box counts characters against the 255 a chat
+message takes, and while the box differs from the saved message it says **unsaved**.
+Nothing reaches anyone until **Save and push**; **Revert** puts the box back. Typing here
+does not move the revision every other officer is watching, which is why the two are kept
+apart.
 
 **Officers** is the tab that answers *"why is Threnody sending the old line"*. Green has your
 revision, amber is behind, blue is ahead of you.
@@ -123,28 +82,6 @@ message.
 
 **Settings** holds the rank thresholds, the channel, the pause rules and the buttons for
 `/gr probe` and `/gr test`.
-
-## How the message is assembled
-
-Both teams go in **one line**, because two lines is two lines' worth of guild spam. A chat
-message is 255 characters, so the addon gives up detail in named steps rather than cutting
-the line off:
-
-| | Looks like |
-| --- | --- |
-| everything | `T1 Tue/Thu 8-11: 2x Priest Healer, 3x DPS` |
-| without classes | `T1 Tue/Thu 8-11: 2x Healer, 3x DPS` |
-| without days | `T1: 2x Healer, 3x DPS` |
-| without counts | `T1: Healer, DPS` |
-| then it starts dropping needs | `T1: Healer` |
-
-Needs are dropped lowest-priority first, and from whichever team currently has the most,
-alternating — so **both team tags are in the message whenever they fit at all**. One team is
-never quietly starved out of a combined line. Whatever did not fit is reported on the Bark
-tab as *"2 needs left out"* rather than silently vanishing.
-
-Which team leads rotates each time you send, so the same one is not always the one that
-loses detail.
 
 ## Keeping in step
 
@@ -161,10 +98,11 @@ newer answers after a random two to seven seconds and cancels if they hear a bet
 first — so in a guild that already agrees, eight officers logging in produce eight tiny
 messages and not one full send.
 
-When you bark, a short notice goes to the other officers so their gate can say *"you barked
-90s ago"*. **The text itself is never sent between officers** — everyone is converging on the
-same revision, so the number is enough. Barks sent while you were offline are not recovered,
-and the panel says so rather than quietly showing you a short list.
+A push carries the line itself, so a new officer has the exact text within seconds of
+logging in. When you bark, only a short notice goes to the other officers — who, when, which
+channel, which revision — so their gate can say *"you barked 90s ago"*. Barks sent while you
+were offline are not recovered, and the panel says so rather than quietly showing you a
+short list.
 
 ## Commands
 
@@ -187,7 +125,7 @@ and the panel says so rather than quietly showing you a short list.
 | `/gr enable` / `disable` | Master switch |
 | `/gr out [n]` | Print to ChatFrame n |
 | `/gr scale [percent]` | Window size, 50 to 125. You can also drag the grip in the window's bottom-right corner |
-| `/gr reset [doc\|peers\|log\|all]` | Restore defaults |
+| `/gr reset [doc\|peers\|log\|all]` | Restore defaults; `doc` empties the message without telling anyone |
 | `/gr version` | Addon and library versions |
 
 Two key bindings under **GuildRecruitment**: send the message, and open the window.
