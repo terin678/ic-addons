@@ -202,8 +202,7 @@ function Confirm.Next()
     f.skip:SetScript("OnClick", finish)
 
     f.never:SetScript("OnClick", function()
-        local state = ns.Players.Get(ns.db, r.player)
-        state.neverInvite = true
+        ns.Players.Banned(ns.Players.Get(ns.db, r.player), true)
         ns.Print(r.player .. " will never be invited. |cff888888/tm clearflags undoes it|r")
         finish()
     end)

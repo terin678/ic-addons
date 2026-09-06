@@ -104,6 +104,64 @@ function Players.ClearDeclined(state)
     return n
 end
 
+--------------------------------------------------------------------------------
+-- The conversation with one player, named
+--------------------------------------------------------------------------------
+
+--[[
+The record's fields were written from three files and read as booleans. These are
+the states they add up to, and the only writers of them:
+
+    idle       nothing pending
+    awaiting   we invited on a line that named nothing and asked what they need;
+               their next line is the answer                      (Invited, Answered)
+    declined   they asked for something we cannot make; no invites for the cooldown,
+               and that item is answered from memory              (Declined)
+    flagged    posted the same advertisement twice: a seller       (Note)
+    banned     a person said never                                 (Banned)
+
+Pure. declinedCooldownSec is the profession's setting; 0 or nil is off.
+]]
+function Players.Phase(state, now, declinedCooldownSec)
+    if not state then return "idle" end
+    if state.neverInvite then return "banned" end
+    if state.flaggedSeller then return "flagged" end
+    if state.declinedAt and (declinedCooldownSec or 0) > 0
+        and (now or 0) - state.declinedAt < declinedCooldownSec then
+        return "declined"
+    end
+    if state.awaitingItem then return "awaiting" end
+    return "idle"
+end
+
+-- We sent the invite. With nothing named, the line we whisper asks what they need,
+-- and their next line is the answer.
+function Players.Invited(state, now)
+    state.lastInviteAt = now
+    return state
+end
+
+function Players.Awaiting(state, now)
+    state.awaitingItem = now
+    return state
+end
+
+function Players.Whispered(state, now)
+    state.lastWhisperAt = now
+    return state
+end
+
+-- The answer came, whatever it was.
+function Players.Answered(state)
+    state.awaitingItem = nil
+    return state
+end
+
+function Players.Banned(state, on)
+    state.neverInvite = on and true or nil
+    return state
+end
+
 function Players.Get(db, name)
     db.players = db.players or {}
     db.players[name] = db.players[name] or {}

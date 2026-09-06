@@ -162,7 +162,6 @@ function Events.Decide(line, ctx)
     local text, short, source = line.text, line.short, line.source
     local P = Events.POLICY[source] or Events.POLICY.trade
     local isDirect = source ~= "trade"
-    local isWhisper = source == "whisper"
     local state = ctx.state or {}
     local now = ctx.now
     local settings = ctx.settings
@@ -554,7 +553,7 @@ function Events.Act(plan)
         end
     end
     for _, line in ipairs(plan.prints) do ns.Print(line) end
-    if A.clearAwaiting then state.awaitingItem = nil end
+    if A.clearAwaiting then ns.Players.Answered(state) end
     if A.transcript then ns.Orders.AddTranscript(short, "in", plan.text, now) end
     if A.order then
         if plan.usedContext then

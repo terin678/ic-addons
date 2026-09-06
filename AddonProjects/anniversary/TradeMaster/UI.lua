@@ -959,7 +959,11 @@ function UI.BuildLog(page)
             local color = ns.Log.VERDICT_COLOR[e.verdict] or "|cffffffff"
             t:Set(row, "age", UI.Age(now - (e.at or now)))
             t:Set(row, "verdict", color .. (e.verdict or "?") .. "|r")
-            t:Set(row, "player", e.player or "?")
+            -- Where the conversation with them stands, when it stands anywhere.
+            local phase = ns.Players.Phase(e.player and ns.db.players[e.player], ns.Now(),
+                ns.PS().invite.declinedCooldownSec)
+            t:Set(row, "player", (e.player or "?")
+                .. (phase ~= "idle" and ("  |cff888888" .. phase .. "|r") or ""))
             t:Set(row, "prof", e.profession or "")
             t:Set(row, "reason", e.reason or "")
             t:Set(row, "score", string.format("%d/%d", e.sellerScore or 0, e.buyerScore or 0))
@@ -972,7 +976,7 @@ function UI.BuildLog(page)
             btn:SetShown(e.player ~= nil)
             btn:SetScript("OnClick", function()
                 local state = ns.Players.Get(ns.db, e.player)
-                state.neverInvite = not state.neverInvite or nil
+                ns.Players.Banned(state, not state.neverInvite)
                 ns.Print(e.player .. (state.neverInvite and " will never be invited."
                     or " can be invited again."))
                 UI.RefreshLog()
