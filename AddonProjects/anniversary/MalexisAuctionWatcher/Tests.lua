@@ -65,6 +65,59 @@ T.Case("Recipe series: a vendor material costs the same every slot", function()
     T.Eq(s.mats[1].values, nil, "and never drawn as a line: it would be flat")
 end)
 
+T.Case("Recipe series: a bind-on-pickup material is left out, not a hole", function()
+    -- Primal Nether is never on the auction house, so a slot with no price for it
+    -- is every slot. Treating that as a missing price left every epic craft with
+    -- no cost line at all.
+    local s = MAW.ComposeRecipeSeries({
+        count = 2, labels = { "a", "b" }, cut = 0,
+        productName = "Boots", productCount = 1,
+        productPoints = { pt("a", 500), pt("b", 500) },
+        mats = {
+            { name = "Primal Nether", count = 1, bop = true },
+            { name = "Primal Fire", count = 4, points = { pt("a", 10), pt("b", 20) },
+              tsm = { market = 12 } },
+        },
+    })
+    T.Near(s.cost[1], 40, "the fire alone")
+    T.Near(s.cost[2], 80, "in every slot")
+    T.Eq(s.complete, 2, "both slots priced")
+    T.Eq(s.bop[1], "Primal Nether", "and the nether is named")
+    T.Eq(s.mats[1].values, nil, "with no line of its own")
+    T.Near(s.tsm.cost.market, 48, "the TSM cost level is without it too")
+end)
+
+T.Case("Recipe profit: a bind-on-pickup material is priced around, a missing one is not", function()
+    local cost, missing, bop = MAW.SumMaterials({
+        { item = "Primal Fire", count = 4, unit = 10 },
+        { item = "Imbued Vial", count = 1, unit = 20, vendor = 20 },
+        { item = "Primal Nether", count = 1, bop = true },
+    })
+    T.Near(cost, 60, "fire and vial")
+    T.Eq(#missing, 0, "nothing is missing")
+    T.Eq(bop[1], "Primal Nether", "the nether is what you bring")
+
+    cost, missing, bop = MAW.SumMaterials({
+        { item = "Primal Fire", count = 4 },
+        { item = "Primal Nether", count = 1, bop = true },
+    })
+    T.Near(cost, 0, "nothing priced")
+    T.Eq(missing[1], "Primal Fire", "an unpriced tradeable is still missing")
+    T.Eq(#bop, 1, "and the nether is still separate from it")
+
+    T.Eq(#select(2, MAW.SumMaterials({})), 0, "no materials is no gaps")
+
+    -- The flag is found once and written onto the material, so recipes saved before
+    -- it existed catch up the first time they are priced.
+    local nether = { item = "Primal Nether", count = 1 }
+    T.Eq(MAW:IsBoPMaterial(nether), true, "known by name when the item cache is cold")
+    T.Eq(nether.bop, true, "and remembered on the material")
+    T.Eq(MAW:IsBoPMaterial({ item = "Imbued Vial", count = 1, vendor = 20 }), false,
+        "a vendor material is never")
+    T.Eq(MAW:IsBoPMaterial({ item = "Primal Fire", count = 1, bop = false }), false,
+        "and one already resolved is not asked again")
+end)
+
 T.Case("Recipe series: best and worst skip the slots with no margin", function()
     local s = MAW.ComposeRecipeSeries({
         count = 4, labels = { "a", "b", "c", "d" }, cut = 0,

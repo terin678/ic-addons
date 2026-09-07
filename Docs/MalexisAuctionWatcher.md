@@ -184,6 +184,13 @@ Profit per batch = product value after the auction house cut minus material cost
 each item's latest price. Rows sort by margin, best first. Hover a recipe for the full
 breakdown with sources.
 
+A material that is bind on pickup, such as Primal Nether or Nether Vortex, is never on
+the auction house, so it has no price to find. The recipe prices without it: the row is
+marked **BoP**, the material cost is everything else, and the tooltip names what you have
+to bring yourself. "Can make" counts it only if it is in your bags or bank. The History
+chart leaves it out of the cost line the same way. Recipes imported before this had the
+reagent as an ordinary material; they are re-read the first time they are priced.
+
 The cut defaults to 5%, the faction auction house rate in the capitals. The neutral
 auction houses in Gadgetzan, Booty Bay, and Everlook take 15%; set that with
 `/maw ahcut 15` if you sell there. The "AH net" headers on Recipes and Stores show the
