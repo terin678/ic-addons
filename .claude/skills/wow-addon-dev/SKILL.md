@@ -44,8 +44,9 @@ so no addon bundles a copy:
 Addons list `## Dependencies: ICLibs` in their TOC and fetch a library with
 `LibStub("LibICUI-1.0")`. Bump the library's MINOR when its API changes, and record the
 new number in `Docs/ICLibs.md`; `lint.py` fails when the two disagree.
-`scripts/package.ps1` bundles required addons into the zip and `scripts/deploy.ps1` links
-them; do not copy library files into an addon's own folder.
+`scripts/package.ps1` bundles required addons into the zip (not with `-NoDeps`, which is
+what `scripts/release.ps1` uses for CurseForge, where ICLibs is its own project) and
+`scripts/deploy.ps1` links them; do not copy library files into an addon's own folder.
 
 ## Starting a new addon
 
@@ -127,7 +128,10 @@ fail loudly in chat over ones that fail silently.
 
 1. Bump `## Version:` in the `.toc` and the load message in `Core.lua` to the same value.
 2. Update the version table in `AddonProjects/<flavor>/README.md`.
-3. `scripts/package.ps1 -Flavor <flavor> -Addon <Addon>` writes `dist/<Addon>-<ver>-<flavor>.zip`.
+3. `scripts/package.ps1 -Flavor <flavor> -Addon <Addon>` writes `dist/<Addon>-<ver>-<flavor>.zip`
+   with ICLibs inside, for a guildmate. For CurseForge, `scripts/release.ps1` (run from
+   `main` after the merge) lints, runs the cases, and writes one-folder zips plus
+   `MANIFEST.md` to `dist/curseforge/`; the user uploads those by hand.
 4. Send the zip to the user with SendUserFile. `dist/` is git-ignored.
 5. Commit on the feature branch with an imperative subject and a body listing
    player-visible changes, then push the branch. `main` only accepts pull requests:
