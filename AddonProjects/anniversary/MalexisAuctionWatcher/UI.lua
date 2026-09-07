@@ -121,6 +121,9 @@ local function RecipeColumns()
     table.insert(cols, { header = "Profit",   width = 90, key = "profit" })
     table.insert(cols, { header = "Margin",   width = 70, key = "margin" })
     table.insert(cols, { header = "Can make", width = 60, key = "canMake" })
+    if tsmOn then
+        table.insert(cols, { header = "Sells", width = 60, key = "sells" })
+    end
     return cols
 end
 
@@ -129,6 +132,19 @@ local TSM_COLUMNS = {
     { key = "market",     header = "TSM 14d", label = "TSM market value (14 day)" },
 }
 local TSM_CELL_WIDTH = 80
+
+-- What TSM's Accounting says about your own trading in the item: a material is
+-- something you paid for, a product something you sold.
+local ACCOUNTING_COLUMNS = {
+    material = { key = "paid", header = "Paid", label = "What the copies you hold cost you" },
+    product  = { key = "sold", header = "Sold", label = "What you sold it for, on average" },
+}
+local VELOCITY_WIDTH = 60
+local VELOCITY_COLORS = {
+    sells = { r = 0.45, g = 0.92, b = 0.45 },
+    slow  = { r = 0.98, g = 0.80, b = 0.35 },
+    dead  = { r = 0.98, g = 0.45, b = 0.42 },
+}
 
 -- Main frame and tabs
 local mainFrame = nil
@@ -390,8 +406,10 @@ local function TsmTooltip(hit, col, itemName, itemData, stats)
             local usedKey = (col.key == "market") and ref.marketKey or ref.historicalKey
             GameTooltip:AddDoubleLine("Value", FormatMoney(value) .. (usedKey and (" (" .. usedKey .. ")") or ""), 1, 1, 1, 1, 0.8, 0.5)
             if ref.time then
-                GameTooltip:AddDoubleLine("Pulled", date("%Y-%m-%d %H:%M", ref.time), 1, 1, 1, 0.8, 0.8, 0.8)
+                GameTooltip:AddDoubleLine("Pulled", date("%Y-%m-%d %H:%M", ref.time)
+                    .. (ref.stale and " (kept; the last read found nothing)" or ""), 1, 1, 1, 0.8, 0.8, 0.8)
             end
+            GameTooltip:AddLine("TSM's AuctionDB changes only at login, after the desktop app syncs.", 0.6, 0.6, 0.6, true)
             if stats and stats.low and stats.high then
                 GameTooltip:AddDoubleLine("Your bounds", FormatMoney(stats.low) .. " - " .. FormatMoney(stats.high), 1, 1, 1, 0.8, 0.8, 0.8)
             end
@@ -404,6 +422,72 @@ local function TsmTooltip(hit, col, itemName, itemData, stats)
             end
         else
             GameTooltip:AddLine("No TSM data. Use Pull TSM on the History tab.", 0.7, 0.7, 0.7)
+        end
+    end)
+end
+
+-- The Sale % cell: TSM's region sale rate as a percentage, graded. nil is "-": TSM
+-- recorded no sales, which is the worst answer, not a missing one.
+local function VelocityText(velocity, grade)
+    local rate = velocity and velocity.rate
+    if not rate then return "-", DIM end
+    return string.format("%.0f%%", rate * 100), VELOCITY_COLORS[grade or "dead"] or DIM
+end
+
+local function VelocityTooltip(hit, itemName, ref)
+    local MAW = _G.MalexisAuctionWatcher
+    Tooltip(hit, function()
+        GameTooltip:AddLine(itemName)
+        GameTooltip:AddLine("Does it sell? (TSM AuctionDB, region-wide)", 0.9, 0.7, 1)
+        local v = ref and ref.velocity
+        if v and (v.rate or v.perDay or v.saleAvg) then
+            if v.rate then
+                GameTooltip:AddDoubleLine("Region sale rate", string.format("%.0f%% of auctions sell", v.rate * 100), 1, 1, 1, 1, 0.8, 0.5)
+            end
+            if v.perDay then
+                GameTooltip:AddDoubleLine("Region sold per day", string.format("%.2f", v.perDay), 1, 1, 1, 1, 0.8, 0.5)
+            end
+            if v.saleAvg then
+                GameTooltip:AddDoubleLine("Region sale average", FormatMoney(v.saleAvg), 1, 1, 1, 1, 0.8, 0.5)
+            end
+        else
+            GameTooltip:AddLine("TSM recorded no sales of it region-wide.", 1, 0.6, 0.6)
+        end
+        if v and v.mine then
+            GameTooltip:AddDoubleLine("Your own sale rate (180d)", string.format("%.0f%%", v.mine * 100), 1, 1, 1, 1, 0.9, 0.6)
+        end
+        if ref and (ref.expires or 0) > 0 then
+            GameTooltip:AddDoubleLine("Expired since your last sale", tostring(ref.expires), 1, 1, 1, 1, 0.9, 0.6)
+        end
+        GameTooltip:AddLine(" ")
+        GameTooltip:AddLine(string.format("Green sells at %d%% or better, amber above the %d%% Convert floor, red below it.",
+            math.floor(MAW.VELOCITY_SELLS_AT * 100 + 0.5),
+            math.floor(MAW:MoverSetting("moverMinSaleRate") * 100 + 0.5)), 0.7, 0.7, 0.7, true)
+    end)
+end
+
+-- The Paid / Sold cell: what TSM's Accounting says you did with the item.
+local function AccountingTooltip(hit, col, itemName, ref)
+    local MAW = _G.MalexisAuctionWatcher
+    Tooltip(hit, function()
+        GameTooltip:AddLine(itemName)
+        GameTooltip:AddLine(col.label, 0.9, 0.7, 1)
+        local value = ref and ref[col.key]
+        if value then
+            local how = (col.key == "paid" and ref.paidKey == "SmartAvgBuy")
+                and " (the copies you hold, newest purchases first)"
+                or (col.key == "paid" and " (all your purchases)" or "")
+            GameTooltip:AddDoubleLine("Value", FormatMoney(value) .. how, 1, 1, 1, 1, 0.8, 0.5)
+        else
+            GameTooltip:AddLine(col.key == "paid" and "TSM has no purchase of it on record."
+                or "TSM has no sale of it on record.", 0.7, 0.7, 0.7)
+        end
+        for _, line in ipairs(MAW:TsmTooltipLines({ tsmRef = ref })) do
+            if line.header then
+                GameTooltip:AddLine(line.header, 0.9, 0.7, 1)
+            else
+                GameTooltip:AddDoubleLine("  " .. line.label, line.value, 1, 1, 1, 1, 0.9, 0.6)
+            end
         end
     end)
 end
@@ -443,6 +527,17 @@ local function RecipeTooltip(hit, calc)
         if #calc.bop > 0 then
             GameTooltip:AddLine("Needs bind on pickup: " .. table.concat(calc.bop, ", ")
                 .. ". The cost is without it; you bring it.", 1, 0.8, 0.4, true)
+        end
+        if calc.fallback and #calc.fallback > 0 then
+            GameTooltip:AddLine("Priced from TSM, not a scan: " .. table.concat(calc.fallback, ", "), 0.86, 0.74, 1, true)
+        end
+        if calc.velocity then
+            local v = calc.velocity
+            GameTooltip:AddDoubleLine("Sells", v.rate
+                and string.format("%.0f%% of region auctions%s", v.rate * 100,
+                    v.perDay and string.format(", %.2f a day", v.perDay) or "")
+                or "no sales recorded region-wide",
+                1, 1, 1, 1, 0.9, 0.6)
         end
         if calc.canMake then
             GameTooltip:AddDoubleLine("Batches you can make now", tostring(calc.canMake), 1, 1, 1, 1, 1, 0.5)
@@ -602,7 +697,7 @@ local function ItemControls(row, col, x, style)
     return box
 end
 
-local function ItemColumns()
+local function ItemColumns(kind)
     local cols = {
         { key = "ctrl", label = "", width = ITEM_CONTROLS_WIDTH, type = "custom", make = ItemControls },
         { key = "name", label = "Item", width = "flex" },
@@ -612,6 +707,11 @@ local function ItemColumns()
             cols[#cols + 1] = { key = "tsm_" .. col.key, label = col.header,
                 width = TSM_CELL_WIDTH, justify = "RIGHT", hit = true, font = "GameFontHighlightSmall" }
         end
+        local acct = ACCOUNTING_COLUMNS[kind]
+        cols[#cols + 1] = { key = "tsm_acct", label = acct.header,
+            width = TSM_CELL_WIDTH, justify = "RIGHT", hit = true, font = "GameFontHighlightSmall" }
+        cols[#cols + 1] = { key = "tsm_rate", label = "Sale %",
+            width = VELOCITY_WIDTH, justify = "RIGHT", hit = true, font = "GameFontHighlightSmall" }
     end
     cols[#cols + 1] = { key = "today", label = "Today", width = 80, justify = "RIGHT", hit = true }
     cols[#cols + 1] = { key = "low",   label = "low",   width = 80, justify = "RIGHT", hit = true }
@@ -671,6 +771,8 @@ local function BuildItemsPage(page, kind)
     local legend = Note(footer,
         "Today: no tag = your scan, |cffe0b060[A]|r = Auctionator, |cffe0b060[T]|r = TSM."
         .. "  TSM 60d/14d = TSM averages (region values when the realm has none)."
+        .. "  " .. ACCOUNTING_COLUMNS[kind].header .. " = your own TSM Accounting."
+        .. "  Sale % = how much of it sells, region-wide."
         .. "\nlow/high: * = set by you, ~ = from TSM, plain = your scans.",
         STYLE.pageWidth - 26)
     legend:SetPoint("TOPLEFT", view.drop, "BOTTOMLEFT", 0, -6)
@@ -683,7 +785,7 @@ local function BuildItemsPage(page, kind)
         local t = CachedTable(page, sig, function()
             return Table(page, {
                 top = 0, bottom = ITEM_FOOTER_H + 4,
-                columns = ItemColumns(),
+                columns = ItemColumns(kind),
                 buttons = { { key = "remove", label = "X", width = 22, kind = "danger" } },
             })
         end)
@@ -706,6 +808,16 @@ local function BuildItemsPage(page, kind)
                     t:Set(row, key, text, color)
                     TsmTooltip(row.hit[key], col, item.name, item.data, stats)
                 end
+
+                local acct = ACCOUNTING_COLUMNS[kind]
+                local mine = ref and ref[acct.key]
+                t:Set(row, "tsm_acct", mine and FormatMoney(mine) or "-", mine and WHITE or DIM)
+                AccountingTooltip(row.hit.tsm_acct, acct, item.name, ref)
+
+                local grade = MAW.VelocityGrade(ref and ref.velocity and ref.velocity.rate,
+                    MAW:MoverSetting("moverMinSaleRate"))
+                t:Set(row, "tsm_rate", VelocityText(ref and ref.velocity, grade))
+                VelocityTooltip(row.hit.tsm_rate, item.name, ref)
             end
 
             t:Set(row, "today", FormatMoney(stats.today) .. SourceTag(item.data),
@@ -1549,7 +1661,7 @@ local function BuildRecipesPage(page)
                 cols[#cols + 1] = {
                     key = col.key, label = col.header, width = col.width,
                     justify = (col.key ~= "name") and "RIGHT" or "LEFT",
-                    hit = (col.key == "name" or col.basis) and true or nil,
+                    hit = (col.key == "name" or col.key == "sells" or col.basis) and true or nil,
                 }
             end
             return Table(page, {
@@ -1579,8 +1691,9 @@ local function BuildRecipesPage(page)
             return a.recipe.name < b.recipe.name
         end)
 
-        local totalProfit, totalMakeable = 0, 0
+        local totalProfit, totalMakeable, anyFallback = 0, 0, false
         t:Render(rows, function(row, calc)
+            if calc.fallback and #calc.fallback > 0 then anyFallback = true end
             local byBasis = {}
             if tsmOn then
                 for _, r in ipairs(MAW:CompareRecipeBases(calc.recipe)) do
@@ -1596,7 +1709,10 @@ local function BuildRecipesPage(page)
                         .. (#calc.bop > 0 and "  |cffffcc00BoP|r" or ""), BONE)
                     RecipeTooltip(row.hit.name, calc)
                 elseif col.key == "matCost" then
-                    t:Set(row, col.key, (calc.complete or #calc.missing == 0) and FormatMoney(calc.matCost) or "?", WHITE)
+                    -- ~ when any material was priced from TSM rather than from a scan
+                    local costText = (calc.complete or #calc.missing == 0) and FormatMoney(calc.matCost) or "?"
+                    if calc.fallback and #calc.fallback > 0 then costText = costText .. "~" end
+                    t:Set(row, col.key, costText, WHITE)
                 elseif col.key == "productValue" then
                     t:Set(row, col.key, calc.productValue and FormatMoney(calc.productValue) or "?", WHITE)
                 elseif col.key == "ahNet" then
@@ -1618,6 +1734,11 @@ local function BuildRecipesPage(page)
                         ProfitColor(calc.profit))
                 elseif col.key == "canMake" then
                     t:Set(row, col.key, calc.canMake and tostring(calc.canMake) or "-", COLOR_AVE)
+                elseif col.key == "sells" then
+                    t:Set(row, col.key, VelocityText(calc.velocity, calc.velocityGrade))
+                    local db = MAW:GetActiveDB()
+                    local productRef = db.items[calc.recipe.product] and db.items[calc.recipe.product].tsmRef
+                    VelocityTooltip(row.hit.sells, calc.recipe.product, productRef)
                 end
             end
 
@@ -1643,8 +1764,9 @@ local function BuildRecipesPage(page)
             self.summary:SetText("No recipes yet. Use Presets or Add Recipe above.")
         else
             self.summary:SetText(string.format(
-                "If you converted everything you own now: %d batches, %s profit",
-                totalMakeable, FormatMoney(totalProfit)))
+                "If you converted everything you own now: %d batches, %s profit%s",
+                totalMakeable, FormatMoney(totalProfit),
+                anyFallback and "   |cffb0a0e0~ priced from TSM where nothing was scanned|r" or ""))
         end
     end
 
@@ -1704,10 +1826,15 @@ local function BuildMoversPage(page)
         local movers = MAW:GetMovers()
         local db = MAW:GetActiveDB()
 
+        local gate = ""
+        if MAW:TsmOn() and MAW:MoverSetting("moverMinSaleRate") > 0 then
+            gate = string.format(" and a TSM sale rate of %d%% (/maw minsale)",
+                math.floor(MAW:MoverSetting("moverMinSaleRate") * 100 + 0.5))
+        end
         self.hint:SetText(string.format(
-            "Buy: any item at or below %d%% of its range.   Convert: recipes above %d%% margin with mats on hand."
+            "Buy: any item at or below %d%% of its range.   Convert: recipes above %d%% margin with mats on hand%s."
             .. "\nList: any item at or above %d%% of range that you hold.",
-            MAW:MoverSetting("moverBuyPct") * 100, MAW:MoverSetting("moverMinMargin"),
+            MAW:MoverSetting("moverBuyPct") * 100, MAW:MoverSetting("moverMinMargin"), gate,
             MAW:MoverSetting("moverSellPct") * 100))
 
         local rows = {}

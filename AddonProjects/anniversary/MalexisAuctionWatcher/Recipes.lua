@@ -68,6 +68,7 @@ function MAW:AddItemByID(itemName, itemID, itemType)
         order = maxOrder + 1,
     }
     self:FireCallbacks("onItemAdded", itemName)
+    if self.SchedulePull then self:SchedulePull("added", { itemName }) end
     return true
 end
 
@@ -85,9 +86,35 @@ function MAW:PriceBasisDef(key)
     return self.PRICE_BASES[1]
 end
 
+--[[
+Pure. When nothing was scanned and no bound was set, the price TSM can stand in with,
+and the source key that says so (all in MAW.FALLBACK_SOURCES). Returns price, key.
+
+A material is something you buy, so a vendor that sells it settles the matter; then the
+market value; then what TSM itself would cost it at as a material or a craft. A product
+is something you sell, so only the market averages apply. Before this a recipe with one
+unscanned material showed "?" for a cost however much TSM knew about it.
+]]
+function MAW.FallbackPrice(ref, itemType)
+    if not ref then return nil end
+    local f = ref.fallback or {}
+    if itemType == "product" then
+        if ref.market then return ref.market, "tsm14" end
+        if ref.historical then return ref.historical, "tsm60" end
+        return nil
+    end
+    if f.vendorBuy then return f.vendorBuy, "vendorbuy" end
+    if ref.market then return ref.market, "tsm14" end
+    if f.matPrice then return f.matPrice, "tsmmat" end
+    if f.crafting then return f.crafting, "tsmcraft" end
+    if ref.historical then return ref.historical, "tsm60" end
+    return nil
+end
+
 -- Per-unit price for a tracked item under a basis ("latest", "tsm14", "tsm60"), with the
 -- source and time it came from. TSM bases fall back to the latest price when TSM has no
--- value for the item. Falls back to custom bounds when there are no observations at all.
+-- value for the item. Falls back to custom bounds when there are no observations at all,
+-- and last to whatever TSM can stand in with (MAW.FallbackPrice) while the feed is on.
 function MAW:GetUnitPrice(itemName, basis)
     local db = self:GetActiveDB()
     local itemData = db.items[itemName]
@@ -115,7 +142,20 @@ function MAW:GetUnitPrice(itemName, basis)
     elseif itemData.customLow or itemData.customHigh then
         return itemData.customLow or itemData.customHigh, "custom", nil
     end
+    if itemData.tsmRef and self:TsmOn() then
+        local price, key = MAW.FallbackPrice(itemData.tsmRef, itemData.itemType)
+        if price then
+            return price, key, itemData.tsmRef.time and date("%Y-%m-%d %H:%M", itemData.tsmRef.time) or nil
+        end
+    end
     return nil
+end
+
+-- The TSM feed is loaded and switched on. One predicate, read wherever a TSM figure
+-- would change what a tab says.
+function MAW:TsmOn()
+    return (self.sources and self.sources.tsm and self.sources.tsm.available
+        and self:IsSourceEnabled("tsm")) and true or false
 end
 
 -- recipe = { name, product = itemName, productCount = n, materials = { {item = name, count = n}, ... } }
@@ -289,6 +329,14 @@ function MAW:ComputeRecipeProfit(recipe, basis)
     result.matCost, result.missing, result.bop = MAW.SumMaterials(result.materials)
     local complete = #result.missing == 0
 
+    -- What was priced from TSM rather than from a scan, so the row can say so.
+    result.fallback = {}
+    for _, line in ipairs(result.materials) do
+        if line.source and MAW.FALLBACK_SOURCES[line.source] then
+            result.fallback[#result.fallback + 1] = line.item
+        end
+    end
+
     local productUnit, productSource, productWhen = self:GetUnitPrice(recipe.product, basis)
     result.productUnit = productUnit
     result.productSource = productSource
@@ -296,9 +344,22 @@ function MAW:ComputeRecipeProfit(recipe, basis)
     if productUnit then
         result.productValue = productUnit * (recipe.productCount or 1)
         result.ahNet = result.productValue * (1 - self:GetAHCut())
+        if MAW.FALLBACK_SOURCES[productSource] then
+            result.fallback[#result.fallback + 1] = recipe.product
+        end
     else
         complete = false
         table.insert(result.missing, recipe.product)
+    end
+
+    -- Whether the product sells, off TSM's region figures. A profitable recipe whose
+    -- product sits on the auction house until it expires is not profitable.
+    if self:TsmOn() then
+        local db = self:GetActiveDB()
+        local productRef = db.items[recipe.product] and db.items[recipe.product].tsmRef
+        result.velocity = productRef and productRef.velocity or nil
+        result.velocityGrade = MAW.VelocityGrade(result.velocity and result.velocity.rate,
+            self:MoverSetting("moverMinSaleRate"))
     end
 
     result.complete = complete
