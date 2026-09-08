@@ -22,6 +22,8 @@ click the coin icon on the minimap.
 | History | Chart of one item, or one recipe, over time: 30 or 90 days, by weekday, by day of month, by hour. Highlights the cheapest and priciest bucket. |
 | Recipes | Material to product conversions with cost, AH net, profit, margin, and how many batches you can make now. |
 | Movers | What to act on right now: cheap materials to buy, profitable recipes you can make, products you hold at a good price. Each row has a Buy, Convert, or List button. |
+| Schedule | This week as a plan: which items are expected cheap or dear in which 4-hour block, from the last weeks' scans, and whether the blocks already behind you held. Behind a toggle, one item's whole week as a grid. |
+| Settings | Every setting on one tab: the price feeds, the auction house cut, the Movers thresholds, and the Schedule's clock, hit rule and floors. |
 
 The tabs run along the top as the navigation bar; the live one is gold. Under them sits
 the control row: Scan AH, the per-tab scan, Sort, then the tab's option (Add Item or
@@ -307,6 +309,56 @@ open. "Refresh Table" recomputes without scanning.
 /maw movers
 ```
 
+## Schedule
+
+Prices on a realm move with the week. Raids reset on Tuesday, so consumables climb Monday
+night; materials sag mid-week; weekends bring more players and more listings. The
+Schedule tab turns the last weeks of scans into a plan for this one.
+
+**The grid.** Seven days by six 4-hour blocks. An item's expected price in a block is the
+mean of that block's **weekly** means over the last 8 weeks (Settings), so a week in
+which you scanned five times one evening counts once. A block needs 2 complete weeks
+before it carries an expectation; until then the grid shows what it has with a `~`.
+
+**The plan.** From the item's own week profile, the blocks in the bottom quarter of its
+range are buys and the top quarter sells, the same quarters Movers uses. A week whose
+spread is under 5% is flat and schedules nothing. The plan lists every scheduled block
+from the week's first day, with the expected price, this week's actual once a scan has
+landed in it, and a status: ahead, now, hit, miss, or no scan. A hit is an actual within
+10% of the expected price (Settings).
+
+**Does the pattern hold?** Each block also judges its past weeks against each other, by
+the same rule, and an item's pattern is the record over its scheduled blocks: "held 3 of
+4 weeks". After three judged weeks, an item that held under the floor (50%, Settings) is
+**set aside**: it drops off the plan, with the number that put it there, and comes back
+when the record climbs. The grid still shows it.
+
+**The clock.** The week runs on server time by default, because raid resets and most
+players' evenings follow the realm's clock whoever is looking. Switch to your local clock
+on the tab or in Settings; nothing is re-recorded, the grid is simply read under the other
+clock. The week starts on Tuesday; Settings moves that.
+
+Scans are what feed it: the tab's Scan button scans the items on this week's plan. The
+store keeps each item's raw scans for the last nine weeks (a few hundred at most), so the
+tab fills in over its first weeks and is not something to judge on day one.
+
+```
+/maw schedule
+```
+
+## Settings
+
+One tab for what used to be a list of slash commands: the Auctionator and TSM feeds; the
+auction house cut, scan-on-open and days of history; the Movers buy and list percentages,
+minimum margin and sale rate; and the Schedule's clock, first day of the week, hit
+tolerance, weeks of expectation, weeks a block needs, and the set-aside floor. Numbers
+apply on Enter and say what they did; the commands keep working and write the same
+settings.
+
+```
+/maw settings
+```
+
 ## Other commands
 
 ```
@@ -329,3 +381,6 @@ Right-click the minimap button to start or cancel a scan. Drag it to move it.
 
 Account-wide by default. Tick "Character-Specific Data" to keep a separate list per
 character; you are offered a copy of the account data the first time.
+
+Each item keeps its recent prices, the daily and hourly history buckets, and since 1.23.0
+`history.obs`, the raw scans of the last nine weeks that the Schedule tab reads.

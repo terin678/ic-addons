@@ -1941,6 +1941,33 @@ local BUILDERS = {
     movers    = BuildMoversPage,
 }
 
+-- What the per-tab scan button says. A key missing here reads "Scan Tab".
+local SCAN_LABELS = {
+    materials = "Scan Materials", products = "Scan Products", stores = "Scan All",
+    recipes = "Scan Recipes", history = "Scan Item", movers = "Scan All",
+}
+
+-- A page in its own file registers here at load, before the window is built. The
+-- builder gets the page frame and returns a view with a Refresh method.
+function MAWUI.RegisterTab(key, label, builder, scanLabel)
+    TABS[#TABS + 1] = { key = key, label = label }
+    BUILDERS[key] = builder
+    if scanLabel then SCAN_LABELS[key] = scanLabel end
+end
+
+-- The file-local helpers a page in another file needs, handed over once so no page
+-- copies a colour or a wrapper.
+MAWUI.kit = {
+    ICUI = ICUI, STYLE = STYLE,
+    Button = Button, Toolbar = Toolbar, Table = Table, Tooltip = Tooltip, Note = Note,
+    CachedTable = CachedTable, FormatMoney = FormatMoney, GetPriceColor = GetPriceColor,
+    SourceTooltip = SourceTooltip,
+    colors = {
+        LOW = COLOR_LOW, AVE = COLOR_AVE, HIGH = COLOR_HIGH, BELOW = COLOR_BELOW, ABOVE = COLOR_ABOVE,
+        DIM = DIM, WHITE = WHITE, BONE = BONE, GOLD = GOLD, TSM = TSM_TINT,
+    },
+}
+
 -- Create the main UI
 function MAWUI:CreateUI()
     if mainFrame then
@@ -2156,11 +2183,7 @@ function MAWUI:RefreshData()
     end
 
     -- Per-tab control bar
-    local scanLabels = {
-        materials = "Scan Materials", products = "Scan Products", stores = "Scan All",
-        recipes = "Scan Recipes", history = "Scan Item", movers = "Scan All",
-    }
-    mainFrame.scanTabBtn:SetText(scanLabels[currentTab] or "Scan Tab")
+    mainFrame.scanTabBtn:SetText(SCAN_LABELS[currentTab] or "Scan Tab")
 
     local onItems = (currentTab == "materials" or currentTab == "products")
     mainFrame.sortBtn:SetShown(onItems)
@@ -2171,7 +2194,7 @@ function MAWUI:RefreshData()
     if currentTab == "stores" then
         mainFrame.refreshBtn:SetText("Refresh Counts")
         mainFrame.refreshBtn:Show()
-    elseif currentTab == "recipes" or currentTab == "movers" then
+    elseif currentTab == "recipes" or currentTab == "movers" or currentTab == "schedule" then
         mainFrame.refreshBtn:SetText("Refresh Table")
         mainFrame.refreshBtn:Show()
     else

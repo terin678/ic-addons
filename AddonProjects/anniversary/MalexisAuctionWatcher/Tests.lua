@@ -320,6 +320,150 @@ T.Case("TSM fallback: what stands in for a scan, in order", function()
     T.Eq(MAW.FallbackPrice({}, "material"), nil, "an empty one neither")
 end)
 
+--------------------------------------------------------------------------------
+-- Schedule: the week as a grid
+--------------------------------------------------------------------------------
+
+-- Tuesday 8 September 2026, local midnight, and moments relative to it.
+local TUE = time({ year = 2026, month = 9, day = 8, hour = 0, min = 0, sec = 0 })
+local function at(days, hour) return TUE + days * 86400 + hour * 3600 end
+
+T.Case("Schedule: a moment lands on a weekday, a block and a week that starts on reset day", function()
+    local slot, wday, block, week = MAW.ScheduleSlot(at(0, 21), 0, 3)
+    T.Eq(wday, 3, "a Tuesday")
+    T.Eq(block, 6, "21:00 is the last block")
+    T.Eq(slot, 18, "(3 - 1) * 6 + 6")
+    T.Eq(select(4, MAW.ScheduleSlot(at(7, 21), 0, 3)), week + 1, "a week later is the next week")
+    T.Eq(select(4, MAW.ScheduleSlot(at(6, 21), 0, 3)), week, "Monday night is still this week")
+    T.Eq(select(4, MAW.ScheduleSlot(at(-1, 21), 0, 3)), week - 1, "and Monday before it was last week")
+    T.Eq(select(4, MAW.ScheduleSlot(at(-1, 21), 0, 2)), week, "unless the week starts on Monday")
+
+    -- The clock offset moves the block, not the data: 21:00 read three hours ahead is
+    -- midnight, the first block of Wednesday.
+    local s2, w2, b2 = MAW.ScheduleSlot(at(0, 21), 3 * 3600, 3)
+    T.Eq(w2, 4, "Wednesday under a clock three hours ahead")
+    T.Eq(b2, 1, "in its first block")
+    T.Eq(s2, 19, "the next slot along")
+
+    T.Eq(MAW.SlotPosition(18, 3), 6, "Tuesday 20-24 is the sixth block of a week that starts on Tuesday")
+    T.Eq(MAW.SlotPosition(1, 3), 5 * 6 + 1, "and Sunday 00-04 is deep in it")
+end)
+
+T.Case("Schedule: an expectation is the mean of weekly means, judged week against week", function()
+    -- Four completed weeks of a Tuesday-evening scan at 100, 110, 90, 100, a Saturday
+    -- afternoon at 300 every week, one Wednesday morning, and this week's Tuesday at 104.
+    local obs = {}
+    local function add(t, p) obs[#obs + 1] = t; obs[#obs + 1] = p end
+    local tue = { 100, 110, 90, 100 }
+    for w = 0, 3 do
+        add(at(w * 7, 21), tue[w + 1])
+        add(at(w * 7, 21.5), tue[w + 1])        -- a second scan the same evening counts once
+        add(at(w * 7 + 4, 13), 300)             -- Saturday 12-16
+    end
+    add(at(1, 9), 120)                          -- Wednesday 08-12, one week only
+    add(at(28, 21), 104)                        -- this week's Tuesday
+    local now = at(28 + 2, 21)                  -- Thursday evening of the fifth week
+
+    local s = MAW.ComposeSchedule(obs, now, { offset = 0, weeks = 8, tolerancePct = 10, minWeeks = 2, weekStart = 3 })
+    local tueSlot = s.slots[18]
+    T.Near(tueSlot.expected, 100, "the mean of the four weekly means")
+    T.Eq(tueSlot.weeksSeen, 4, "four complete weeks")
+    T.Eq(tueSlot.hits, 2, "100 and 100 sit within 10% of the other weeks")
+    T.Eq(tueSlot.misses, 2, "110 and 90 do not")
+    T.Eq(tueSlot.action, "buy", "the cheap end of the week")
+    T.Near(tueSlot.actual.avg, 104, "this week's scan")
+    T.Eq(tueSlot.status, "hit", "within 10% of what was expected")
+
+    local satSlot = s.slots[(7 - 1) * 6 + 4]
+    T.Near(satSlot.expected, 300, "steady at 300")
+    T.Eq(satSlot.action, "sell", "the dear end")
+    T.Eq(satSlot.status, "pending", "Saturday is still ahead on Thursday")
+    T.Eq(satSlot.hits, 4, "and it held every week")
+
+    local wedSlot = s.slots[(4 - 1) * 6 + 3]
+    T.Eq(wedSlot.expected, nil, "one week is not enough for an expectation")
+    T.Near(wedSlot.mean, 120, "but the grid can still show what it has")
+    T.Eq(wedSlot.status, "noscan", "behind us this week, and nothing scanned")
+
+    T.Eq(s.slots[s.currentSlot].status, "now", "the block we are in")
+    T.Near(s.min, 100, "cheap end")
+    T.Near(s.max, 300, "dear end")
+    T.Eq(s.flat, false, "a real spread")
+    T.Eq(s.judged.hits, 6, "hits over the action slots")
+    T.Eq(s.judged.misses, 2, "and misses")
+    T.Near(s.reliability, 0.75, "three quarters held")
+
+    -- The same price everywhere is a flat week: nothing to schedule.
+    local flat = {}
+    for w = 0, 3 do
+        flat[#flat + 1] = at(w * 7, 21); flat[#flat + 1] = 100
+        flat[#flat + 1] = at(w * 7 + 4, 13); flat[#flat + 1] = 102
+    end
+    local f = MAW.ComposeSchedule(flat, now, { weeks = 8, minWeeks = 2, weekStart = 3 })
+    T.Eq(f.flat, true, "two percent apart is flat")
+    T.Eq(f.slots[18].action, nil, "so nothing is a buy")
+
+    T.Eq(MAW.ComposeSchedule({}, now, {}).flat, true, "and nothing at all is flat")
+    T.Eq(MAW.ComposeSchedule(nil, now, {}).reliability, nil, "with nothing judged")
+end)
+
+T.Case("Schedule: the week's plan runs from reset day and sets a failing pattern aside", function()
+    local function schedule(actions, hits, misses)
+        local sc = { slots = {}, judged = { hits = hits, misses = misses }, currentSlot = 20, flat = false }
+        for i = 1, 42 do sc.slots[i] = { hits = 0, misses = 0, weeksSeen = 3, status = "pending" } end
+        for slot, action in pairs(actions) do
+            sc.slots[slot].action = action
+            sc.slots[slot].expected = action == "buy" and 100 or 300
+        end
+        local j = hits + misses
+        if j > 0 then sc.reliability = hits / j end
+        return sc
+    end
+    local items = {
+        { name = "Felweed", itemType = "material", schedule = schedule({ [18] = "buy", [40] = "sell" }, 5, 1) },
+        { name = "Flask", itemType = "product", schedule = schedule({ [30] = "sell" }, 1, 3) },
+        { name = "Steady", itemType = "material", schedule = { flat = true, slots = {}, judged = { hits = 0, misses = 0 } } },
+        { name = "New", itemType = "material", schedule = schedule({ [1] = "buy" }, 0, 0) },
+    }
+    local plan = MAW.WeekPlan(items, { weekStart = 3, minReliabilityPct = 50 })
+    T.Eq(plan.days[1].label, "Tue", "the week starts on reset day")
+    T.Eq(plan.days[7].label, "Mon", "and ends the night before")
+    T.Eq(plan.days[1].rows[1].name, "Felweed", "Tuesday's buy")
+    T.Eq(plan.days[1].rows[1].action, "buy", "is a buy")
+    T.Eq(plan.days[5].rows[1].name, "Felweed", "Saturday 12-16")
+    T.Eq(plan.days[5].rows[1].action, "sell", "is a sell")
+    T.Eq(plan.days[6].rows[1].name, "New", "Sunday's unjudged buy is still listed")
+    T.Eq(plan.scheduled, 2, "two items on the plan")
+    T.Eq(#plan.setAside, 1, "one set aside")
+    T.Eq(plan.setAside[1].name, "Flask", "the one that held one week in four")
+    T.Eq(plan.days[3].rows[1], nil, "and its Thursday sell is gone from the plan")
+
+    local lenient = MAW.WeekPlan(items, { weekStart = 3, minReliabilityPct = 20 })
+    T.Eq(#lenient.setAside, 0, "a lower floor keeps it")
+    T.Eq(lenient.days[3].rows[1].name, "Flask", "Thursday 20-24, back on the plan")
+end)
+
+T.Case("Schedule: the ring keeps the last weeks and the last few hundred, oldest first", function()
+    local obs = { 1, 10, 5, 11, 9, 12 }
+    MAW.PruneObs(obs, 5)
+    T.Eq(#obs, 4, "the pair before the cutoff is gone")
+    T.Eq(obs[1], 5, "and the rest kept their order")
+    MAW.PruneObs(obs, 0, 1)
+    T.Eq(#obs, 2, "one pair when one is the cap")
+    T.Eq(obs[2], 12, "the newest")
+    T.Eq(#MAW.PruneObs({}, 5), 0, "nothing is nothing")
+    T.Eq(#MAW.PruneObs({ 7 }, 0), 0, "and a dangling timestamp is dropped rather than paired with nothing")
+
+    -- The prices ring is newest first and mixed; the seed is oldest first and clean.
+    local seeded = MAW.SeedObs({
+        { timestamp = 9, buyoutPerUnit = 12 },
+        { timestamp = 5, buyoutPerUnit = 0, minBidPerUnit = 11 },
+        { buyoutPerUnit = 99 },
+    })
+    T.Eq(#seeded, 4, "two usable entries")
+    T.Eq(seeded[1] .. "," .. seeded[2] .. "," .. seeded[3] .. "," .. seeded[4], "5,11,9,12", "oldest first, bid where there was no buyout")
+end)
+
 T.Case("Window scale: a usable percentage survives, an unusable one is clamped", function()
     local UI = _G.MalexisAuctionWatcherUI
     if not UI or not UI.ClampScale then
