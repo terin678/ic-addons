@@ -199,6 +199,19 @@ Two Karazhan encounters are missing on purpose: the Opera Event and the Chess Ev
 of their mobs appear in the bundled mob database, and shipping a toggle that silently
 never fires would be worse than not offering it.
 
+### One warning per fight
+
+However many people die, a fight gets **one** death warning. The first death that clears
+every other gate is announced; nothing else is, until you have left combat and pulled
+again. Tanks and healers share that single call rather than getting one each.
+
+A wipe kills everybody, and eight raid warnings inside twenty seconds is how a raid learns
+to stop reading raid warnings. The first death is the one carrying information, and it
+arrives exactly when nobody has attention to spare for the rest.
+
+Deaths that are not announced for this reason are not lost: `/mfd log` records each one as
+`this fight already had its warning`.
+
 ### Changing your mind mid raid
 
 Each kind has its own **Right now** button, on the Deaths tab, on the action bar, and on
