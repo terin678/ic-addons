@@ -125,7 +125,6 @@ function Healers:OnDeath(name, now)
         return
     end
 
-
     -- One warning per person per fight. Asked last of all, after every other
     -- gate has said yes, so a death that was going to be filtered out anyway
     -- never spends this person's call for the fight.
