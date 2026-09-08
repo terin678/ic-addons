@@ -135,6 +135,18 @@ function Chatter.Say(message, channel, target, force)
         return false
     end
 
+    -- A target that is not a name means a call site passed force positionally
+    -- into the target slot. That threw while building the log line below and
+    -- took the message down with it, which is how every tank death, healer
+    -- death and buff callout in a full raid night was lost. Drop the bad target
+    -- rather than the message: sending is the point of the call, logging it is
+    -- not.
+    if target ~= nil and type(target) ~= "string" then
+        MFD.Log.Add(MFD.Log.KINDS.ERROR,
+            "Say called with a " .. type(target) .. " target; ignoring it")
+        target = nil
+    end
+
     local now = GetTime()
     local ok, reason = Chatter.Allow(Chatter.state, channel, now, Chatter.LIMITS, force)
 

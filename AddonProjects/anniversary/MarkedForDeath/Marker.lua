@@ -1168,8 +1168,8 @@ function Announce.PostNow()
         return false, "the addon is switched off"
     end
 
-    local target = (IsInRaid and IsInRaid() and "RAID") or (IsInGroup and IsInGroup() and "PARTY") or nil
-    if not target then
+    local channel = (IsInRaid and IsInRaid() and "RAID") or (IsInGroup and IsInGroup() and "PARTY") or nil
+    if not channel then
         return false, "you are not in a group"
     end
 
@@ -1193,7 +1193,7 @@ function Announce.PostNow()
     end
 
     -- Forced: a button press is not something to swallow.
-    MFD.Chatter.Say("[MFD] " .. line, target, true)
+    MFD.Chatter.Say("[MFD] " .. line, channel, nil, true)
 
     Announce.lastManualAt = now
     Announce.lastAt = now

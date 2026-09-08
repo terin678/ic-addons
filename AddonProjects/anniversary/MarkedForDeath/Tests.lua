@@ -3700,4 +3700,161 @@ T.Case("Actions: an action that throws is caught and named", function()
     T.Eq(#errors, 1, "one error, and the tick that follows still runs")
 end)
 
+-- ---------------------------------------------- death announcements go out --
+
+-- Chatter.Say takes (message, channel, target, force). Four call sites passed
+-- the force flag positionally into the target slot, so Say built the log line
+-- "RAID_WARNING to true: ..." and threw on the concatenation before
+-- SendChatMessage was ever reached. Every tank death, every healer death and
+-- every raid check callout failed that way for a whole raid night, silently
+-- from the raid's point of view: 28 errors in the addon's own log against 49
+-- deaths seen.
+--
+-- Exercised through OnDeath rather than through Say, because Say was never the
+-- part that was wrong. A test of Say with correct arguments passes either way;
+-- only the call site can catch this.
+local function withGlobals(fields, fn)
+    local saved = {}
+    for key, value in pairs(fields) do
+        saved[key] = rawget(_G, key)
+        _G[key] = value
+    end
+    local ok, err = pcall(fn)
+    for key in pairs(fields) do
+        _G[key] = saved[key]
+    end
+    if not ok then
+        error(err, 2)
+    end
+end
+
+-- The gates in front of the announcement are each tested on their own; this
+-- opens all of them so the only thing left under test is what reaches the
+-- client.
+local function captureDeath(who, playerName, now, sameFight)
+    local sent
+    now = now or 1000
+    local realDB, realEnabled = MFD.db, MFD.IsEnabled
+    local realComms, realShould = MFD.Comms, MFD.Encounters.ShouldAnnounce
+
+    if not sameFight then
+        MFD.Encounters.deaths = {}
+    end
+
+    MFD.db = {
+        log = {},
+        settings = {
+            isLogEnabled = true,
+            deaths = {
+                tank = { names = "Grimmtusk" },
+                healer = { names = "Malexis" },
+            },
+        },
+    }
+    MFD.IsEnabled = function() return true end
+    MFD.Comms = { IsAuthority = function() return true end }
+    MFD.Encounters.ShouldAnnounce = function() return true end
+    MFD.Chatter.state = MFD.Chatter.NewState()
+
+    local ok, err = pcall(withGlobals, {
+        GetTime = function() return now end,
+        IsInRaid = function() return true end,
+        UnitIsGroupLeader = function() return true end,
+        SendChatMessage = function(message, channel, _, target)
+            sent = { message = message, channel = channel, target = target }
+        end,
+    }, function()
+        if who == "tank" then
+            MFD.Tanks:OnDeath(playerName, now)
+        else
+            MFD.Healers:OnDeath(playerName, now)
+        end
+    end)
+
+    MFD.db, MFD.IsEnabled = realDB, realEnabled
+    MFD.Comms, MFD.Encounters.ShouldAnnounce = realComms, realShould
+    if not ok then
+        error(err, 2)
+    end
+    return sent
+end
+
+T.Case("Tanks: a tank death reaches the client as a raid warning", function()
+    local sent = captureDeath("tank", "Grimmtusk")
+    T.Eq(sent ~= nil, true, "the announcement went out at all")
+    T.Eq(sent.channel, "RAID_WARNING", "channel")
+    T.Eq(sent.target, nil, "a raid warning is not whispered at anybody")
+end)
+
+T.Case("Healers: a healer death reaches the client as a raid warning", function()
+    local sent = captureDeath("healer", "Malexis")
+    T.Eq(sent ~= nil, true, "the announcement went out at all")
+    T.Eq(sent.channel, "RAID_WARNING", "channel")
+    T.Eq(sent.target, nil, "a raid warning is not whispered at anybody")
+end)
+
+-- ------------------------------------------- one death warning per fight --
+
+T.Case("Encounters: a fight has one death warning and no more", function()
+    local state = {}
+    T.Eq(MFD.Encounters.TakeDeathCall(state), true, "the first death of the fight")
+    T.Eq(MFD.Encounters.TakeDeathCall(state), false, "not the second")
+    T.Eq(MFD.Encounters.TakeDeathCall(state), false, "and not the eighth of a wipe")
+
+    MFD.Encounters.EndFight(state)
+    T.Eq(MFD.Encounters.TakeDeathCall(state), true, "the next pull gets its own")
+end)
+
+T.Case("Deaths: tanks and healers share the fight's one warning", function()
+    T.Eq(captureDeath("tank", "Grimmtusk", 3000) ~= nil, true,
+        "the tank death goes out")
+    T.Eq(captureDeath("healer", "Malexis", 3005, true), nil,
+        "a healer dying in the same fight is not announced on top of it")
+
+    MFD.Encounters.EndFight(MFD.Encounters.deaths)
+    T.Eq(captureDeath("healer", "Malexis", 3020, true) ~= nil, true,
+        "and the next fight is announced again")
+end)
+
+-- ------------------------------------------------- the callout button out --
+
+-- The same argument bug that lost every death call also threw here, on the
+-- button in the raid check window. Scan and SortedRows are stubbed because
+-- neither can run without a client; what is under test is that a callout
+-- reaches SendChatMessage at all, which is what stopped working.
+T.Case("RaidCheck: the buff callout button reaches the client", function()
+    local sent = {}
+    local realDB, realEnabled = MFD.db, MFD.IsEnabled
+    local realScan, realRows = MFD.RaidCheck.Scan, MFD.RaidCheck.SortedRows
+
+    MFD.db = { log = {}, settings = { isLogEnabled = true } }
+    MFD.IsEnabled = function() return true end
+    MFD.RaidCheck.Scan = function() end
+    MFD.RaidCheck.SortedRows = function()
+        return { { name = "Grimmtusk", missing = { { label = "Spirit" } } } }
+    end
+    MFD.Chatter.state = MFD.Chatter.NewState()
+
+    local ok, err = pcall(withGlobals, {
+        GetTime = function() return 5000 end,
+        IsInRaid = function() return true end,
+        SendChatMessage = function(message, channel, _, target)
+            sent[#sent + 1] = { message = message, channel = channel, target = target }
+        end,
+    }, function()
+        MFD.RaidCheck:PostCallout()
+    end)
+
+    MFD.db, MFD.IsEnabled = realDB, realEnabled
+    MFD.RaidCheck.Scan, MFD.RaidCheck.SortedRows = realScan, realRows
+    if not ok then
+        error(err, 2)
+    end
+
+    T.Eq(#sent, 1, "one line went out")
+    T.Eq(sent[1].channel, "RAID", "to raid chat")
+    T.Eq(sent[1].target, nil, "and not whispered at anybody")
+    T.Eq(sent[1].message, "[MFD] Spirit: Grimmtusk", "the line itself")
+end)
+
 _G.MarkedForDeath = MFD

@@ -175,6 +175,10 @@ end
 -- announcers; set from the marker's tick, which already has the candidates.
 Encounters.active = nil
 
+-- Whether this fight has already had its one death warning. Cleared when combat
+-- ends, which is the only thing that starts a new fight.
+Encounters.deaths = {}
+
 local index
 
 -- Built once and kept, because the boss table never changes at runtime.
@@ -247,6 +251,33 @@ function Encounters.PackColumns(sizes, maxColumns)
     return total, 1
 end
 
+-- One death warning per fight, shared by tanks and healers.
+--
+-- A wipe kills everybody, and eight raid warnings inside twenty seconds is how
+-- a raid learns to stop reading raid warnings at all. The first death is the
+-- one that carries information: something has gone wrong. The rest are noise
+-- laid on top of it, and they arrive exactly when nobody has attention to
+-- spare. Tanks and healers share the single call for the same reason, since the
+-- raid does not need telling twice that it is in trouble.
+--
+-- Pure, and the caller owns `state`, so the gate can be exercised without
+-- combat. Returns true at most once per fight; the caller only asks when it has
+-- already decided it would otherwise announce.
+function Encounters.TakeDeathCall(state)
+    if state.calledThisFight then
+        return false
+    end
+
+    state.calledThisFight = true
+    return true
+end
+
+-- Leaving combat is what makes the next pull a new fight, so the next pull gets
+-- a warning of its own. Pure.
+function Encounters.EndFight(state)
+    state.calledThisFight = nil
+end
+
 -- Ticks every boss for tanks the first time this block exists, so the shipped
 -- default announces tank deaths everywhere, which is what it has always done.
 --
@@ -294,6 +325,7 @@ MFD.RegisterInit(function()
             -- Out of combat there is no fight to be in. The tick would work
             -- this out too, but only if this client happens to be marking.
             Encounters.active = nil
+            Encounters.EndFight(Encounters.deaths)
             return
         end
 
