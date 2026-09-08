@@ -694,8 +694,8 @@ function RC:PostCallout()
         return
     end
 
-    local target = (IsInRaid and IsInRaid() and "RAID") or (IsInGroup and IsInGroup() and "PARTY") or nil
-    if not target then
+    local channel = (IsInRaid and IsInRaid() and "RAID") or (IsInGroup and IsInGroup() and "PARTY") or nil
+    if not channel then
         MFD.Error("not in a group")
         return
     end
@@ -711,7 +711,7 @@ function RC:PostCallout()
     for _, line in ipairs(lines) do
         -- Forced: this is a button press, it is already held to one per ten
         -- seconds, and half a callout is worse than none.
-        MFD.Chatter.Say("[MFD] " .. line, target, true)
+        MFD.Chatter.Say("[MFD] " .. line, channel, nil, true)
     end
 end
 
