@@ -3795,25 +3795,29 @@ end)
 
 -- ------------------------------------------- one death warning per fight --
 
-T.Case("Encounters: a fight has one death warning and no more", function()
+T.Case("Encounters: one death warning per person per fight", function()
     local state = {}
-    T.Eq(MFD.Encounters.TakeDeathCall(state), true, "the first death of the fight")
-    T.Eq(MFD.Encounters.TakeDeathCall(state), false, "not the second")
-    T.Eq(MFD.Encounters.TakeDeathCall(state), false, "and not the eighth of a wipe")
+    T.Eq(MFD.Encounters.TakeDeathCall(state, "Dezedin"), true, "Dezedin dies")
+    T.Eq(MFD.Encounters.TakeDeathCall(state, "Dezedin"), false, "and is not called twice")
+    T.Eq(MFD.Encounters.TakeDeathCall(state, "Moophi"), true,
+        "somebody else dying later in the same fight is worth saying")
+    T.Eq(MFD.Encounters.TakeDeathCall(state, "Moophi"), false, "once")
 
     MFD.Encounters.EndFight(state)
-    T.Eq(MFD.Encounters.TakeDeathCall(state), true, "the next pull gets its own")
+    T.Eq(MFD.Encounters.TakeDeathCall(state, "Dezedin"), true, "the next pull starts over")
 end)
 
-T.Case("Deaths: tanks and healers share the fight's one warning", function()
+T.Case("Deaths: a tank and a healer in one fight are two warnings", function()
     T.Eq(captureDeath("tank", "Grimmtusk", 3000) ~= nil, true,
         "the tank death goes out")
-    T.Eq(captureDeath("healer", "Malexis", 3005, true), nil,
-        "a healer dying in the same fight is not announced on top of it")
+    T.Eq(captureDeath("healer", "Malexis", 3005, true) ~= nil, true,
+        "and a healer dying later in the same fight gets one of their own")
+    T.Eq(captureDeath("healer", "Malexis", 3020, true), nil,
+        "but nobody is called twice in one fight")
 
     MFD.Encounters.EndFight(MFD.Encounters.deaths)
-    T.Eq(captureDeath("healer", "Malexis", 3020, true) ~= nil, true,
-        "and the next fight is announced again")
+    T.Eq(captureDeath("healer", "Malexis", 3040, true) ~= nil, true,
+        "and the next fight starts over")
 end)
 
 -- ------------------------------------------------- the callout button out --

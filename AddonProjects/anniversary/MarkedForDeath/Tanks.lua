@@ -135,12 +135,12 @@ function Tanks:OnDeath(name, now)
     end
 
 
-    -- One warning per fight, shared with healer deaths. Asked last of all, after
-    -- every other gate has said yes, so a death that was going to be filtered
-    -- out anyway never spends the fight's single call.
-    if not MFD.Encounters.TakeDeathCall(MFD.Encounters.deaths) then
+    -- One warning per person per fight. Asked last of all, after every other
+    -- gate has said yes, so a death that was going to be filtered out anyway
+    -- never spends this person's call for the fight.
+    if not MFD.Encounters.TakeDeathCall(MFD.Encounters.deaths, name) then
         MFD.Log.Add(MFD.Log.KINDS.HELD,
-            "tank death not called: this fight already had its warning")
+            "tank death not called: " .. name .. " was already called this fight")
         return
     end
 
