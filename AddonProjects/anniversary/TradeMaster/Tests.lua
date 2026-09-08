@@ -71,10 +71,13 @@ local function classify(text, over)
     local norm = ns.Util.Normalize(text)
     local filter = over.filter or filterFor(profile)
     if over.isDirect then filter.requireBuyerSignal = false end
+    local book = over.book or (profile == ALCH and alchBook() or jcBook())
+    local matched = ns.Matcher.Match(text, norm, index)
     return ns.Classifier.Evaluate({
         norm = norm,
         raw = text,
-        matched = ns.Matcher.Match(text, norm, index),
+        matched = matched,
+        materialsOnly = ns.Classifier.MaterialsOnly(matched, book, profile),
         linkCount = #ns.Util.ExtractItemIDs(text),
         hasRecipeLink = over.hasRecipeLink or false,
         namedUnknownItem = over.namedUnknownItem or false,
@@ -537,6 +540,104 @@ T.Case("Trade.Classify separates raw mats from finished products", function()
     T.Eq(delivered[24048], 2, "delivered")
 end)
 
+--------------------------------------------------------------------------------
+-- Materials check
+--------------------------------------------------------------------------------
+
+-- Haste Potion: 2 Primal Fire-ish (22789), 1 of 22791, 1 vial (18256), one per craft.
+-- Major Fire Protection: 1 of 21884, 3 of 22793, 5 vials; five per craft.
+local function haste(qty, source)
+    return { items = { { itemID = 22838, qty = qty or 1, qtySource = source or "default" } } }
+end
+
+T.Case("MatsNeeded sums reagents across items and rounds crafts up by batch size", function()
+    local need = ns.Orders.MatsNeeded(haste(2, "manual"), alchBook())
+    T.Eq(need[22789].need, 4, "two crafts of two")
+    T.Eq(need[22791].need, 2, "two crafts of one")
+    T.Eq(need[18256].need, 2, "vials")
+    -- 10 potions at five per craft is two crafts; 11 is three.
+    local o = { items = { { itemID = 22841, qty = 11, qtySource = "manual" } } }
+    T.Eq(ns.Orders.MatsNeeded(o, alchBook())[22793].need, 9, "three crafts of three")
+    -- Two items sharing the vial add up.
+    local both = { items = { { itemID = 22838, qty = 1, qtySource = "manual" },
+                             { itemID = 22841, qty = 5, qtySource = "manual" } } }
+    T.Eq(ns.Orders.MatsNeeded(both, alchBook())[18256].need, 6, "one plus five vials")
+end)
+
+T.Case("MatsNeeded names a reagent it could not identify instead of dropping it", function()
+    local book = {
+        [1] = { itemID = 1, name = "Thing", numMade = 1, reagents = { [10] = 2 },
+                reagentList = { { itemID = 10, name = "Leather", count = 2 },
+                                { name = "Rune Thread", count = 1 } } },
+    }
+    local need, unknown = ns.Orders.MatsNeeded({ items = { { itemID = 1, qty = 1, qtySource = "manual" } } }, book)
+    T.Eq(need[10].need, 2, "the known reagent")
+    T.Eq(need[10].name, "Leather", "named off the reagent list")
+    T.Eq(unknown[1], "Rune Thread", "the uncached one is named")
+end)
+
+T.Case("MatsCheck measures a stated count exactly", function()
+    local exact = ns.Orders.MatsCheck(haste(2, "manual"), alchBook(), { [22789] = 4, [22791] = 2, [18256] = 2 })
+    T.Eq(exact.verdict, "exact", "exact")
+    T.Eq(#exact.rows, 3, "three reagents")
+    T.Eq(exact.rows[1].delta, 0, "no delta")
+
+    local short = ns.Orders.MatsCheck(haste(2, "manual"), alchBook(), { [22789] = 4, [22791] = 1, [18256] = 2 })
+    T.Eq(short.verdict, "short", "short")
+    local over = ns.Orders.MatsCheck(haste(2, "manual"), alchBook(), { [22789] = 6, [22791] = 2, [18256] = 2 })
+    T.Eq(over.verdict, "over", "over")
+    local mixed = ns.Orders.MatsCheck(haste(2, "manual"), alchBook(), { [22789] = 6, [22791] = 1, [18256] = 2 })
+    T.Eq(mixed.verdict, "mixed", "mixed")
+    T.Eq(ns.Orders.MatsCheck(haste(2, "text"), alchBook(), { [22789] = 4, [22791] = 2, [18256] = 2 }).verdict,
+        "exact", "a count from their text is a stated count")
+end)
+
+T.Case("MatsCheck measures a guessed count against the most generous reagent", function()
+    -- Six of the two-per reagent supports three crafts; one of the one-per supports one.
+    local c = ns.Orders.MatsCheck(haste(1, "default"), alchBook(), { [22789] = 6, [22791] = 1, [18256] = 3 })
+    T.Eq(c.crafts[22838], 3, "three crafts implied")
+    T.Eq(c.verdict, "short", "the thread is short")
+    local byID = {}
+    for _, row in ipairs(c.rows) do byID[row.id] = row end
+    T.Eq(byID[22791].delta, -2, "short by two")
+    T.Eq(byID[22789].delta, 0, "the reagent that set the count is exact")
+    T.Eq(c.setBy[22838] == 22789 or c.setBy[22838] == 18256, true, "set by one of the two that tie")
+
+    -- Nothing in the window: one craft's worth is listed, and the verdict says so.
+    local empty = ns.Orders.MatsCheck(haste(1, "default"), alchBook(), {})
+    T.Eq(empty.verdict, "nothing", "nothing")
+    T.Eq(empty.crafts[22838], 1, "one craft assumed")
+    T.Eq(byID[22789].need, 6, "the guessed order asked for six once three crafts were implied")
+end)
+
+T.Case("MatsCheck reports mats that belong to no recipe on the order", function()
+    local c = ns.Orders.MatsCheck(haste(1, "manual"), alchBook(), { [22789] = 2, [22791] = 1, [18256] = 1, [99999] = 4 })
+    T.Eq(c.verdict, "over", "extra counts as over")
+    T.Eq(#c.unexpected, 1, "one unexpected")
+    T.Eq(c.unexpected[1].have, 4, "with its count")
+    T.True(ns.Orders.DescribeCheck(c):find("not on this order", 1, true), "described")
+end)
+
+T.Case("MatsCheck refuses to measure two guessed items that share a reagent", function()
+    local o = { items = { { itemID = 24033, qty = 1, qtySource = "default" },
+                          { itemID = 24048, qty = 1, qtySource = "default" } } }
+    local c = ns.Orders.MatsCheck(o, reagentBook(), { [23436] = 3 })
+    T.Eq(c.verdict, "ambiguous", "ambiguous")
+    T.Eq(c.rows[1].have, 3, "still lists what is in the window")
+    -- Both stated: the shared reagent just adds up.
+    o.items[1].qtySource, o.items[1].qty = "manual", 2
+    o.items[2].qtySource, o.items[2].qty = "manual", 1
+    T.Eq(ns.Orders.MatsCheck(o, reagentBook(), { [23436] = 3 }).verdict, "exact", "stated counts add up")
+end)
+
+T.Case("DescribeCheck says what is short and what is over", function()
+    local c = ns.Orders.MatsCheck(haste(2, "manual"), alchBook(), { [22789] = 6, [22791] = 1, [18256] = 2 })
+    local text = ns.Orders.DescribeCheck(c)
+    T.True(text:find("short 1", 1, true), "short named")
+    T.True(text:find("2 over", 1, true), "over named")
+    T.Eq(ns.Orders.DescribeCheck(ns.Orders.MatsCheck(haste(1, "default"), alchBook(), {})), "nothing in the window", "empty")
+end)
+
 T.Case("Ledger.SumSince counts recent entries and the legacy gems field", function()
     local entries = {
         { at = 1000, copper = 5000, units = { [1] = 2 } },
@@ -727,6 +828,60 @@ T.Case("Classifier scores LF item crafter as a buyer signal", function()
     T.Eq(r.buyerHits.crafter, 2, "crafter scored")
     local r2 = classify("LF " .. RUBY_LINK .. " cutter")
     T.Eq(r2.verdict, "invite", "cutter verdict")
+end)
+
+T.Case("Classifier scores LF item and a bare craft verb as buyer signals", function()
+    -- The line that was missed: LF, a link to something we make, and the verb.
+    local r = classify("LF " .. RUBY_LINK .. " cut")
+    T.Eq(r.verdict, "invite", "LF item verb invites")
+    T.Eq(r.buyerHits.lf, 2, "lf scored")
+    T.Eq(r.buyerHits.cut, 1, "the verb scored")
+    -- The same line with a capital I for the L, which the chat font hides. Only the
+    -- verb can carry it, and it does.
+    T.Eq(classify("If " .. RUBY_LINK .. " cut").verdict, "invite", "typo still invites")
+    T.Eq(classify("LF " .. RUBY_LINK).verdict, "invite", "LF and the item alone is enough")
+    -- The verb alone does not turn a seller into a buyer.
+    T.Eq(classify("JC LFW cut anything " .. RUBY_LINK).reason, "lfw", "lfw still vetoed")
+    T.Eq(classify("Can cut " .. RUBY_LINK .. " mats + tip").verdict, "lowscore", "can cut still a seller")
+    T.Eq(classify(RUBY_LINK).reason, "no buyer signal", "a bare link is still nothing")
+end)
+
+T.Case("Classifier reads WTB of a material as shopping, not a craft", function()
+    -- A book with a trade good in it, the way a leatherworker's holds converted leather.
+    -- Jewelcrafting's products are gems (class 3), so class 7 is a material here too.
+    local LEATHER_LINK = link(4304, "Thick Leather")
+    local book = jcBook()
+    book[4304] = { itemID = 4304, name = "Thick Leather", classID = 7, bindType = 0, match = true, aliases = {} }
+
+    local r = classify("wtb 5 stacks " .. LEATHER_LINK .. " - offering 15g for 5 stacks", { book = book })
+    T.Eq(r.verdict, "lowscore", "shopping is not a customer")
+    T.Eq(r.reason, "buying materials, not a craft", "and says so")
+    T.Eq(r.buyerHits.wtb, 3, "wtb still scored, so the log shows why it was close")
+
+    T.Eq(classify("need " .. LEATHER_LINK .. " anyone?", { book = book }).verdict, "lowscore",
+        "need and a question are still shopping")
+    T.Eq(classify("wtb " .. LEATHER_LINK .. " anyone cut some? have mats", { book = book }).verdict, "invite",
+        "a craft verb or mats in hand is the ask")
+    T.Eq(classify("lf jc " .. LEATHER_LINK, { book = book }).verdict, "invite",
+        "naming the profession is the ask")
+    T.Eq(classify("wtb " .. RUBY_LINK .. " have gold", { book = book }).verdict, "invite",
+        "a product bought with WTB is a customer")
+    T.Eq(classify("wtb " .. LEATHER_LINK, { book = book, isDirect = true }).verdict, "invite",
+        "a whisper keeps its own path")
+end)
+
+T.Case("Classifier vetoes giveaways and does not invite on a question mark alone", function()
+    local r = classify("anyone want for a lvl 41 alt " .. RUBY_LINK .. "?")
+    T.Eq(r.verdict, "vetoed", "an offer is not a customer")
+    T.Eq(r.reason, "anyone want", "and the log says which words")
+    T.Eq(classify("giving away " .. RUBY_LINK .. " to whoever").reason, "giving away", "giveaway")
+    T.Eq(classify("anyone need " .. RUBY_LINK .. "? free").reason, "anyone need", "offer phrased as need")
+    local q = classify(RUBY_LINK .. "?")
+    T.Eq(q.verdict, "lowscore", "a link and a question mark is not an ask")
+    T.Eq(q.reason, "no buyer signal", "reason")
+    T.Eq(q.buyerHits.question, 1, "the question still scored against sellers")
+    T.Eq(classify("any jc able to cut " .. RUBY_LINK .. "?").verdict, "invite", "a question with the ask in it still invites")
+    T.Eq(classify(RUBY_LINK .. "?", { isDirect = true }).verdict, "invite", "a whispered link and question mark still does")
 end)
 
 --------------------------------------------------------------------------------
@@ -1503,6 +1658,14 @@ T.Case("Specializations: they want a transmute master and you brew potions", fun
 
     T.Eq(ns.Prof.SpecWanted(ALCH, "LF elixir master to make an elixir", set("potion")),
         "Elixir Master", "the same for elixirs, named the way people say it")
+    -- The words the other way round: "LF Master elixir to craft [...]" was invited by a
+    -- potion master because only "elixir master" was in the list.
+    T.Eq(ns.Prof.SpecWanted(ALCH, "LF Master elixir to craft", set("potion")), "Elixir Master",
+        "master before the noun")
+    T.Eq(ns.Prof.SpecWanted(ALCH, "LF Master elixir to craft", set("elixir")), nil,
+        "unless it is us")
+    T.Eq(ns.Prof.SpecWanted(ALCH, "master transmute needed", set("potion")), "Transmutation Master",
+        "and for the other specs")
     T.Eq(ns.Prof.SpecWanted(ALCH, "lf alch to make a potion", set("potion")), nil,
         "an ordinary request names no specialization")
 
@@ -1634,4 +1797,229 @@ T.Case("Players: declining stamps the clock, clearing unstamps it", function()
 
     ns.Players.ClearDeclined(state)
     T.Eq(state.declinedAt, nil, "Clear Flags lets them back in")
+end)
+
+--------------------------------------------------------------------------------
+-- Decide: the plan for a line, per channel
+--------------------------------------------------------------------------------
+
+-- A plan for one line on one channel, against a fixture book. Everything Decide reads
+-- comes in through ctx, so nothing here touches the saved tables.
+local function decide(text, source, over)
+    over = over or {}
+    local profile = over.profile or JC
+    local book = over.book or (profile == ALCH and alchBook() or jcBook())
+    local settings = ns.Prof.DefaultSettings(profile)
+    if over.confirm then settings.invite.confirm = over.confirm end
+    if over.fromWhisper ~= nil then settings.invite.fromWhisper = over.fromWhisper end
+    return ns.Events.Decide({ text = text, short = over.short or "Customer", source = source }, {
+        candidates = { { key = profile.key, index = ns.Matcher.BuildIndex(book, profile),
+                         book = book, profile = profile, settings = settings } },
+        now = over.now or 100000,
+        state = over.state or {},
+        settings = over.settings or {
+            orders = { autoFromInvite = true, autoFromWhisper = true, autoFromParty = true, captureTranscript = true },
+            captureAll = false, debug = false,
+        },
+        inGroup = over.inGroup or false,
+        groupSize = over.groupSize or 0,
+        invitesOn = over.invitesOn ~= false,
+    })
+end
+
+local CHANNELS = { "trade", "whisper", "party" }
+
+-- The lines from one afternoon in Trade, and the shapes around them.
+local function corpus()
+    local book = jcBook()
+    book[4304] = { itemID = 4304, name = "Thick Leather", classID = 7, bindType = 0, match = true, aliases = {} }
+    -- Something we make but lack a Bind on Pickup reagent for, held by nobody.
+    book[24028].reagents = { [999999] = 1 }
+    book[24028].reagentBind = { [999999] = 1 }
+    return book, {
+        "LF " .. RUBY_LINK .. " cut",
+        "wtb 5 stacks " .. link(4304, "Thick Leather") .. " - offering 15g",
+        "anyone want for a lvl 41 alt " .. RUBY_LINK .. "?",
+        "WTB " .. link(24028, "Solid Star of Elune") .. ", 700g",
+        "WTB bold ruby have mats",
+        "JC LFW all cuts pst " .. RUBY_LINK,
+        RUBY_LINK,
+        "LF JC",
+        "any jc able to cut " .. RUBY_LINK .. "?",
+        "hey whats up",
+    }
+end
+
+T.Case("Decide: no Trade line ever gets a whisper back", function()
+    local book, lines = corpus()
+    for _, text in ipairs(lines) do
+        local plan = decide(text, "trade", { book = book })
+        T.Eq(plan.actions.whisper, nil, "trade never whispers: " .. text)
+        T.Eq(plan.actions.transcript, false, "trade has no transcript: " .. text)
+    end
+end)
+
+T.Case("Decide: party gets the no-mats note and no other reply", function()
+    local book, lines = corpus()
+    for _, text in ipairs(lines) do
+        local plan = decide(text, "party", { book = book })
+        local w = plan.actions.whisper
+        T.Eq(w == nil or w.kind == "noMats", true, "party reply kind: " .. text)
+    end
+    local belt = "WTB " .. link(24028, "Solid Star of Elune") .. ", 700g"
+    T.Eq(decide(belt, "party", { book = book }).actions.whisper.kind, "noMats", "party is told about mats")
+    T.Eq(decide(belt, "whisper", { book = book }).actions.whisper.kind, "noMats", "so is a whisper")
+    T.Eq(decide(belt, "trade", { book = book }).actions.whisper, nil, "Trade is not")
+    T.Eq(decide(belt, "trade", { book = book }).why.whisper ~= nil, true, "and the plan says why")
+end)
+
+T.Case("Decide: a whisper does not need a buyer signal, Trade does", function()
+    local w = decide(RUBY_LINK, "whisper")
+    T.Eq(w.result.verdict, "invite", "a whispered link is a request")
+    T.Eq(w.actions.invite, true, "and is invited")
+    T.Eq(w.actions.order, true, "with an order")
+    local t = decide(RUBY_LINK, "trade")
+    T.Eq(t.result.reason, "no buyer signal", "a bare link in Trade is nothing")
+    T.Eq(t.actions.invite, nil, "no invite")
+    T.Eq(t.actions.order, nil, "no order")
+    T.True(t.why.invite:find("no buyer signal", 1, true), "why says so")
+end)
+
+T.Case("Decide: a vetoed line does nothing on any channel", function()
+    local book = corpus()
+    for _, source in ipairs(CHANNELS) do
+        for _, text in ipairs({ "anyone want for a lvl 41 alt " .. RUBY_LINK .. "?",
+                                "JC LFW all cuts pst " .. RUBY_LINK }) do
+            local plan = decide(text, source, { book = book })
+            T.Eq(plan.result.verdict, "vetoed", source .. ": vetoed: " .. text)
+            T.Eq(plan.actions.invite, nil, source .. ": no invite")
+            T.Eq(plan.actions.order, nil, source .. ": no order")
+            T.Eq(plan.actions.whisper, nil, source .. ": no whisper")
+            T.Eq(plan.actions.log, true, source .. ": but it is logged")
+        end
+    end
+end)
+
+T.Case("Decide: the afternoon's lines, as plans", function()
+    local book = corpus()
+    local lf = decide("LF " .. RUBY_LINK .. " cut", "trade", { book = book })
+    T.Eq(lf.actions.invite, true, "LF item verb invites")
+    T.Eq(lf.actions.order, true, "and opens an order")
+    T.Eq(lf.actions.pushRecent, true, "a matched Trade line is remembered")
+    local leather = decide("wtb 5 stacks " .. link(4304, "Thick Leather") .. " - offering 15g", "trade", { book = book })
+    T.Eq(leather.result.reason, "buying materials, not a craft", "shopping")
+    T.Eq(leather.actions.invite, nil, "no invite")
+    T.Eq(leather.actions.order, nil, "no order")
+    local chat = decide("hey whats up", "trade", { book = book })
+    T.Eq(chat.actions.log, false, "chat that names nothing is not logged")
+    T.Eq(chat.actions.pushRecent, false, "nor remembered")
+    T.Eq(chat.actions.market, true, "but it counts toward saturation")
+end)
+
+T.Case("Decide: the operational block is in the plan, dry run or not", function()
+    local told = decide("LF " .. RUBY_LINK .. " cut", "trade", { state = { declinedAt = 100000 - 60 } })
+    T.Eq(told.blocked, "told them no just now", "block computed from the record")
+    T.Eq(told.actions.invite, nil, "so no invite")
+    T.Eq(told.why.invite, "told them no just now", "and why says so")
+    T.Eq(told.actions.order, true, "the order is still booked, as before")
+    T.Eq(decide("LF " .. RUBY_LINK .. " cut", "trade", { inGroup = true }).blocked, "already grouped", "grouped")
+    T.Eq(decide("LF " .. RUBY_LINK .. " cut", "trade", { invitesOn = false }).blocked, "invites off", "invites off")
+    T.Eq(decide(RUBY_LINK, "whisper", { fromWhisper = false }).blocked, "whisper invites disabled", "the whisper gate")
+    T.Eq(decide(RUBY_LINK, "party", { fromWhisper = false }).blocked, nil, "which party does not have")
+end)
+
+T.Case("Decide: a repeat flags the seller on this very line", function()
+    local state = { lastMsg = ns.Util.Normalize("gems here " .. RUBY_LINK .. " 5g"), lastMsgAt = 100000 - 30 }
+    local plan = decide("gems here " .. RUBY_LINK .. " 7g", "trade", { state = state })
+    T.Eq(plan.actions.observe.isRepeat, true, "seen as a repeat")
+    T.Eq(plan.result.verdict, "vetoed", "and vetoed as a flagged seller")
+    T.Eq(plan.result.reason, "flagged seller", "reason")
+    T.Eq(state.flaggedSeller, nil, "without Decide having written the record")
+    local whispered = decide("gems here " .. RUBY_LINK .. " 7g", "whisper", { state = state })
+    T.Eq(whispered.actions.observe, nil, "a whisper is not a broadcast")
+end)
+
+T.Case("Decide: the confirm setting turns an invite into a question", function()
+    -- A profession request carrying a specific it could not place: nothing matched,
+    -- and "frobnicator" is left over once the known words are taken out.
+    local odd = "LF jc for a frobnicator"
+    T.Eq(decide(odd, "trade", { confirm = "never" }).actions.invite, true, "never asks")
+    local unsure = decide(odd, "trade", { confirm = "unsure" })
+    T.Eq(unsure.actions.confirm ~= nil, true, "unsure asks about the leftover")
+    T.Eq(unsure.actions.invite, nil, "and does not invite yet")
+    T.Eq(decide("LF jc " .. RUBY_LINK, "trade", { confirm = "unsure" }).actions.invite, true,
+        "a line it understood is not asked about")
+    T.Eq(decide("LF jc " .. RUBY_LINK, "trade", { confirm = "always" }).actions.confirm ~= nil, true, "always asks")
+end)
+
+T.Case("Act performs the plan in order and skips what the plan left out", function()
+    local calls = {}
+    local saved = {
+        Note = ns.Players.Note, PushRecent = ns.Players.PushRecent, Record = ns.Orders.Record,
+        Invite = ns.Inviter.Invite, Say = ns.Inviter.Say, SayComposed = ns.Inviter.SayComposed,
+        Ask = ns.Confirm.Ask, Add = ns.Log.Add, Print = ns.Print,
+    }
+    ns.Players.Note = function() calls[#calls + 1] = "note" end
+    ns.Players.PushRecent = function() calls[#calls + 1] = "remember" end
+    ns.Orders.Record = function() calls[#calls + 1] = "order" end
+    ns.Inviter.Invite = function() calls[#calls + 1] = "invite" end
+    ns.Inviter.Say = function() calls[#calls + 1] = "whisper" end
+    ns.Inviter.SayComposed = function() calls[#calls + 1] = "whisper" end
+    ns.Confirm.Ask = function() calls[#calls + 1] = "confirm" end
+    ns.Log.Add = function() calls[#calls + 1] = "log" end
+    ns.Print = function() end
+
+    local ok, err = pcall(function()
+        T.With({ players = {}, log = {}, capture = {}, orders = {}, settings = { debug = false } }, nil, function()
+            local plan = decide("LF " .. RUBY_LINK .. " cut", "trade")
+            ns.Events.Act(plan)
+            T.Eq(table.concat(calls, " "), "note remember log order invite", "trade: memory, log, order, invite")
+            calls = {}
+            ns.Events.Act(decide("anyone want for a lvl 41 alt " .. RUBY_LINK .. "?", "trade"))
+            T.Eq(table.concat(calls, " "), "note remember log", "a vetoed line that named an item is remembered and logged, nothing more")
+            calls = {}
+            local book = corpus()
+            ns.Events.Act(decide("WTB " .. link(24028, "Solid Star of Elune") .. ", 700g", "whisper", { book = book }))
+            T.Eq(table.concat(calls, " "), "remember log whisper", "no-mats whisper: no order, no invite, the note goes out")
+        end)
+    end)
+    for k, v in pairs(saved) do
+        if k == "Note" or k == "PushRecent" then ns.Players[k] = v
+        elseif k == "Record" then ns.Orders.Record = v
+        elseif k == "Ask" then ns.Confirm.Ask = v
+        elseif k == "Add" then ns.Log.Add = v
+        elseif k == "Print" then ns.Print = v
+        else ns.Inviter[k] = v end
+    end
+    if not ok then error(err, 0) end
+end)
+
+T.Case("Describe prints a plan a person can read", function()
+    local lines = ns.Events.Describe(decide(RUBY_LINK, "trade"))
+    T.Eq(#lines >= 3, true, "three lines at least")
+    T.True(lines[1]:find("no buyer signal", 1, true), "the verdict line carries the reason")
+    T.True(lines[2]:find("invite", 1, true) and lines[2]:find("no buyer signal", 1, true), "the invite line says why not")
+end)
+
+T.Case("Players.Phase names the conversation, and the transitions are the only writers", function()
+    local s = {}
+    T.Eq(ns.Players.Phase(s, 1000, 86400), "idle", "fresh")
+    ns.Players.Invited(s, 1000)
+    T.Eq(s.lastInviteAt, 1000, "invited stamps the time")
+    T.Eq(ns.Players.Phase(s, 1000, 86400), "idle", "an invite alone is not a phase")
+    ns.Players.Awaiting(s, 1000)
+    T.Eq(ns.Players.Phase(s, 1000, 86400), "awaiting", "waiting for their item")
+    ns.Players.Answered(s)
+    T.Eq(ns.Players.Phase(s, 1000, 86400), "idle", "answered")
+    ns.Players.Decline(s, "bold ruby", {}, 1000)
+    T.Eq(ns.Players.Phase(s, 1000 + 3600, 86400), "declined", "inside the cooldown")
+    T.Eq(ns.Players.Phase(s, 1000 + 90000, 86400), "idle", "past it")
+    T.Eq(ns.Players.Phase(s, 1000 + 3600, 0), "idle", "cooldown off")
+    ns.Players.Note(s, "gems here", 2000, true)
+    T.Eq(ns.Players.Phase(s, 2000, 86400), "flagged", "a repeat flags")
+    ns.Players.Banned(s, true)
+    T.Eq(ns.Players.Phase(s, 2000, 86400), "banned", "banned outranks everything")
+    ns.Players.Banned(s, false)
+    T.Eq(s.neverInvite, nil, "unbanned clears the field, not just falses it")
+    T.Eq(ns.Players.Phase(nil, 0, 0), "idle", "no record is idle")
 end)

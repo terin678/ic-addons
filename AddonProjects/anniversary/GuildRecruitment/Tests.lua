@@ -16,34 +16,14 @@ local T = ns.Tests
 -- Fixtures
 --------------------------------------------------------------------------------
 
-local function Need(role, class, count, priority)
-    return { role = role, class = class or "", count = count or 1, priority = priority or 1 }
-end
+local LINE = "<Impulse Control> is recruiting healers and ranged for Kara and Gruul, "
+    .. "Tue/Thu 8-11. /w me"
 
-local function Team(id, name, tag, days, needs)
+-- The guild's actual shape: one line, one revision.
+local function Doc(rev, text)
     return {
-        id = id, name = name, tag = tag, days = days or "", active = true,
-        priority = id, needs = needs or {},
-    }
-end
-
--- The guild's actual shape: two teams, both recruiting, one message between them.
-local function TwoTeams()
-    return {
-        rev = 4, author = "Malexis", updatedAt = 1750000000, guild = "Impulse Control",
-        template = "<{guild}> is recruiting: {teams}. Whisper {contacts}!",
-        teamTemplate = "{tag} {days}: {needs}",
-        contacts = { "Malexis" },
-        teams = {
-            Team(1, "Tuesday Core", "T1", "Tue/Thu 8-11", {
-                Need("Healer", "Priest", 2, 1),
-                Need("DPS", "", 3, 2),
-            }),
-            Team(2, "Sunday Alt", "T2", "Sun 7-10", {
-                Need("Tank", "Warrior", 1, 1),
-                Need("DPS", "Mage", 2, 2),
-            }),
-        },
+        rev = rev or 4, author = "Malexis", updatedAt = 1750000000, guild = "Impulse Control",
+        text = text or LINE,
     }
 end
 
@@ -107,47 +87,45 @@ T.Case("Doc: a revision outranks anything ever seen, not just our own", function
 end)
 
 T.Case("Doc: merging keeps a copy, never the sender's table", function()
-    local mine = TwoTeams()
-    local theirs = TwoTeams()
-    theirs.rev, theirs.author = 9, "Zed"
+    local mine = Doc()
+    local theirs = Doc(9, "LF healers for Kara. /w Zed")
+    theirs.author = "Zed"
 
     local merged, outcome = ns.Doc.Merge(mine, theirs)
     T.Eq(outcome, "took-remote", "theirs is newer")
     T.Eq(merged.rev, 9, "and it is what we hold now")
+    T.Eq(merged.text, "LF healers for Kara. /w Zed", "text and all")
 
     -- A later chunk from the same sender must not reach into what we committed.
-    theirs.template = "something else entirely"
-    T.True(merged.template ~= "something else entirely", "the stored copy is ours")
+    theirs.text = "something else entirely"
+    T.True(merged.text ~= "something else entirely", "the stored copy is ours")
 
     local kept, why = ns.Doc.Merge(theirs, mine)
     T.Eq(why, "kept-local", "and ours wins when ours is newer")
     T.Eq(kept, theirs, "without copying anything")
 end)
 
-T.Case("Doc: the hash ignores order and notices content", function()
-    local a, b = TwoTeams(), TwoTeams()
+T.Case("Doc: the hash moves with the text and with nothing else", function()
+    local a, b = Doc(), Doc()
     T.Eq(ns.Doc.Hash(a), ns.Doc.Hash(b), "two identical documents hash the same")
 
-    -- Needs are sorted before hashing, so two clients that stored them in a
-    -- different order still agree they hold the same message.
-    b.teams[1].needs = { b.teams[1].needs[2], b.teams[1].needs[1] }
-    T.Eq(ns.Doc.Hash(a), ns.Doc.Hash(b), "the order needs were added in does not count")
-
-    b.teams[1].needs[1].count = 99
-    T.True(ns.Doc.Hash(a) ~= ns.Doc.Hash(b), "but a changed value does")
+    b.text = b.text .. "!"
+    T.True(ns.Doc.Hash(a) ~= ns.Doc.Hash(b), "one more character is a different message")
 
     -- rev, author and updatedAt are deliberately outside the hash: two clients can
     -- hold the same message under different revisions, and the hash is how they
     -- notice they have converged.
-    local c = TwoTeams()
-    c.rev, c.author, c.updatedAt = 99, "Zed", 1
+    local c = Doc()
+    c.rev, c.author, c.updatedAt, c.guild = 99, "Zed", 1, "Somewhere Else"
     T.Eq(ns.Doc.Hash(a), ns.Doc.Hash(c), "the revision is not part of the message")
+
+    T.Eq(ns.Doc.Hash({}), ns.Doc.Hash({ text = "" }), "no text and empty text are one message")
+    T.Eq(ns.Doc.Hash(nil), ns.Doc.Hash({}), "and no document is not an error")
 end)
 
 T.Case("Doc: what arrives from another player is not trusted", function()
     local now = 1750000000
-    local raw = TwoTeams()
-    raw.author = "Malexis"
+    local raw = Doc()
 
     T.True(ns.Doc.Sanitize(raw, "Malexis", "Impulse Control", now) ~= nil, "a good one passes")
 
@@ -155,34 +133,57 @@ T.Case("Doc: what arrives from another player is not trusted", function()
     T.Eq(ns.Doc.Sanitize(raw, "Zed", "Impulse Control", now), nil, "author is not the sender")
     T.Eq(ns.Doc.Sanitize(raw, "Malexis", "Some Other Guild", now), nil, "wrong guild")
 
-    local future = TwoTeams()
+    local future = Doc()
     future.updatedAt = now + 3600
     T.Eq(ns.Doc.Sanitize(future, "Malexis", "Impulse Control", now), nil, "an hour ahead")
 
-    local nudged = TwoTeams()
+    local nudged = Doc()
     nudged.updatedAt = now + 120
     T.True(ns.Doc.Sanitize(nudged, "Malexis", "Impulse Control", now) ~= nil,
         "two minutes ahead is two guildmates' clocks disagreeing, not an attack")
 
-    local ancient = TwoTeams()
+    local ancient = Doc()
     ancient.updatedAt = 12345
     T.Eq(ns.Doc.Sanitize(ancient, "Malexis", "Impulse Control", now), nil, "impossibly old")
 
-    -- Markup in a name would colour the rest of whatever row it lands in.
-    local nasty = TwoTeams()
-    nasty.teams[1].name = "|cffff0000BIG|r |Hplayer:Zed|h[Zed]|h"
+    -- Markup in the line would colour the rest of whatever it lands in, and a chat
+    -- channel refuses a pipe outright, so the line would never send.
+    local nasty = Doc(5, "|cffff0000BIG|r recruiting, |Hplayer:Zed|h[Zed]|h  knows\nmore")
     local clean = ns.Doc.Sanitize(nasty, "Malexis", "Impulse Control", now)
-    T.Eq(clean.teams[1].name:find("|", 1, true), nil, "not one pipe survives")
+    T.Eq(clean.text:find("|", 1, true), nil, "not one pipe survives")
+    T.Eq(clean.text, "BIG recruiting, [Zed] knows more",
+        "the words stay, the markup and the line break do not")
+    T.Eq(clean.hash, ns.Doc.Hash(clean), "and the hash is of what was kept")
 
     -- Sizes are ours to decide, not the sender's.
-    local huge = TwoTeams()
-    for i = 1, 20 do huge.teams[#huge.teams + 1] = Team(10 + i, "Spam " .. i, "S") end
-    T.Eq(#ns.Doc.Sanitize(huge, "Malexis", "Impulse Control", now).teams, ns.Doc.MAX_TEAMS,
-        "a hundred teams becomes as many as fit")
+    local huge = Doc(5, string.rep("x", 1000))
+    T.Eq(#ns.Doc.Sanitize(huge, "Malexis", "Impulse Control", now).text, ns.Doc.MAX_TEXT,
+        "a thousand characters becomes as many as a chat line takes")
+
+    local empty = Doc(5, nil)
+    empty.text = nil
+    T.Eq(ns.Doc.Sanitize(empty, "Malexis", "Impulse Control", now).text, "",
+        "a document with no text at all is an empty message, not a crash")
+end)
+
+T.Case("Doc: an authored edit is stamped, and the guild's copy hashes like ours", function()
+    -- What Save and push does, minus the widgets: the same Clean that Sanitize runs
+    -- on receipt, so a line with two spaces in it does not hash differently on the
+    -- client that typed it.
+    local doc = { rev = 3, author = "", updatedAt = 0, guild = "", hash = "", text = "" }
+    doc.text = ns.Util.Clean("  LF  healers  /w me ", ns.Doc.MAX_TEXT)
+    ns.Doc.Bump(doc, "Malexis-Nightslayer", "Impulse Control", 1750000000, 7)
+    T.Eq(doc.rev, 8, "above everything ever seen")
+    T.Eq(doc.author, "Malexis", "the short name")
+    T.Eq(doc.text, "LF healers /w me", "spaces closed up before it was stamped")
+
+    local wire = ns.Comm.DecodeState(ns.Comm.EncodeState(doc))
+    local theirs = ns.Doc.Sanitize(wire, "Malexis", "Impulse Control", 1750000000)
+    T.Eq(theirs.hash, doc.hash, "and the receiving client agrees it is the same message")
 end)
 
 T.Case("Doc: agreement counts who is where", function()
-    local doc = TwoTeams()
+    local doc = Doc()
     doc.hash = ns.Doc.Hash(doc)
     local peers = {
         Aeryn = { rev = 4, hash = ns.Doc.Hash(doc) },
@@ -196,153 +197,22 @@ T.Case("Doc: agreement counts who is where", function()
 end)
 
 --------------------------------------------------------------------------------
--- Message: two teams, one line, 255 characters
+-- Message: one line, 255 characters
 --------------------------------------------------------------------------------
 
-T.Case("Message: both teams fit at full detail when there is room", function()
-    local doc = TwoTeams()
-    local msg, level, dropped = ns.Message.Assemble(doc, 1)
-    T.True(msg ~= nil, "there is a message")
-    T.Eq(level, 1, "nothing had to be given up")
-    T.Eq(dropped, 0, "and nothing was left out")
-    T.True(#msg <= ns.Message.MAX_LEN, "inside the limit")
-    T.True(msg:find("T1", 1, true) ~= nil, "team one is in it")
-    T.True(msg:find("T2", 1, true) ~= nil, "and so is team two")
-    T.True(msg:find("Priest", 1, true) ~= nil, "classes survive at level 1")
-end)
+T.Case("Message: there is a line, or there is a reason", function()
+    T.Eq(ns.Message.Ready(Doc()), LINE, "the text is the message, exactly")
 
-T.Case("Message: detail is given up in order, a step at a time", function()
-    local doc = TwoTeams()
-    local full = ns.Message.Assemble(doc, 1)
+    local none, why = ns.Message.Ready(Doc(0, ""))
+    T.Eq(none, nil, "nothing set")
+    T.Eq(why:find("no message set yet", 1, true), 1, "says so")
+    T.True(why:find("Message tab", 1, true) ~= nil, "and says where to set one")
 
-    -- Squeeze the budget one step at a time and watch what goes first.
-    local a = ns.Message.Assemble(doc, 1, #full - 1)
-    T.True(a ~= nil, "still a message")
-    T.Eq(a:find("Priest", 1, true), nil, "the class is the first thing to go")
+    T.Eq(ns.Message.Ready(Doc(1, "   ")), nil, "spaces are not a message")
+    T.Eq(ns.Message.Ready({}), nil, "a document with no text field is not an error")
+    T.Eq(ns.Message.Ready(nil), nil, "and neither is no document")
 
-    local tight = ns.Message.Assemble(doc, 1, 96)
-    T.True(tight ~= nil, "and it keeps going")
-    T.Eq(tight:find("Tue/Thu", 1, true), nil, "the days go next")
-    T.True(tight:find("2x", 1, true) ~= nil, "counts are still worth keeping at that point")
-end)
-
-T.Case("Message: neither team is ever starved out of the message", function()
-    -- This is the property the whole degrade ladder exists to hold. Whenever the
-    -- tags fit at all, BOTH tags are in the line: an officer must never send a
-    -- message that quietly recruits for one team only.
-    local doc = TwoTeams()
-    for budget = 90, 200, 5 do
-        local msg = ns.Message.Assemble(doc, 1, budget)
-        if msg then
-            T.True(msg:find("T1", 1, true) ~= nil,
-                "team one survived a budget of " .. budget)
-            T.True(msg:find("T2", 1, true) ~= nil,
-                "team two survived a budget of " .. budget)
-            T.True(#msg <= budget, "and the line fits in " .. budget)
-        end
-    end
-end)
-
-T.Case("Message: what will not fit is reported, not silently dropped", function()
-    local doc = TwoTeams()
-    for i = 1, 4 do
-        doc.teams[1].needs[#doc.teams[1].needs + 1] = Need("Filler " .. i, "", 1, 5 + i)
-    end
-    local msg, _, dropped = ns.Message.Assemble(doc, 1, 110)
-    T.True(msg ~= nil, "there is still a message")
-    T.True(dropped > 0, "and it says how many needs did not make it")
-end)
-
-T.Case("Message: a team with nothing to ask for is not in the message", function()
-    local doc = TwoTeams()
-    doc.teams[2].needs = {}
-    local msg = ns.Message.Assemble(doc, 1)
-    T.Eq(msg:find("T2", 1, true), nil, "an empty team is left out")
-
-    doc.teams[2].needs = { Need("Tank", "", 1, 1) }
-    doc.teams[2].active = false
-    msg = ns.Message.Assemble(doc, 1)
-    T.Eq(msg:find("T2", 1, true), nil, "and so is one that is switched off")
-
-    doc.teams[1].active = false
-    local none, _, _, _, reason = ns.Message.Assemble(doc, 1)
-    T.Eq(none, nil, "with both off there is nothing to send")
-    T.Eq(reason, "every team is switched off: turn one back on with its On button",
-        "and it names the button that fixes it")
-end)
-
-T.Case("Message: having nothing to send says WHICH nothing", function()
-    -- All four of these used to be the single word "nothing to recruit". A new install
-    -- seeds two teams with no needs, so the useless one was the first thing anybody saw.
-    local function reasonFor(build)
-        local doc = TwoTeams()
-        build(doc)
-        local msg, _, _, _, why = ns.Message.Assemble(doc, 1)
-        T.Eq(msg, nil, "nothing assembles")
-        return why
-    end
-
-    local noTeams = reasonFor(function(doc) doc.teams = {} end)
-    T.Eq(noTeams, "no teams yet: add one on the Teams tab", "no teams at all")
-
-    -- What a fresh install looks like: SeedTeams makes two teams and no needs.
-    local noNeeds = reasonFor(function(doc)
-        for _, team in ipairs(doc.teams) do team.needs = {} end
-    end)
-    T.Eq(noNeeds, "no roles wanted yet: pick a team on the Teams tab and add a need",
-        "teams exist but want nobody")
-
-    local allOff = reasonFor(function(doc)
-        for _, team in ipairs(doc.teams) do team.active = false end
-    end)
-    T.Eq(allOff, "every team is switched off: turn one back on with its On button",
-        "teams want people but are switched off")
-
-    -- The mixed case: one team is on but wants nobody, the other wants people but is off.
-    -- Neither "no roles wanted" nor "every team is off" is true, and both would mislead.
-    local mixed = reasonFor(function(doc)
-        doc.teams[1].needs = {}
-        doc.teams[2].active = false
-    end)
-    T.Eq(mixed, "the only teams asking for anyone are switched off",
-        "one team on with no needs, one with needs switched off")
-end)
-
-T.Case("Message: a template with nowhere to put the teams is refused", function()
-    local doc = TwoTeams()
-    doc.template = "we are recruiting, whisper me"
-    local msg, _, _, _, reason = ns.Message.Assemble(doc, 1)
-    T.Eq(msg, nil, "no message")
-    T.True(reason:find("{teams}", 1, true) ~= nil, "and the reason names the token")
-end)
-
-T.Case("Message: the lead team rotates so the same one is not always cut", function()
-    local teams = { { tag = "A" }, { tag = "B" }, { tag = "C" } }
-    local ordered, nextCursor = ns.Message.Rotate(teams, 1)
-    T.Eq(ordered[1].tag .. ordered[2].tag .. ordered[3].tag, "ABC", "starting at one")
-    T.Eq(nextCursor, 2, "and moving on")
-
-    ordered, nextCursor = ns.Message.Rotate(teams, 3)
-    T.Eq(ordered[1].tag .. ordered[2].tag .. ordered[3].tag, "CAB", "wrapping round")
-    T.Eq(nextCursor, 1, "back to the start")
-
-    -- A cursor left over from a document that had more teams in it is a stale
-    -- saved variable, not a crash.
-    ordered = ns.Message.Rotate(teams, 99)
-    T.Eq(ordered[1].tag, "A", "a cursor past the end resets")
-    T.Eq(#ns.Message.Rotate({}, 1), 0, "and no teams is not an error")
-end)
-
-T.Case("Message: a fragment survives an empty token in the middle of it", function()
-    local team = Team(1, "Tuesday", "T1", "", { Need("Healer", "Priest", 2, 1) })
-    -- No days set, so "{tag} {days}: {needs}" would leave " :" hanging.
-    T.Eq(ns.Message.TeamFragment(team, 1), "T1: 2x Priest Healer", "no stray punctuation")
-
-    team.needs = {}
-    T.Eq(ns.Message.TeamFragment(team, 1), "T1", "and no trailing colon either")
-
-    team.days = "Tue"
-    T.Eq(ns.Message.TeamFragment(team, 1), "T1 Tue", "days with nothing to ask for")
+    T.Eq(ns.Message.MAX_LEN, ns.Doc.MAX_TEXT, "the chat limit and the document's are one number")
 end)
 
 T.Case("Message: the last look before it goes out", function()
@@ -355,6 +225,50 @@ T.Case("Message: the last look before it goes out", function()
     T.Eq(ns.Message.Validate("|cff44ff44green", 255), false, "an unclosed colour")
     T.Eq(ns.Message.Validate("|cff44ff44green|r", 255), true, "a closed one is fine")
     T.Eq(ns.Message.Validate("LF 2 healers", 255), true, "and an ordinary line passes")
+    T.Eq(ns.Message.Validate(string.rep("x", 255)), true, "and so does one exactly at the limit")
+end)
+
+--------------------------------------------------------------------------------
+-- Core: what an update does to what is on disk
+--------------------------------------------------------------------------------
+
+T.Case("Core: updating from the team model starts the message empty", function()
+    -- A 0.3 document has teams, needs and two templates, none of which is a line
+    -- of text. Rather than guess a line out of them, the update forgets them and a
+    -- raid leader types the new one once. What it must NOT forget is the highest
+    -- revision ever heard, or that first edit would not outrank an old client.
+    local db = {
+        schema = 1,
+        doc = {
+            rev = 7, author = "Malexis", updatedAt = 1750000000, guild = "Impulse Control",
+            template = "<{guild}> is recruiting: {teams}. Whisper {contacts}!",
+            teamTemplate = "{tag} {days}: {needs}", contacts = { "Malexis" },
+            teams = { { id = 1, name = "Team One", needs = {} } },
+        },
+        highestSeenRev = 7,
+        peers = { Zed = { rev = 7 } },
+    }
+    local ran = ns.Migrate(db, ns.Migrations, ns.SCHEMA)
+    T.Eq(ran, 1, "one step")
+    T.Eq(db.schema, ns.SCHEMA, "and it is current")
+    T.Eq(db.doc, nil, "the old document is gone")
+
+    ns.ApplyDefaults(db, ns.Defaults)
+    T.Eq(db.doc.rev, 0, "the message starts at rev 0")
+    T.Eq(db.doc.text, "", "and empty")
+    T.Eq(db.doc.teams, nil, "with no teams in it")
+    T.Eq(db.highestSeenRev, 7, "the highest revision seen is kept")
+    T.Eq(db.peers.Zed.rev, 7, "and so is what the peers said")
+    T.Eq(ns.Doc.NextRev(db.doc.rev, db.highestSeenRev), 8,
+        "so the first edit after the update still outranks the old one")
+
+    -- A fresh install has nothing to migrate and lands on the same shape.
+    local fresh = {}
+    T.Eq(ns.Migrate(fresh, ns.Migrations, ns.SCHEMA), 0, "nothing ran on an empty file")
+    ns.ApplyDefaults(fresh, ns.Defaults)
+    T.Eq(fresh.doc.text, "", "and it is the same empty message")
+
+    T.Eq(ns.CharDefaults.bark.cursor, nil, "the per-character cursor is gone with the teams")
 end)
 
 --------------------------------------------------------------------------------
@@ -483,8 +397,8 @@ T.Case("Bark: every reason it will not send, in a fixed order", function()
     noChannel.channel = nil
     T.Eq(ns.Bark.BlockReason(noChannel):find("no channel", 1, true), 1,
         "somewhere to send it")
-    T.Eq(ns.Bark.BlockReason(state({ messageReason = "nothing to recruit" })),
-        "nothing to recruit", "something to say")
+    T.Eq(ns.Bark.BlockReason(state({ messageReason = "no message set yet" })),
+        "no message set yet", "something to say")
     T.Eq(ns.Bark.BlockReason(state({ suppressedBy = "Zed", suppressedAgo = 240 })),
         "Zed barked 4m ago", "and last, other people")
 
@@ -546,6 +460,7 @@ T.Case("Comm: escaping survives anything a raid leader can type", function()
     -- The common case costs nothing: an ordinary line encodes to itself.
     T.Eq(ns.Comm.Escape("LF 2 heals for Kara, whisper Malexis!"),
         "LF 2 heals for Kara, whisper Malexis!", "plain text is untouched")
+    T.Eq(ns.Comm.Escape(LINE), LINE, "and so is the guild's actual line, slash and all")
 end)
 
 T.Case("Comm: splitting is bounded and keeps empty fields", function()
@@ -566,11 +481,18 @@ T.Case("Comm: the envelope leaves the payload alone", function()
     -- separators and they have to come back untouched.
     T.Eq(payload, "x^y^z", "the payload keeps its own separators")
 
-    T.Eq(ns.Comm.ParseEnvelope("1^S^3^1"), nil, "too short")
-    T.Eq(select(2, ns.Comm.ParseEnvelope("2^S^3^1^1^x")), "proto", "from the future")
-    T.Eq(select(2, ns.Comm.ParseEnvelope("1^Z^3^1^1^x")), "op", "an operation we do not know")
-    T.Eq(select(2, ns.Comm.ParseEnvelope("1^S^3^0^1^x")), "seq", "chunk zero")
-    T.Eq(select(2, ns.Comm.ParseEnvelope("1^S^3^1^99^x")), "total", "more chunks than we allow")
+    local P = ns.Comm.PROTO
+    T.Eq(ns.Comm.ParseEnvelope(P .. "^S^3^1"), nil, "too short")
+    T.Eq(select(2, ns.Comm.ParseEnvelope((P + 1) .. "^S^3^1^1^x")), "proto", "from the future")
+    -- A 0.3 client's document has a template where ours has the text. Reading it
+    -- as ours would put "<{guild}> is recruiting: {teams}" in a channel, so an
+    -- older protocol is refused whole, not read as far as it goes.
+    T.Eq(select(2, ns.Comm.ParseEnvelope("1^S^3^1^1^x")), "proto", "and from the past")
+    T.Eq(select(2, ns.Comm.ParseEnvelope("1^V^0^1^1^7^Zed^1750000000^h")), "proto",
+        "an old client's offer too, so it never counts as a peer who is ahead")
+    T.Eq(select(2, ns.Comm.ParseEnvelope(P .. "^Z^3^1^1^x")), "op", "an operation we do not know")
+    T.Eq(select(2, ns.Comm.ParseEnvelope(P .. "^S^3^0^1^x")), "seq", "chunk zero")
+    T.Eq(select(2, ns.Comm.ParseEnvelope(P .. "^S^3^1^99^x")), "total", "more chunks than we allow")
 end)
 
 T.Case("Comm: chunking and putting it back together", function()
@@ -612,66 +534,59 @@ T.Case("Comm: the send budget", function()
 end)
 
 T.Case("Comm: a document round trips the wire", function()
-    local doc = TwoTeams()
+    local doc = Doc()
     local payload = ns.Comm.EncodeState(doc)
     T.True(#payload <= ns.Comm.MAX_PAYLOAD, "it fits in what we will send")
+    T.Eq(#ns.Comm.Chunk(payload), 1, "and the guild's actual line is one addon message")
 
     local back = ns.Comm.DecodeState(payload)
     T.True(back ~= nil, "and comes back")
     T.Eq(back.rev, doc.rev, "revision")
     T.Eq(back.author, doc.author, "author")
-    T.Eq(back.template, doc.template, "template")
-    T.Eq(#back.teams, 2, "both teams")
-    T.Eq(back.teams[1].tag, "T1", "with their tags")
-    T.Eq(back.teams[2].days, "Sun 7-10", "and their days")
-    T.Eq(#back.teams[1].needs, 2, "needs land on the right team")
-    T.Eq(back.teams[2].needs[1].role, "Tank", "and keep their fields")
-    T.Eq(back.contacts[1], "Malexis", "contacts too")
+    T.Eq(back.updatedAt, doc.updatedAt, "when")
+    T.Eq(back.guild, doc.guild, "guild")
+    T.Eq(back.text, doc.text, "and the line, byte for byte")
 
     -- The hash is what two clients compare, so it has to survive the trip.
     local sanitized = ns.Doc.Sanitize(back, "Malexis", "Impulse Control", 1750000000)
     T.Eq(sanitized.hash, ns.Doc.Hash(doc), "and the message hashes the same at both ends")
 
+    -- A separator in the text is the one thing a hand-rolled format gets wrong.
+    local tricky = Doc(5, "a^b~c|d%e")
+    T.Eq(ns.Comm.DecodeState(ns.Comm.EncodeState(tricky)).text, "a^b~c|d%e",
+        "every separator and escape character in the line comes back")
+
     T.Eq(ns.Comm.DecodeState("garbage"), nil, "nonsense decodes to nothing")
     T.Eq(select(2, ns.Comm.DecodeState("1^2^3")), "short", "and says why")
+    T.Eq(ns.Comm.DecodeState("4^Malexis^1750000000^Impulse Control^").text, "",
+        "an empty line is an empty field, not a short message")
 end)
 
-T.Case("Comm: the biggest document the window allows still fits on the wire", function()
+T.Case("Comm: the longest line the document allows still fits on the wire", function()
     -- A transport that cannot carry the largest legal document is a transport that
-    -- silently stops syncing for whoever fills the form in properly. The caps in
-    -- Doc and the chunk budget in Comm have to be sized against each other, and
-    -- this is where that is checked rather than discovered.
+    -- silently stops syncing for whoever wrote it. The caps in Doc and the chunk
+    -- budget in Comm have to be sized against each other, and this is where that is
+    -- checked rather than discovered: every byte of the line, the author and the
+    -- guild name escaping to three.
+    local worst = string.rep("\255", ns.Doc.MAX_TEXT)
     local doc = {
-        rev = 99, author = "Malexis", updatedAt = 1750000000, guild = "Impulse Control",
-        template = "<{guild}> is recruiting: {teams}. Whisper {contacts}!",
-        teamTemplate = "{tag} {days}: {needs}",
-        contacts = { "Malexis", "Dezedin" },
-        teams = {},
+        rev = 1000000000, author = string.rep("\255", 24), updatedAt = 1750000000,
+        guild = string.rep("\255", 64), text = worst,
     }
-    for t = 1, ns.Doc.MAX_TEAMS do
-        local needs = {}
-        for i = 1, ns.Doc.MAX_NEEDS do
-            needs[i] = Need("Restoration Shaman", "Shaman", 2, i)
-        end
-        doc.teams[t] = Team(t, "Wednesday Progress " .. t, "TEAM" .. t,
-            "Wed/Sun 8-11:30", needs)
-    end
-
     local payload = ns.Comm.EncodeState(doc)
     T.True(#payload <= ns.Comm.MAX_PAYLOAD, string.format(
         "%d bytes to send, and the wire carries %d", #payload, ns.Comm.MAX_PAYLOAD))
+    T.True(#ns.Comm.Chunk(payload) <= ns.Comm.MAX_CHUNKS, "in the chunks the envelope allows")
+    T.Eq(ns.Comm.DecodeState(payload).text, worst, "and every byte comes back")
 
-    -- Braces are the most common characters in a template. Escaping them cost
-    -- three bytes each and pushed exactly this document over the limit.
-    T.Eq(ns.Comm.Escape("{teams}"), "{teams}", "a template token is not worth escaping")
-
-    local back = ns.Comm.DecodeState(payload)
-    T.Eq(#back.teams, ns.Doc.MAX_TEAMS, "and all of it comes back")
-    T.Eq(#back.teams[1].needs, ns.Doc.MAX_NEEDS, "needs included")
+    -- And the one that matters in practice: a full line of ordinary text.
+    local plain = Doc(1, string.rep("LF heals /w me ", 17))
+    T.Eq(#plain.text, 255, "exactly at the limit")
+    T.Eq(#ns.Comm.Chunk(ns.Comm.EncodeState(plain)), 2, "goes out in two")
 end)
 
 T.Case("Comm: a version offer and a bark round trip", function()
-    local doc = TwoTeams()
+    local doc = Doc()
     doc.hash = ns.Doc.Hash(doc)
     local back = ns.Comm.DecodeVersion(ns.Comm.EncodeVersion(doc))
     T.Eq(back.rev, 4, "revision")
@@ -686,51 +601,8 @@ T.Case("Comm: a version offer and a bark round trip", function()
 end)
 
 --------------------------------------------------------------------------------
--- Teams and Util
+-- Util and UI
 --------------------------------------------------------------------------------
-
-T.Case("Teams: a team always has something short to call itself", function()
-    local team = ns.Teams.Normalize({ id = 1, name = "  Tuesday Core  " })
-    T.Eq(team.name, "Tuesday Core", "trimmed")
-    T.Eq(team.tag, "TC", "and a tag made from the initials when nobody set one")
-
-    T.Eq(ns.Teams.Normalize({ id = 2, name = "", tag = "" }).name, "Team 2",
-        "a team with no name at all still has one")
-    T.Eq(ns.Teams.Normalize({ id = 3, name = "Sunday", tag = "SUN" }).tag, "SUN",
-        "and a tag somebody set is left alone")
-
-    local need = ns.Teams.NormalizeNeed({ role = " healer ", count = "3" })
-    T.Eq(need.role, "healer", "roles are trimmed")
-    T.Eq(need.count, 3, "counts become numbers")
-    T.Eq(ns.Teams.NormalizeNeed({ count = 0 }).count, 1, "and zero of something is one")
-    T.Eq(ns.Teams.NormalizeNeed({ count = 999 }).count, 40, "and nine hundred is forty")
-end)
-
-T.Case("Teams: needs come back in the same order every time", function()
-    local needs = {
-        Need("Tank", "", 1, 2), Need("Healer", "", 2, 1), Need("DPS", "", 3, 1),
-    }
-    local a = ns.Teams.Sorted(needs)
-    local b = ns.Teams.Sorted(needs)
-    T.Eq(a[1].role .. a[2].role .. a[3].role, b[1].role .. b[2].role .. b[3].role,
-        "twice in a row is the same order")
-    T.Eq(a[1].role, "DPS", "priority first, then role")
-    T.Eq(a[3].role, "Tank", "and the lowest priority is last, which is what gets cut")
-
-    -- Sorting must not reorder the caller's own list, which is the document.
-    T.Eq(needs[1].role, "Tank", "the original is untouched")
-end)
-
-T.Case("Teams: counting and identifying", function()
-    local doc = TwoTeams()
-    T.Eq(ns.Teams.TotalNeeded(doc), 8, "two plus three plus one plus two")
-    doc.teams[2].active = false
-    T.Eq(ns.Teams.TotalNeeded(doc), 5, "a team that is off is not recruiting")
-
-    T.Eq(ns.Teams.NextId(doc), 3, "ids never get reused")
-    T.Eq(ns.Teams.ById(doc, 2).name, "Sunday Alt", "found by id")
-    T.Eq(ns.Teams.ById(doc, 99), nil, "and a missing one is nil")
-end)
 
 T.Case("Util: cleaning what another player sent", function()
     T.Eq(ns.Util.Clean("|cffff0000red|r", 255), "red", "colour codes come off")
@@ -752,6 +624,8 @@ T.Case("Util: how long ago, and how long left", function()
 end)
 
 T.Case("UI: every page draws without erroring", function()
+    -- A page draws with real widgets or not at all; the headless stub has none.
+    if IC_HEADLESS then return end
     -- The Settings page read settings.channel for a field that lives on
     -- settings.bark, and nothing caught it until somebody opened the tab. A page
     -- refresher is not pure, so no other case in this file reaches one; building
@@ -762,194 +636,11 @@ T.Case("UI: every page draws without erroring", function()
     -- wrong in a refresher.
     local frame = ns.UI.Create()
     T.Eq(type(frame), "table", "the window builds")
-    T.Eq(#ns.UI.Pages > 0, true, "and it has pages")
+    T.Eq(#ns.UI.Pages, 5, "and it has the five pages: Bark, Message, Officers, Log, Settings")
 
     for _, page in ipairs(ns.UI.Pages) do
         T.Eq(type(page.refresh), "function", page.name .. " built a refresher")
         local ok, err = pcall(page.refresh)
         T.Eq(ok, true, page.name .. " draws => " .. tostring(err))
     end
-end)
-
---------------------------------------------------------------------------------
--- Editing teams
---------------------------------------------------------------------------------
-
-T.Case("Teams: editing writes the fields a raid leader can change", function()
-    local doc = TwoTeams()
-    local team = ns.Teams.ById(doc, 1)
-
-    ns.Teams.Edit(team, { name = "Molten Core", days = "Wed 9-12" })
-    T.Eq(team.name, "Molten Core", "the name is what was typed")
-    T.Eq(team.days, "Wed 9-12", "and so are the days")
-    T.Eq(team.tag, "T1", "a tag that was set by hand is left alone")
-
-    -- Clearing the tag is how you say "follow the name again": otherwise a tag built from
-    -- the old name sticks to the new one forever.
-    ns.Teams.Edit(team, { tag = "" })
-    T.Eq(team.tag, "MC", "a blank tag is rebuilt from the name's initials")
-end)
-
-T.Case("Teams: a team is never edited into something a message cannot carry", function()
-    local doc = TwoTeams()
-    local team = ns.Teams.ById(doc, 1)
-
-    ns.Teams.Edit(team, { name = string.rep("x", 200) })
-    T.Eq(#team.name, ns.Teams.MAX_NAME, "an over-long name is cut to the cap")
-
-    ns.Teams.Edit(team, { name = "   ", tag = "   " })
-    T.Eq(team.name, "Team 1", "a name of nothing but spaces falls back to the id")
-
-    ns.Teams.Edit(team, { days = string.rep("y", 200) })
-    T.Eq(#team.days, ns.Teams.MAX_DAYS, "and the days are capped too")
-end)
-
-T.Case("Teams: removing takes the right team, and never the last one", function()
-    local doc = TwoTeams()
-
-    local gone, why = ns.Teams.Remove(doc, 1)
-    T.Eq(gone, true, "the team was removed")
-    T.Eq(#doc.teams, 1, "one left")
-    T.Eq(doc.teams[1].id, 2, "and it is the OTHER one")
-
-    -- The last team cannot go: every screen reads doc.teams[1], and a document with
-    -- nothing to recruit for is not a state this addon has a page for.
-    gone, why = ns.Teams.Remove(doc, 2)
-    T.Eq(gone, false, "the last team stays")
-    T.Eq(#doc.teams, 1, "still one")
-    T.Eq(type(why), "string", "and it says why")
-
-    T.Eq(ns.Teams.Remove(TwoTeams(), 99), false, "an id nobody has removes nothing")
-end)
-
-T.Case("Teams: moving a team up reorders the document, not just the screen", function()
-    local doc = TwoTeams()
-
-    -- Array order is what Message.Rotate reads, so this decides which team leads the line.
-    local moved = ns.Teams.MoveUp(doc, 2)
-    T.Eq(moved, true, "the second team moved")
-    T.Eq(doc.teams[1].id, 2, "and is now first")
-    T.Eq(doc.teams[2].id, 1, "with the other one behind it")
-    T.Eq(#doc.teams, 2, "nothing was lost on the way")
-
-    local again, why = ns.Teams.MoveUp(doc, 2)
-    T.Eq(again, false, "the first team cannot go higher")
-    T.Eq(type(why), "string", "and it says so")
-    T.Eq(doc.teams[1].id, 2, "and nothing moved")
-end)
-
-T.Case("Teams: a new team is complete enough to put in a message", function()
-    local doc = TwoTeams()
-    local id = ns.Teams.NextId(doc)
-    T.Eq(id, 3, "one past the highest in use")
-
-    local team = ns.Teams.New(id, "Team " .. id)
-    T.Eq(team.active, true, "a new team is on")
-    T.Eq(team.tag ~= "", true, "and has a tag without anybody typing one")
-    T.Eq(#team.needs, 0, "and needs nothing yet")
-
-    -- NextId is highest-plus-one, not a counter: removing the highest team hands its id
-    -- straight back. Harmless, because Doc.Merge takes a whole document from one side or
-    -- the other and never merges teams one at a time -- but worth pinning so nobody
-    -- "fixes" it into a counter and breaks the wire format's assumption instead.
-    doc.teams[#doc.teams + 1] = team
-    T.Eq(ns.Teams.NextId(doc), 4, "with three teams the next id is 4")
-    ns.Teams.Remove(doc, 3)
-    T.Eq(ns.Teams.NextId(doc), 3, "and removing the highest gives that id back")
-end)
-
-T.Case("Message: the raid leader's team template is used, whatever tokens it has", function()
-    local team = { tag = "DN", days = "M/W",
-        needs = { { role = "DPS", class = "Shaman", count = 1, priority = 1 } } }
-
-    -- The bug this pins: a template with no {tag} was silently swapped for the default, so
-    -- "{needs} for our {days}" rendered as "DN M/W: Shaman DPS" and nothing said why.
-    T.Eq(ns.Message.TeamFragment(team, 1, "{needs} for our {days}"),
-        "Shaman DPS for our M/W", "a template without {tag} is still the author's")
-    T.Eq(ns.Message.TeamFragment(team, 1, "{tag} {days}: {needs}"),
-        "DN M/W: Shaman DPS", "and the default still reads as it always did")
-
-    -- A template naming no token would repeat one constant string once per team, which is
-    -- the only case worth overruling.
-    T.Eq(ns.Message.TeamFragment(team, 1, "we want people"),
-        "DN M/W: Shaman DPS", "a template with no tokens falls back to the default")
-    T.Eq(ns.Message.TeamFragment(team, 1, nil),
-        "DN M/W: Shaman DPS", "and so does no template at all")
-end)
-
-T.Case("Message: a team never renders to nothing and vanishes", function()
-    -- At the bottom of the ladder every need is gone, so "{needs}" on its own empties out.
-    -- Without a floor the team would drop out of the message without being counted as
-    -- dropped, which is the one failure the degrade ladder must not have.
-    local stripped = { tag = "DN", days = "M/W", needs = {} }
-    T.Eq(ns.Message.TeamFragment(stripped, ns.Message.LEVELS, "{needs}"), "DN",
-        "the tag is the floor")
-    -- Level 2 rather than the floor: the ladder drops {days} above level 2, so at the floor
-    -- this reads "for our" and the point about keeping the rest would be lost in it.
-    T.Eq(ns.Message.TeamFragment(stripped, 2, "{needs} for our {days}"),
-        "for our M/W", "anything else it still says is kept")
-    T.Eq(ns.Message.TeamFragment(stripped, ns.Message.LEVELS, "{needs} for our {days}"),
-        "for our", "and at the floor the days have gone too, but it is still not empty")
-
-    -- A team with no tag of its own falls back to its name, so the floor is never blank.
-    local unnamed = { name = "Sunday Alt", tag = "", needs = {} }
-    T.Eq(ns.Message.TeamFragment(unnamed, ns.Message.LEVELS, "{needs}"), "Sunday Alt",
-        "and the name stands in when there is no tag")
-end)
-
-T.Case("Message: a questionable team template is described, not corrected", function()
-    local Check = ns.Message.CheckTeamTemplate
-
-    T.Eq(Check("{tag} {days}: {needs}", 2), nil, "the default is fine")
-    T.Eq(Check("{needs} for our {days}", 2), nil, "and so is one without a tag")
-    T.Eq(Check("{needs}", 1), nil, "with a single team, {needs} alone is enough")
-
-    T.Eq(type(Check("", 1)), "string", "an empty template is called out")
-    T.Eq(type(Check("we are recruiting", 1)), "string", "and one with no tokens")
-    T.Eq(type(Check("{tag} {days}", 1)), "string",
-        "and one that never says who you are looking for")
-
-    -- Two teams run together with nothing to tell them apart reads as one long list.
-    T.Eq(type(Check("{needs}", 2)), "string", "two teams need something to tell them apart")
-end)
-
-T.Case("Teams: a need can be moved to another team", function()
-    local doc = TwoTeams()
-    local healer = doc.teams[1].needs[1]
-
-    T.Eq(ns.Teams.MoveNeed(doc, healer, 2), true, "it moved")
-    T.Eq(#doc.teams[1].needs, 1, "and left the team it was on")
-    T.Eq(#doc.teams[2].needs, 3, "and arrived at the other one")
-    T.Eq(doc.teams[2].needs[3], healer, "as the same need, not a copy")
-
-    -- Moving it where it already is did nothing, which is not a failure.
-    T.Eq(ns.Teams.MoveNeed(doc, healer, 2), true, "moving it onto its own team is fine")
-    T.Eq(#doc.teams[2].needs, 3, "and changes nothing")
-end)
-
-T.Case("Teams: a move that cannot happen leaves everything where it was", function()
-    local doc = TwoTeams()
-    local healer = doc.teams[1].needs[1]
-
-    local ok, why = ns.Teams.MoveNeed(doc, healer, 99)
-    T.Eq(ok, false, "there is no team 99")
-    T.Eq(type(why), "string", "and it says so")
-    T.Eq(#doc.teams[1].needs, 2, "the need stayed where it was")
-
-    T.Eq(ns.Teams.MoveNeed(doc, { role = "Tank" }, 1), false, "a need on no team moves nowhere")
-    T.Eq(ns.Teams.MoveNeed(doc, nil, 1), false, "and neither does nothing")
-
-    -- A full team refuses rather than taking one too many: the message has a size, and a
-    -- need that left one team without arriving at the other would just be gone.
-    local full = TwoTeams()
-    local first = full.teams[1].needs[1]
-    full.teams[2].needs = {}
-    for i = 1, ns.Doc.MAX_NEEDS do
-        full.teams[2].needs[i] = { role = "DPS", class = "", count = 1, priority = i }
-    end
-    local moved, reason = ns.Teams.MoveNeed(full, first, 2)
-    T.Eq(moved, false, "the target is full")
-    T.Eq(type(reason), "string", "and says which way it is full")
-    T.Eq(#full.teams[1].needs, 2, "so the need is still on its own team")
-    T.Eq(#full.teams[2].needs, ns.Doc.MAX_NEEDS, "and the full one did not grow")
 end)

@@ -15,6 +15,9 @@ MAW.sources = MAW.sources or {
 }
 
 local pullPending = false
+-- What the pending pull covers: nil nothing, true every item, or a set of item names.
+-- A whole-table pull swallows any named ones queued beside it.
+local pending = nil
 local atrRegistered = false
 
 local function SourceSettings()
@@ -58,15 +61,30 @@ function MAW:DetectSources()
     end
 end
 
--- Coalesce bursts of update callbacks into one pull
-function MAW:SchedulePull(reason)
+-- Coalesce bursts of update callbacks into one pull. `names` narrows it to those
+-- items, which is what tracking a new item asks for: its TSM figures at once, without
+-- re-reading every other row.
+function MAW:SchedulePull(reason, names)
+    if names and pending ~= true then
+        if type(pending) ~= "table" then pending = {} end
+        for _, n in ipairs(names) do pending[n] = true end
+    else
+        pending = true
+    end
     if pullPending then
         return
     end
     pullPending = true
     C_Timer.After(PULL_DEBOUNCE, function()
         pullPending = false
-        MAW:PullExternalPrices(reason)
+        local what = pending
+        pending = nil
+        local list = nil
+        if type(what) == "table" then
+            list = {}
+            for n in pairs(what) do list[#list + 1] = n end
+        end
+        MAW:PullExternalPrices(reason, nil, false, list)
     end)
 end
 
@@ -90,14 +108,23 @@ local function NewestEntryAge(itemData)
     return time() - latest.timestamp
 end
 
-MAW.SOURCE_LABELS = { scan = "Scan", atr = "Auctionator", tsm = "TSM", ext = "External", custom = "Custom bound", tsm14 = "TSM 14d", tsm60 = "TSM 60d", vendor = "Vendor" }
+MAW.SOURCE_LABELS = {
+    scan = "Scan", atr = "Auctionator", tsm = "TSM", ext = "External", custom = "Custom bound",
+    tsm14 = "TSM 14d", tsm60 = "TSM 60d", vendor = "Vendor",
+    tsmmat = "TSM mat cost", tsmcraft = "TSM craft cost", vendorbuy = "Vendor price",
+}
 
--- TSM price sources pulled per item, in display order. money=false means a rate or count.
+-- Prices that stand in for a scan rather than being one. A recipe may be costed from
+-- them; a Mover may not, since "cheap against its own average" is not an observation.
+MAW.FALLBACK_SOURCES = { tsm14 = true, tsm60 = true, tsmmat = true, tsmcraft = true, vendorbuy = true }
+
+-- TSM price sources pulled per item, in display order. money=false means a rate or count;
+-- scale multiplies before formatting (the two sale rates arrive as fractions).
 MAW.TSM_KEYS = {
     "DBMinBuyout", "DBMarket", "DBRecent", "DBHistorical",
     "DBRegionMarketAvg", "DBRegionHistorical", "DBRegionSaleAvg", "DBRegionSaleRate", "DBRegionSoldPerDay",
-    "SmartAvgBuy", "AvgBuy", "MinBuy", "MaxBuy", "AvgSell", "MinSell", "MaxSell",
-    "VendorSell", "Crafting",
+    "SmartAvgBuy", "AvgBuy", "MinBuy", "MaxBuy", "AvgSell", "MinSell", "MaxSell", "SaleRate", "NumExpires",
+    "VendorBuy", "VendorSell", "MatPrice", "Crafting",
 }
 MAW.TSM_KEY_INFO = {
     DBMinBuyout        = { label = "Min buyout (realm)",        group = "AuctionDB" },
@@ -107,8 +134,8 @@ MAW.TSM_KEY_INFO = {
     DBRegionMarketAvg  = { label = "Region market avg",         group = "AuctionDB" },
     DBRegionHistorical = { label = "Region historical",         group = "AuctionDB" },
     DBRegionSaleAvg    = { label = "Region sale avg",           group = "AuctionDB" },
-    DBRegionSaleRate   = { label = "Region sale rate",          group = "AuctionDB", money = false, fmt = "%.2f" },
-    DBRegionSoldPerDay = { label = "Region sold per day",       group = "AuctionDB", money = false, fmt = "%.1f" },
+    DBRegionSaleRate   = { label = "Region sale rate",          group = "AuctionDB", money = false, fmt = "%.0f%%", scale = 100 },
+    DBRegionSoldPerDay = { label = "Region sold per day",       group = "AuctionDB", money = false, fmt = "%.3f" },
     SmartAvgBuy        = { label = "Smart avg buy (you)",       group = "Accounting" },
     AvgBuy             = { label = "Avg buy (you)",             group = "Accounting" },
     MinBuy             = { label = "Min buy (you)",             group = "Accounting" },
@@ -116,9 +143,51 @@ MAW.TSM_KEY_INFO = {
     AvgSell            = { label = "Avg sell (you)",            group = "Accounting" },
     MinSell            = { label = "Min sell (you)",            group = "Accounting" },
     MaxSell            = { label = "Max sell (you)",            group = "Accounting" },
+    SaleRate           = { label = "Sale rate (you, 180d)",     group = "Accounting", money = false, fmt = "%.0f%%", scale = 100 },
+    NumExpires         = { label = "Expired since last sale",   group = "Accounting", money = false, fmt = "%d" },
+    VendorBuy          = { label = "Vendor buy",                group = "Item" },
     VendorSell         = { label = "Vendor sell",               group = "Item" },
+    MatPrice           = { label = "TSM material cost",         group = "Crafting" },
     Crafting           = { label = "TSM crafting cost",         group = "Crafting" },
 }
+
+--[[
+Pure. Everything the addon derives from one item's TSM values, so the ladders have cases.
+`v` is { [key] = number } as PullTSM reads it: TSM's API turns a zero into nil, so a
+missing rate means "no sales recorded", never "unknown but probably fine".
+
+    minBuyout, market (+marketKey), historical (+historicalKey)   the two columns
+    velocity = { rate, perDay, saleAvg, mine }   region sale rate (fraction), region sold
+                                                 per day, region sale average, your own
+                                                 180-day sale rate
+    paid (+paidKey)   what the copies you hold cost you, or your all-time average
+    sold              what you sold it for on average
+    expires           items expired since your last sale of it
+    fallback = { vendorBuy, matPrice, crafting }   prices that can stand in for a scan
+]]
+function MAW.TsmSummary(v)
+    v = v or {}
+    local function FirstOf(keys)
+        for _, key in ipairs(keys) do
+            if v[key] then return v[key], key end
+        end
+        return nil, nil
+    end
+    local ref = {}
+    ref.minBuyout = v.DBMinBuyout
+    -- With fallbacks for realms where TSM lacks realm-level averages
+    ref.market, ref.marketKey = FirstOf({ "DBMarket", "DBRecent", "DBRegionMarketAvg", "DBRegionSaleAvg" })
+    ref.historical, ref.historicalKey = FirstOf({ "DBHistorical", "DBRegionHistorical", "DBRegionSaleAvg" })
+    ref.velocity = {
+        rate = v.DBRegionSaleRate, perDay = v.DBRegionSoldPerDay,
+        saleAvg = v.DBRegionSaleAvg, mine = v.SaleRate,
+    }
+    ref.paid, ref.paidKey = FirstOf({ "SmartAvgBuy", "AvgBuy" })
+    ref.sold = v.AvgSell
+    ref.expires = v.NumExpires
+    ref.fallback = { vendorBuy = v.VendorBuy, matPrice = v.MatPrice, crafting = v.Crafting }
+    return ref
+end
 
 -- Lines for a tooltip listing everything TSM reported for an item
 function MAW:TsmTooltipLines(itemData)
@@ -138,7 +207,7 @@ function MAW:TsmTooltipLines(itemData)
             end
             local text
             if info.money == false then
-                text = string.format(info.fmt or "%s", value)
+                text = string.format(info.fmt or "%s", value * (info.scale or 1))
             else
                 text = self:FormatMoney(value)
             end
@@ -235,51 +304,55 @@ function MAW:PullTSM(itemName, itemData)
     end
 
     -- Every TSM price source we care about. Money values are copper; rates are plain numbers.
-    local ref = { values = {}, time = time() }
+    local values, n = {}, 0
     for _, key in ipairs(MAW.TSM_KEYS) do
-        ref.values[key] = Value(key)
+        values[key] = Value(key)
+        if values[key] then n = n + 1 end
     end
-    local v = ref.values
 
-    -- The two summary columns, with fallbacks for realms where TSM lacks realm-level averages
-    local function FirstOf(keys)
-        for _, key in ipairs(keys) do
-            if v[key] then return v[key], key end
+    -- A read that finds nothing does not throw away a pull that found something: TSM's
+    -- AuctionDB loads once per session, and an empty answer is the load not having
+    -- happened yet, not the market having vanished.
+    if n == 0 then
+        if itemData.tsmRef then
+            itemData.tsmRef.stale = true
+            return false, "TSM reported nothing this time; keeping the pull from "
+                .. (itemData.tsmRef.time and date("%Y-%m-%d %H:%M", itemData.tsmRef.time) or "earlier")
         end
-        return nil, nil
+        return false, "TSM has no data for this item (needs the TSM desktop app synced for this realm)"
     end
-    ref.minBuyout = v.DBMinBuyout
-    ref.market, ref.marketKey = FirstOf({ "DBMarket", "DBRecent", "DBRegionMarketAvg", "DBRegionSaleAvg" })
-    ref.historical, ref.historicalKey = FirstOf({ "DBHistorical", "DBRegionHistorical", "DBRegionSaleAvg" })
 
-    local price = ref.minBuyout or ref.market
-    if not price then
-        itemData.tsmRef = nil
-        return false, "TSM has no AuctionDB data for this item (needs the TSM desktop app synced for this realm)"
-    end
+    local ref = MAW.TsmSummary(values)
+    ref.values, ref.time = values, time()
     itemData.tsmRef = ref
 
-    if not HasRecentScanEntry(itemData) and NewestEntryAge(itemData) >= EXTERNAL_ENTRY_MIN_AGE then
-        self:AddPriceEntry(itemName, price, price, 1, "tsm")
-    else
-        self:RecordHistory(itemName, price, "tsm")
+    -- The snapshot is one observation; the rest are levels the tabs read off the ref.
+    local price = ref.minBuyout or ref.market
+    if price then
+        if not HasRecentScanEntry(itemData) and NewestEntryAge(itemData) >= EXTERNAL_ENTRY_MIN_AGE then
+            self:AddPriceEntry(itemName, price, price, 1, "tsm")
+        else
+            self:RecordHistory(itemName, price, "tsm")
+        end
     end
 
     local parts = {}
     if ref.minBuyout then table.insert(parts, "min buyout " .. self:FormatMoney(ref.minBuyout)) end
     if ref.market then table.insert(parts, "14d " .. self:FormatMoney(ref.market) .. " (" .. ref.marketKey .. ")") end
     if ref.historical then table.insert(parts, "60d " .. self:FormatMoney(ref.historical) .. " (" .. ref.historicalKey .. ")") end
-    local n = 0
-    for _ in pairs(v) do n = n + 1 end
+    if ref.velocity.rate then table.insert(parts, string.format("sells %.0f%%", ref.velocity.rate * 100)) end
+    if ref.paid then table.insert(parts, "paid " .. self:FormatMoney(ref.paid)) end
+    if ref.sold then table.insert(parts, "sold " .. self:FormatMoney(ref.sold)) end
+    if not price then table.insert(parts, "no AuctionDB price") end
     table.insert(parts, n .. " TSM fields")
     return true, table.concat(parts, ", ")
 end
 
--- Pull external prices for every tracked item.
+-- Pull external prices for every tracked item, or for `names` only.
 -- only: nil (all enabled sources), "auctionator" or "tsm"
 -- verbose: print a per-item report to chat
 -- Returns number of items that received data.
-function MAW:PullExternalPrices(reason, only, verbose)
+function MAW:PullExternalPrices(reason, only, verbose, names)
     self:DetectSources()
     local useAtr = (not only or only == "auctionator")
         and self.sources.auctionator.available and self:IsSourceEnabled("auctionator")
@@ -293,8 +366,13 @@ function MAW:PullExternalPrices(reason, only, verbose)
     end
 
     local db = self:GetActiveDB()
+    local wanted = db.items
+    if names then
+        wanted = {}
+        for _, itemName in ipairs(names) do wanted[itemName] = db.items[itemName] end
+    end
     local count, total = 0, 0
-    for itemName, itemData in pairs(db.items) do
+    for itemName, itemData in pairs(wanted) do
         total = total + 1
         local got = false
         if useAtr then

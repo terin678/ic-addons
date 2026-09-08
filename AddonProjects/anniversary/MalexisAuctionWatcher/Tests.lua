@@ -65,6 +65,59 @@ T.Case("Recipe series: a vendor material costs the same every slot", function()
     T.Eq(s.mats[1].values, nil, "and never drawn as a line: it would be flat")
 end)
 
+T.Case("Recipe series: a bind-on-pickup material is left out, not a hole", function()
+    -- Primal Nether is never on the auction house, so a slot with no price for it
+    -- is every slot. Treating that as a missing price left every epic craft with
+    -- no cost line at all.
+    local s = MAW.ComposeRecipeSeries({
+        count = 2, labels = { "a", "b" }, cut = 0,
+        productName = "Boots", productCount = 1,
+        productPoints = { pt("a", 500), pt("b", 500) },
+        mats = {
+            { name = "Primal Nether", count = 1, bop = true },
+            { name = "Primal Fire", count = 4, points = { pt("a", 10), pt("b", 20) },
+              tsm = { market = 12 } },
+        },
+    })
+    T.Near(s.cost[1], 40, "the fire alone")
+    T.Near(s.cost[2], 80, "in every slot")
+    T.Eq(s.complete, 2, "both slots priced")
+    T.Eq(s.bop[1], "Primal Nether", "and the nether is named")
+    T.Eq(s.mats[1].values, nil, "with no line of its own")
+    T.Near(s.tsm.cost.market, 48, "the TSM cost level is without it too")
+end)
+
+T.Case("Recipe profit: a bind-on-pickup material is priced around, a missing one is not", function()
+    local cost, missing, bop = MAW.SumMaterials({
+        { item = "Primal Fire", count = 4, unit = 10 },
+        { item = "Imbued Vial", count = 1, unit = 20, vendor = 20 },
+        { item = "Primal Nether", count = 1, bop = true },
+    })
+    T.Near(cost, 60, "fire and vial")
+    T.Eq(#missing, 0, "nothing is missing")
+    T.Eq(bop[1], "Primal Nether", "the nether is what you bring")
+
+    cost, missing, bop = MAW.SumMaterials({
+        { item = "Primal Fire", count = 4 },
+        { item = "Primal Nether", count = 1, bop = true },
+    })
+    T.Near(cost, 0, "nothing priced")
+    T.Eq(missing[1], "Primal Fire", "an unpriced tradeable is still missing")
+    T.Eq(#bop, 1, "and the nether is still separate from it")
+
+    T.Eq(#select(2, MAW.SumMaterials({})), 0, "no materials is no gaps")
+
+    -- The flag is found once and written onto the material, so recipes saved before
+    -- it existed catch up the first time they are priced.
+    local nether = { item = "Primal Nether", count = 1 }
+    T.Eq(MAW:IsBoPMaterial(nether), true, "known by name when the item cache is cold")
+    T.Eq(nether.bop, true, "and remembered on the material")
+    T.Eq(MAW:IsBoPMaterial({ item = "Imbued Vial", count = 1, vendor = 20 }), false,
+        "a vendor material is never")
+    T.Eq(MAW:IsBoPMaterial({ item = "Primal Fire", count = 1, bop = false }), false,
+        "and one already resolved is not asked again")
+end)
+
 T.Case("Recipe series: best and worst skip the slots with no margin", function()
     local s = MAW.ComposeRecipeSeries({
         count = 4, labels = { "a", "b", "c", "d" }, cut = 0,
@@ -157,6 +210,114 @@ T.Case("Recipe series: a TSM average is scaled like the line it belongs to", fun
     T.Near(partial.mats[1].tsm.market, 12, "the one that has it still draws")
     T.Eq(partial.mats[2].tsm, nil, "the one that does not, does not")
     T.Eq(partial.tsm.value, nil, "and no TSM for the product means no level for the batch")
+end)
+
+--------------------------------------------------------------------------------
+-- TSM: what is derived from the feed, and what it decides
+--------------------------------------------------------------------------------
+
+T.Case("TSM summary: the columns fall back to region figures, and the rest is picked out", function()
+    local full = MAW.TsmSummary({
+        DBMinBuyout = 90, DBMarket = 100, DBRecent = 95, DBHistorical = 120,
+        DBRegionMarketAvg = 110, DBRegionHistorical = 130, DBRegionSaleAvg = 105,
+        DBRegionSaleRate = 0.42, DBRegionSoldPerDay = 3.5,
+        SmartAvgBuy = 80, AvgBuy = 70, AvgSell = 140, SaleRate = 0.6, NumExpires = 4,
+        VendorBuy = 20, MatPrice = 85, Crafting = 60,
+    })
+    T.Eq(full.market, 100, "the realm market value")
+    T.Eq(full.marketKey, "DBMarket", "and which field it was")
+    T.Eq(full.historical, 120, "the realm historical")
+    T.Eq(full.velocity.rate, 0.42, "region sale rate")
+    T.Eq(full.velocity.perDay, 3.5, "sold per day")
+    T.Eq(full.velocity.mine, 0.6, "and your own")
+    T.Eq(full.paid, 80, "what the copies you hold cost")
+    T.Eq(full.paidKey, "SmartAvgBuy", "from the smart average when there is one")
+    T.Eq(full.sold, 140, "what you sold for")
+    T.Eq(full.expires, 4, "expired since the last sale")
+    T.Eq(full.fallback.vendorBuy, 20, "a vendor sells it")
+    T.Eq(full.fallback.matPrice, 85, "TSM's material cost")
+
+    -- A realm with no data of its own: the region stands in, and says so.
+    local region = MAW.TsmSummary({ DBRegionMarketAvg = 110, DBRegionSaleAvg = 105, AvgBuy = 70 })
+    T.Eq(region.market, 110, "region market average")
+    T.Eq(region.marketKey, "DBRegionMarketAvg", "named")
+    T.Eq(region.historical, 105, "the sale average is the last resort for both columns")
+    T.Eq(region.paid, 70, "the plain average when you hold none")
+    T.Eq(region.paidKey, "AvgBuy", "and it says which")
+    T.Eq(region.velocity.rate, nil, "no rate is no rate")
+
+    local empty = MAW.TsmSummary(nil)
+    T.Eq(empty.market, nil, "nothing is nothing")
+    T.Eq(type(empty.velocity), "table", "but the shape is always there")
+    T.Eq(type(empty.fallback), "table", "for every reader")
+end)
+
+T.Case("TSM velocity: a rate is graded against the Convert floor, and none is none", function()
+    T.Eq(MAW.VelocityGrade(0.5, 0.1), "sells", "half of auctions selling is a seller")
+    T.Eq(MAW.VelocityGrade(0.3, 0.1), "sells", "exactly at the mark")
+    T.Eq(MAW.VelocityGrade(0.2, 0.1), "slow", "between the floor and the mark")
+    T.Eq(MAW.VelocityGrade(0.1, 0.1), "slow", "exactly at the floor")
+    T.Eq(MAW.VelocityGrade(0.05, 0.1), "dead", "under it")
+    T.Eq(MAW.VelocityGrade(nil, 0.1), nil, "no data is not a grade")
+    T.Eq(MAW.VelocityGrade(0.05, 0), "slow", "with the floor off nothing is dead")
+    T.Eq(MAW.VelocityGrade(0.6, 0.1, 0.7), "slow", "and the mark can be moved")
+end)
+
+T.Case("TSM convert gate: a product that does not sell is not a conversion", function()
+    local function ref(rate) return { velocity = { rate = rate } } end
+
+    T.Eq(MAW.ConvertAllowed(ref(0.4), 0.1, true), true, "sells well enough")
+    T.Eq(select(2, MAW.ConvertAllowed(ref(0.4), 0.1, true)), "sells 40%", "and the row says how well")
+
+    local ok, why = MAW.ConvertAllowed(ref(0.05), 0.1, true)
+    T.Eq(ok, false, "under the floor")
+    T.True(why:find("under the 10%% floor", 1) ~= nil, "with the floor in the reason")
+
+    ok, why = MAW.ConvertAllowed(ref(nil), 0.1, true)
+    T.Eq(ok, false, "TSM knows the item and recorded no sales: that is a no")
+    T.Eq(why, "no sales recorded region-wide", "said plainly")
+
+    ok, why = MAW.ConvertAllowed(nil, 0.1, true)
+    T.Eq(ok, true, "never asked TSM about it: nothing is known against it")
+    T.Eq(why, "sale rate unknown", "and the row admits that")
+    T.Eq(MAW.ConvertAllowed({ market = 100 }, 0.1, true), true,
+        "a reference from before the feed carried velocity is the same as none")
+
+    T.Eq(MAW.ConvertAllowed(ref(nil), 0.1, false), true, "feed off, gate off")
+    T.Eq(MAW.ConvertAllowed(ref(nil), 0, true), true, "floor at zero, gate off")
+end)
+
+T.Case("TSM fallback: what stands in for a scan, in order", function()
+    local ref = { market = 100, historical = 120,
+        fallback = { vendorBuy = 20, matPrice = 85, crafting = 60 } }
+    local price, key = MAW.FallbackPrice(ref, "material")
+    T.Eq(price, 20, "a vendor that sells it settles a material")
+    T.Eq(key, "vendorbuy", "and says so")
+    T.Eq(MAW.FALLBACK_SOURCES[key], true, "which Movers refuse to act on")
+
+    ref.fallback.vendorBuy = nil
+    T.Eq(MAW.FallbackPrice(ref, "material"), 100, "then the market")
+    ref.market = nil
+    price, key = MAW.FallbackPrice(ref, "material")
+    T.Eq(price, 85, "then TSM's own material cost")
+    T.Eq(key, "tsmmat", "named as such")
+    ref.fallback.matPrice = nil
+    T.Eq(select(2, MAW.FallbackPrice(ref, "material")), "tsmcraft", "then what it costs to craft")
+    ref.fallback.crafting = nil
+    T.Eq(select(2, MAW.FallbackPrice(ref, "material")), "tsm60", "then the long average")
+
+    -- A product is sold, not bought: only the market averages apply.
+    local product = { market = 100, historical = 120, fallback = { vendorBuy = 20, matPrice = 85 } }
+    price, key = MAW.FallbackPrice(product, "product")
+    T.Eq(price, 100, "a product is worth its market value")
+    T.Eq(key, "tsm14", "from the 14-day column")
+    product.market = nil
+    T.Eq(MAW.FallbackPrice(product, "product"), 120, "or the 60-day one")
+    product.historical = nil
+    T.Eq(MAW.FallbackPrice(product, "product"), nil, "and never a vendor's price")
+
+    T.Eq(MAW.FallbackPrice(nil, "material"), nil, "no reference, no price")
+    T.Eq(MAW.FallbackPrice({}, "material"), nil, "an empty one neither")
 end)
 
 T.Case("Window scale: a usable percentage survives, an unusable one is clamped", function()

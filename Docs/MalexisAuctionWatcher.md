@@ -100,6 +100,12 @@ chart bar.
 External prices become the Today value only if your last scan of that item is more than an
 hour old; otherwise they go into history only.
 
+Pulls happen on their own: at login, when you start tracking an item, when the auction
+house opens and closes, and after every scan. TSM's AuctionDB figures load once per session
+from the desktop app's file, so they change only at login; its Accounting figures move as
+you buy and sell, which is why closing the auction house pulls again. A pull that finds
+nothing keeps the last one that did, and the tooltip says so.
+
 ```
 /maw sources                 show availability
 /maw sources atr|tsm on|off  toggle a feed
@@ -107,6 +113,15 @@ hour old; otherwise they go into history only.
 ```
 
 The History tab has "Pull Auctionator" and "Pull TSM" buttons that do the same.
+
+**TSM stands in where nothing was scanned.** A recipe used to show `?` for its cost while a
+single material had no scan. Now, when an item has no scan and no bound of your own, its
+price is taken from TSM: for a material, the vendor's price if a vendor sells it, then the
+14-day market value, then TSM's own material cost, then its crafting cost, then the 60-day
+average; for a product, the market value then the 60-day average. A cost that leans on any
+of these carries `~` on the Recipes tab and the tooltip names the items. Movers never act
+on a stood-in price: an item nobody has scanned cannot become a Buy for being cheap
+against its own average.
 
 When TSM is loaded and enabled, Materials, Products, and Stores gain two columns right
 after the item name: "TSM 60d" (historical) then "TSM 14d" (market value), followed by
@@ -119,7 +134,19 @@ On realms where TSM lacks realm-level Market Value or Historical, the columns fa
 the region figures (region market average, region historical, then region sale average),
 and the tooltip names which TSM field was used. The tooltip also lists everything else TSM
 reported for the item: min buyout, region sale rate and sold per day, your own Accounting
-buy and sell averages, vendor sell, and TSM crafting cost.
+buy and sell averages, sale rate and expires, vendor buy and sell, and TSM's material and
+crafting costs.
+
+Two more columns follow them. **Paid** on Materials is what the copies you hold cost you,
+by TSM's Accounting (newest purchases first while you hold any; your all-time average when
+you hold none). **Sold** on Products is what you sold it for on average. Both are `-` until
+TSM has a purchase or sale of yours on record.
+
+**Sale %** is the share of region-wide auctions of the item that actually sell. Green at
+30% or better, amber above the Convert floor, red below it, and `-` when TSM recorded no
+sales at all, which is the worst answer, not a missing one. Hover it for sold per day, the
+region sale average, your own 180-day sale rate and how many of yours expired since you
+last sold one. Region figures are for the whole region (Fresh-US here), not your realm.
 
 ## History
 
@@ -184,6 +211,13 @@ Profit per batch = product value after the auction house cut minus material cost
 each item's latest price. Rows sort by margin, best first. Hover a recipe for the full
 breakdown with sources.
 
+A material that is bind on pickup, such as Primal Nether or Nether Vortex, is never on
+the auction house, so it has no price to find. The recipe prices without it: the row is
+marked **BoP**, the material cost is everything else, and the tooltip names what you have
+to bring yourself. "Can make" counts it only if it is in your bags or bank. The History
+chart leaves it out of the cost line the same way. Recipes imported before this had the
+reagent as an ordinary material; they are re-read the first time they are priced.
+
 The cut defaults to 5%, the faction auction house rate in the capitals. The neutral
 auction houses in Gadgetzan, Booty Bay, and Everlook take 15%; set that with
 `/maw ahcut 15` if you sell there. The "AH net" headers on Recipes and Stores show the
@@ -235,6 +269,11 @@ TSM has no data for fall back to Latest. Hovering a recipe shows its profit unde
 bases side by side, so you can see whether a conversion is only profitable right now or
 holds up against the longer averages. The button is disabled when TSM is not loaded.
 
+With TSM on, a **Sells** column grades the product the way Sale % does on Products, and a
+Mat cost with `~` was priced from TSM where nothing was scanned (see "Where prices come
+from"). A recipe whose product does not sell is still listed here; it is Movers that
+declines to suggest it.
+
 ```
 /maw recipes
 ```
@@ -248,11 +287,15 @@ Three lists, each built from the data on the other tabs:
   as raid consumables, are for stocking up. The Buy button opens the auction house Browse tab with an exact search for
   the item. It never buys on its own; you pick the listing.
 - **Convert**: recipes with at least 10% margin and materials for at least one batch in
-  bags plus bank. The Convert button casts the recipe, or uses the item for mote combines.
+  bags plus bank. With TSM on, the product also has to sell: its region sale rate must be
+  at least 10% (`/maw minsale <percent>`; 0 turns the gate off). A product TSM has recorded
+  no sales of fails; one TSM has never been asked about passes, with "sale rate unknown" in
+  the reason. The Convert button casts the recipe, or uses the item for mote combines.
   One click makes one batch. The game only lets an addon cast from a real click, and only
   out of combat, so the button is disabled while fighting.
 - **List**: any tracked item at or above 75% of its range that you hold, so spare
-  materials get listed when they spike, not just products.
+  materials get listed when they spike, not just products. With TSM on, the reason adds
+  how well it sells and how many of yours expired since your last sale.
   The List button switches to the Auctions tab, puts your first bag stack in the sell
   slot, and fills start and buyout from today's price undercut by 1 copper per unit. You
   set the duration and press Create Auction.
@@ -267,6 +310,7 @@ open. "Refresh Table" recomputes without scanning.
 ## Other commands
 
 ```
+/maw minsale <percent>    TSM sale rate a product needs before Movers suggests converting
 /maw list                 list tracked items
 /maw prices <item>        last 10 entries for an item
 /maw add <name or link>   track an item (materials tab)

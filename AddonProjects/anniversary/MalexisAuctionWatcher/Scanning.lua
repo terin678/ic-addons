@@ -187,7 +187,7 @@ end
 function MAW:GetRecipeItems(recipe)
     local names = { recipe.product }
     for _, mat in ipairs(recipe.materials or {}) do
-        if not mat.vendor then
+        if not mat.vendor and not self:IsBoPMaterial(mat) then
             table.insert(names, mat.item)
         end
     end

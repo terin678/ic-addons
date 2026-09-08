@@ -68,6 +68,7 @@ function MAW:AddItemByID(itemName, itemID, itemType)
         order = maxOrder + 1,
     }
     self:FireCallbacks("onItemAdded", itemName)
+    if self.SchedulePull then self:SchedulePull("added", { itemName }) end
     return true
 end
 
@@ -85,9 +86,35 @@ function MAW:PriceBasisDef(key)
     return self.PRICE_BASES[1]
 end
 
+--[[
+Pure. When nothing was scanned and no bound was set, the price TSM can stand in with,
+and the source key that says so (all in MAW.FALLBACK_SOURCES). Returns price, key.
+
+A material is something you buy, so a vendor that sells it settles the matter; then the
+market value; then what TSM itself would cost it at as a material or a craft. A product
+is something you sell, so only the market averages apply. Before this a recipe with one
+unscanned material showed "?" for a cost however much TSM knew about it.
+]]
+function MAW.FallbackPrice(ref, itemType)
+    if not ref then return nil end
+    local f = ref.fallback or {}
+    if itemType == "product" then
+        if ref.market then return ref.market, "tsm14" end
+        if ref.historical then return ref.historical, "tsm60" end
+        return nil
+    end
+    if f.vendorBuy then return f.vendorBuy, "vendorbuy" end
+    if ref.market then return ref.market, "tsm14" end
+    if f.matPrice then return f.matPrice, "tsmmat" end
+    if f.crafting then return f.crafting, "tsmcraft" end
+    if ref.historical then return ref.historical, "tsm60" end
+    return nil
+end
+
 -- Per-unit price for a tracked item under a basis ("latest", "tsm14", "tsm60"), with the
 -- source and time it came from. TSM bases fall back to the latest price when TSM has no
--- value for the item. Falls back to custom bounds when there are no observations at all.
+-- value for the item. Falls back to custom bounds when there are no observations at all,
+-- and last to whatever TSM can stand in with (MAW.FallbackPrice) while the feed is on.
 function MAW:GetUnitPrice(itemName, basis)
     local db = self:GetActiveDB()
     local itemData = db.items[itemName]
@@ -115,7 +142,20 @@ function MAW:GetUnitPrice(itemName, basis)
     elseif itemData.customLow or itemData.customHigh then
         return itemData.customLow or itemData.customHigh, "custom", nil
     end
+    if itemData.tsmRef and self:TsmOn() then
+        local price, key = MAW.FallbackPrice(itemData.tsmRef, itemData.itemType)
+        if price then
+            return price, key, itemData.tsmRef.time and date("%Y-%m-%d %H:%M", itemData.tsmRef.time) or nil
+        end
+    end
     return nil
+end
+
+-- The TSM feed is loaded and switched on. One predicate, read wherever a TSM figure
+-- would change what a tab says.
+function MAW:TsmOn()
+    return (self.sources and self.sources.tsm and self.sources.tsm.available
+        and self:IsSourceEnabled("tsm")) and true or false
 end
 
 -- recipe = { name, product = itemName, productCount = n, materials = { {item = name, count = n}, ... } }
@@ -228,8 +268,29 @@ function MAW:AddPrimalMightPreset()
     return ok
 end
 
+-- Pure. Folds the priced material lines of one recipe into a cost. A line is
+-- { item, count, unit (or nil), vendor, bop }. Returns matCost, missing, bop: the
+-- names with no price, and the names that never have one because they are bind on
+-- pickup. A bind-on-pickup reagent is not a missing price. It is never on the
+-- auction house, so the recipe prices without it and the caller says it is needed;
+-- before this, one Primal Nether left the whole recipe at "?".
+function MAW.SumMaterials(lines)
+    local total, missing, bop = 0, {}, {}
+    for _, line in ipairs(lines or {}) do
+        if line.unit then
+            total = total + line.unit * (line.count or 1)
+        elseif line.bop then
+            bop[#bop + 1] = line.item
+        else
+            missing[#missing + 1] = line.item
+        end
+    end
+    return total, missing, bop
+end
+
 -- Compute the economics of one recipe under a price basis (default "latest").
--- Returns a table; fields are nil when a price is missing and `missing` lists the item names.
+-- Returns a table; fields are nil when a price is missing, `missing` lists those item
+-- names, and `bop` lists the bind-on-pickup materials the cost is without.
 function MAW:ComputeRecipeProfit(recipe, basis)
     basis = basis or "latest"
     local result = {
@@ -237,34 +298,42 @@ function MAW:ComputeRecipeProfit(recipe, basis)
         basis = basis,
         matCost = 0,
         missing = {},
+        bop = {},
         materials = {},
         canMake = nil,
     }
 
-    local complete = true
     for _, mat in ipairs(recipe.materials) do
         local unit, source, when
+        local bop = self:IsBoPMaterial(mat)
         if mat.vendor then
             unit, source = mat.vendor, "vendor"
-        else
+        elseif not bop then
             unit, source, when = self:GetUnitPrice(mat.item, basis)
         end
         local lineCost = unit and unit * mat.count or nil
-        table.insert(result.materials, { item = mat.item, count = mat.count, unit = unit, cost = lineCost, source = source, when = when, vendor = mat.vendor })
-        if unit then
-            result.matCost = result.matCost + lineCost
-        else
-            complete = false
-            table.insert(result.missing, mat.item)
-        end
+        table.insert(result.materials, { item = mat.item, count = mat.count, unit = unit, cost = lineCost,
+            source = source, when = when, vendor = mat.vendor, bop = bop })
 
-        -- How many full batches the player owns materials for (vendor mats assumed buyable)
+        -- How many full batches the player owns materials for. Vendor mats are assumed
+        -- buyable; a bind-on-pickup one counts only when it is in hand, which is the point.
         if not mat.vendor then
             local owned = (self:CountInventory(mat.item) or 0) + (self:CountBank(mat.item) or 0)
             local batches = math.floor(owned / mat.count)
             if not result.canMake or batches < result.canMake then
                 result.canMake = batches
             end
+        end
+    end
+
+    result.matCost, result.missing, result.bop = MAW.SumMaterials(result.materials)
+    local complete = #result.missing == 0
+
+    -- What was priced from TSM rather than from a scan, so the row can say so.
+    result.fallback = {}
+    for _, line in ipairs(result.materials) do
+        if line.source and MAW.FALLBACK_SOURCES[line.source] then
+            result.fallback[#result.fallback + 1] = line.item
         end
     end
 
@@ -275,9 +344,22 @@ function MAW:ComputeRecipeProfit(recipe, basis)
     if productUnit then
         result.productValue = productUnit * (recipe.productCount or 1)
         result.ahNet = result.productValue * (1 - self:GetAHCut())
+        if MAW.FALLBACK_SOURCES[productSource] then
+            result.fallback[#result.fallback + 1] = recipe.product
+        end
     else
         complete = false
         table.insert(result.missing, recipe.product)
+    end
+
+    -- Whether the product sells, off TSM's region figures. A profitable recipe whose
+    -- product sits on the auction house until it expires is not profitable.
+    if self:TsmOn() then
+        local db = self:GetActiveDB()
+        local productRef = db.items[recipe.product] and db.items[recipe.product].tsmRef
+        result.velocity = productRef and productRef.velocity or nil
+        result.velocityGrade = MAW.VelocityGrade(result.velocity and result.velocity.rate,
+            self:MoverSetting("moverMinSaleRate"))
     end
 
     result.complete = complete
@@ -583,6 +665,46 @@ function MAW:VendorMatByName(name)
 end
 
 -- ---------------------------------------------------------------------------
+-- Bind-on-pickup reagents: never on the auction house, so never priced and never
+-- tracked. The recipe prices around them and says they are needed.
+-- ---------------------------------------------------------------------------
+
+-- GetItemInfo answers the bind type for any item this client has seen, and nil for
+-- one it has not. Until it answers, these two stand in: they are the reagents that
+-- made every TBC epic craft show "?" for a cost.
+MAW.BOP_MATS = {
+    [23572] = { name = "Primal Nether" },
+    [30183] = { name = "Nether Vortex" },
+}
+
+function MAW:BoPMatByName(name)
+    for id, v in pairs(self.BOP_MATS) do
+        if v.name == name then return v, id end
+    end
+    return nil
+end
+
+-- Whether one recipe material is bind on pickup. Resolved once and written onto the
+-- material, so recipes saved before this flag existed pick it up the first time they
+-- are priced; left unresolved, and asked again next time, while the item cache has
+-- no answer and the material is not on the known list.
+function MAW:IsBoPMaterial(mat)
+    if not mat or mat.vendor then return false end
+    if mat.bop ~= nil then return mat.bop end
+    local bind
+    if GetItemInfo then
+        if mat.id then bind = select(14, GetItemInfo(mat.id)) end
+        if bind == nil then bind = select(14, GetItemInfo(mat.item)) end
+    end
+    if bind == nil and (self.BOP_MATS[mat.id or 0] or self:BoPMatByName(mat.item)) then
+        bind = 1
+    end
+    if bind == nil then return false end
+    mat.bop = (bind == 1)
+    return mat.bop
+end
+
+-- ---------------------------------------------------------------------------
 -- Built-in preset: every TBC Alchemy recipe with a tradeable product (potions, elixirs,
 -- flasks, transmutes). Generated from Wowhead's TBC Classic spell data; item names from
 -- Questie's item database. Vials carry a vendor price. Alchemist stones, cauldrons and
@@ -789,7 +911,7 @@ end
 
 -- ---------------------------------------------------------------------------
 -- Import from the profession window that is open right now (exact reagents from the client)
--- entry = { name, product, productID, numMade, reagents = { {item, id, count, vendor} } }
+-- entry = { name, product, productID, numMade, reagents = { {item, id, count, bind} } }
 -- ---------------------------------------------------------------------------
 function MAW:ImportProfessionRecipe(entry, professionName)
     local mats, tracked = {}, 0
@@ -797,11 +919,14 @@ function MAW:ImportProfessionRecipe(entry, professionName)
         local vendor = self.VENDOR_MATS[r.id or 0] or self:VendorMatByName(r.item)
         if vendor then
             table.insert(mats, { item = r.item, count = r.count, vendor = vendor.price })
+        elseif r.bind == 1 or self.BOP_MATS[r.id or 0] then
+            -- Never on the auction house: not tracked, and priced as what it is.
+            table.insert(mats, { item = r.item, id = r.id, count = r.count, bop = true })
         else
             if r.id then
                 if self:AddItemByID(r.item, r.id, "material") then tracked = tracked + 1 end
             end
-            table.insert(mats, { item = r.item, count = r.count })
+            table.insert(mats, { item = r.item, id = r.id, count = r.count })
         end
     end
     if entry.productID and self:AddItemByID(entry.product, entry.productID, "product") then

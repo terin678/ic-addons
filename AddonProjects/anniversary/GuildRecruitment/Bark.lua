@@ -158,10 +158,10 @@ function Bark.ReadState()
     if type(GetChannelList) == "function" then list = { GetChannelList() } end
     local channelID, channelName = Bark.Channel(list, s.channel)
 
-    local msg, _, _, _, reason = ns.Message.Assemble(ns.db.doc, ns.cdb.bark.cursor)
+    local msg, reason = ns.Message.Ready(ns.db.doc)
     if msg then
         local ok, why = ns.Message.Validate(msg)
-        if not ok then reason = why end
+        if not ok then msg, reason = nil, why end
     end
 
     local who, ago = Bark.Suppressed(ns.db.barks, now, s.quietSec, channelName, me)
@@ -184,11 +184,11 @@ function Bark.ReadState()
     }
 end
 
--- What would go out, with no side effects. The Bark tab shows this next to the
--- button, so nobody sends a line they have not read.
+-- What would go out, with no side effects: the line, or nil and why there is none.
+-- The Bark tab shows this next to the button, so nobody sends a line they have not
+-- read.
 function Bark.Preview()
-    local msg, level, dropped = ns.Message.Assemble(ns.db.doc, ns.cdb.bark.cursor)
-    return msg, level, dropped
+    return ns.Message.Ready(ns.db.doc)
 end
 
 function Bark.SecondsUntilDue()
@@ -249,8 +249,6 @@ function Bark.Fire(force)
 
     local now = ns.Now()
     local me = ns.Roster.Short(UnitName and UnitName("player") or "")
-    local _, _, _, nextCursor = ns.Message.Assemble(ns.db.doc, c.cursor)
-    c.cursor = nextCursor or c.cursor
     c.lastSentAt = now
     Bark.pending = false
     Bark.lastSkipReason = nil

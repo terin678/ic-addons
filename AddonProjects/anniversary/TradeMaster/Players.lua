@@ -12,20 +12,31 @@ function Players.Similar(a, b)
     return ca == cb
 end
 
-function Players.Observe(state, norm, now, windowSec)
+-- Pure. Is this the same advertisement again, inside the window?
+function Players.Repeat(state, norm, now, windowSec)
     state = state or {}
-    local isRepeat = false
-
-    if state.lastMsg and state.lastMsgAt
+    return state.lastMsg ~= nil and state.lastMsgAt ~= nil
         and (now - state.lastMsgAt) <= windowSec
-        and Players.Similar(state.lastMsg, norm) then
-        isRepeat = true
+        and Players.Similar(state.lastMsg, norm)
+end
+
+-- The effect half: remembers the line, and a repeat flags the seller. Decide asks
+-- Repeat; Act calls this.
+function Players.Note(state, norm, now, isRepeat)
+    if isRepeat then
         state.repeats = (state.repeats or 0) + 1
         state.flaggedSeller = true
     end
-
     state.lastMsg = norm
     state.lastMsgAt = now
+    return state
+end
+
+-- Both halves at once, for callers that decide and act in one breath.
+function Players.Observe(state, norm, now, windowSec)
+    state = state or {}
+    local isRepeat = Players.Repeat(state, norm, now, windowSec)
+    Players.Note(state, norm, now, isRepeat)
     return state, isRepeat
 end
 
@@ -91,6 +102,64 @@ function Players.ClearDeclined(state)
     local n = state.declinedOrder and #state.declinedOrder or 0
     state.declined, state.declinedOrder, state.declinedAt = nil, nil, nil
     return n
+end
+
+--------------------------------------------------------------------------------
+-- The conversation with one player, named
+--------------------------------------------------------------------------------
+
+--[[
+The record's fields were written from three files and read as booleans. These are
+the states they add up to, and the only writers of them:
+
+    idle       nothing pending
+    awaiting   we invited on a line that named nothing and asked what they need;
+               their next line is the answer                      (Invited, Answered)
+    declined   they asked for something we cannot make; no invites for the cooldown,
+               and that item is answered from memory              (Declined)
+    flagged    posted the same advertisement twice: a seller       (Note)
+    banned     a person said never                                 (Banned)
+
+Pure. declinedCooldownSec is the profession's setting; 0 or nil is off.
+]]
+function Players.Phase(state, now, declinedCooldownSec)
+    if not state then return "idle" end
+    if state.neverInvite then return "banned" end
+    if state.flaggedSeller then return "flagged" end
+    if state.declinedAt and (declinedCooldownSec or 0) > 0
+        and (now or 0) - state.declinedAt < declinedCooldownSec then
+        return "declined"
+    end
+    if state.awaitingItem then return "awaiting" end
+    return "idle"
+end
+
+-- We sent the invite. With nothing named, the line we whisper asks what they need,
+-- and their next line is the answer.
+function Players.Invited(state, now)
+    state.lastInviteAt = now
+    return state
+end
+
+function Players.Awaiting(state, now)
+    state.awaitingItem = now
+    return state
+end
+
+function Players.Whispered(state, now)
+    state.lastWhisperAt = now
+    return state
+end
+
+-- The answer came, whatever it was.
+function Players.Answered(state)
+    state.awaitingItem = nil
+    return state
+end
+
+function Players.Banned(state, on)
+    state.neverInvite = on and true or nil
+    return state
 end
 
 function Players.Get(db, name)

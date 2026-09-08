@@ -61,6 +61,8 @@ function MAW:AddItem(itemName, itemType)
 
     -- Fire callback
     self:FireCallbacks("onItemAdded", itemName)
+    -- Its external figures, quietly, without waiting for the next scan or AH visit
+    if self.SchedulePull then self:SchedulePull("added", { itemName }) end
 end
 
 -- Remove an item from tracking

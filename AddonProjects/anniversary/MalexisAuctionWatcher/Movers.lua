@@ -6,7 +6,38 @@ local DEFAULTS = {
     moverBuyPct = 0.25,     -- Today at or below low + 25% of range = buy
     moverSellPct = 0.75,    -- Today at or above low + 75% of range = list
     moverMinMargin = 10,    -- recipe margin percent needed to suggest converting
+    moverMinSaleRate = 0.10, -- TSM region sale rate the product needs before Convert suggests it; 0 is off
 }
+
+-- A region sale rate at or above this reads as "sells"; between the Convert floor and
+-- this, "slow"; below the floor, "dead".
+MAW.VELOCITY_SELLS_AT = 0.30
+
+-- Pure. "sells", "slow", "dead", or nil when TSM has no rate for the item. TSM's API
+-- reports a zero as nil, so nil means no sales recorded, not no opinion.
+function MAW.VelocityGrade(rate, minRate, sellsAt)
+    if rate == nil then return nil end
+    if rate >= (sellsAt or MAW.VELOCITY_SELLS_AT) then return "sells" end
+    if rate >= (minRate or 0) then return "slow" end
+    return "dead"
+end
+
+--[[
+Pure. Whether Convert may suggest a recipe, from its product's TSM reference. Returns
+ok, note. With the feed off or the floor at zero, always yes. A product TSM has never
+been asked about passes with a note, because nothing is known against it; one TSM has
+a reference for but no sale rate is a product that did not sell, and fails.
+]]
+function MAW.ConvertAllowed(ref, minRate, tsmOn)
+    if not tsmOn or (minRate or 0) <= 0 then return true, nil end
+    if not ref or ref.velocity == nil then return true, "sale rate unknown" end
+    local rate = ref.velocity.rate
+    if not rate then return false, "no sales recorded region-wide" end
+    if rate < minRate then
+        return false, string.format("sells %.0f%%, under the %.0f%% floor", rate * 100, minRate * 100)
+    end
+    return true, string.format("sells %.0f%%", rate * 100)
+end
 
 function MAW:MoverSetting(key)
     local s = MalexisAuctionWatcherDB and MalexisAuctionWatcherDB.settings
@@ -78,10 +109,14 @@ function MAW:GetMovers()
     local out = { buy = {}, convert = {}, sell = {} }
     local buyPct = self:MoverSetting("moverBuyPct")
     local sellPct = self:MoverSetting("moverSellPct")
+    local tsmOn = self:TsmOn()
 
     for itemName, itemData in pairs(db.items) do
         local today, source, when = self:GetUnitPrice(itemName)
         local low, high = self:GetPriceBounds(itemName)
+        -- A price TSM stood in with is not an observation: an item nobody has scanned
+        -- must not become a Buy for being cheap against its own average.
+        if MAW.FALLBACK_SOURCES[source] then today = nil end
         if today and low and high and high > low then
             local pos = (today - low) / (high - low)
             local itemType = itemData.itemType or "material"
@@ -102,10 +137,22 @@ function MAW:GetMovers()
             if pos >= sellPct then
                 local owned = Owned(self, itemName)
                 if owned > 0 then
+                    -- What TSM knows about listing this: how it sells, and how many of
+                    -- yours came back unsold since you last sold one.
+                    local note = ""
+                    local ref = tsmOn and itemData.tsmRef
+                    if ref and ref.velocity then
+                        if ref.velocity.rate then
+                            note = note .. string.format(", sells %.0f%%", ref.velocity.rate * 100)
+                        end
+                        if (ref.expires or 0) > 0 then
+                            note = note .. string.format(", %d expired since last sale", ref.expires)
+                        end
+                    end
                     table.insert(out.sell, {
                         kind = "sell", name = itemName, itemID = itemData.itemID, price = today,
                         low = low, high = high, pos = pos, owned = owned, source = source, when = when, itemType = itemType,
-                        reason = string.format("%s @ %d%% {%s - %s}, hold %d", typeTag, pct, fm(low), fm(high), owned),
+                        reason = string.format("%s @ %d%% {%s - %s}, hold %d%s", typeTag, pct, fm(low), fm(high), owned, note),
                     })
                 end
             end
@@ -113,14 +160,23 @@ function MAW:GetMovers()
     end
 
     local minMargin = self:MoverSetting("moverMinMargin")
+    local minRate = self:MoverSetting("moverMinSaleRate")
     for _, recipe in ipairs(self:GetRecipes()) do
         local calc = self:ComputeRecipeProfit(recipe)
         if calc.complete and calc.margin and calc.margin >= minMargin and (calc.canMake or 0) >= 1 then
-            table.insert(out.convert, {
-                kind = "convert", name = recipe.name, recipe = recipe, calc = calc,
-                margin = calc.margin, profit = calc.profit, canMake = calc.canMake,
-                reason = string.format("%.0f%% margin, %s/batch, x%d", calc.margin, _G.MalexisAuctionWatcherHelpers.FormatMoney(calc.profit), calc.canMake),
-            })
+            local productRef = db.items[recipe.product] and db.items[recipe.product].tsmRef
+            local ok, note = MAW.ConvertAllowed(productRef, minRate, tsmOn)
+            if ok then
+                table.insert(out.convert, {
+                    kind = "convert", name = recipe.name, recipe = recipe, calc = calc,
+                    margin = calc.margin, profit = calc.profit, canMake = calc.canMake,
+                    reason = string.format("%.0f%% margin, %s/batch, x%d%s", calc.margin,
+                        _G.MalexisAuctionWatcherHelpers.FormatMoney(calc.profit), calc.canMake,
+                        note and (", " .. note) or ""),
+                })
+            elseif self.debugMode then
+                MAW.Debug("%s", "Convert skipped " .. recipe.name .. ": " .. tostring(note))
+            end
         end
     end
 

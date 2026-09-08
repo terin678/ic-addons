@@ -126,15 +126,40 @@ names, since "haste" on its own is ordinary chat. Understands `LF JC`, `LF alch`
 
 ### Ignores competing crafters
 
-Hard vetoes (`LFW`, `WTS`, `will cut`, `will brew`, ...) never invite. Beyond that, seller
+Hard vetoes (`LFW`, `WTS`, `will cut`, `will brew`, and the giveaway phrases `anyone
+want`, `who wants`, `giving away`, `for free`, ...) never invite. A trailing `?` counts
+against a seller but never stands as the request on its own: `[item]?` in Trade is as
+often an offer as an ask. Beyond that, seller
 signals (`all cuts`, `all potions`, a linked `Design:`/`Recipe:`/`Pattern:`/`Plans:`/
 `Schematic:` item, three-plus links in one message) are weighed against buyer signals
 (`WTB`, `need`, `have mats`, a trailing `?`) and the net decides. A player who posts the
-same message twice inside the bark window is auto-flagged as a competitor. Every decision
+same message twice inside the bark window is auto-flagged as a competitor. Someone
+buying a **material** you happen to be able to make -- `WTB 5 stacks [Thick Leather]`,
+which a leatherworker's book holds because leather converts -- is shopping, not asking
+for a craft, and is dropped as *buying materials* unless something in the line speaks
+of crafting: a verb, a crafter, mats in hand, or the profession's name. What counts as a
+product is the profile's item classes (armour and bags for leatherworking, gems for
+jewelcrafting). Every decision
 is in the **Log** tab with the signals that fired. The whole vocabulary is editable per
 profession in **Filter**.
 
 ### Talks to customers
+
+Every reply below answers a **whisper**. A Trade post is never replied to: it gets a
+group invite, with the invite's own one-line whisper saying why, or nothing at all.
+Somebody posting `WTB [Belt of Deep Shadow]` in Trade has not spoken to you, and "not
+enough Nether Vortex, sorry" arriving from a stranger reads as spam. Party chat sits
+between the two: an invite, an order, the transcript, and the note about missing mats,
+but none of the suggestions.
+
+**How a line is handled.** Every line, on every channel, goes through the same two
+steps. First it is *decided*: classified, and turned into a plan that says, for each
+thing the addon could do back (remember it, log it, open an order, whisper, invite, ask
+you first), whether it will and, when it will not, why. Then the plan is *acted on*, in
+one fixed order. What each channel is allowed is one table, and `/tm try`, `/tm
+trywhisper` and `/tm tryparty` print the whole plan for a line without acting on it,
+including the operational reason an invite would have been refused, so what a dry run
+says and what the live path does can no longer differ.
 
 | They say | TradeMaster replies |
 | --- | --- |
@@ -206,6 +231,29 @@ an order unable to complete, because there was nothing to tick it off with.
 Orders waiting on someone to join get their own rows too, right-clickable to cancel. They are
 not counted as open work — they may never join — but a static "waiting for them to join" line
 with nothing clickable on it left the full Orders tab as the only way to close one out.
+
+### Checks the mats
+
+While a trade is open with someone who has an order, a panel beside the trade window
+lists each reagent the order needs with what they have put in: green is exact, amber is
+over, red is short, and anything on no recipe of the order is grey. It redraws as they
+move stacks, before either of you accepts, so a missing thread is seen while it can still
+be added. When the trade completes the same check runs against everything they have
+handed over so far and is kept on the order: the Orders tab shows it in the header, each
+line gets a `mats ok` / `short 2` / `over 1`, the list flags an order that is *short*, and
+the tracker says so next to the name. `/tm order mats <id>` prints it after the fact.
+
+What it measures against matters. An order's count is usually a guess (`x1?`), and a stack
+of leather measured against a guess would read *over* every time. So a count the customer
+stated, or you set, is measured as stated; any other line is measured against the count
+its most generous reagent supports, and the other reagents are judged against that: six
+leather and one thread, with two threads a craft, reads *thread short by 5*. Two lines that
+share a reagent, with either count guessed, cannot be told apart from the mats alone, and
+the panel says so rather than measuring against a number it made up; set the split first.
+
+Nothing is refused or cancelled. The trade is yours to accept; this only says what it sees.
+**Mats panel** on the Orders toolbar hides the panel; the check on completion runs
+regardless.
 
 ### Gives up on a customer who never came
 
@@ -366,8 +414,9 @@ For Jewelcrafting, gem names in the profession window are replaced with what the
 | `/tm log` / `/tm clearflags` | Recent decisions; clear competitor flags |
 | `/tm orders` / `/tm order add\|done\|cancel\|reopen <id>` | Manage orders |
 | `/tm order removeitem <id> <item name>` | Drop one line from an order, matched on part of the name |
+| `/tm order mats <id>` | What they have handed over against what the order needs, per reagent |
 | `/tm tracker` / `/tm income` | Tracker window; earnings summary |
-| `/tm try <msg>` / `/tm trywhisper <msg>` / `/tm tryparty <msg>` | Test the classifier for the active profession. Sends nothing. |
+| `/tm try <msg>` / `/tm trywhisper <msg>` / `/tm tryparty <msg>` | The plan for a line on that channel: verdict, then invite, order, whisper, each yes or why not. Sends nothing. |
 | `/tm capture` | Record every Trade message and its verdict |
 | `/tm test` | Run the built-in self test |
 | `/tm help` / `/tm version` | Every command with a line each; addon and library versions |

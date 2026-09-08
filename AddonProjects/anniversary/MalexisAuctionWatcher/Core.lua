@@ -6,7 +6,7 @@
 -- `local addonName, ns = ...` pair. LibICCore attaches to that table just the same, so
 -- MAW.Print, MAW.db, MAW.Util and the rest are the same names the other addons use.
 local addonName = "MalexisAuctionWatcher"
-local VERSION = "1.20.0"
+local VERSION = "1.22.0"
 local Core = LibStub("LibICCore-1.0")
 local MAW = {}
 
@@ -193,6 +193,7 @@ local HELP = {
     { "sources", "show or toggle the Auctionator and TSM price feeds" },
     { "retention <days>", "days of price history to keep" },
     { "ahcut <percent>", "auction house cut used for net values (default 5)" },
+    { "minsale <percent>", "TSM sale rate a product needs before Movers suggests converting (default 10, 0 off)" },
     { "scan", "scan the auction house for tracked items (merges into a running scan)" },
     { "scan stop", "cancel the running scan" },
     { "scan status", "show the scan state" },
@@ -288,6 +289,18 @@ COMMANDS.ahcut = function(rest)
     else
         MAW.Printf("Auction house cut is %d%%. Use /maw ahcut <percent> (faction AH 5, neutral AH 15)",
             math.floor(MAW:GetAHCut() * 100 + 0.5))
+    end
+end
+
+COMMANDS.minsale = function(rest)
+    local pct = tonumber(rest)
+    if pct and pct >= 0 and pct <= 100 then
+        MAW.db.settings.moverMinSaleRate = pct / 100
+        MAW.Printf("Convert now needs a TSM region sale rate of %d%% or better%s.", math.floor(pct + 0.5),
+            pct == 0 and " (off)" or "")
+    else
+        MAW.Printf("Convert needs a TSM region sale rate of %d%% or better. Use /maw minsale <percent>; 0 turns the gate off.",
+            math.floor(MAW:MoverSetting("moverMinSaleRate") * 100 + 0.5))
     end
 end
 
@@ -419,6 +432,8 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
         MAW:OnAuctionListUpdate()
     elseif event == "AUCTION_HOUSE_CLOSED" then
         MAW:CancelScan("auction house closed")
+        -- Whatever was bought or sold just moved TSM's Accounting figures
+        if MAW.SchedulePull then MAW:SchedulePull("ah_close") end
     elseif event == "BANKFRAME_OPENED" then
         -- Scan bank contents when bank is opened
         C_Timer.After(0.5, function()

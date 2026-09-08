@@ -364,7 +364,7 @@ end
 
 -- Pure, so the arithmetic can be tested without a database. input = {
 --   count, labels, cut, productName, productCount, productPoints, productTsm,
---   mats = { { name, count, vendor, points, tsm } }, missing = { names } }
+--   mats = { { name, count, vendor, bop, points, tsm } }, missing = { names } }
 --
 -- A `tsm` is { market, historical } straight off the item. They are levels, not
 -- series, so they are scaled the same way the lines are and handed back for the
@@ -379,6 +379,9 @@ end
 -- then the batch cost for that slot is unknown, and an unknown cost drawn as zero
 -- reads as a free craft. The material's own line still draws wherever it does have
 -- a price, so you can see which one is missing.
+--
+-- A bind-on-pickup material is neither: it has no price in any slot and never will,
+-- so it is left out of the cost and named in `bop` instead of breaking the line.
 function MAW.ComposeRecipeSeries(input)
     local count = input.count or 0
     local cut = input.cut or 0
@@ -393,6 +396,7 @@ function MAW.ComposeRecipeSeries(input)
         mats = {},
         vendorCost = 0,
         missing = input.missing or {},
+        bop = {},
         complete = 0,
         tsm = {},
     }
@@ -419,10 +423,12 @@ function MAW.ComposeRecipeSeries(input)
     -- A vendor material costs the same every slot, so it is a constant folded into
     -- the cost rather than a line that would draw flat across the chart.
     for _, m in ipairs(input.mats or {}) do
-        local entry = { name = m.name, count = m.count or 1, vendor = m.vendor }
+        local entry = { name = m.name, count = m.count or 1, vendor = m.vendor, bop = m.bop }
         entry.tsm = Scaled(m.tsm, entry.count)
         if m.vendor then
             out.vendorCost = out.vendorCost + m.vendor * entry.count
+        elseif m.bop then
+            out.bop[#out.bop + 1] = entry.name
         else
             entry.values = {}
             local points = m.points or {}
@@ -439,7 +445,7 @@ function MAW.ComposeRecipeSeries(input)
     do
         local total, known = out.vendorCost, false
         for _, m in ipairs(out.mats) do
-            if not m.vendor then
+            if not m.vendor and not m.bop then
                 if m.tsm and m.tsm.market then
                     total = total + m.tsm.market
                     known = true
@@ -514,7 +520,9 @@ function MAW:GetRecipeSeries(recipe, mode, span)
     local mats = {}
     for _, mat in ipairs(recipe.materials or {}) do
         local m = { name = mat.item, count = mat.count or 1, vendor = mat.vendor }
-        if not mat.vendor then
+        if not mat.vendor and self:IsBoPMaterial(mat) then
+            m.bop = true
+        elseif not mat.vendor then
             m.points = series(mat.item)
             m.tsm = reference(mat.item)
         end

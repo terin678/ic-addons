@@ -43,21 +43,21 @@ Guild World of Warcraft addons. Read `CODING_STANDARDS.md` before changing any L
 
 ## Verifying changes
 
-Three things stand in for in-game verification, in order:
+Four things, in order:
 
 1. `python scripts/lint.py`. It parses every file and catches what has actually shipped
    broken: a local referenced inside its own assignment, a dead texture path, a `.toc` out
    of step with the files on disk, a version that moved in one place but not the others,
    and a quoted string running past its line -- which `luaparser` accepts and the client
    refuses to load.
-2. The addon's own cases, in game. Six addons carry a `Tests.lua`: `/tm test`, `/cm test`,
-   `/gr test`, `/ictpl test`, `/maw test`, `/mfd selftest`. Anything worth arguing about
-   belongs in a pure function with a case here.
-3. The `wow-ui-reviewer` agent on every UI file touched.
-
-LuaJIT 2.1 (Lua 5.1 semantics, matching the client) is now installed on the maintainer's
-machine, so an addon whose pure modules avoid the WoW API at file scope can also run its
-cases outside the game: `scripts/run-tests.ps1 -Flavor <flavor> -Addon <Addon>`.
+2. `scripts/run-tests.ps1 -Flavor anniversary -Addon <Addon>`: the addon's cases under
+   LuaJIT against a stub client, in a second. Every addon with a `Tests.lua` runs; a
+   case that needs real widgets returns early on `IC_HEADLESS`. Run it after every edit
+   to a pure module, before `/reload`.
+3. The same cases in game, where the client is real: `/tm test`, `/cm test`, `/gr test`,
+   `/ictpl test`, `/maw test`, `/mfd selftest`. Anything worth arguing about belongs in
+   a pure function with a case here.
+4. The `wow-ui-reviewer` agent on every UI file touched.
 MarkedForDeath is built that way and its suite runs headlessly. A shell opened before the
 install will not have `luajit` on PATH; the script falls back to the `LOCALAPPDATA` path.
 Only modules that call no WoW API at file scope work this way -- caching a global into a

@@ -25,7 +25,13 @@ local function BuildVocab(spec)
     for _, a in ipairs(spec.abbrevs) do names[#names + 1] = a end
     for _, p in ipairs(spec.personNouns) do names[#names + 1] = p end
 
-    local veto = { "lfw", "lf work", "looking for work", "wts", "selling" }
+    local veto = { "lfw", "lf work", "looking for work", "wts", "selling",
+        -- Giving something away. "anyone want for a lvl 41 alt [Nightscape Pants]?"
+        -- matched the pants and scored only its question mark, and an order was
+        -- opened. A buyer asks who can make; these are the words of somebody who
+        -- already has it. (1.14.3)
+        "anyone want", "who wants", "anyone need", "anyone needs",
+        "giving away", "give away", "for free", "free to" }
     for _, a in ipairs(spec.abbrevs) do veto[#veto + 1] = a .. " lfw" end
     for _, v in ipairs(verbs) do
         veto[#veto + 1] = "will " .. v
@@ -50,11 +56,20 @@ local function BuildVocab(spec)
         -- covered by the per-verb phrases below for a jeweller who cuts or an
         -- alchemist who brews. (CutMaster 1.2.0)
         ["who can make"] = 3, ["anyone make"] = 3,
+        -- "LF [item] craft" named the item, said it was looking, and said what for,
+        -- and scored nothing: the profession forms ("lf jc") and "crafter" were
+        -- the only LF phrases, and the verb alone was not a word. LF with an item we
+        -- make is the ask. (1.14.1)
+        ["lf"] = 2, ["looking for"] = 2,
     }
     for _, p in ipairs(spec.personNouns) do buyer[p] = 2 end
     for _, v in ipairs(verbs) do
         buyer["anyone " .. v] = 3
         buyer["who can " .. v] = 3
+        -- The verb on its own, after an item we make: "[item] craft", "need this cut".
+        -- Weight 1, enough to clear requireBuyerSignal and nothing more; a seller's
+        -- "can craft", "will craft" and "crafting for" are caught before it counts.
+        buyer[v] = 1
     end
     for _, a in ipairs(spec.abbrevs) do
         buyer["any " .. a] = 2
@@ -475,6 +490,15 @@ end
 -- Mooncloth]" is an item and "mooncloth tailor" is a specialization, and the word
 -- is the same one. Reading the whole line would refuse the customer who wanted
 -- the item.
+-- "elixir master" and "master elixir" are the same ask, and "LF Master elixir to craft"
+-- walked straight past a list that carried only the first. Every "<x> master" word is
+-- tried the other way round as well, so the lists keep carrying one of them. (1.15.1)
+local function SpecForms(word)
+    local noun = word:match("^(.-) master$")
+    if noun then return { word, "master " .. noun } end
+    return { word }
+end
+
 function Prof.SpecWanted(profile, raw, have, matchedNames)
     if not profile or not profile.specs or not raw then return nil end
     local norm = ns.Util.Normalize((raw:gsub("%[.-%]", " ")))
@@ -485,8 +509,10 @@ function Prof.SpecWanted(profile, raw, have, matchedNames)
     for _, spec in ipairs(profile.specs) do
         if not (have or {})[spec.key] then
             for _, word in ipairs(spec.words) do
-                if ns.Util.HasPhrase(norm, word) then
-                    return spec.label or spec.name, spec.key
+                for _, form in ipairs(SpecForms(word)) do
+                    if ns.Util.HasPhrase(norm, form) then
+                        return spec.label or spec.name, spec.key
+                    end
                 end
             end
         end
