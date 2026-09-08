@@ -175,8 +175,8 @@ end
 -- announcers; set from the marker's tick, which already has the candidates.
 Encounters.active = nil
 
--- Who this fight has already had a death warning for. Cleared when combat ends,
--- which is the only thing that starts a new fight.
+-- Who this fight has already had a death warning for. Cleared when combat is
+-- entered, which is what makes a pull a new fight.
 Encounters.deaths = {}
 
 local index
@@ -275,8 +275,9 @@ function Encounters.TakeDeathCall(state, name)
     return true
 end
 
--- Leaving combat is what makes the next pull a new fight, so everybody is worth
--- a warning again. Pure.
+-- Starting a fight is what makes everybody worth a warning again. Called when
+-- the player enters combat rather than when they leave it, so that the player's
+-- own death does not reset a fight that is still going. Pure.
 function Encounters.EndFight(state)
     state.called = nil
 end
@@ -322,13 +323,24 @@ MFD.RegisterInit(function()
     local frame = CreateFrame("Frame")
     frame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
     frame:RegisterEvent("PLAYER_REGEN_ENABLED")
+    frame:RegisterEvent("PLAYER_REGEN_DISABLED")
 
     frame:SetScript("OnEvent", function(_, event)
+        if event == "PLAYER_REGEN_DISABLED" then
+            -- Entering combat is what starts a fight, and it is the only
+            -- boundary that does not move when the player dies. Leaving combat
+            -- looks like the same line until the tank running this addon goes
+            -- down mid-fight: their client drops combat while the fight carries
+            -- on, and clearing there would let somebody already announced be
+            -- announced again after a battle rez.
+            Encounters.EndFight(Encounters.deaths)
+            return
+        end
+
         if event == "PLAYER_REGEN_ENABLED" then
             -- Out of combat there is no fight to be in. The tick would work
             -- this out too, but only if this client happens to be marking.
             Encounters.active = nil
-            Encounters.EndFight(Encounters.deaths)
             return
         end
 

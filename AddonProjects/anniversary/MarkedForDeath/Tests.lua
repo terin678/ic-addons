@@ -3861,4 +3861,36 @@ T.Case("RaidCheck: the buff callout button reaches the client", function()
     T.Eq(sent[1].message, "[MFD] Spirit: Grimmtusk", "the line itself")
 end)
 
+-- Belt and braces for the bug that started all this. The call sites are fixed,
+-- but a future one written the same wrong way must not fail quietly: losing the
+-- flag would send the line unforced, the limiter would eat it during exactly
+-- the wipe it was written for, and the only trace would be one log entry.
+T.Case("Chatter: force passed into the target slot is still force", function()
+    local sent = {}
+    local realDB = MFD.db
+    MFD.db = { log = {}, settings = { isLogEnabled = true } }
+    MFD.Chatter.state = MFD.Chatter.NewState()
+
+    local ok, err = pcall(withGlobals, {
+        GetTime = function() return 9000 end,
+        SendChatMessage = function(message, channel, _, target)
+            sent[#sent + 1] = { message = message, channel = channel, target = target }
+        end,
+    }, function()
+        -- Both on the same frame, so the second is inside minGap and only
+        -- survives if the flag was understood rather than discarded.
+        MFD.Chatter.Say("first", "RAID", true)
+        MFD.Chatter.Say("second", "RAID", true)
+    end)
+
+    MFD.db = realDB
+    if not ok then
+        error(err, 2)
+    end
+
+    T.Eq(#sent, 2, "both went out, so the flag survived the target slot")
+    T.Eq(sent[1].target, nil, "and neither was whispered at anybody")
+    T.Eq(sent[2].message, "second", "the second is the one the limiter would have eaten")
+end)
+
 _G.MarkedForDeath = MFD

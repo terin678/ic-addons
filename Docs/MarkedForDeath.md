@@ -206,7 +206,12 @@ down two minutes later are two different problems, and both are announced. The s
 is never announced twice in the same fight.
 
 The gate is keyed on the name, which separates tanks from healers for free, since they are
-different people. Leaving combat starts everybody over, so the next pull announces afresh.
+different people. Pulling starts everybody over, so the next fight announces afresh.
+
+The boundary is entering combat rather than leaving it, which matters if you are the one
+tanking: when you die your client drops combat while the fight carries on, and starting
+over there would let somebody who was already announced be announced again after a
+battle rez.
 
 This does mean a wipe produces a warning per tank and per healer who dies, which is the
 point: you asked to hear about each of them.

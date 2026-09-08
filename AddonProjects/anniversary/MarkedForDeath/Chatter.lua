@@ -135,12 +135,20 @@ function Chatter.Say(message, channel, target, force)
         return false
     end
 
-    -- A target that is not a name means a call site passed force positionally
-    -- into the target slot. That threw while building the log line below and
-    -- took the message down with it, which is how every tank death, healer
-    -- death and buff callout in a full raid night was lost. Drop the bad target
-    -- rather than the message: sending is the point of the call, logging it is
-    -- not.
+    -- A boolean in the target slot is a call site passing force positionally,
+    -- which is the mistake that lost every death call in a raid night at four
+    -- sites at once. Read it as the force it was meant to be rather than
+    -- throwing it away: dropping the flag would turn a loud crash into a line
+    -- the rate limiter quietly eats, which is harder to notice than what it
+    -- replaced.
+    if type(target) == "boolean" then
+        target, force = nil, target
+    end
+
+    -- Anything else that is not a name cannot be a whisper target either, and
+    -- must not reach the log line below, which is where this used to throw and
+    -- take the message down with it. Sending is the point of the call; logging
+    -- it is not.
     if target ~= nil and type(target) ~= "string" then
         MFD.Log.Add(MFD.Log.KINDS.ERROR,
             "Say called with a " .. type(target) .. " target; ignoring it")
