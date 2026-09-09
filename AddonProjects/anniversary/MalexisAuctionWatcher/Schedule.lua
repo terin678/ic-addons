@@ -23,6 +23,9 @@ local SECONDS_PER_WEEK = 7 * SECONDS_PER_DAY
 local MAX_OBS_PAIRS = 600            -- per item; nine weeks of several scans a day
 local FLAT_SPREAD_PCT = 5            -- under this, the week has no cheap or dear end
 local MIN_JUDGED = 3                 -- action slots judged before a pattern can be set aside
+local MIN_SAMPLES = 3                -- history samples a weekday or a block needs to model from
+
+MAW.SCHEDULE_MIN_SAMPLES = MIN_SAMPLES
 
 MAW.SCHEDULE_SLOTS, MAW.SLOTS_PER_DAY = SLOTS, SLOTS_PER_DAY
 MAW.BLOCK_LABELS = { "00-04", "04-08", "08-12", "12-16", "16-20", "20-24" }
@@ -169,21 +172,77 @@ function MAW:SeedScheduleObs()
 end
 
 --------------------------------------------------------------------------------
+-- Pure: the week modelled from the history the tab already has
+--------------------------------------------------------------------------------
+
+--[[
+Pure. The History tab keeps months of buckets, a weekday view and an hour-of-day view,
+and the raw ring starts empty. Until a block has real weeks behind it, its expectation
+is modelled from those: the weekday's average times the block's share of the day.
+
+    expected[wday, block] = weekdayAvg[wday] * blockAvg[block] / dayAvg
+
+weekdayPoints and hourPoints are what GetSeries emits (label, avg, n; n == 0 is empty).
+A weekday needs minSamples to count; a block with fewer takes the day's average as its
+share (a factor of one), and says so with fewer samples. Returns
+    { [slot] = { expected, samples, weekdaySamples, blockSamples } }, or {} with nothing.
+]]
+function MAW.ModelWeek(weekdayPoints, hourPoints, minSamples)
+    minSamples = minSamples or MIN_SAMPLES
+    local blockSum, blockN = {}, {}
+    local daySum, dayN = 0, 0
+    for hour = 0, 23 do
+        local p = hourPoints and hourPoints[hour + 1]
+        if p and (p.n or 0) > 0 and p.avg then
+            local b = math.floor(hour / BLOCK_HOURS) + 1
+            blockSum[b] = (blockSum[b] or 0) + p.avg * p.n
+            blockN[b] = (blockN[b] or 0) + p.n
+            daySum = daySum + p.avg * p.n
+            dayN = dayN + p.n
+        end
+    end
+    local dayAvg = dayN > 0 and daySum / dayN or nil
+
+    local out = {}
+    for wday = 1, 7 do
+        local w = weekdayPoints and weekdayPoints[wday]
+        if w and (w.n or 0) >= minSamples and w.avg then
+            for b = 1, SLOTS_PER_DAY do
+                local factor, bn = 1, 0
+                if dayAvg and dayAvg > 0 and (blockN[b] or 0) >= minSamples then
+                    factor = (blockSum[b] / blockN[b]) / dayAvg
+                    bn = blockN[b]
+                end
+                out[(wday - 1) * SLOTS_PER_DAY + b] = {
+                    expected = w.avg * factor,
+                    samples = math.min(w.n, bn > 0 and bn or w.n),
+                    weekdaySamples = w.n, blockSamples = bn,
+                }
+            end
+        end
+    end
+    return out
+end
+
+--------------------------------------------------------------------------------
 -- Pure: one item's week
 --------------------------------------------------------------------------------
 
 --[[
 Pure. obs is the flat ring; now is the moment the grid is read; opts = { offset, weeks,
-tolerancePct, minWeeks, weekStart, buyPct, sellPct }.
+tolerancePct, minWeeks, weekStart, buyPct, sellPct, model }.
 
 Returns { slots[1..42], min, max, spreadPct, flat, currentSlot, currentWeek,
           judged = { hits, misses }, reliability }, each slot being
-    { mean, weeksSeen, expected, low, high, hits, misses, action, actual, status }.
+    { mean, weeksSeen, expected, basis, samples, low, high, hits, misses, action, actual, status }.
 
 The rules, in order:
   * Completed weeks inside the window form the expectation; the current week is the
     actual. An expectation is the mean of the WEEKLY means, so a week with five scans in
-    one evening counts once, and it needs minWeeks of them.
+    one evening counts once, and it needs minWeeks of them (basis "weeks").
+  * A block short of that takes the modelled expectation from opts.model when there is
+    one (basis "model", from the History buckets), else the mean of the weeks it does
+    have (basis "partial"). Real weeks win the moment they exist.
   * The hit record: each completed week's mean against the mean of the other weeks,
     within the tolerance. Two weeks or more.
   * Actions come from the item's own profile: buy where the expectation sits in the
@@ -201,6 +260,8 @@ function MAW.ComposeSchedule(obs, now, opts)
     local minWeeks = opts.minWeeks or 2
     local weekStart = opts.weekStart or 3
     local buyPct, sellPct = opts.buyPct or 0.25, opts.sellPct or 0.75
+
+    local model = opts.model or {}
 
     local currentSlot, _, _, currentWeek = MAW.ScheduleSlot(now, offset, weekStart)
     local currentPos = SlotPosition(currentSlot, weekStart)
@@ -245,7 +306,13 @@ function MAW.ComposeSchedule(obs, now, opts)
         s.weeksSeen = #means
         if #means > 0 then s.mean = sum / #means end
         if #means >= minWeeks then
-            s.expected = s.mean
+            s.expected, s.basis = s.mean, "weeks"
+        elseif model[i] then
+            s.expected, s.basis, s.samples = model[i].expected, "model", model[i].samples
+        elseif s.mean then
+            s.expected, s.basis = s.mean, "partial"
+        end
+        if s.expected then
             if not min or s.expected < min then min = s.expected end
             if not max or s.expected > max then max = s.expected end
         end
@@ -356,6 +423,7 @@ function MAW.WeekPlan(items, opts)
                             slot = i, block = block, action = s.action,
                             name = it.name, itemType = it.itemType,
                             expected = s.expected, actual = s.actual, status = s.status,
+                            basis = s.basis, samples = s.samples,
                             weeksSeen = s.weeksSeen, low = s.low, high = s.high,
                             hits = s.hits, misses = s.misses,
                             reliability = sc.reliability, judged = judged,
@@ -394,26 +462,36 @@ function MAW:ScheduleOptions()
     }
 end
 
+-- The modelled week from the History tab's own series, the weekday and hour views.
+function MAW:ModelFromHistory(itemName)
+    return MAW.ModelWeek(self:GetSeries(itemName, "weekday"), self:GetSeries(itemName, "hour"), MIN_SAMPLES)
+end
+
+local function Compose(self, itemName, itemData, opts)
+    local history = self:EnsureHistory(itemData)
+    opts.model = self:ModelFromHistory(itemName)
+    return MAW.ComposeSchedule(history.obs or {}, time(), opts)
+end
+
 -- One item's week, or nil when it is not tracked.
 function MAW:GetSchedule(itemName)
     local db = self:GetActiveDB()
     local itemData = db.items and db.items[itemName]
     if not itemData then return nil end
-    local history = self:EnsureHistory(itemData)
-    return MAW.ComposeSchedule(history.obs or {}, time(), self:ScheduleOptions())
+    return Compose(self, itemName, itemData, self:ScheduleOptions())
 end
 
 -- This week across every tracked item.
 function MAW:GetWeekPlan()
     local items = {}
+    local opts = self:ScheduleOptions()
     for _, it in ipairs(self:SortedTrackedItemNames()) do
-        local history = self:EnsureHistory(it.data)
         items[#items + 1] = {
             name = it.name, itemType = it.data.itemType or "material",
-            schedule = MAW.ComposeSchedule(history.obs or {}, time(), self:ScheduleOptions()),
+            schedule = Compose(self, it.name, it.data, opts),
         }
     end
-    return MAW.WeekPlan(items, self:ScheduleOptions())
+    return MAW.WeekPlan(items, opts)
 end
 
 -- The window the store keeps, one week beyond what the grid reads.

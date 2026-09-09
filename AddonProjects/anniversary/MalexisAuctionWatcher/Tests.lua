@@ -381,7 +381,8 @@ T.Case("Schedule: an expectation is the mean of weekly means, judged week agains
     T.Eq(satSlot.hits, 4, "and it held every week")
 
     local wedSlot = s.slots[(4 - 1) * 6 + 3]
-    T.Eq(wedSlot.expected, nil, "one week is not enough for an expectation")
+    T.Eq(wedSlot.basis, "partial", "one week stands in until there are two")
+    T.Near(wedSlot.expected, 120, "at what that week saw")
     T.Near(wedSlot.mean, 120, "but the grid can still show what it has")
     T.Eq(wedSlot.status, "noscan", "behind us this week, and nothing scanned")
 
@@ -441,6 +442,47 @@ T.Case("Schedule: the week's plan runs from reset day and sets a failing pattern
     local lenient = MAW.WeekPlan(items, { weekStart = 3, minReliabilityPct = 20 })
     T.Eq(#lenient.setAside, 0, "a lower floor keeps it")
     T.Eq(lenient.days[3].rows[1].name, "Flask", "Thursday 20-24, back on the plan")
+end)
+
+T.Case("Schedule: the History buckets model a block until real weeks exist", function()
+    -- Seven weekday points and twenty-four hour points, as GetSeries emits them.
+    local weekday = {}
+    for d = 1, 7 do weekday[d] = { label = "d" .. d, avg = 200, n = 10 } end
+    weekday[7] = { label = "Sat", avg = 168, n = 313 }          -- cheapest day
+    weekday[4] = { label = "Wed", avg = 206, n = 147 }          -- priciest
+    weekday[2] = { label = "Mon", avg = 999, n = 2 }            -- too few samples to count
+    local hours = {}
+    for h = 0, 23 do hours[h + 1] = { label = tostring(h), avg = 100, n = 5 } end
+    for h = 20, 23 do hours[h + 1] = { label = tostring(h), avg = 120, n = 5 } end   -- evenings dear
+    for h = 4, 7 do hours[h + 1] = { label = tostring(h), n = 0 } end                -- nobody scans at dawn
+
+    local m = MAW.ModelWeek(weekday, hours, 3)
+    -- The day averages 100 over 20 sampled hours... 16 at 100 and 4 at 120: 104.
+    local satNoon = m[(7 - 1) * 6 + 4]
+    T.Near(satNoon.expected, 168 * 100 / 104, 0.01, "Saturday's average, scaled by the noon block's share of the day")
+    local satEve = m[(7 - 1) * 6 + 6]
+    T.Near(satEve.expected, 168 * 120 / 104, 0.01, "and up in the evening")
+    T.True(satEve.expected > satNoon.expected, "the evening is dearer than noon on the same day")
+    T.Eq(satEve.samples, 20, "the smaller of the two sample counts")
+    T.Eq(satEve.weekdaySamples, 313, "with both remembered")
+    local satDawn = m[(7 - 1) * 6 + 2]
+    T.Near(satDawn.expected, 168, 0.01, "a block nobody scans takes the day's average")
+    T.Eq(satDawn.blockSamples, 0, "and says it had no block samples")
+    T.Eq(m[(2 - 1) * 6 + 1], nil, "a weekday with too few samples models nothing")
+    T.Eq(next(MAW.ModelWeek(nil, nil)), nil, "and no history models nothing at all")
+    T.Near(MAW.ModelWeek(weekday, nil)[(4 - 1) * 6 + 3].expected, 206, 0.01, "without hours the weekday average stands alone")
+
+    -- Inside a schedule: the model fills a block with no weeks, and a real week beats it.
+    local now = at(28 + 2, 21)
+    local obs = {}
+    for w = 0, 3 do obs[#obs + 1] = at(w * 7, 21); obs[#obs + 1] = 150 end        -- Tue 20-24, four weeks
+    local s = MAW.ComposeSchedule(obs, now, { weeks = 8, minWeeks = 2, weekStart = 3, model = m })
+    T.Eq(s.slots[18].basis, "weeks", "four real weeks")
+    T.Near(s.slots[18].expected, 150, "are what they are")
+    T.Eq(s.slots[(7 - 1) * 6 + 4].basis, "model", "Saturday noon has no scans, so it is modelled")
+    T.Near(s.slots[(7 - 1) * 6 + 4].expected, 168 * 100 / 104, 0.01, "at the modelled price")
+    T.True(s.min ~= nil and s.max ~= nil, "which is enough to plan a week")
+    T.Eq(s.slots[(2 - 1) * 6 + 1].expected, nil, "Monday, with nothing to go on, stays empty")
 end)
 
 T.Case("Schedule: the ring keeps the last weeks and the last few hundred, oldest first", function()

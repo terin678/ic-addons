@@ -318,14 +318,24 @@ Schedule tab turns the last weeks of scans into a plan for this one.
 **The grid.** Seven days by six 4-hour blocks. An item's expected price in a block is the
 mean of that block's **weekly** means over the last 8 weeks (Settings), so a week in
 which you scanned five times one evening counts once. A block needs 2 complete weeks
-before it carries an expectation; until then the grid shows what it has with a `~`.
+before it carries that expectation.
 
-**The plan.** From the item's own week profile, the blocks in the bottom quarter of its
-range are buys and the top quarter sells, the same quarters Movers uses. A week whose
-spread is under 5% is flat and schedules nothing. The plan lists every scheduled block
-from the week's first day, with the expected price, this week's actual once a scan has
-landed in it, and a status: ahead, now, hit, miss, or no scan. A hit is an actual within
-10% of the expected price (Settings).
+**Until then it is modelled** from the history the History tab already draws: the
+weekday's average times the block's share of the day, read off the weekday and hour
+views (a weekday or a block needs 3 samples to count; a block nobody scans takes the day's
+average). So an item with months of scans has a full grid on day one, marked `~`, and each
+block trades the model for its own weeks as they complete. A block with one week and no
+model shows that week with `?`.
+
+**The plan** reads as instructions: in this block, check the item's price and buy at or
+under the target, or list at or over it. The target is the block's expected price; the
+From column says whether it came from weeks of scans or the model.
+
+From the item's own week profile, the blocks in the bottom quarter of its range are buys
+and the top quarter sells, the same quarters Movers uses. A week whose spread is under 5%
+is flat and schedules nothing. The plan lists every scheduled block from the week's first
+day, with the target, this week's actual once a scan has landed in it, and a status:
+ahead, now, hit, miss, or no scan. A hit is an actual within 10% of the target (Settings).
 
 **Does the pattern hold?** Each block also judges its past weeks against each other, by
 the same rule, and an item's pattern is the record over its scheduled blocks: "held 3 of

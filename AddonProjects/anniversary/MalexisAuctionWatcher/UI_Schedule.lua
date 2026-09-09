@@ -9,9 +9,21 @@ local HEAD_H = 66           -- toolbar plus the hint under it
 local PICKER_CHUNK = 24
 
 local BADGE = {
-    buy  = { text = "BUY",  color = C.LOW },
-    sell = { text = "SELL", color = C.HIGH },
+    buy  = { text = "BUY",  color = C.LOW,  verb = "buy at or under" },
+    sell = { text = "SELL", color = C.HIGH, verb = "list at or over" },
 }
+
+-- Where a block's expectation came from, in the words a row shows.
+local function Basis(entry)
+    if entry.basis == "weeks" then
+        return string.format("%d weeks of scans", entry.weeksSeen), C.WHITE
+    elseif entry.basis == "model" then
+        return string.format("modelled from %d history samples", entry.samples or 0), C.TSM
+    elseif entry.basis == "partial" then
+        return string.format("%d week so far", entry.weeksSeen), C.DIM
+    end
+    return "", C.DIM
+end
 local STATUS = {
     now     = { text = "now",     color = C.GOLD },
     pending = { text = "ahead",   color = C.WHITE },
@@ -132,12 +144,13 @@ local function BuildSchedulePage(page)
     view.plan = K.Table(page, {
         top = -HEAD_H, bottom = 20,
         columns = {
-            { key = "badge",    label = "",         width = 70 },
-            { key = "when",     label = "When",     width = 90 },
-            { key = "name",     label = "Item",     width = 260, hit = true },
-            { key = "expected", label = "Expected", width = 90, justify = "RIGHT" },
+            { key = "badge",    label = "",         width = 60 },
+            { key = "when",     label = "When",     width = 60 },
+            { key = "name",     label = "Check",    width = 230, hit = true },
+            { key = "target",   label = "Target",   width = 130 },
             { key = "actual",   label = "Actual",   width = 90, justify = "RIGHT" },
-            { key = "status",   label = "Status",   width = 80 },
+            { key = "status",   label = "Status",   width = 70 },
+            { key = "basis",    label = "From",     width = 210 },
             { key = "held",     label = "Pattern",  width = "flex" },
         },
     })
@@ -194,10 +207,12 @@ local function BuildSchedulePage(page)
             t:Set(row, "badge", badge.text, badge.color)
             t:Set(row, "when", MAW.BLOCK_LABELS[entry.block], C.WHITE)
             t:Set(row, "name", entry.name, C.BONE)
-            t:Set(row, "expected", K.FormatMoney(entry.expected), C.WHITE)
+            t:Set(row, "target", (entry.action == "buy" and "<= " or ">= ") .. K.FormatMoney(entry.expected), badge.color)
             t:Set(row, "actual", entry.actual and K.FormatMoney(entry.actual.avg) or "-", entry.actual and C.WHITE or C.DIM)
             local st = STATUS[entry.status] or STATUS.pending
             t:Set(row, "status", st.text, st.color)
+            local basisText, basisColor = Basis(entry)
+            t:Set(row, "basis", basisText, basisColor)
             local heldText, heldColor = Held(entry.hits, entry.misses)
             t:Set(row, "held", heldText, heldColor)
             if entry.now then t:Tint(row, K.STYLE.selectedBg) end
@@ -205,10 +220,9 @@ local function BuildSchedulePage(page)
             local db = MAW:GetActiveDB()
             K.Tooltip(row.hit.name, function()
                 GameTooltip:AddLine(entry.name)
-                GameTooltip:AddLine(string.format("%s %s, %s", badge.text, MAW.WEEKDAY_NAMES[math.floor((entry.slot - 1) / MAW.SLOTS_PER_DAY) + 1],
-                    MAW.BLOCK_LABELS[entry.block]), 0.9, 0.7, 1)
-                GameTooltip:AddDoubleLine("Expected", K.FormatMoney(entry.expected)
-                    .. string.format(" over %d weeks", entry.weeksSeen), 1, 1, 1, 1, 0.8, 0.5)
+                GameTooltip:AddLine(string.format("%s %s: check the price, %s %s", MAW.WEEKDAY_NAMES[math.floor((entry.slot - 1) / MAW.SLOTS_PER_DAY) + 1],
+                    MAW.BLOCK_LABELS[entry.block], badge.verb, K.FormatMoney(entry.expected)), 0.9, 0.7, 1)
+                GameTooltip:AddDoubleLine("Expected", K.FormatMoney(entry.expected) .. " (" .. Basis(entry) .. ")", 1, 1, 1, 1, 0.8, 0.5)
                 if entry.low and entry.high then
                     GameTooltip:AddDoubleLine("Seen in this block", K.FormatMoney(entry.low) .. " - " .. K.FormatMoney(entry.high), 1, 1, 1, 0.8, 0.8, 0.8)
                 end
@@ -256,9 +270,8 @@ local function BuildSchedulePage(page)
                 local text, color = "-", C.DIM
                 if s.expected then
                     text = K.FormatMoney(s.expected)
+                    if s.basis == "model" then text = text .. "~" elseif s.basis == "partial" then text = text .. "?" end
                     color = schedule.flat and C.WHITE or K.GetPriceColor(s.expected, schedule.min, schedule.max, invert)
-                elseif s.mean then
-                    text = K.FormatMoney(s.mean) .. "~"
                 end
                 if slot == schedule.currentSlot then
                     text = text .. "  <"
@@ -270,12 +283,13 @@ local function BuildSchedulePage(page)
                     GameTooltip:AddLine(name)
                     GameTooltip:AddLine(day.label .. " " .. MAW.BLOCK_LABELS[b], 0.9, 0.7, 1)
                     if s.expected then
-                        GameTooltip:AddDoubleLine("Expected", K.FormatMoney(s.expected) .. string.format(" over %d weeks", s.weeksSeen), 1, 1, 1, 1, 0.8, 0.5)
-                    elseif s.mean then
-                        GameTooltip:AddDoubleLine("So far", K.FormatMoney(s.mean) .. string.format(" from %d week%s; needs %d",
-                            s.weeksSeen, s.weeksSeen == 1 and "" or "s", opts.minWeeks), 1, 1, 1, 0.8, 0.8, 0.8)
+                        GameTooltip:AddDoubleLine("Expected", K.FormatMoney(s.expected) .. " (" .. Basis(s) .. ")", 1, 1, 1, 1, 0.8, 0.5)
+                        if s.basis ~= "weeks" then
+                            GameTooltip:AddLine(string.format("Becomes a real expectation after %d complete week%s of scans in this block.",
+                                opts.minWeeks, opts.minWeeks == 1 and "" or "s"), 0.7, 0.7, 0.7, true)
+                        end
                     else
-                        GameTooltip:AddLine("No scan has landed in this block yet.", 0.7, 0.7, 0.7)
+                        GameTooltip:AddLine("Nothing to go on: no scan in this block and too little history to model it.", 0.7, 0.7, 0.7, true)
                     end
                     if s.low and s.high then
                         GameTooltip:AddDoubleLine("Seen", K.FormatMoney(s.low) .. " - " .. K.FormatMoney(s.high), 1, 1, 1, 0.8, 0.8, 0.8)
@@ -346,9 +360,10 @@ local function BuildSchedulePage(page)
                 or "Nothing tracked."
         end
         self.hint:SetText(string.format(
-            "Week of %s, %s.  %s\nExpected = the mean of the last %d weeks per 4-hour block, after %d complete week%s; "
-            .. "a hit is within %d%%. Fills in as weeks complete.",
-            startText, clockText, summary, sc.weeks, sc.minWeeks, sc.minWeeks == 1 and "" or "s", sc.tolerancePct))
+            "Week of %s, %s.  %s\nEach row: check the price in that block and act if it is on the right side of the target. "
+            .. "Targets come from %d complete week%s of scans in the block, or until then (~) are modelled from the "
+            .. "History tab's weekday and hour averages. A hit is within %d%%.",
+            startText, clockText, summary, sc.minWeeks, sc.minWeeks == 1 and "" or "s", sc.tolerancePct))
     end
 
     return view
