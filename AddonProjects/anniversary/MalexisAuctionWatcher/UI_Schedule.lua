@@ -189,13 +189,13 @@ local function BuildSchedulePage(page)
         top = -PLAN_TOP, bottom = 20,
         columns = {
             { key = "badge",    label = "",         width = 60 },
-            { key = "when",     label = "When",     width = 96 },
-            { key = "name",     label = "Check",    width = 230, hit = true },
-            { key = "target",   label = "Target",   width = 130, justify = "RIGHT" },
+            { key = "when",     label = "When",     width = 90 },
+            { key = "name",     label = "Check",    width = 138, hit = true },
+            { key = "target",   label = "Target",   width = 110, justify = "RIGHT" },
             { key = "actual",   label = "Actual",   width = 100, justify = "LEFT" },
             { key = "delta",    label = "Off by",   width = 70, justify = "RIGHT" },
             { key = "status",   label = "Status",   width = 70 },
-            { key = "counter",  label = "Then",     width = 230 },
+            { key = "counter",  label = "Then",     width = 210 },
             { key = "held",     label = "Pattern",  width = "flex" },
         },
     })
