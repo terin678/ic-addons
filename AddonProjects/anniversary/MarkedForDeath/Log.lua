@@ -29,6 +29,7 @@ Log.KINDS = {
     CC = "cc",              -- late crowd control alert
     LEAD = "lead",          -- who is marking changed
     LOGGING = "logging",    -- combat logging turned on or off
+    CONFLICT = "conflict",  -- another addon doing one of the same jobs
     ERROR = "error",        -- something threw
 }
 
@@ -65,6 +66,7 @@ local KIND_COLOR = {
     cc = "|cffffcc66",
     lead = "|cff88bbff",
     logging = "|cff88ff88",
+    conflict = "|cffffcc00",
     error = "|cffff4444",
 }
 

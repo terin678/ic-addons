@@ -188,6 +188,37 @@ local function matchIDs(text, book)
     return ids, hits
 end
 
+-- Phobophil wrote "lf jc with solid [Empyrean Sapphire]", linking the UNCUT
+-- stone they were bringing. We matched the Solid cut correctly, then also
+-- reported the raw stone as a cut we lack, and whispered back "I can do
+-- [Solid Empyrean Sapphire], but I don't have [Empyrean Sapphire]" -- a
+-- refusal over the customer's own mats. Reagents are what we cut FROM, so
+-- they can never be something we are missing.
+T.Case("BuildIndex knows which items are raw mats we cut from", function()
+    local book = {
+        [1] = { itemID = 1, name = "Solid Empyrean Sapphire", classID = 3,
+                bindType = 0, match = true, aliases = {},
+                reagents = { [500] = 1 } },
+        [2] = { itemID = 2, name = "Bold Living Ruby", classID = 3,
+                bindType = 0, match = true, aliases = {},
+                reagents = { [501] = 1 } },
+    }
+    local index = ns.Matcher.BuildIndex(book)
+    T.Eq(index.reagents[500], true, "raw stone for the sapphire cut")
+    T.Eq(index.reagents[501], true, "raw stone for the ruby cut")
+    T.Eq(index.reagents[1], nil, "a cut we make is not a raw mat")
+end)
+
+T.Case("BuildIndex collects reagents even from cuts that cannot match", function()
+    -- The stone a customer links is often for a cut they have not named, and
+    -- soulbound or match-disabled rows still tell us what is a raw mat.
+    local book = {
+        [1] = { itemID = 1, name = "Hidden Cut", classID = 3, bindType = 0,
+                match = false, aliases = {}, reagents = { [500] = 1 } },
+    }
+    T.Eq(ns.Matcher.BuildIndex(book).reagents[500], true, "still a raw mat")
+end)
+
 T.Case("Matcher hits an item link exactly", function()
     T.Eq(matchIDs("wtb " .. RUBY_LINK)[24033], "link", "link tier")
 end)
@@ -313,6 +344,16 @@ T.Case("Classifier invites LF plus will tip", function()
     T.Eq(classify("LF " .. RUBY_LINK .. " will tip").verdict, "invite", "verdict")
 end)
 
+-- Real Trade chat message from Bzip: "LF [Smooth Lionseye]" named a gem we
+-- had and got nothing, scoring zero buyer signal since a bare "LF <gem>"
+-- with no other phrase riding along with it wasn't recognised. Bzip never
+-- got a reply, whispered in frustration, and the order went to a competitor
+-- before the cooldown even cleared enough to retry.
+T.Case("Classifier invites a bare 'LF <gem>' with nothing else", function()
+    local r = classify("LF " .. RUBY_LINK)
+    T.Eq(r.verdict, "invite", "verdict")
+end)
+
 T.Case("Classifier withholds an invite for a bare link", function()
     local r = classify(RUBY_LINK)
     T.Eq(r.verdict, "lowscore", "verdict")
@@ -408,6 +449,21 @@ T.Case("BlockReason reports auto invite disabled", function()
     local s = ns.DeepCopy(ns.Defaults.settings.invite)
     s.enabled = false
     T.Eq(ns.Inviter.BlockReason({}, 5000, 1, s), "invites disabled", "reason")
+end)
+
+-- Requested by a CurseForge commenter: whisperOnly should still detect and
+-- reply, just never send the actual party invite. A full group is not a
+-- reason to block that, since nothing is being invited into it.
+T.Case("BlockReason ignores a full group in whisper-only mode", function()
+    local s = ns.DeepCopy(ns.Defaults.settings.invite)
+    s.whisperOnly = true
+    T.Eq(ns.Inviter.BlockReason({}, 5000, 5, s), nil, "not blocked")
+end)
+
+T.Case("BlockReason still enforces the cooldown in whisper-only mode", function()
+    local s = ns.DeepCopy(ns.Defaults.settings.invite)
+    s.whisperOnly = true
+    T.Eq(ns.Inviter.BlockReason({ lastInviteAt = 1000 }, 1100, 1, s), "cooldown", "reason")
 end)
 
 local function barkEntries(n)
@@ -658,6 +714,32 @@ T.Case("InferQuantities never adds a bind on pickup craft", function()
     T.Eq(#added, 0, "soulbound craft cannot be delivered, so not added")
 end)
 
+-- Razakelion asked for Stormy Empyrean Sapphire, a cut we do not know, and
+-- traded the stones for it. Three cuts we DO know take that stone, and one of
+-- them was picked by Lua table order and queued for delivery. Cutting the
+-- wrong gem is worse than asking which one they meant.
+T.Case("InferQuantities will not pick between cuts they never named", function()
+    -- 23436 is taken by both Bold and Runed Living Ruby in this book.
+    local o = orderFor({ 24028 })
+    local _, added, unclear = ns.Orders.InferQuantities(
+        o, { [23436] = 2 }, reagentBook())
+    T.Eq(#added, 0, "no cut invented for them")
+    T.Eq(#unclear, 1, "the stone is reported instead")
+    T.Eq(unclear[1], 23436, "and says which stone it was")
+    T.Eq(#o.items, 1, "the order is left as they gave it")
+end)
+
+T.Case("InferQuantities still adds when only one cut takes that stone", function()
+    -- 23440 is taken by Solid Star of Elune alone, so there is nothing to
+    -- guess at and adding it saves the user a step.
+    local o = orderFor({ 24033 })
+    local _, added, unclear = ns.Orders.InferQuantities(
+        o, { [23440] = 2 }, reagentBook())
+    T.Eq(#added, 1, "unambiguous, so still added")
+    T.Eq(added[1].itemID, 24028, "the only cut that fits")
+    T.Eq(#unclear, 0, "nothing to report")
+end)
+
 T.Case("Ledger.SumSince only counts recent entries", function()
     local entries = {
         { at = 1000, copper = 5000, gems = { [1] = 2 } },
@@ -744,6 +826,86 @@ T.Case("NextFillSlot finds a bag row for a many-of-one order", function()
     local afterFirstMove = { snapshot[2] }
     local row2 = ns.Trade.NextFillSlot(wanted, afterFirstMove)
     T.Eq(row2.bag, 1, "second stack found on the next fresh scan")
+end)
+
+-- The "only ever one of each" bug: two separate one-count stacks of the same
+-- gem delivered only one. The first use() landed, the second quietly did
+-- nothing, and the loop subtracted for it anyway and called the order filled.
+-- Measuring the trade window instead of trusting our own subtraction is what
+-- makes a use() that did nothing visible.
+T.Case("StillWanted measures the trade window, not what we assumed we moved", function()
+    local wanted = { [50] = 2 }
+    T.Eq(ns.Trade.StillWanted(wanted, {})[50], 2, "nothing in the window yet")
+    T.Eq(ns.Trade.StillWanted(wanted, { [50] = 1 })[50], 1,
+        "one landed, one still owed")
+    T.Eq(ns.Trade.StillWanted(wanted, { [50] = 2 })[50], nil, "both landed")
+end)
+
+T.Case("StillWanted ignores extras already in the window", function()
+    local wanted = { [50] = 2, [60] = 1 }
+    local left = ns.Trade.StillWanted(wanted, { [50] = 5, [99] = 3 })
+    T.Eq(left[50], nil, "over-delivered gem is not still wanted")
+    T.Eq(left[60], 1, "the untouched gem still is")
+    T.Eq(left[99], nil, "an item not on the order is not tracked")
+end)
+
+-- Mercyxqt's order read qty 1 while the trade was open and only became qty 2
+-- when the trade CLOSED and the mats were folded in. The fill runs on open,
+-- so a customer handing over stones and taking their cuts in one trade got
+-- one gem and the rest had to go in by hand. The stones in the window are
+-- the real count.
+local function matsBook()
+    return {
+        -- Luminous Noble Topaz, cut from one Noble Topaz.
+        [24060] = { itemID = 24060, name = "Luminous Noble Topaz", classID = 3,
+                    bindType = 0, match = true, aliases = {},
+                    reagents = { [23439] = 1 } },
+        -- A cut taking two stones per craft.
+        [70] = { itemID = 70, name = "Double Cut", classID = 3, bindType = 0,
+                 match = true, aliases = {}, reagents = { [23439] = 2 } },
+    }
+end
+
+T.Case("WantedWithMats raises the count to match stones in the window", function()
+    local order = { items = { { itemID = 24060, qty = 1 } } }
+    local wanted = ns.Trade.WantedWithMats({ [24060] = 1 }, { [23439] = 2 },
+                                           order, matsBook())
+    T.Eq(wanted[24060], 2, "two stones in the window means two cuts")
+end)
+
+T.Case("WantedWithMats divides by the stones each craft consumes", function()
+    local order = { items = { { itemID = 70, qty = 1 } } }
+    local wanted = ns.Trade.WantedWithMats({ [70] = 1 }, { [23439] = 6 },
+                                           order, matsBook())
+    T.Eq(wanted[70], 3, "six stones at two per craft is three cuts")
+end)
+
+T.Case("WantedWithMats never lowers what the order already asked for", function()
+    -- Mats handed over in an earlier trade are already counted in the order,
+    -- so an empty window must not wipe the quantity out.
+    local order = { items = { { itemID = 24060, qty = 3 } } }
+    local wanted = ns.Trade.WantedWithMats({ [24060] = 3 }, {}, order, matsBook())
+    T.Eq(wanted[24060], 3, "order quantity survives an empty window")
+
+    wanted = ns.Trade.WantedWithMats({ [24060] = 3 }, { [23439] = 1 },
+                                     order, matsBook())
+    T.Eq(wanted[24060], 3, "one stone this trade does not shrink the order")
+end)
+
+T.Case("WantedWithMats will not guess when two cuts take the same stone", function()
+    local order = { items = { { itemID = 24060, qty = 1 }, { itemID = 70, qty = 1 } } }
+    local wanted = ns.Trade.WantedWithMats({ [24060] = 1, [70] = 1 },
+                                           { [23439] = 4 }, order, matsBook())
+    T.Eq(wanted[24060], 1, "split is unknowable, left as the order had it")
+    T.Eq(wanted[70], 1, "same for the other cut")
+end)
+
+T.Case("WantedWithMats ignores stones for cuts not on the order", function()
+    local order = { items = { { itemID = 24060, qty = 1 } } }
+    local wanted = ns.Trade.WantedWithMats({ [24060] = 1 }, { [99999] = 5 },
+                                           order, matsBook())
+    T.Eq(wanted[24060], 1, "unrelated stones change nothing")
+    T.Eq(wanted[99999], nil, "and are never queued for delivery")
 end)
 
 T.Case("NextFillSlot handles multiple different gems in one order", function()
@@ -905,6 +1067,43 @@ T.Case("IsAvailabilityQuestion spots a direct question", function()
     T.Eq(q("any chance you have a bold ruby?"), true, "any chance")
 end)
 
+-- Loheen whispered: Able to make "Inscribed Pyrestone"?
+-- A cut we do not know, asked as a plain question, and nothing was said back
+-- because every phrase in the list said "cut". The quotes around the gem are
+-- incidental: Normalize strips them.
+T.Case("IsAvailabilityQuestion spots a question asked with 'make'", function()
+    local function q(t) return ns.Util.IsAvailabilityQuestion(t, ns.Util.Normalize(t), ASK) end
+    T.Eq(q('Able to make "Inscribed Pyrestone"?'), true, "able to make")
+    T.Eq(q("can you make a bold living ruby?"), true, "can you make")
+    T.Eq(q("do you make solid star of elune?"), true, "do you make")
+end)
+
+-- Darreldeluxe whispered "inscribed pyrestone by chance?" and still got
+-- nothing, because the list had "any chance" and not "by chance". Adding one
+-- more phrase per customer was never going to converge, so in a whisper the
+-- question mark itself is the question.
+T.Case("A whisper with a question mark is a question, whatever the wording", function()
+    local function q(t)
+        return ns.Util.IsAvailabilityQuestion(t, ns.Util.Normalize(t), ASK, true)
+    end
+    T.Eq(q("inscribed pyrestone by chance?"), true, "by chance")
+    T.Eq(q("any shot at a bold living ruby?"), true, "wording we never listed")
+    T.Eq(q("hey whats up?"), true,
+        "no gem here either, but that is the caller's job to gate on")
+    T.Eq(q("i need a bold living ruby"), false, "no question mark, not a question")
+end)
+
+T.Case("Trade chat still needs an availability phrase, not just a ?", function()
+    -- The channel this guard was written for. Someone musing out loud in
+    -- Trade must not be answered with a pitch.
+    local function q(t)
+        return ns.Util.IsAvailabilityQuestion(t, ns.Util.Normalize(t), ASK, false)
+    end
+    T.Eq(q("why are so many cuts less expensive than these days?"), false,
+        "thinking out loud is not a request")
+    T.Eq(q("do you have bold living ruby?"), true, "a listed phrase still counts")
+end)
+
 T.Case("IsAvailabilityQuestion ignores someone thinking out loud", function()
     local function q(t) return ns.Util.IsAvailabilityQuestion(t, ns.Util.Normalize(t), ASK) end
     -- The real message that got auto-answered with a sales pitch.
@@ -992,22 +1191,52 @@ T.Case("ExpireStale cancels a pending order nobody joined for in time", function
     ns.db.orders = saved
 end)
 
-T.Case("CancelPending closes an order for someone who declined", function()
+-- Found reviewing the port of this logic into TradeMaster: the guard lived
+-- only in the caller, so calling this directly with no timeout reads as
+-- "older than nothing" and cancels every pending order on sight.
+T.Case("ExpireStale with no timeout cancels nothing", function()
     local saved = ns.db.orders
+    ns.db.orders = {
+        { id = 1, player = "A", status = "pending", createdAt = 1000, items = {} },
+    }
+    T.Eq(#ns.Orders.ExpireStale(2000, 0), 0, "zero is not a timeout of zero seconds")
+    T.Eq(#ns.Orders.ExpireStale(2000, nil), 0, "nor is a missing one")
+    T.Eq(ns.Orders.ByID(1).status, "pending", "order untouched")
+    ns.db.orders = saved
+end)
+
+-- The master switch is pinned rather than assumed: these would otherwise
+-- pass or fail depending on whether /cm disable happened to be on when the
+-- suite was run.
+T.Case("CancelPending closes an order for someone who declined", function()
+    local saved, wasOn = ns.db.orders, ns.db.settings.enabled
+    ns.db.settings.enabled = true
     ns.db.orders = { { id = 1, player = "Goopyfloyd", status = "pending", items = {} } }
     local o = ns.Orders.CancelPending("Goopyfloyd", 5000)
     T.Eq(o.status, "cancelled", "declined order is cancelled")
     T.Eq(ns.Orders.Open("Goopyfloyd"), nil, "no longer open")
-    ns.db.orders = saved
+    ns.db.orders, ns.db.settings.enabled = saved, wasOn
 end)
 
 T.Case("CancelPending leaves an order alone once they have actually grouped", function()
-    local saved = ns.db.orders
+    local saved, wasOn = ns.db.orders, ns.db.settings.enabled
+    ns.db.settings.enabled = true
     ns.db.orders = { { id = 1, player = "Goopyfloyd", status = "grouped", items = {} } }
     local o = ns.Orders.CancelPending("Goopyfloyd", 5000)
     T.Eq(o, nil, "grouped orders are not what CancelPending touches")
     T.Eq(ns.Orders.ByID(1).status, "grouped", "unchanged")
-    ns.db.orders = saved
+    ns.db.orders, ns.db.settings.enabled = saved, wasOn
+end)
+
+-- A decline arriving while the addon is switched off must not quietly close
+-- an order, the same as every other automatic order change.
+T.Case("CancelPending does nothing while the addon is disabled", function()
+    local saved, wasOn = ns.db.orders, ns.db.settings.enabled
+    ns.db.settings.enabled = false
+    ns.db.orders = { { id = 1, player = "Goopyfloyd", status = "pending", items = {} } }
+    T.Eq(ns.Orders.CancelPending("Goopyfloyd", 5000), nil, "no order touched")
+    T.Eq(ns.Orders.ByID(1).status, "pending", "still pending")
+    ns.db.orders, ns.db.settings.enabled = saved, wasOn
 end)
 
 T.Case("DeclinedName reads a player out of the system decline message", function()

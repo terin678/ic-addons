@@ -740,6 +740,7 @@ T.Case("Learned: recording a mob stores its name and zone", function()
     MFD.Learned.Record(db, 22890, "Illidari Nightlord", "Black Temple", 1000)
     T.Eq(db.learnedMobs[22890].name, "Illidari Nightlord", "name")
     T.Eq(db.learnedMobs[22890].zone, "Black Temple", "zone")
+    T.Eq(db.learnedMobs[22890].instanceKey, nil, "no key when none was supplied")
     T.Eq(db.learnedMobs[22890].seenAt, 1000, "timestamp")
 end)
 
@@ -1191,6 +1192,44 @@ T.Case("Search: learned mobs appear alongside bundled ones", function()
     T.Eq(results[1].source, "learned", "marked as derived so the UI can amber it")
 end)
 
+-- Setting up Hyjal, the rule editor offered NotEnuffTuna, Picklesjr, oscar and
+-- a dozen more: hunter pets seen in Shattrath, where both factions stand around
+-- and an opposing player's pet reads as a live enemy creature. A sighting that
+-- cannot be placed in the instance being filtered for is no longer treated as
+-- belonging to all of them.
+T.Case("Search: a mob learned somewhere else is not offered for this raid", function()
+    local learned = {
+        [23326] = { name = "NotEnuffTuna", zone = "Shattrath City" },
+        [17899] = { name = "Shadowy Necromancer", zone = "Hyjal Summit" },
+    }
+
+    local results = MFD.Search("", "HYJAL", {}, learned)
+    T.Eq(#results, 1, "one of the two belongs here")
+    T.Eq(results[1].name, "Shadowy Necromancer", "and it is the one seen in Hyjal")
+end)
+
+T.Case("Search: with no instance filter everything learned is still offered", function()
+    local learned = {
+        [23326] = { name = "NotEnuffTuna", zone = "Shattrath City" },
+        [17899] = { name = "Shadowy Necromancer", zone = "Hyjal Summit" },
+    }
+
+    T.Eq(#MFD.Search("", nil, {}, learned), 2, "no filter, no hiding")
+end)
+
+T.Case("Search: a recorded instance key beats the zone name", function()
+    -- Newer sightings carry the key the rules are filed under, which needs no
+    -- zone-name table and cannot drift out of step with one.
+    local learned = {
+        [17899] = { name = "Shadowy Necromancer", zone = "Hyjal Summit", instanceKey = "HYJAL" },
+        [22873] = { name = "Coilskar General", zone = "Black Temple", instanceKey = "BLACKTEMPLE" },
+    }
+
+    local results = MFD.Search("", "HYJAL", {}, learned)
+    T.Eq(#results, 1, "only the Hyjal one")
+    T.Eq(results[1].npcID, 17899, "by key, not by name")
+end)
+
 T.Case("Search: a bundled entry wins over a learned duplicate", function()
     local bundled = { [100] = { "Illidari Nightlord", "BLACKTEMPLE" } }
     local learned = { [100] = { name = "Illidari Nightlord", zone = "Black Temple" } }
@@ -1206,19 +1245,90 @@ T.Case("Search: results are sorted by name for a stable list", function()
     T.Eq(results[2].name, "Zealot", "second")
 end)
 
-T.Case("Search: a learned mob is filtered by the zone it was seen in", function()
-    -- Learned entries carry a zone name, not an instance key, so the filter
-    -- matches through the instance's display name. A learned mob seen in a
-    -- zone we cannot map is shown rather than hidden: losing it is worse.
+T.Case("Search: a learned mob is filtered by where it was seen", function()
+    -- An older entry carries only a zone name, so the filter matches through
+    -- the instance's display name.
+    --
+    -- A sighting that cannot be placed in the instance being filtered for used
+    -- to be shown anyway, on the reasoning that losing it was worse than
+    -- showing it. That reasoning does not survive contact with a city: every
+    -- hunter pet seen in Shattrath was unplaceable, so every one of them was
+    -- offered as a mob to mark in every raid. Nothing is actually lost, because
+    -- cycling the filter button to "this zone" searches unfiltered.
     local learned = {
         [300] = { name = "Some Trash", zone = "Black Temple" },
         [400] = { name = "Other Trash", zone = "Hyjal Summit" },
         [500] = { name = "Odd Trash", zone = "Somewhere Unmapped" },
     }
     local results = MFD.Search("trash", "BLACKTEMPLE", {}, learned)
-    T.Eq(#results, 2, "the BT one and the unmappable one")
-    T.Eq(results[1].npcID, 500, "Odd sorts before Some")
-    T.Eq(results[2].npcID, 300, "then the BT mob")
+    T.Eq(#results, 1, "only the one seen in Black Temple")
+    T.Eq(results[1].npcID, 300, "the BT mob")
+
+    T.Eq(#MFD.Search("trash", nil, {}, learned), 3, "and unfiltered still finds all three")
+end)
+
+-- Hyjal wants most of its icons on kill targets and Black Temple wants sheep
+-- and banish. There was one plan for both, so it got edited on the way in.
+T.Case("Roles: a raid without a plan of its own follows the default", function()
+    local db = { rolePlan = { [8] = { intent = "KILL", ordinal = 1 } }, rolePlans = {} }
+
+    local plan, isOwn = MFD.Roles.PlanFor(db, "HYJAL")
+    T.Eq(plan, db.rolePlan, "the very same table, not a copy")
+    T.Eq(isOwn, false, "and it knows the plan is not Hyjal's own")
+
+    T.Eq((MFD.Roles.PlanFor(db, nil)), db.rolePlan, "so does no instance at all")
+end)
+
+-- Identity is the point: Marker.ResolvedRoles caches on the plan table it was
+-- handed, so every raid that follows the default has to get one table back or
+-- zoning between them would recompute the roster every time.
+T.Case("Roles: two raids on the default share one table", function()
+    local db = { rolePlan = { [8] = { intent = "KILL", ordinal = 1 } }, rolePlans = {} }
+    T.Eq((MFD.Roles.PlanFor(db, "HYJAL")), (MFD.Roles.PlanFor(db, "BLACKTEMPLE")), "one table")
+end)
+
+T.Case("Roles: Detach copies what the raid was already following", function()
+    local db = {
+        rolePlan = { [8] = { intent = "KILL", ordinal = 1, pin = "Grimmtusk" } },
+        rolePlans = {},
+    }
+
+    local own = MFD.Roles.Detach(db, "HYJAL")
+    T.Eq(own[8].intent, "KILL", "starts from what was there")
+    T.Eq(own[8].pin, "Grimmtusk", "pins and all")
+
+    own[8].intent = "SHEEP"
+    T.Eq(db.rolePlan[8].intent, "KILL", "and editing it leaves the default alone")
+
+    local plan, isOwn = MFD.Roles.PlanFor(db, "HYJAL")
+    T.Eq(plan[8].intent, "SHEEP", "Hyjal now has its own")
+    T.Eq(isOwn, true, "and says so")
+    T.Eq((MFD.Roles.PlanFor(db, "BLACKTEMPLE"))[8].intent, "KILL", "Black Temple is untouched")
+end)
+
+T.Case("Roles: Detach twice does not throw away the first edit", function()
+    local db = { rolePlan = { [8] = { intent = "KILL", ordinal = 1 } }, rolePlans = {} }
+
+    MFD.Roles.Detach(db, "HYJAL")[8].intent = "SHEEP"
+    T.Eq(MFD.Roles.Detach(db, "HYJAL")[8].intent, "SHEEP", "the second call returns the same plan")
+end)
+
+T.Case("Roles: Reattach puts a raid back on the default", function()
+    local db = { rolePlan = { [8] = { intent = "KILL", ordinal = 1 } }, rolePlans = {} }
+    MFD.Roles.Detach(db, "HYJAL")[8].intent = "SHEEP"
+
+    MFD.Roles.Reattach(db, "HYJAL")
+    local plan, isOwn = MFD.Roles.PlanFor(db, "HYJAL")
+    T.Eq(plan, db.rolePlan, "back on the default table")
+    T.Eq(isOwn, false, "and no longer its own")
+end)
+
+T.Case("Roles: an install that predates per zone plans still resolves", function()
+    -- rolePlans is absent entirely on a table saved before this existed.
+    local db = { rolePlan = { [8] = { intent = "KILL", ordinal = 1 } } }
+    local plan, isOwn = MFD.Roles.PlanFor(db, "HYJAL")
+    T.Eq(plan, db.rolePlan, "the default, as it always was")
+    T.Eq(isOwn, false, "nothing of its own")
 end)
 
 T.Case("Announce: formats icon, intent and owner compactly", function()
@@ -2536,6 +2646,32 @@ T.Case("Conflicts: several are listed in the order given", function()
     T.Eq(lines[2], "B: p. Fix: do q", "second")
 end)
 
+-- A fill-in raider in Gruul's with MRT auto logging on was told in red that
+-- another addon was fighting over raid icons. Nothing was: the only conflict
+-- that fired was about the combat log, and as a raider without assist he could
+-- not have placed an icon anyway. The headline now says what was found.
+T.Case("Conflicts: the headline names what was actually found", function()
+    T.Eq(MFD.Conflicts.Headline({ { topic = "combat logging" } }),
+        "another addon is also handling combat logging:", "the logging one alone")
+
+    T.Eq(MFD.Conflicts.Headline({ { topic = "raid icons" } }),
+        "another addon is also handling raid icons:", "the marking one alone")
+end)
+
+T.Case("Conflicts: a headline covering several topics names each once", function()
+    T.Eq(MFD.Conflicts.Headline({
+        { topic = "raid icons" },
+        { topic = "raid icons" },
+        { topic = "combat logging" },
+    }), "another addon is also handling raid icons and combat logging:",
+        "the repeat is not listed twice")
+end)
+
+T.Case("Conflicts: nothing found has no headline to print", function()
+    T.Eq(MFD.Conflicts.Headline({}), nil, "empty")
+    T.Eq(MFD.Conflicts.Headline(nil), nil, "and nil, which Detect can never return but Format accepts")
+end)
+
 T.Case("Conflicts: Evaluate only reports the ones whose test says so", function()
     local found = MFD.Conflicts.Evaluate({
         { label = "On", what = "w", fix = "f", isActive = function() return true end },
@@ -3423,13 +3559,28 @@ T.Case("CombatLog: heroics only when asked for, and only heroics", function()
     T.Eq(CL.ShouldLog("party", 173, on), false, "a normal dungeon is still no")
 end)
 
-T.Case("CombatLog: never stops a log it did not start", function()
+T.Case("CombatLog: never stops a log it has no business stopping", function()
     -- The rule that stops two addons cutting each other's files short.
-    T.Eq(CL.Decide(false, true, false), nil, "somebody else is logging, leave it")
+    T.Eq(CL.Decide(false, true, false), nil, "logging where we would not, and not ours: leave it")
     T.Eq(CL.Decide(false, true, true), "stop", "ours, and we have left the raid")
     T.Eq(CL.Decide(true, false, false), "start", "should be logging and nothing is")
-    T.Eq(CL.Decide(true, true, true), nil, "already running, nothing to do")
+    T.Eq(CL.Decide(true, true, true), nil, "ours and already running, nothing to do")
     T.Eq(CL.Decide(false, false, false), nil, "nothing to do at all")
+end)
+
+-- A reload inside a raid used to lose the claim on a running log for the rest
+-- of the night: nothing would close it on the way out and the file kept growing
+-- while you quested. Somewhere the settings say to log, taking it over is the
+-- behaviour that was asked for whoever opened it.
+T.Case("CombatLog: a log already running where we would log is adopted", function()
+    T.Eq(CL.Decide(true, true, false), "adopt", "reloaded in a raid with logging on")
+    T.Eq(CL.Decide(true, true, true), nil, "and only once, not every zone event after")
+end)
+
+T.Case("CombatLog: nothing is adopted where the settings say not to log", function()
+    -- shouldLog false covers both being outside a raid and having the setting
+    -- switched off, so a log started by hand is never taken over.
+    T.Eq(CL.Decide(false, true, false), nil, "hands off")
 end)
 
 -- One limiter owns every outbound message. Before it there was a throttle per

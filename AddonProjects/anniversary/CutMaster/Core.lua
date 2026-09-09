@@ -72,6 +72,11 @@ ns.Defaults = {
             maxParty = 5,
             playerCooldownSec = 600,
             fromWhisper = true,
+            -- Detect and whisper exactly as normal, but leave the actual
+            -- party invite to the player. Requested by someone who wanted to
+            -- see what a customer needs before committing to invite them,
+            -- e.g. realising they lack the cut after the addon already did.
+            whisperOnly = false,
             whisper = {
                 enabled = true,
                 autoReply = true,
@@ -125,6 +130,14 @@ ns.Defaults = {
                 -- "LF someone who can MAKE [gem]" is the same request as
                 -- "who can cut", just worded with a different verb.
                 ["who can make"] = 3,
+                -- Bzip's "LF [Smooth Lionseye]" named a gem we had and got
+                -- nothing: a bare "LF <gem>" with no other buyer phrase
+                -- scored zero, so requireBuyerSignal dropped it silently.
+                -- "LF" on its own is the single most common way to open a
+                -- buy request in Trade chat, so it earns a small score of
+                -- its own rather than needing another phrase to ride along
+                -- with it.
+                ["lf"] = 1,
             },
             -- Asking for the profession itself, with no gem named. Word order
             -- separates these from a competitor's "JC LFW".
@@ -138,10 +151,17 @@ ns.Defaults = {
             canCutGuards = { "who", "anyone", "any1", "anybody", "someone", "jc" },
             -- Paired with a question mark, these mean "are you able to supply
             -- this", which is owed a direct answer.
+            -- Appended to, never reordered: these reach an existing install by
+            -- index, so inserting in the middle would rewrite saved entries.
             askPhrases = {
                 "do you have", "do u have", "you have", "do you got", "got",
                 "have you got", "can you cut", "can u cut", "able to cut",
                 "can you do", "do you do", "any chance", "you got",
+                -- Loheen asked 'Able to make "Inscribed Pyrestone"?' and got
+                -- no answer: every phrasing here said "cut", so asking with
+                -- "make" did not read as a question at all. We knew we lacked
+                -- the cut and told the user, but said nothing to the customer.
+                "able to make", "can you make", "can u make", "do you make",
             },
             weights = {
                 manyLinks = 3, designLink = 4, repeatBark = 5, shapeMatch = 2, canCut = 4,
@@ -203,7 +223,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
         if ns.db.settings.tracker.shown then
             C_Timer.After(1, function() ns.Tracker.Show() end)
         end
-        ns.Print("v1.2.0 loaded. /cm opens the window, /cm help lists commands.")
+        ns.Print("v1.5.1 loaded. /cm opens the window, /cm help lists commands.")
     elseif event == "SKILL_LINES_CHANGED" then
         if ns.db then ns.db.bookDirty = true end
     elseif event == "TRADE_SKILL_SHOW" then
@@ -308,8 +328,16 @@ local function HandleSlash(input)
         end
     elseif cmd == "invite" then
         local s = ns.db.settings.invite
-        s.enabled = not s.enabled
-        ns.Print("auto invite " .. (s.enabled and "|cff44ff44on|r" or "|cffff4444off|r"))
+        if rest == "whisperonly" then
+            s.whisperOnly = not s.whisperOnly
+            ns.Print("whisper-only mode " .. (s.whisperOnly
+                and "|cff44ff44on|r: detects and whispers customers, but never "
+                    .. "auto-invites. Invite them yourself when you're ready."
+                or "|cffff4444off|r: back to auto-inviting."))
+        else
+            s.enabled = not s.enabled
+            ns.Print("auto invite " .. (s.enabled and "|cff44ff44on|r" or "|cffff4444off|r"))
+        end
     elseif cmd == "bark" then
         local s = ns.db.settings.bark
         local secs = tonumber(rest)
@@ -350,6 +378,30 @@ local function HandleSlash(input)
             .. (s.orders.autoFillTrade and "|cff44ff44on|r" or "|cffff4444off|r"))
     elseif cmd == "stats" then
         ns.Stats.Toggle()
+    elseif cmd == "lastfill" then
+        local f = ns.db.lastFill
+        if not f then
+            ns.Print("no trade fill recorded yet.")
+        else
+            ns.Print(string.format(
+                "last fill: partner %s, order #%s (%s), wanted %s",
+                tostring(f.partner), tostring(f.orderID), tostring(f.status),
+                tostring(f.baseWanted)))
+            for _, t in ipairs(f.ticks or {}) do
+                if t.kind == "tick" then
+                    ns.Print(string.format(
+                        "  %d out[%s] in[%s] want[%s] short[%s] free=%s bags[%s]",
+                        t.n, t.outgoing, t.incoming, t.wanted, t.short,
+                        tostring(t.freeSlots), t.bags))
+                elseif t.kind == "use" then
+                    ns.Print(string.format(
+                        "  %d USE bag %d slot %d item %d stack %d (had %d out)",
+                        t.n, t.bag, t.slot, t.itemID, t.count, t.had or 0))
+                else
+                    ns.Print(string.format("  %d %s", t.n, t.kind))
+                end
+            end
+        end
     elseif cmd == "tracker" then
         ns.Tracker.Toggle()
     elseif cmd == "orders" then
@@ -387,8 +439,13 @@ local function HandleSlash(input)
         elseif sub == "removeitem" then
             local id, name = arg:match("^(%S+)%s+(.+)$")
             local o = id and ns.Orders.ByID(tonumber(id))
-            if not o then
+            if not id then
                 ns.Print("usage: /cm order removeitem <id> <gem name>")
+            elseif not o then
+                -- The arguments parsed fine; the id is simply not an order.
+                -- Repeating the usage line here sent people hunting for a
+                -- typo in a command they had written correctly.
+                ns.Print("no order with that id.")
             else
                 local itemID = ns.Orders.FindItemByName(o, name)
                 if not itemID then
@@ -568,10 +625,10 @@ local function HandleSlash(input)
         ns.Print("  /cm trywhisper <msg>, /cm tryparty <msg>, /cm bark [secs],")
         ns.Print("  /cm send, /cm preview,")
         ns.Print("  /cm adv rare|all|none|+text|-text,")
-        ns.Print("  /cm invite, /cm log, /cm debug, /cm capture, /cm clearcapture,")
+        ns.Print("  /cm invite, /cm invite whisperonly, /cm log, /cm debug, /cm capture, /cm clearcapture,")
         ns.Print("  /cm orders, /cm order add|done|cancel, /cm tracker, /cm income,")
         ns.Print("  /cm stats,")
-        ns.Print("  /cm clearflags, /cm out [n], /cm status, /cm test,")
+        ns.Print("  /cm clearflags, /cm out [n], /cm status, /cm test, /cm lastfill,")
         ns.Print("  /cm disable, /cm enable")
     end
 end

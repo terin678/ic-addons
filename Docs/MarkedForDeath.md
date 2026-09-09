@@ -97,6 +97,24 @@ while you are tanking. The most useful are on the minimap shift-click menu too.
 Buttons, keybinds, menu entries and slash commands all run the same code, so they cannot
 drift apart or behave differently from each other.
 
+### A plan per raid
+
+The role plan says what each of the eight icons means, and eight is all there is: the game
+has no ninth raid target icon. What changes between raids is how you want them spent.
+Hyjal is wave after wave of things to kill and wants most of its icons on kill targets;
+Black Temple wants sheep and banish held back for the pulls that need them.
+
+On the Roles tab, the **Plan for** button chooses which raid you are editing. **Default**
+is the plan every raid follows until you give one a plan of its own.
+
+Selecting a raid does not give it a plan. The first change you make does, copied from
+whatever it was following, so you can cycle through the list to look without leaving
+anything behind. Once a raid has its own, **Use default** drops it and puts the raid back
+on the shared one.
+
+Nothing is per raid until you make it so, and an install that predates this keeps its plan
+as the default, which is what every raid then follows.
+
 ## Planning a raid before you walk in
 
 You do not have to be standing in an instance, and the addon does not have to know the mob.
@@ -334,7 +352,7 @@ Every command is in `/mfd help`.
 | `/mfd export` | A string of your own rules to paste to someone. |
 | `/mfd import` | Paste a rule string. It merges in; nothing of yours is deleted. |
 | `/mfd whycheck` | If the raid check grid is empty or calling nobody out, this says exactly why. |
-| `/mfd conflicts` | Check whether another addon is also placing raid icons. |
+| `/mfd conflicts` | Check whether another addon is doing one of the same jobs, marking or combat logging. |
 | `/mfd coverage` | Mobs you have seen that the bundled database does not list. |
 | `/mfd readycheck` | Start a real ready check, the native one everybody sees. Raid leader or assistant. |
 | `/mfd share` | A shareable JSON file of your rules, for posting or handing to a new raid leader. |
@@ -579,9 +597,15 @@ leave, so there is always a `WoWCombatLog.txt` to upload. This is the same job M
 Logging does, done the same way: the decision waits two seconds after the zone event
 because the client does not reliably know where you are the instant a loading screen ends.
 
-It only ever stops a log it started itself. If you turned combat logging on by hand, or
-another addon did, leaving the raid will not cut your file short. Heroic dungeons are off
-by default; raids are the case worth having a file for.
+It only ever stops a log where it would have started one. Somewhere it is set to log, a
+file already running is taken over, so that leaving closes it; anywhere it is not, the log
+is left alone and leaving the raid will not cut your file short. That covers reloading
+mid raid, which used to lose the claim on the running log for the rest of the night and
+leave the file growing while you quested. Heroic dungeons are off by default; raids are
+the case worth having a file for.
+
+Both are recorded, so `/mfd log logging` shows every time it started, took over or
+stopped one.
 
 If MRT's Logging is also enabled, `/mfd conflicts` names it, because two addons toggling
 one switch is how a log ends up truncated.
@@ -604,6 +628,15 @@ verify a scraped list against, and a wrong id would silently mark the wrong mob.
 practice this does not matter: the first time your raid walks past a pack it is learned
 and searchable from then on. `/mfd coverage` shows what you have learned that is not
 bundled.
+
+A learned mob is offered for the instance it was seen in and nowhere else, so setting up
+one raid never shows you what you walked past in another. Cycle the filter button beside
+the search box to **this zone** to search everything regardless.
+
+Player pets are never learned and never marked. In a neutral city with both factions
+standing in it, an opposing hunter's pet reads as a live enemy creature with an npc id of
+its own, and without that rule they arrive in the list by the dozen under their owners'
+names.
 
 ## When it is not marking
 

@@ -7,11 +7,11 @@ Target interface: 20506. Client folder `_anniversary_`.
 | MalexisAuctionWatcher | 1.24.0 | [Docs/MalexisAuctionWatcher.md](../../Docs/MalexisAuctionWatcher.md) |
 | AuctionatorSellingTweaks | 1.1.0 | [Docs/AuctionatorSellingTweaks.md](../../Docs/AuctionatorSellingTweaks.md) |
 | TradeMaster | 1.16.0 | [Docs/TradeMaster.md](../../Docs/TradeMaster.md) |
-| CutMaster | 1.2.0 | [Docs/CutMaster.md](../../Docs/CutMaster.md) |
 | ICLibs | 1.8.0 | [Docs/ICLibs.md](../../Docs/ICLibs.md) |
+| CutMaster | 1.5.1 | [Docs/CutMaster.md](../../Docs/CutMaster.md) |
 | ICTemplate | 1.1.0 | [Docs/ICTemplate.md](../../Docs/ICTemplate.md) |
 | GuildRecruitment | 0.4.0 | [Docs/GuildRecruitment.md](../../Docs/GuildRecruitment.md) |
-| MarkedForDeath | 1.22.1 | [Docs/MarkedForDeath.md](../../Docs/MarkedForDeath.md) |
+| MarkedForDeath | 1.25.0 | [Docs/MarkedForDeath.md](../../Docs/MarkedForDeath.md) |
 
 `ICLibs` is a library addon. MalexisAuctionWatcher, TradeMaster, ICTemplate,
 GuildRecruitment and MarkedForDeath list it under `## Dependencies`, so it must be
