@@ -684,6 +684,46 @@ T.Case("Tooltip: whether an item is worth more converted than sold as it is", fu
     T.Eq(all[2][1], "From 10 Mote of Life", "then the recipe")
 end)
 
+T.Case("Sorting: a column click orders by value, blanks last, ties as they were", function()
+    local ICUI = LibStub("LibICUI-1.0")
+    local function rows()
+        return {
+            { name = "Felweed",     profit = 200,  margin = nil },
+            { name = "Mote of Life", profit = -50, margin = 12 },
+            { name = "ancient Lichen", profit = 900, margin = 12 },
+            { name = "Dreaming Glory", profit = nil, margin = 40 },
+        }
+    end
+    local function value(r, key) return r[key] end
+    local function names(list)
+        local out = {}
+        for i, r in ipairs(list) do out[i] = r.name end
+        return table.concat(out, ",")
+    end
+
+    T.Eq(names(ICUI.SortList(rows(), { key = "profit", desc = true }, value)),
+        "ancient Lichen,Felweed,Mote of Life,Dreaming Glory", "biggest profit first, no profit last")
+    T.Eq(names(ICUI.SortList(rows(), { key = "profit", desc = false }, value)),
+        "Mote of Life,Felweed,ancient Lichen,Dreaming Glory", "smallest first, no profit still last")
+    T.Eq(names(ICUI.SortList(rows(), { key = "name" }, value)),
+        "ancient Lichen,Dreaming Glory,Felweed,Mote of Life", "names sort without regard to case")
+    T.Eq(names(ICUI.SortList(rows(), { key = "margin" }, value)),
+        "Mote of Life,ancient Lichen,Dreaming Glory,Felweed", "equal margins keep their order")
+    T.Eq(names(ICUI.SortList(rows(), { key = "margin" }, value, function(a, b) return a.name > b.name end)),
+        "ancient Lichen,Mote of Life,Dreaming Glory,Felweed", "unless a tiebreak says otherwise")
+    T.Eq(names(ICUI.SortList(rows(), nil, value)), "Felweed,Mote of Life,ancient Lichen,Dreaming Glory",
+        "no sort leaves the list alone")
+
+    -- A loss reads in the same coins as a gain, with the sign in front
+    local H = _G.MalexisAuctionWatcherHelpers
+    T.Eq(H.FormatMoney(-12345), "-1.23g", "a loss of a gold and change is gold, not silvers")
+    T.Eq(H.FormatMoney(-850), "-8.5s", "a smaller loss is silver")
+    T.Eq(H.FormatMoney(-42), "-42c", "and a tiny one copper")
+    T.Eq(H.FormatMoney(12345), "1.23g", "a gain is as it was")
+    T.Eq(MAW:FormatMoney(-12345), "-1g 23s 45c", "the long form carries the sign too")
+    T.Eq(MAW:FormatMoneyRound(-12345), "-1.23g", "and so does the rounded one")
+end)
+
 T.Case("Window scale: a usable percentage survives, an unusable one is clamped", function()
     local UI = _G.MalexisAuctionWatcherUI
     if not UI or not UI.ClampScale then

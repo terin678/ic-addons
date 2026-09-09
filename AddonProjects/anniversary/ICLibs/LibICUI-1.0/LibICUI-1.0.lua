@@ -37,7 +37,7 @@ Set `theme = false` in a style to get plain Blizzard controls instead of the gui
 The palette is the default; nothing has to ask for it.
 ]]
 
-local MAJOR, MINOR = "LibICUI-1.0", 6
+local MAJOR, MINOR = "LibICUI-1.0", 7
 local Lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not Lib then return end
 
@@ -1025,6 +1025,71 @@ function TableMixin:SetSelected(item)
     end
 end
 
+-- Changes a header label. The base text is kept so the sort arrow survives the change.
+function TableMixin:SetLabel(key, text)
+    self.header.baseLabels[key] = text or ""
+    self:SetSort(self.sort and self.sort.key, self.sort and self.sort.desc)
+end
+
+-- Records the sort, { key, desc }, and marks the column's header with an arrow.
+-- key = nil clears both.
+function TableMixin:SetSort(key, desc)
+    self.sort = key and { key = key, desc = desc and true or false } or nil
+    for colKey, fs in pairs(self.header.labels) do
+        local base = self.header.baseLabels[colKey] or ""
+        if colKey == key and base ~= "" then
+            fs:SetText(base .. (desc and " \226\150\188" or " \226\150\178"))   -- ▼ / ▲
+        else
+            fs:SetText(base)
+        end
+    end
+end
+
+-- A header click: the same column turns the order round, another column starts
+-- from its own first direction (col.desc = true for "biggest first", the natural
+-- order of a price or a profit).
+function TableMixin:ToggleSort(col)
+    if self.sort and self.sort.key == col.key then
+        self:SetSort(col.key, not self.sort.desc)
+    else
+        self:SetSort(col.key, col.desc and true or false)
+    end
+    return self.sort
+end
+
+--[[
+Pure. Sorts `list` in place by `sort` = { key, desc }: valueOf(item, key) gives each
+item's value for the column, a number or a string (strings compare without case).
+Items with no value go last whichever way the order runs; equal values keep their
+original order, or fall to `tiebreak(a, b)` when one is given. No sort key leaves the
+list as it is. Returns the list.
+]]
+function Lib.SortList(list, sort, valueOf, tiebreak)
+    if not sort or not sort.key then return list end
+    local key, desc = sort.key, sort.desc
+    local index, value = {}, {}
+    for i, item in ipairs(list) do
+        index[item] = i
+        local v = valueOf(item, key)
+        if type(v) == "string" then v = v:lower() end
+        value[item] = v
+    end
+    table.sort(list, function(a, b)
+        local va, vb = value[a], value[b]
+        if (va == nil) ~= (vb == nil) then return va ~= nil end
+        if va ~= nil and va ~= vb and type(va) == type(vb) then
+            if desc then return va > vb end
+            return va < vb
+        end
+        if tiebreak then
+            if tiebreak(a, b) then return true end
+            if tiebreak(b, a) then return false end
+        end
+        return index[a] < index[b]
+    end)
+    return list
+end
+
 -- Sets a text cell, and its colour when one is given.
 function TableMixin:Set(row, key, text, color)
     local cell = row.cells[key]
@@ -1044,11 +1109,16 @@ opts = {
     left, width,               -- default 0 and the parent's width minus the scrollbar
     rowHeight,                 -- defaults to the style's
     makeButton,                -- function(parent, label, w, h, descriptor) -> button
-    columns = { { key, label, width | "flex", justify, type, font, hit, make }, ... },
+    columns = { { key, label, width | "flex", justify, type, font, hit, make,
+                  sortable, desc }, ... },
     buttons = { { key, label, width, kind, template }, ... },  -- packed against the right
     onEnter(row, item, t), onClick(row, item, button, t), onHeaderClick(col, t),
+    onSort(sort, t),           -- makes labelled columns sortable by a header click;
+                               -- sort = { key, desc } is also kept as t.sort
+    sort = { key, desc },      -- the sort to start with, e.g. one saved last session
 }
-Returns t with t.header, t.scroll, t.content, t.rows, t.columns.
+Returns t with t.header, t.scroll, t.content, t.rows, t.columns. Sorting the rows is
+the caller's: Lib.SortList(list, t.sort, valueOf) does it by column value.
 ]]
 function Lib:Table(parent, opts)
     opts = opts or {}
@@ -1118,22 +1188,40 @@ function Lib:Table(parent, opts)
     header:SetSize(width, style.headerHeight)
     Paint(header, style.headerBg)
     header.labels = {}
+    header.baseLabels = {}
     for _, col in ipairs(t.columns) do
         local fs = header:CreateFontString(nil, "OVERLAY", style.headerFont)
+        fs.icBaseColor = { fs:GetTextColor() }
         fs:SetPoint("LEFT", header, "LEFT", col.x + 2, 0)
         fs:SetWidth(col.width - 4)
         fs:SetJustifyH(col.justify or "LEFT")
         fs:SetWordWrap(false)
         fs:SetText(col.label or "")
         header.labels[col.key] = fs
-        if opts.onHeaderClick then
+        header.baseLabels[col.key] = col.label or ""
+        -- A sortable column's header is a button: a click sorts by it, a second click
+        -- turns the order round. A column can opt out with sortable = false, and one
+        -- with no label (controls, badges) is never sortable.
+        local sortable = opts.onSort and col.key and col.sortable ~= false and (col.label or "") ~= ""
+        if opts.onHeaderClick or sortable then
             local hit = CreateFrame("Button", nil, header)
             hit:SetPoint("LEFT", header, "LEFT", col.x, 0)
             hit:SetSize(col.width, style.headerHeight)
-            hit:SetScript("OnClick", function() opts.onHeaderClick(col, t) end)
+            hit:SetScript("OnClick", function()
+                if sortable then
+                    t:ToggleSort(col)
+                    opts.onSort(t.sort, t)
+                end
+                if opts.onHeaderClick then opts.onHeaderClick(col, t) end
+            end)
+            if sortable then
+                hit:SetScript("OnEnter", function() fs:SetTextColor(1, 1, 1) end)
+                hit:SetScript("OnLeave", function() fs:SetTextColor(unpack(fs.icBaseColor)) end)
+            end
         end
     end
     t.header = header
+    if opts.sort then t:SetSort(opts.sort.key, opts.sort.desc) end
 
     -- The scroll frame is exactly as wide as the header and the rows. Its
     -- scrollbar is drawn just outside that width, in the 26px the caller left

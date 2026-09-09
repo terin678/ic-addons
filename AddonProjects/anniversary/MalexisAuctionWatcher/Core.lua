@@ -44,10 +44,11 @@ end
 -- only under a silver. For lines where the coin does not matter, like a tooltip.
 function MAW:FormatMoneyRound(copper)
     copper = math.floor((tonumber(copper) or 0) + 0.5)
-    local silver = math.floor(copper / 100 + 0.5)
-    if silver >= 100 then return string.format("%.2fg", copper / 10000) end
-    if silver >= 1 then return string.format("%ds", silver) end
-    return string.format("%dc", copper)
+    local sign, amount = copper < 0 and "-" or "", math.abs(copper)
+    local silver = math.floor(amount / 100 + 0.5)
+    if silver >= 100 then return sign .. string.format("%.2fg", amount / 10000) end
+    if silver >= 1 then return sign .. string.format("%ds", silver) end
+    return sign .. string.format("%dc", amount)
 end
 
 function MAW:FormatMoney(copper)
@@ -56,11 +57,13 @@ function MAW:FormatMoney(copper)
         return "0c"
     end
 
-    local gold = math.floor(copper / 10000)
-    local silver = math.floor((copper % 10000) / 100)
-    local copperRemainder = copper % 100
+    -- Sized on the absolute amount, the sign put back in front: "-1g 23s 45c"
+    local sign, amount = copper < 0 and "-" or "", math.abs(copper)
+    local gold = math.floor(amount / 10000)
+    local silver = math.floor((amount % 10000) / 100)
+    local copperRemainder = amount % 100
 
-    local str = ""
+    local str = sign
     if gold > 0 then
         str = str .. gold .. "g "
     end
@@ -167,6 +170,9 @@ local Defaults = {
                      minReliabilityPct = 50, weekStart = 3 },
         -- The next sell and buy blocks on a tracked item's game tooltip
         tooltip = true,
+        -- The column each tab's list is sorted by, { key, desc } per tab key; a tab
+        -- with none keeps its own order.
+        columnSort = {},
     },
 }
 

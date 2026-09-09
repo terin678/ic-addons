@@ -34,19 +34,23 @@ end
 
 -- Format money in gold/silver/copper
 function MAWHelpers.FormatMoney(copper)
+    copper = copper and math.floor(copper + 0.5) or nil
     if not copper or copper == 0 then
         return "0c"
     end
 
-    local gold = math.floor(copper / 10000)
-    local silver = math.floor((copper % 10000) / 100)
+    -- Judged on the size, then the sign put back: a loss of 1g 23s reads "-1.23g",
+    -- not the silvers a negative number's rounding used to fall through to.
+    local sign, amount = copper < 0 and "-" or "", math.abs(copper)
+    local gold = math.floor(amount / 10000)
+    local silver = math.floor((amount % 10000) / 100)
 
     if gold > 0 then
-        return string.format("%.2fg", copper / 10000)
+        return sign .. string.format("%.2fg", amount / 10000)
     elseif silver > 0 then
-        return string.format("%.1fs", copper / 100)
+        return sign .. string.format("%.1fs", amount / 100)
     else
-        return string.format("%dc", copper)
+        return sign .. string.format("%dc", amount)
     end
 end
 

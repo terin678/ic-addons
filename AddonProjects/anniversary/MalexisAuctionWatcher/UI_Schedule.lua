@@ -198,6 +198,7 @@ local function BuildSchedulePage(page)
             { key = "counter",  label = "Then",     width = 210 },
             { key = "held",     label = "Pattern",  width = "flex" },
         },
+        onSort = K.SortBy("schedule"),
     })
 
     -- The grid: seven rows from the week's first day, six blocks across
@@ -220,8 +221,25 @@ local function BuildSchedulePage(page)
         local title = date("%A %d %b", weekStartTime + (self.day - 1) * 86400)
         if self.block > 0 then title = title .. ", " .. MAW.BLOCK_LABELS[self.block] end
         rows[#rows + 1] = { kind = "section", title = title }
+        -- The day's rows, in the plan's order (block, hour, edge) or by a clicked column
+        local dayRows = {}
+        for _, r in ipairs(day.rows) do dayRows[#dayRows + 1] = r end
+        local colSort = K.ApplySort(self.plan, "schedule")
+        if colSort then
+            K.SortList(dayRows, colSort, function(r, key)
+                if key == "when" then return r.hour or ((r.block - 1) * 4) end
+                if key == "name" then return r.name end
+                if key == "target" then return r.expected end
+                if key == "actual" then return r.actual and r.actual.avg or nil end
+                if key == "delta" then return r.edge end
+                if key == "status" then return r.status end
+                if key == "counter" then return r.counter and r.counter.blocksAway or nil end
+                if key == "held" then return r.reliability end
+                return nil
+            end)
+        end
         local shown, hidden = 0, 0
-        for _, r in ipairs(day.rows) do
+        for _, r in ipairs(dayRows) do
             if self.block == 0 or r.block == self.block then
                 if self.onlyFit and MAW.RowOnTarget(r) ~= true then
                     hidden = hidden + 1

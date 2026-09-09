@@ -30,6 +30,14 @@ the control row: Scan AH, the per-tab scan, Sort, then the tab's option (Add Ite
 Refresh) and the character-specific checkbox on the right. The window is one fixed size on
 every tab, and how long ago you last scanned reads in the header beside the guild mark.
 
+**Sorting.** Every list sorts by a column when you click its header, and a second click
+turns the order round; an arrow marks the column. Rows with nothing in that column go
+last either way, and a list with sections (Stores, Movers, the Schedule) sorts inside
+each section. The choice is kept per tab until you change it. On Materials and Products
+the Sort button then reads "Sort: Column" and clicking it goes back to the Movers or
+manual order; elsewhere the tab's own order (Recipes by best margin, say) is what you get
+before you click a header.
+
 Every list is built from the shared widget library (see [ICLibs](ICLibs.md)): the column
 headers stay put while the rows scroll, a row is one line that truncates rather than
 wrapping, and the full text is in the hover tooltip. Rows are reused as you refresh
