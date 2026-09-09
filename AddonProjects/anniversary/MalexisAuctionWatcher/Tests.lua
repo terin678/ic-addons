@@ -377,6 +377,8 @@ T.Case("Schedule: an expectation is the mean of weekly means, judged week agains
     local satSlot = s.slots[(7 - 1) * 6 + 4]
     T.Near(satSlot.expected, 300, "steady at 300")
     T.Eq(satSlot.action, "sell", "the dear end")
+    T.Eq(satSlot.hour, 13, "the only hour scanned is the hour to act")
+    T.Eq(tueSlot.hour, 21, "and the buy names its cheapest hour, 21:00 rather than 21:30's hour")
     T.Eq(satSlot.status, "pending", "Saturday is still ahead on Thursday")
     T.Eq(satSlot.hits, 4, "and it held every week")
 
@@ -431,6 +433,22 @@ T.Case("Schedule: the week's plan runs from reset day and sets a failing pattern
     T.Eq(plan.days[7].label, "Mon", "and ends the night before")
     T.Eq(plan.days[1].rows[1].name, "Felweed", "Tuesday's buy")
     T.Eq(plan.days[1].rows[1].action, "buy", "is a buy")
+
+    -- Rows inside a block sort by the hour to act, and a row's actual is judged
+    -- against its target.
+    local buy = { action = "buy", expected = 100, actual = { avg = 95 } }
+    local sell = { action = "sell", expected = 300, actual = { avg = 280 } }
+    T.Eq(MAW.RowOnTarget(buy), true, "under the buy target")
+    T.Eq(MAW.RowOnTarget(sell), false, "not yet over the sell target")
+    T.Eq(MAW.RowOnTarget({ action = "buy", expected = 100 }), nil, "no actual, no verdict")
+    local both = schedule({ [18] = "buy", [16] = "sell" }, 0, 0)
+    both.slots[18].hour = 23
+    both.slots[16].hour = 21
+    local ordered = MAW.WeekPlan({ { name = "X", itemType = "material", schedule = both } }, { weekStart = 3 })
+    T.Eq(ordered.days[1].rows[1].block, 4, "an earlier block first")
+    local late = MAW.WeekPlan({ { name = "X", itemType = "material",
+        schedule = (function() local s2 = schedule({ [17] = "buy", [18] = "sell" }, 0, 0); s2.slots[17].hour = 19; s2.slots[18].hour = 20; return s2 end)() } }, { weekStart = 3 })
+    T.Eq(late.days[1].rows[1].action, "buy", "16-20 before 20-24 whatever the action")
     T.Eq(plan.days[5].rows[1].name, "Felweed", "Saturday 12-16")
     T.Eq(plan.days[5].rows[1].action, "sell", "is a sell")
     T.Eq(plan.days[6].rows[1].name, "New", "Sunday's unjudged buy is still listed")
@@ -467,6 +485,15 @@ T.Case("Schedule: the History buckets model a block until real weeks exist", fun
     T.Eq(satEve.weekdaySamples, 313, "with both remembered")
     local satDawn = m[(7 - 1) * 6 + 2]
     T.Near(satDawn.expected, 168, 0.01, "a block nobody scans takes the day's average")
+
+    -- The hour to act inside a block: the evening block's hours are 120, 120, 120, 120,
+    -- so the first is the cheapest and the dearest alike; make 22:00 stand out.
+    hours[23] = { label = "22", avg = 130, n = 5 }
+    hours[22] = { label = "21", avg = 110, n = 5 }
+    local m2 = MAW.ModelWeek(weekday, hours, 3)
+    T.Eq(m2[(7 - 1) * 6 + 6].cheapHour, 21, "the cheapest hour of the evening")
+    T.Eq(m2[(7 - 1) * 6 + 6].dearHour, 22, "and the dearest")
+    T.Eq(m2[(7 - 1) * 6 + 2].cheapHour, nil, "a block nobody scans has no hour to name")
     T.Eq(satDawn.blockSamples, 0, "and says it had no block samples")
     T.Eq(m[(2 - 1) * 6 + 1], nil, "a weekday with too few samples models nothing")
     T.Eq(next(MAW.ModelWeek(nil, nil)), nil, "and no history models nothing at all")

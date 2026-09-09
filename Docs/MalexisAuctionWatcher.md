@@ -339,6 +339,12 @@ six. It opens on today, all day, and a `*` marks the current day and block. Each
 the target, this week's actual once a scan has landed in it, and a status: ahead, now,
 hit, miss, or no scan. A hit is an actual within 10% of the target (Settings).
 
+Beside the block, the row names the **hour** inside it at which the item is usually
+cheapest (for a buy) or dearest (for a sell), from its scans in that block, or from the
+hour view until it has some; rows sort by that hour. The actual turns green or red when
+it is already on the right side of the target, and **Rows: On target** hides everything
+else, so a long evening block shrinks to what you can act on now.
+
 **Does the pattern hold?** Each block also judges its past weeks against each other, by
 the same rule, and an item's pattern is the record over its scheduled blocks: "held 3 of
 4 weeks". After three judged weeks, an item that held under the floor (50%, Settings) is

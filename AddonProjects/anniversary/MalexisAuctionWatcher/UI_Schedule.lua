@@ -105,6 +105,18 @@ local function BuildSchedulePage(page)
         MAWUI:RefreshData()
     end)
 
+    -- Keep only the rows whose actual is already on the right side of the target
+    view.fitBtn = bar:Left(K.Button(bar, "Rows: All", 130, 22))
+    K.Tooltip(view.fitBtn, function()
+        GameTooltip:AddLine("Which rows to show", 1, 1, 1)
+        GameTooltip:AddLine("All: every scheduled block. On target: only the rows whose latest actual "
+            .. "already sits at or under a buy target, or at or over a sell target.", 0.8, 0.8, 0.8, true)
+    end)
+    view.fitBtn:SetScript("OnClick", function()
+        view.onlyFit = not view.onlyFit
+        MAWUI:RefreshData()
+    end)
+
     -- The grid's item picker, the History tab's two-level pattern
     local dropdown = CreateFrame("Frame", "MalexisAuctionWatcherScheduleDropdown", bar, "UIDropDownMenuTemplate")
     dropdown:SetPoint("LEFT", view.modeBtn, "RIGHT", -10, -2)
@@ -177,7 +189,7 @@ local function BuildSchedulePage(page)
         top = -PLAN_TOP, bottom = 20,
         columns = {
             { key = "badge",    label = "",         width = 60 },
-            { key = "when",     label = "When",     width = 60 },
+            { key = "when",     label = "When",     width = 96 },
             { key = "name",     label = "Check",    width = 230, hit = true },
             { key = "target",   label = "Target",   width = 130 },
             { key = "actual",   label = "Actual",   width = 90, justify = "RIGHT" },
@@ -207,14 +219,22 @@ local function BuildSchedulePage(page)
         local title = date("%A %d %b", weekStartTime + (self.day - 1) * 86400)
         if self.block > 0 then title = title .. ", " .. MAW.BLOCK_LABELS[self.block] end
         rows[#rows + 1] = { kind = "section", title = title }
-        local shown = 0
+        local shown, hidden = 0, 0
         for _, r in ipairs(day.rows) do
             if self.block == 0 or r.block == self.block then
-                rows[#rows + 1] = r
-                shown = shown + 1
+                if self.onlyFit and MAW.RowOnTarget(r) ~= true then
+                    hidden = hidden + 1
+                else
+                    rows[#rows + 1] = r
+                    shown = shown + 1
+                end
             end
         end
-        if shown == 0 then rows[#rows + 1] = { kind = "empty" } end
+        if shown == 0 then
+            rows[#rows + 1] = { kind = "empty", text = hidden > 0
+                and string.format("nothing on target yet; %d row%s hidden", hidden, hidden == 1 and "" or "s") or nil }
+        end
+        plan.hidden = hidden
         if #plan.setAside > 0 then
             rows[#rows + 1] = { kind = "section", title = "Set aside: the pattern is not holding" }
             for _, s in ipairs(plan.setAside) do
@@ -229,7 +249,7 @@ local function BuildSchedulePage(page)
                 t:Tint(row, K.STYLE.headerBg)
                 return
             elseif entry.kind == "empty" then
-                t:Span(row, "nothing scheduled", C.DIM)
+                t:Span(row, entry.text or "nothing scheduled", C.DIM)
                 return
             elseif entry.kind == "aside" then
                 t:Set(row, "name", entry.name, C.DIM)
@@ -241,10 +261,14 @@ local function BuildSchedulePage(page)
 
             local badge = BADGE[entry.action]
             t:Set(row, "badge", badge.text, badge.color)
-            t:Set(row, "when", MAW.BLOCK_LABELS[entry.block], C.WHITE)
+            -- The block, and the hour inside it this item is usually cheapest or dearest
+            t:Set(row, "when", MAW.BLOCK_LABELS[entry.block]
+                .. (entry.hour and string.format("  |cffffd100%02d:00|r", entry.hour) or ""), C.WHITE)
             t:Set(row, "name", entry.name, C.BONE)
             t:Set(row, "target", (entry.action == "buy" and "<= " or ">= ") .. K.FormatMoney(entry.expected), badge.color)
-            t:Set(row, "actual", entry.actual and K.FormatMoney(entry.actual.avg) or "-", entry.actual and C.WHITE or C.DIM)
+            local onTarget = MAW.RowOnTarget(entry)
+            t:Set(row, "actual", entry.actual and K.FormatMoney(entry.actual.avg) or "-",
+                onTarget == true and badge.color or (entry.actual and C.WHITE or C.DIM))
             local st = STATUS[entry.status] or STATUS.pending
             t:Set(row, "status", st.text, st.color)
             local basisText, basisColor = Basis(entry)
@@ -258,6 +282,14 @@ local function BuildSchedulePage(page)
                 GameTooltip:AddLine(entry.name)
                 GameTooltip:AddLine(string.format("%s %s: check the price, %s %s", MAW.WEEKDAY_NAMES[math.floor((entry.slot - 1) / MAW.SLOTS_PER_DAY) + 1],
                     MAW.BLOCK_LABELS[entry.block], badge.verb, K.FormatMoney(entry.expected)), 0.9, 0.7, 1)
+                if entry.hour then
+                    GameTooltip:AddDoubleLine("Best hour in the block", string.format("%02d:00, its %s hour on record", entry.hour,
+                        entry.action == "buy" and "cheapest" or "dearest"), 1, 1, 1, 1, 0.85, 0.3)
+                end
+                if onTarget ~= nil then
+                    GameTooltip:AddDoubleLine("Right now", onTarget and "on target: act" or "not there yet", 1, 1, 1,
+                        onTarget and 0.55 or 0.98, onTarget and 0.95 or 0.56, onTarget and 0.55 or 0.52)
+                end
                 GameTooltip:AddDoubleLine("Expected", K.FormatMoney(entry.expected) .. " (" .. Basis(entry) .. ")", 1, 1, 1, 1, 0.8, 0.5)
                 if entry.low and entry.high then
                     GameTooltip:AddDoubleLine("Seen in this block", K.FormatMoney(entry.low) .. " - " .. K.FormatMoney(entry.high), 1, 1, 1, 0.8, 0.8, 0.8)
@@ -369,6 +401,8 @@ local function BuildSchedulePage(page)
 
         self.clockBtn:SetText("Clock: " .. (sc.clock == "server" and "Server" or "Local"))
         self.modeBtn:SetText("Show: " .. (self.mode == "plan" and "Plan" or "Grid"))
+        self.fitBtn:SetText("Rows: " .. (self.onlyFit and "On target" or "All"))
+        self.fitBtn:SetShown(self.mode == "plan")
         self.dropdown:SetShown(self.mode == "grid")
         if self.mode == "grid" then
             UIDropDownMenu_SetText(self.dropdown, GridItem() or "(nothing tracked)")
@@ -403,8 +437,9 @@ local function BuildSchedulePage(page)
         local summary
         if self.mode == "plan" then
             local plan = RefreshPlan(self, sc, offset, opts, weekStartTime)
-            summary = string.format("%d item%s scheduled this week, %d set aside. * marks now.", plan.scheduled,
-                plan.scheduled == 1 and "" or "s", #plan.setAside)
+            summary = string.format("%d item%s scheduled this week, %d set aside%s. * marks now.", plan.scheduled,
+                plan.scheduled == 1 and "" or "s", #plan.setAside,
+                self.onlyFit and string.format(", %d off-target row%s hidden", plan.hidden or 0, (plan.hidden or 0) == 1 and "" or "s") or "")
         else
             local schedule = RefreshGrid(self, sc, offset, opts)
             summary = schedule and (schedule.flat and "Flat week, nothing to schedule for this item."

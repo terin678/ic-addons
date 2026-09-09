@@ -102,7 +102,7 @@ function MAW.ScheduleSlot(t, offset, weekStart)
     local dayIndex = math.floor((shifted + LocalOffset(shifted)) / SECONDS_PER_DAY)
     local sinceStart = (d.wday - (weekStart or 3)) % 7
     local weekIndex = math.floor((dayIndex - sinceStart) / 7)
-    return slot, d.wday, block, weekIndex
+    return slot, d.wday, block, weekIndex, d.hour
 end
 
 -- Pure. The slot's position within a week that starts on weekStart: 1 is the first
@@ -190,6 +190,7 @@ share (a factor of one), and says so with fewer samples. Returns
 function MAW.ModelWeek(weekdayPoints, hourPoints, minSamples)
     minSamples = minSamples or MIN_SAMPLES
     local blockSum, blockN = {}, {}
+    local cheapHour, dearHour = {}, {}      -- per block: the hour with the lowest and highest average
     local daySum, dayN = 0, 0
     for hour = 0, 23 do
         local p = hourPoints and hourPoints[hour + 1]
@@ -199,6 +200,8 @@ function MAW.ModelWeek(weekdayPoints, hourPoints, minSamples)
             blockN[b] = (blockN[b] or 0) + p.n
             daySum = daySum + p.avg * p.n
             dayN = dayN + p.n
+            if not cheapHour[b] or p.avg < cheapHour[b].avg then cheapHour[b] = { hour = hour, avg = p.avg } end
+            if not dearHour[b] or p.avg > dearHour[b].avg then dearHour[b] = { hour = hour, avg = p.avg } end
         end
     end
     local dayAvg = dayN > 0 and daySum / dayN or nil
@@ -217,6 +220,8 @@ function MAW.ModelWeek(weekdayPoints, hourPoints, minSamples)
                     expected = w.avg * factor,
                     samples = math.min(w.n, bn > 0 and bn or w.n),
                     weekdaySamples = w.n, blockSamples = bn,
+                    cheapHour = cheapHour[b] and cheapHour[b].hour or nil,
+                    dearHour = dearHour[b] and dearHour[b].hour or nil,
                 }
             end
         end
@@ -234,7 +239,9 @@ tolerancePct, minWeeks, weekStart, buyPct, sellPct, model }.
 
 Returns { slots[1..42], min, max, spreadPct, flat, currentSlot, currentWeek,
           judged = { hits, misses }, reliability }, each slot being
-    { mean, weeksSeen, expected, basis, samples, low, high, hits, misses, action, actual, status }.
+    { mean, weeksSeen, expected, basis, samples, low, high, hits, misses, action, actual, status,
+      hour }, hour being the best hour inside the block for the action: the cheapest for a
+    buy, the dearest for a sell, from real scans when there are any, else from the model.
 
 The rules, in order:
   * Completed weeks inside the window form the expectation; the current week is the
@@ -270,12 +277,12 @@ function MAW.ComposeSchedule(obs, now, opts)
         judged = { hits = 0, misses = 0 },
     }
 
-    local cells = {}
-    for i = 1, SLOTS do cells[i] = {} end
+    local cells, hours = {}, {}
+    for i = 1, SLOTS do cells[i] = {}; hours[i] = {} end
     for i = 1, #(obs or {}) - 1, 2 do
         local t, p = obs[i], obs[i + 1]
         if t and p and p > 0 then
-            local slot, _, _, w = MAW.ScheduleSlot(t, offset, weekStart)
+            local slot, _, _, w, hour = MAW.ScheduleSlot(t, offset, weekStart)
             if w <= currentWeek and w >= currentWeek - weeks then
                 local wk = cells[slot][w]
                 if not wk then
@@ -286,6 +293,12 @@ function MAW.ComposeSchedule(obs, now, opts)
                 wk.n = wk.n + 1
                 if p < wk.l then wk.l = p end
                 if p > wk.h then wk.h = p end
+                if w < currentWeek then
+                    local hb = hours[slot][hour]
+                    if not hb then hb = { s = 0, n = 0 }; hours[slot][hour] = hb end
+                    hb.s = hb.s + p
+                    hb.n = hb.n + 1
+                end
             end
         end
     end
@@ -330,6 +343,16 @@ function MAW.ComposeSchedule(obs, now, opts)
         if cur then
             s.actual = { avg = cur.s / cur.n, n = cur.n, low = cur.l, high = cur.h }
         end
+        -- The block's own cheapest and dearest hour, from the scans behind it; the
+        -- model's when it has none of its own.
+        for hour, hb in pairs(hours[i]) do
+            local avg = hb.s / hb.n
+            if not s.cheapAvg or avg < s.cheapAvg then s.cheapHour, s.cheapAvg = hour, avg end
+            if not s.dearAvg or avg > s.dearAvg then s.dearHour, s.dearAvg = hour, avg end
+        end
+        if s.cheapHour == nil and model[i] then
+            s.cheapHour, s.dearHour = model[i].cheapHour, model[i].dearHour
+        end
         out.slots[i] = s
     end
 
@@ -355,6 +378,7 @@ function MAW.ComposeSchedule(obs, now, opts)
         if s.action then
             out.judged.hits = out.judged.hits + s.hits
             out.judged.misses = out.judged.misses + s.misses
+            s.hour = (s.action == "buy") and s.cheapHour or s.dearHour
         end
 
         local pos = SlotPosition(i, weekStart)
@@ -420,7 +444,7 @@ function MAW.WeekPlan(items, opts)
                         local d = (wday - weekStart) % 7 + 1
                         local rows = out.days[d].rows
                         rows[#rows + 1] = {
-                            slot = i, block = block, action = s.action,
+                            slot = i, block = block, hour = s.hour, action = s.action,
                             name = it.name, itemType = it.itemType,
                             expected = s.expected, actual = s.actual, status = s.status,
                             basis = s.basis, samples = s.samples,
@@ -436,15 +460,26 @@ function MAW.WeekPlan(items, opts)
         end
     end
 
+    -- Inside a block, by the hour to act: a row with no hour of its own goes last.
     for _, day in ipairs(out.days) do
         table.sort(day.rows, function(a, b)
             if a.block ~= b.block then return a.block < b.block end
+            local ha, hb = a.hour or 99, b.hour or 99
+            if ha ~= hb then return ha < hb end
             if a.action ~= b.action then return a.action == "buy" end
             return a.name < b.name
         end)
     end
     table.sort(out.setAside, function(a, b) return a.name < b.name end)
     return out
+end
+
+-- Pure. Whether a plan row's actual is on the right side of its target: at or under
+-- for a buy, at or over for a sell. nil with no actual yet.
+function MAW.RowOnTarget(row)
+    if not row or not row.actual or not row.expected then return nil end
+    if row.action == "buy" then return row.actual.avg <= row.expected end
+    return row.actual.avg >= row.expected
 end
 
 --------------------------------------------------------------------------------
