@@ -1815,8 +1815,8 @@ local function BuildMoversPage(page)
             { key = "badge",   label = "",        width = 70 },
             { key = "name",    label = "Item",    width = 240, hit = true },
             { key = "price",   label = "Price",   width = 90, justify = "RIGHT" },
-            { key = "matures", label = "Matures", width = 290 },
-            { key = "reason",  label = "Why",     width = "flex" },
+            { key = "reason",  label = "Why",     width = 290 },
+            { key = "matures", label = "Matures", width = "flex" },
         },
         buttons = { { key = "act", label = "", width = 80, template = "SecureActionButtonTemplate" } },
     })
