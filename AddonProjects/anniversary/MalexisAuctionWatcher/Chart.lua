@@ -405,13 +405,18 @@ function ChartMixin:SetData(points, opts)
         self.markerBand:Show()
 
         self.markerText:ClearAllPoints()
-        -- The label goes outside the bracket, on whichever side has room.
-        if opts.markerIndex > count / 2 then
+        self.markerText:SetText(opts.markerLabel or "Today")
+        -- The label sits inside the bracket, at the top of the band, so the word is on
+        -- the bucket it names. Only a bucket too narrow for the word (the hour and
+        -- day-of-month views) puts it outside, on whichever side has room.
+        local wordW = self.markerText:GetStringWidth() or 0
+        if right - left >= wordW + 8 then
+            self.markerText:SetPoint("TOPLEFT", self.plot, "BOTTOMLEFT", left + 4, plotH - 2)
+        elseif opts.markerIndex > count / 2 then
             self.markerText:SetPoint("TOPRIGHT", self.plot, "BOTTOMLEFT", left - 3, plotH - 2)
         else
             self.markerText:SetPoint("TOPLEFT", self.plot, "BOTTOMLEFT", right + 3, plotH - 2)
         end
-        self.markerText:SetText(opts.markerLabel or "Today")
         self.markerText:Show()
     else
         self.marker:Hide()
