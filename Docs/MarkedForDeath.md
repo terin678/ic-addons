@@ -579,9 +579,15 @@ leave, so there is always a `WoWCombatLog.txt` to upload. This is the same job M
 Logging does, done the same way: the decision waits two seconds after the zone event
 because the client does not reliably know where you are the instant a loading screen ends.
 
-It only ever stops a log it started itself. If you turned combat logging on by hand, or
-another addon did, leaving the raid will not cut your file short. Heroic dungeons are off
-by default; raids are the case worth having a file for.
+It only ever stops a log where it would have started one. Somewhere it is set to log, a
+file already running is taken over, so that leaving closes it; anywhere it is not, the log
+is left alone and leaving the raid will not cut your file short. That covers reloading
+mid raid, which used to lose the claim on the running log for the rest of the night and
+leave the file growing while you quested. Heroic dungeons are off by default; raids are
+the case worth having a file for.
+
+Both are recorded, so `/mfd log logging` shows every time it started, took over or
+stopped one.
 
 If MRT's Logging is also enabled, `/mfd conflicts` names it, because two addons toggling
 one switch is how a log ends up truncated.
