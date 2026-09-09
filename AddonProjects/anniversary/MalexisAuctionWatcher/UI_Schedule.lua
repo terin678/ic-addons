@@ -6,6 +6,9 @@ local K = MAWUI.kit
 local C = K.colors
 
 local HEAD_H = 66           -- toolbar plus the hint under it
+local DAY_STRIP_TOP = -72    -- the seven days, from the week's first
+local BLOCK_STRIP_TOP = -98  -- the six blocks under the chosen day, plus all of it
+local PLAN_TOP = 126        -- where the plan's table starts, under both strips
 local PICKER_CHUNK = 24
 
 local BADGE = {
@@ -140,9 +143,38 @@ local function BuildSchedulePage(page)
     view.hint = K.Note(page, "", K.STYLE.pageWidth - 26)
     view.hint:SetPoint("TOPLEFT", 0, -30)
 
-    -- The plan: one row per action in one block, under a heading per day
+    -- One day at a time, and one block of it or all six: a whole week in one list was
+    -- too much to read. The strips are rebuilt when the week's first day moves, since a
+    -- strip's names are fixed when it is built.
+    local function BuildStrips(weekStart)
+        if view.dayStrip then
+            view.dayStrip:Hide()
+            view.blockStrip:Hide()
+        end
+        local dayNames = {}
+        for d = 1, 7 do dayNames[d] = MAW.WEEKDAY_NAMES[(weekStart - 1 + d - 1) % 7 + 1] end
+        view.dayStrip = K.ICUI:TabStrip(page, {
+            style = K.STYLE, names = dayNames, top = DAY_STRIP_TOP, left = 0, width = 90, height = 22,
+            onSelect = function(_, index)
+                view.day = index
+                MAWUI:RefreshData()
+            end,
+        })
+        local blockNames = { "All day" }
+        for _, label in ipairs(MAW.BLOCK_LABELS) do blockNames[#blockNames + 1] = label end
+        view.blockStrip = K.ICUI:TabStrip(page, {
+            style = K.STYLE, names = blockNames, top = BLOCK_STRIP_TOP, left = 0, width = 80, height = 22,
+            onSelect = function(_, index)
+                view.block = index - 1
+                MAWUI:RefreshData()
+            end,
+        })
+        view.builtWeekStart = weekStart
+    end
+
+    -- The plan: one row per action in one block of the chosen day
     view.plan = K.Table(page, {
-        top = -HEAD_H, bottom = 20,
+        top = -PLAN_TOP, bottom = 20,
         columns = {
             { key = "badge",    label = "",         width = 60 },
             { key = "when",     label = "When",     width = 60 },
@@ -168,17 +200,21 @@ local function BuildSchedulePage(page)
         t.scroll:SetShown(on)
     end
 
-    local function RefreshPlan(self, sc, offset, opts)
+    local function RefreshPlan(self, sc, offset, opts, weekStartTime)
         local plan = MAW:GetWeekPlan()
         local rows = {}
-        for _, day in ipairs(plan.days) do
-            rows[#rows + 1] = { kind = "section", title = day.label }
-            if #day.rows == 0 then
-                rows[#rows + 1] = { kind = "empty" }
-            else
-                for _, r in ipairs(day.rows) do rows[#rows + 1] = r end
+        local day = plan.days[self.day] or plan.days[1]
+        local title = date("%A %d %b", weekStartTime + (self.day - 1) * 86400)
+        if self.block > 0 then title = title .. ", " .. MAW.BLOCK_LABELS[self.block] end
+        rows[#rows + 1] = { kind = "section", title = title }
+        local shown = 0
+        for _, r in ipairs(day.rows) do
+            if self.block == 0 or r.block == self.block then
+                rows[#rows + 1] = r
+                shown = shown + 1
             end
         end
+        if shown == 0 then rows[#rows + 1] = { kind = "empty" } end
         if #plan.setAside > 0 then
             rows[#rows + 1] = { kind = "section", title = "Set aside: the pattern is not holding" }
             for _, s in ipairs(plan.setAside) do
@@ -341,17 +377,33 @@ local function BuildSchedulePage(page)
         ShowTable(self.grid, self.mode == "grid")
 
         -- The week's first day, under the chosen clock
-        local _, wday = MAW.ScheduleSlot(now, offset, sc.weekStart)
+        local currentSlot, wday, block = MAW.ScheduleSlot(now, offset, sc.weekStart)
         local since = (wday - sc.weekStart) % 7
-        local startText = date("%a %d %b", now + offset - since * 86400)
+        local weekStartTime = now + offset - since * 86400
+        local startText = date("%a %d %b", weekStartTime)
+
+        -- The strips open on today, all day, and follow the week's first day
+        if self.builtWeekStart ~= sc.weekStart then BuildStrips(sc.weekStart) end
+        self.day = self.day or (since + 1)
+        self.block = self.block or 0
+        for i, b in ipairs(self.dayStrip.buttons) do
+            b:SetActive(i == self.day)
+            b:SetText(MAW.WEEKDAY_NAMES[(sc.weekStart - 1 + i - 1) % 7 + 1] .. (i == since + 1 and " *" or ""))
+        end
+        for i, b in ipairs(self.blockStrip.buttons) do
+            b:SetActive(i - 1 == self.block)
+            b:SetText((i == 1) and "All day" or (MAW.BLOCK_LABELS[i - 1] .. ((self.day == since + 1 and i - 1 == block) and " *" or "")))
+        end
+        self.dayStrip:SetShown(self.mode == "plan")
+        self.blockStrip:SetShown(self.mode == "plan")
         local clockText = sc.clock == "server"
             and string.format("server clock%s", offset ~= 0 and string.format(" (%+dh)", offset / 3600) or "")
             or "your local clock"
 
         local summary
         if self.mode == "plan" then
-            local plan = RefreshPlan(self, sc, offset, opts)
-            summary = string.format("%d item%s scheduled, %d set aside.", plan.scheduled,
+            local plan = RefreshPlan(self, sc, offset, opts, weekStartTime)
+            summary = string.format("%d item%s scheduled this week, %d set aside. * marks now.", plan.scheduled,
                 plan.scheduled == 1 and "" or "s", #plan.setAside)
         else
             local schedule = RefreshGrid(self, sc, offset, opts)

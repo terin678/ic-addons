@@ -333,9 +333,11 @@ From column says whether it came from weeks of scans or the model.
 
 From the item's own week profile, the blocks in the bottom quarter of its range are buys
 and the top quarter sells, the same quarters Movers uses. A week whose spread is under 5%
-is flat and schedules nothing. The plan lists every scheduled block from the week's first
-day, with the target, this week's actual once a scan has landed in it, and a status:
-ahead, now, hit, miss, or no scan. A hit is an actual within 10% of the target (Settings).
+is flat and schedules nothing. The plan shows one day at a time: a row of day tabs from
+the week's first day, and under the chosen day a row of block tabs, all day or one of the
+six. It opens on today, all day, and a `*` marks the current day and block. Each row has
+the target, this week's actual once a scan has landed in it, and a status: ahead, now,
+hit, miss, or no scan. A hit is an actual within 10% of the target (Settings).
 
 **Does the pattern hold?** Each block also judges its past weeks against each other, by
 the same rule, and an item's pattern is the record over its scheduled blocks: "held 3 of
