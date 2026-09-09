@@ -341,8 +341,10 @@ hit, miss, or no scan. A hit is an actual within 10% of the target (Settings).
 
 Beside the block, the row names the **hour** inside it at which the item is usually
 cheapest (for a buy) or dearest (for a sell), from its scans in that block, or from the
-hour view until it has some; rows sort by that hour. The actual turns green or red when
-it is already on the right side of the target, and **Rows: On target** hides everything
+hour view until it has some; rows sort by that hour, and inside an hour by the margin in
+the row's favour, best first. **Off by** is how far the actual sits from the target as the
+price moved (under is negative), green when that favours the row and red when it does
+not. The actual turns green or red the same way, and **Rows: On target** hides everything
 else, so a long evening block shrinks to what you can act on now.
 
 The **Then** column is the other half of the trade: for a buy, the item's next sell block

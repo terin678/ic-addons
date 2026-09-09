@@ -452,6 +452,27 @@ T.Case("Schedule: the week's plan runs from reset day and sets a failing pattern
     T.Eq(MAW.RowOnTarget(buy), true, "under the buy target")
     T.Eq(MAW.RowOnTarget(sell), false, "not yet over the sell target")
     T.Eq(MAW.RowOnTarget({ action = "buy", expected = 100 }), nil, "no actual, no verdict")
+    local delta, edge = MAW.RowDelta(buy)
+    T.Near(delta, -0.05, "five percent under the target")
+    T.Near(edge, 0.05, "which is in a buyer's favour")
+    delta, edge = MAW.RowDelta(sell)
+    T.Near(delta, -0.0667, 0.001, "under the sell target")
+    T.Near(edge, -0.0667, 0.001, "which is not in a seller's favour")
+    T.Eq(MAW.RowDelta({ action = "buy", expected = 100 }), nil, "no actual, no margin")
+
+    -- Inside an hour, the best margin first, and the rows with no actual after.
+    local three = {
+        { name = "Close", itemType = "material", schedule = schedule({ [18] = "buy" }, 0, 0) },
+        { name = "Far", itemType = "material", schedule = schedule({ [18] = "buy" }, 0, 0) },
+        { name = "Unknown", itemType = "material", schedule = schedule({ [18] = "buy" }, 0, 0) },
+    }
+    three[1].schedule.slots[18].actual = { avg = 98 }
+    three[2].schedule.slots[18].actual = { avg = 80 }
+    local byMargin = MAW.WeekPlan(three, { weekStart = 3 })
+    T.Eq(byMargin.days[1].rows[1].name, "Far", "twenty percent under comes first")
+    T.Eq(byMargin.days[1].rows[2].name, "Close", "two percent under next")
+    T.Eq(byMargin.days[1].rows[3].name, "Unknown", "and no actual last")
+    T.Near(byMargin.days[1].rows[1].delta, -0.2, "with the margin on the row")
     local both = schedule({ [18] = "buy", [16] = "sell" }, 0, 0)
     both.slots[18].hour = 23
     both.slots[16].hour = 21

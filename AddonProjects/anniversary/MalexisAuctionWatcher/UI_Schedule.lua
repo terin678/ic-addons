@@ -193,8 +193,9 @@ local function BuildSchedulePage(page)
             { key = "name",     label = "Check",    width = 230, hit = true },
             { key = "target",   label = "Target",   width = 130, justify = "RIGHT" },
             { key = "actual",   label = "Actual",   width = 100, justify = "LEFT" },
+            { key = "delta",    label = "Off by",   width = 70, justify = "RIGHT" },
             { key = "status",   label = "Status",   width = 70 },
-            { key = "counter",  label = "Then",     width = 250 },
+            { key = "counter",  label = "Then",     width = 230 },
             { key = "held",     label = "Pattern",  width = "flex" },
         },
     })
@@ -269,6 +270,14 @@ local function BuildSchedulePage(page)
             local onTarget = MAW.RowOnTarget(entry)
             t:Set(row, "actual", entry.actual and K.FormatMoney(entry.actual.avg) or "-",
                 onTarget == true and badge.color or (entry.actual and C.WHITE or C.DIM))
+            -- How far off the target the actual sits, as the price moved: under is
+            -- negative. Green when that is in the row's favour, red when it is not.
+            if entry.delta then
+                t:Set(row, "delta", string.format("%+.0f%%", entry.delta * 100),
+                    (entry.edge or 0) >= 0 and C.LOW or C.HIGH)
+            else
+                t:Set(row, "delta", "-", C.DIM)
+            end
             local st = STATUS[entry.status] or STATUS.pending
             t:Set(row, "status", st.text, st.color)
             -- The other half of the trade: when the item's next opposite block comes,

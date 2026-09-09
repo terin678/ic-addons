@@ -486,18 +486,24 @@ function MAW.WeekPlan(items, opts)
                         } or nil,
                         gain = gain,
                     }
+                    local row = rows[#rows]
+                    row.delta, row.edge = MAW.RowDelta(row)
                 end
                 if #actions > 0 then out.scheduled = out.scheduled + 1 end
             end
         end
     end
 
-    -- Inside a block, by the hour to act: a row with no hour of its own goes last.
+    -- Inside a block, by the hour to act (a row with no hour of its own goes last), and
+    -- inside an hour by the margin in the row's favour, best first; rows with no actual
+    -- yet come after the ones that have one.
     for _, day in ipairs(out.days) do
         table.sort(day.rows, function(a, b)
             if a.block ~= b.block then return a.block < b.block end
             local ha, hb = a.hour or 99, b.hour or 99
             if ha ~= hb then return ha < hb end
+            if (a.edge == nil) ~= (b.edge == nil) then return a.edge ~= nil end
+            if a.edge ~= nil and a.edge ~= b.edge then return a.edge > b.edge end
             if a.action ~= b.action then return a.action == "buy" end
             return a.name < b.name
         end)
@@ -512,6 +518,16 @@ function MAW.RowOnTarget(row)
     if not row or not row.actual or not row.expected then return nil end
     if row.action == "buy" then return row.actual.avg <= row.expected end
     return row.actual.avg >= row.expected
+end
+
+-- Pure. How far the actual sits from the target, as a fraction of the target: delta is
+-- signed as the price moved (over is positive), edge is signed in the row's favour (a
+-- buy under its target and a sell over it are both positive). nil with no actual.
+function MAW.RowDelta(row)
+    if not row or not row.actual or not row.expected or row.expected <= 0 then return nil end
+    local delta = (row.actual.avg - row.expected) / row.expected
+    local edge = (row.action == "buy") and -delta or delta
+    return delta, edge
 end
 
 --------------------------------------------------------------------------------
