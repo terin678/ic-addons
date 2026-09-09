@@ -435,27 +435,59 @@ function MAW.WeekPlan(items, opts)
                     reliability = sc.reliability, judged = judged,
                 }
             else
-                local any = false
+                -- The item's action slots in week order, so each row can name the other
+                -- half of its trade: the next opposite block after it, wrapping into next
+                -- week when this week has none left.
+                local actions = {}
                 for i = 1, SLOTS do
                     local s = sc.slots[i]
                     if s.action then
-                        any = true
-                        local _, wday, block = SlotPosition(i, weekStart)
-                        local d = (wday - weekStart) % 7 + 1
-                        local rows = out.days[d].rows
-                        rows[#rows + 1] = {
-                            slot = i, block = block, hour = s.hour, action = s.action,
-                            name = it.name, itemType = it.itemType,
-                            expected = s.expected, actual = s.actual, status = s.status,
-                            basis = s.basis, samples = s.samples,
-                            weeksSeen = s.weeksSeen, low = s.low, high = s.high,
-                            hits = s.hits, misses = s.misses,
-                            reliability = sc.reliability, judged = judged,
-                            now = (i == sc.currentSlot),
-                        }
+                        local pos, wday, block = SlotPosition(i, weekStart)
+                        actions[#actions + 1] = { slot = i, pos = pos, wday = wday, block = block, hour = s.hour,
+                            action = s.action, expected = s.expected }
                     end
                 end
-                if any then out.scheduled = out.scheduled + 1 end
+                table.sort(actions, function(a, b) return a.pos < b.pos end)
+                local function Counter(a)
+                    local wanted = (a.action == "buy") and "sell" or "buy"
+                    local first
+                    for _, b in ipairs(actions) do
+                        if b.action == wanted then
+                            if b.pos > a.pos then return b, false end
+                            if not first then first = b end
+                        end
+                    end
+                    return first, first ~= nil          -- next week's, when there is one
+                end
+
+                for _, a in ipairs(actions) do
+                    local s = sc.slots[a.slot]
+                    local d = (a.wday - weekStart) % 7 + 1
+                    local rows = out.days[d].rows
+                    local counter, nextWeek = Counter(a)
+                    local gain
+                    if counter and a.expected and counter.expected and a.expected > 0 and counter.expected > 0 then
+                        gain = (a.action == "buy") and (counter.expected - a.expected) / a.expected
+                            or (a.expected - counter.expected) / counter.expected
+                    end
+                    rows[#rows + 1] = {
+                        slot = a.slot, block = a.block, hour = a.hour, action = a.action,
+                        name = it.name, itemType = it.itemType,
+                        expected = s.expected, actual = s.actual, status = s.status,
+                        basis = s.basis, samples = s.samples,
+                        weeksSeen = s.weeksSeen, low = s.low, high = s.high,
+                        hits = s.hits, misses = s.misses,
+                        reliability = sc.reliability, judged = judged,
+                        now = (a.slot == sc.currentSlot),
+                        counter = counter and {
+                            slot = counter.slot, wday = counter.wday, block = counter.block,
+                            hour = counter.hour, action = counter.action, expected = counter.expected,
+                            nextWeek = nextWeek,
+                        } or nil,
+                        gain = gain,
+                    }
+                end
+                if #actions > 0 then out.scheduled = out.scheduled + 1 end
             end
         end
     end

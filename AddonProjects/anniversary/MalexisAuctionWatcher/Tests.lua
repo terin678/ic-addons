@@ -434,6 +434,17 @@ T.Case("Schedule: the week's plan runs from reset day and sets a failing pattern
     T.Eq(plan.days[1].rows[1].name, "Felweed", "Tuesday's buy")
     T.Eq(plan.days[1].rows[1].action, "buy", "is a buy")
 
+    -- The other half of the trade: Tuesday's buy points at Saturday's sell, and
+    -- Saturday's sell points back at next Tuesday's buy.
+    local buyRow, sellRow = plan.days[1].rows[1], plan.days[5].rows[1]
+    T.Eq(buyRow.counter.action, "sell", "a buy is followed by a sell")
+    T.Eq(buyRow.counter.slot, 40, "on Saturday")
+    T.Eq(buyRow.counter.nextWeek, false, "this week")
+    T.Near(buyRow.gain, 2, "100 to 300 is plus two hundred percent")
+    T.Eq(sellRow.counter.slot, 18, "the sell points back at the buy")
+    T.Eq(sellRow.counter.nextWeek, true, "which is next week's")
+    T.Eq(plan.days[6].rows[1].counter, nil, "an item with only buys has no other half")
+
     -- Rows inside a block sort by the hour to act, and a row's actual is judged
     -- against its target.
     local buy = { action = "buy", expected = 100, actual = { avg = 95 } }

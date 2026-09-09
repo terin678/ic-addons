@@ -345,6 +345,12 @@ hour view until it has some; rows sort by that hour. The actual turns green or r
 it is already on the right side of the target, and **Rows: On target** hides everything
 else, so a long evening block shrinks to what you can act on now.
 
+The **Then** column is the other half of the trade: for a buy, the item's next sell block
+(day, block, hour, target) and the gain between the two targets before the auction house
+cut; for a sell, the next buy block, so you know when to restock. "next" means the block
+falls in the following week. Where a row's number came from (weeks of scans, or the
+History model) is in its tooltip.
+
 **Does the pattern hold?** Each block also judges its past weeks against each other, by
 the same rule, and an item's pattern is the record over its scheduled blocks: "held 3 of
 4 weeks". After three judged weeks, an item that held under the floor (50%, Settings) is

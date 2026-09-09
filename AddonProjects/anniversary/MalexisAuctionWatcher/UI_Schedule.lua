@@ -194,7 +194,7 @@ local function BuildSchedulePage(page)
             { key = "target",   label = "Target",   width = 130 },
             { key = "actual",   label = "Actual",   width = 90, justify = "RIGHT" },
             { key = "status",   label = "Status",   width = 70 },
-            { key = "basis",    label = "From",     width = 210 },
+            { key = "counter",  label = "Then",     width = 250 },
             { key = "held",     label = "Pattern",  width = "flex" },
         },
     })
@@ -271,8 +271,19 @@ local function BuildSchedulePage(page)
                 onTarget == true and badge.color or (entry.actual and C.WHITE or C.DIM))
             local st = STATUS[entry.status] or STATUS.pending
             t:Set(row, "status", st.text, st.color)
-            local basisText, basisColor = Basis(entry)
-            t:Set(row, "basis", basisText, basisColor)
+            -- The other half of the trade: when the item's next opposite block comes,
+            -- its target, and what the round trip is worth.
+            local c = entry.counter
+            if c then
+                local other = BADGE[c.action]
+                t:Set(row, "counter", string.format("%s %s%s %s%s %s%s",
+                    other.text:lower(), c.nextWeek and "next " or "", MAW.WEEKDAY_NAMES[c.wday],
+                    MAW.BLOCK_LABELS[c.block], c.hour and string.format(" %02d:00", c.hour) or "",
+                    (c.action == "buy" and "<= " or ">= ") .. K.FormatMoney(c.expected),
+                    entry.gain and string.format("  %+.0f%%", entry.gain * 100) or ""), other.color)
+            else
+                t:Set(row, "counter", entry.action == "buy" and "no sell block on its week" or "no buy block on its week", C.DIM)
+            end
             local heldText, heldColor = Held(entry.hits, entry.misses)
             t:Set(row, "held", heldText, heldColor)
             if entry.now then t:Tint(row, K.STYLE.selectedBg) end
@@ -290,6 +301,16 @@ local function BuildSchedulePage(page)
                     GameTooltip:AddDoubleLine("Right now", onTarget and "on target: act" or "not there yet", 1, 1, 1,
                         onTarget and 0.55 or 0.98, onTarget and 0.95 or 0.56, onTarget and 0.55 or 0.52)
                 end
+                if c then
+                    GameTooltip:AddDoubleLine("Then", string.format("%s %s%s %s at %s", c.action == "buy" and "buy" or "sell",
+                        c.nextWeek and "next " or "", MAW.WEEKDAY_NAMES[c.wday], MAW.BLOCK_LABELS[c.block],
+                        K.FormatMoney(c.expected)), 1, 1, 1, 1, 0.9, 0.6)
+                    if entry.gain then
+                        GameTooltip:AddDoubleLine("Round trip", string.format("%+.0f%% between the two targets, before the cut", entry.gain * 100),
+                            1, 1, 1, 1, 0.9, 0.6)
+                    end
+                end
+                GameTooltip:AddDoubleLine("From", (Basis(entry)), 1, 1, 1, 0.8, 0.8, 0.8)
                 GameTooltip:AddDoubleLine("Expected", K.FormatMoney(entry.expected) .. " (" .. Basis(entry) .. ")", 1, 1, 1, 1, 0.8, 0.5)
                 if entry.low and entry.high then
                     GameTooltip:AddDoubleLine("Seen in this block", K.FormatMoney(entry.low) .. " - " .. K.FormatMoney(entry.high), 1, 1, 1, 0.8, 0.8, 0.8)
