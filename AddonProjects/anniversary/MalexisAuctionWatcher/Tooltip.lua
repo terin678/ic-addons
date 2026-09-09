@@ -173,7 +173,10 @@ end
 -- Returns whether the hook is in place. Safe to call more than once.
 function MAW.InstallTooltip()
     if MAW.tooltipInstalled then return true end
-    if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall
+    -- The processor table exists on this client without the C_TooltipInfo backing that
+    -- makes tooltips flow through it, so both must be present before it is the way in.
+    -- Auctionator, TSM and BagBrother make the same test.
+    if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall and C_TooltipInfo
         and Enum and Enum.TooltipDataType and Enum.TooltipDataType.Item then
         TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, Handle)
         MAW.tooltipStats.path = "TooltipDataProcessor"
