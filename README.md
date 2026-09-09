@@ -46,13 +46,32 @@ extracts straight into `Interface\AddOns`.
    python scripts/lint.py
    ```
 
-5. Package for sharing:
+5. Package for sharing with a guildmate:
 
    ```powershell
    .\scripts\package.ps1 -Flavor anniversary -Addon MalexisAuctionWatcher
    ```
 
-   The zip lands in `dist/` (ignored by git).
+   The zip lands in `dist/` (ignored by git) and carries ICLibs alongside the addon, so
+   one archive extracts into a working install.
+
+## Releasing to CurseForge
+
+ICLibs is its own CurseForge project and the published addons each mark it as a Required
+Dependency there, so an upload zip holds one folder and nothing else. One command builds
+the whole set from `main`:
+
+```powershell
+.\scripts\release.ps1
+```
+
+It lints, runs every addon's headless cases, and stops at the first failure. Then it
+writes `dist/curseforge/<Addon>-<version>.zip` for ICLibs, MalexisAuctionWatcher,
+TradeMaster, GuildRecruitment and MarkedForDeath, removing each addon's older zips, and a
+`MANIFEST.md` with the version table, SHA-256 of every zip, and the recent commits per
+addon to paste into the changelog box. Upload ICLibs first when it changed. `-Addon` narrows
+the set, `-OutDir` points it somewhere else, `-SkipTests` skips the cases (lint still runs).
+AuctionatorSellingTweaks, CutMaster and ICTemplate are not in the set on purpose.
 
 ## Starting a new addon
 

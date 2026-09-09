@@ -8,7 +8,8 @@ Guild World of Warcraft addons. Read `CODING_STANDARDS.md` before changing any L
   The addon folder is exactly what ships.
 - User docs: `Docs/<AddonName>.md`. Update it whenever a command or tab changes.
 - Scripts: `scripts/new-addon.ps1` (scaffold from ICTemplate), `scripts/deploy.ps1`,
-  `scripts/package.ps1` (PowerShell 5.1), `scripts/lint.py` (Python).
+  `scripts/package.ps1`, `scripts/release.ps1` (the CurseForge set, PowerShell 5.1),
+  `scripts/lint.py` (Python).
 - Skill for addon work: `.claude/skills/wow-addon-dev/SKILL.md`, and
   `client-api.md` beside it — the client contracts that have already shipped broken here.
   Read it before calling into the game.
