@@ -183,9 +183,13 @@ local function addEdit(entry, x, y, width)
     -- Escape comes with the library's box; Enter to commit does not.
     box:SetScript("OnEnterPressed", box.ClearFocus)
 
+    -- Anchored under the box, so its width is the box's and not the column's.
+    -- Sized from the column it ran 84 pixels past the right edge, which on the
+    -- healer side is the edge of the window: the label starts 104 in from the
+    -- column and has to stop 4 short of it.
     box.preview = MFD.UI.CellLabel(frame, "", "GameFontDisableSmall")
     box.preview:SetPoint("TOPLEFT", box, "BOTTOMLEFT", 4, -2)
-    box.preview:SetWidth(width - 20)
+    box.preview:SetWidth(width - 108)
 
     -- Set last, so the handler cannot fire against a preview that does not
     -- exist yet when SetText runs during the first refresh.
