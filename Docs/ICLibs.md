@@ -28,7 +28,7 @@ carries neither directive and sits on its own in the alphabetical list.
 | --- | --- | --- |
 | LibStub | — | Standard library loader |
 | CallbackHandler-1.0, LibDataBroker-1.1, LibDBIcon-1.0 | — | The minimap launcher, and what it stands on |
-| LibICCore-1.0 | 2 | The plumbing every addon used to carry its own copy of: Print, the saved-variable bootstrap and its load check, Util, Log, the test harness, the slash dispatcher, reset, the minimap launcher, the probe |
+| LibICCore-1.0 | 3 | The plumbing every addon used to carry its own copy of: Print, the saved-variable bootstrap and its load check, Util, Log, the test harness, the slash dispatcher, reset, the minimap launcher, the probe |
 | LibICTradeSkill-1.0 | 2 | Reads the open profession window into plain tables, merges scans into a per-profession book, and checks Bind on Pickup reagents |
 | LibICUI-1.0 | 7 | Windows, tabs, buttons, lists and toolbars in the guild palette, plus relative ages and the brand itself |
 

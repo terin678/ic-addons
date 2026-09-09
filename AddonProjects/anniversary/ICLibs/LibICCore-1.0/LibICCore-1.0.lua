@@ -34,7 +34,7 @@ the per-character one; only a restart clears it, and the damage is not the empty
 the logout after it, which writes defaults over the file that still holds the real thing.
 ]]
 
-local MAJOR, MINOR = "LibICCore-1.0", 2
+local MAJOR, MINOR = "LibICCore-1.0", 3
 local Core = LibStub:NewLibrary(MAJOR, MINOR)
 if not Core then return end
 
@@ -670,14 +670,33 @@ local function InstallSlash(ns, opts)
     end
     builtin.enable, builtin.disable = Toggle, Toggle
 
+    -- Bare, this lists the windows by name. The numbers are not written
+    -- anywhere a player can see, so "printing to ChatFrame 3" on its own is a
+    -- riddle, and every addon that wanted this has otherwise written the loop
+    -- for itself.
     builtin.out = function(rest)
         local n = tonumber(rest)
         if not n then
-            ns.Printf("printing to ChatFrame %d. %s out <n> moves it.",
-                ns.db.settings.outputFrame or 1, slash)
+            local current = ns.db.settings.outputFrame or 1
+            ns.Print("chat windows:")
+            for i = 1, (NUM_CHAT_WINDOWS or 10) do
+                local name = GetChatWindowInfo and GetChatWindowInfo(i)
+                if name and name ~= "" then
+                    ns.Printf("  %d = %s%s", i, name,
+                        i == current and "  |cff44ff44(printing here)|r" or "")
+                end
+            end
+            ns.Printf("%s out <number> moves it.", slash)
             return
         end
-        ns.db.settings.outputFrame = math.max(1, math.min(10, math.floor(n)))
+
+        n = math.floor(n)
+        if not _G["ChatFrame" .. n] then
+            ns.Printf("there is no ChatFrame %d. %s out on its own lists them.", n, slash)
+            return
+        end
+
+        ns.db.settings.outputFrame = n
         ns.Printf("printing to ChatFrame %d.", ns.db.settings.outputFrame)
     end
 
