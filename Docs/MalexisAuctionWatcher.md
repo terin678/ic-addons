@@ -18,7 +18,7 @@ click the coin icon on the minimap.
 | --- | --- |
 | Materials | Items you buy. Today, low, average, high per unit. Green is cheap, amber is mid-range, red is expensive; cyan is under your low bound and magenta is over your high one. |
 | Products | Items you sell. Same columns, colors inverted so high is green. |
-| Stores | How many of each item you hold in bags, bank, and on the AH, and what it is worth. |
+| Stores | How many of each item you hold in bags, bank, and on the AH, what it is worth, and from the Schedule when it is next expected to sell dear and to be cheap to buy. |
 | History | Chart of one item, or one recipe, over time: 30 or 90 days, by weekday, by day of month, by hour. Highlights the cheapest and priciest bucket. |
 | Recipes | Material to product conversions with cost, AH net, profit, margin, and how many batches you can make now. |
 | Movers | What to act on right now: cheap materials to buy, profitable recipes you can make, products you hold at a good price. Each row has a Buy, Convert, or List button. |

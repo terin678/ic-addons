@@ -877,18 +877,48 @@ local function StoresColumns()
     if TsmColumnsShown() then
         for _, col in ipairs(TSM_COLUMNS) do
             cols[#cols + 1] = { key = "tsm_" .. col.key, label = col.header,
-                width = TSM_CELL_WIDTH, justify = "RIGHT", hit = true }
+                width = 70, justify = "RIGHT", hit = true }
         end
     end
-    cols[#cols + 1] = { key = "inv",   label = "Inventory", width = 80, justify = "RIGHT" }
-    cols[#cols + 1] = { key = "bank",  label = "Bank",      width = 80, justify = "RIGHT" }
-    cols[#cols + 1] = { key = "ah",    label = "AH",        width = 80, justify = "RIGHT" }
-    cols[#cols + 1] = { key = "total", label = "Total",     width = 80, justify = "RIGHT" }
-    cols[#cols + 1] = { key = "value", label = "Value",     width = 100, justify = "RIGHT" }
+    -- The three counts share one cell, which paid for the two Schedule columns.
+    cols[#cols + 1] = { key = "held",  label = "Bags / bank / AH", width = 110, justify = "RIGHT" }
+    cols[#cols + 1] = { key = "total", label = "Total",     width = 55, justify = "RIGHT" }
+    cols[#cols + 1] = { key = "value", label = "Value",     width = 90, justify = "RIGHT" }
     cols[#cols + 1] = { key = "ahnet",
         label = string.format("AH Net -%d%%", math.floor(MAW:GetAHCut() * 100 + 0.5)),
-        width = 100, justify = "RIGHT" }
+        width = 90, justify = "RIGHT" }
+    -- When the Schedule expects the item to sell dear, and to be cheap to buy
+    cols[#cols + 1] = { key = "sell", label = "Sell when", width = 140, hit = true }
+    cols[#cols + 1] = { key = "buy",  label = "Buy when",  width = 140, hit = true }
     return cols
+end
+
+-- "Sat 13:00  1.45g" for a Stores cell, with the whole story in its tooltip.
+local function WhenCell(t, row, key, m, verb, itemName)
+    local MAW = _G.MalexisAuctionWatcher
+    if not m then
+        t:Set(row, key, "-", DIM)
+        Tooltip(row.hit[key], function()
+            GameTooltip:AddLine(itemName)
+            GameTooltip:AddLine("No " .. verb .. " block on the Schedule yet: the item needs a week profile.", 0.7, 0.7, 0.7, true)
+        end)
+        return
+    end
+    t:Set(row, key, string.format("%s%s %s  %s", m.nextWeek and "next " or "", MAW.WEEKDAY_NAMES[m.wday],
+        m.hour and string.format("%02d:00", m.hour) or MAW.BLOCK_LABELS[m.block], FormatMoney(m.expected)),
+        verb == "sell" and COLOR_LOW or WHITE)
+    Tooltip(row.hit[key], function()
+        GameTooltip:AddLine(itemName)
+        GameTooltip:AddLine(string.format("%s %s%s %s%s, %s", verb == "sell" and "Sell" or "Buy",
+            m.nextWeek and "next " or "", MAW.WEEKDAY_NAMES[m.wday], MAW.BLOCK_LABELS[m.block],
+            m.hour and string.format(" around %02d:00", m.hour) or "", m.away), 0.9, 0.7, 1)
+        GameTooltip:AddDoubleLine("Target", (verb == "sell" and ">= " or "<= ") .. FormatMoney(m.expected), 1, 1, 1, 1, 0.8, 0.5)
+        if m.gain then
+            GameTooltip:AddDoubleLine(verb == "sell" and "Over today's price" or "Under today's price",
+                string.format("%+.0f%%", m.gain * 100), 1, 1, 1, 1, 0.9, 0.6)
+        end
+        GameTooltip:AddLine("From the Schedule tab's week profile for this item.", 0.6, 0.6, 0.6)
+    end)
 end
 
 -- One stock line: counts, what it is worth, and what the auction house would leave you.
@@ -936,6 +966,7 @@ local function BuildStoresPage(page)
 
     local legend = Note(footer,
         "Value uses each item's latest price. Hover an item name for its source and time."
+        .. "  Sell when / Buy when: the Schedule's next block expected dear or cheap, with its target."
         .. "\n|cffe0b060[A]|r = Auctionator, |cffe0b060[T]|r = TSM.",
         STYLE.pageWidth - 26)
     legend:SetPoint("TOPLEFT", view.drop, "BOTTOMLEFT", 0, -6)
@@ -1022,10 +1053,16 @@ local function BuildStoresPage(page)
                 end
             end
 
-            t:Set(row, "inv", tostring(e.inv), WHITE)
-            t:Set(row, "bank", tostring(e.bank), WHITE)
-            t:Set(row, "ah", tostring(e.ah), WHITE)
+            t:Set(row, "held", string.format("%d / %d / %d", e.inv, e.bank, e.ah), WHITE)
             t:Set(row, "total", tostring(e.total), COLOR_AVE)
+
+            if e.kind == "item" then
+                WhenCell(t, row, "sell", MAW:MaturityFor(e.name, "sell", e.unit), "sell", e.name)
+                WhenCell(t, row, "buy", MAW:MaturityFor(e.name, "buy", e.unit), "buy", e.name)
+            else
+                Tooltip(row.hit.sell, nil)
+                Tooltip(row.hit.buy, nil)
+            end
 
             -- Value is graded on the unit price, so an empty shelf still reads high or
             -- low. A totals line is money in hand (green); an item with no bounds has
