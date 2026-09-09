@@ -358,9 +358,15 @@ function Config:BuildInto(container)
         Config:Refresh()
     end)
 
+    -- Anchored on both sides so its width is whatever is left of the row rather
+    -- than however long the sentence happens to be. A one-line FontString with
+    -- only a left anchor draws straight past the window edge, which is how this
+    -- window has spilled text twice before.
     frame.planNote = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     frame.planNote:SetPoint("LEFT", frame.planReset, "RIGHT", 10, 0)
+    frame.planNote:SetPoint("RIGHT", frame, "RIGHT", -6, 0)
     frame.planNote:SetJustifyH("LEFT")
+    frame.planNote:SetWordWrap(false)
 
     frame.table = MFD.UI.Table(frame, {
         top = -34,
