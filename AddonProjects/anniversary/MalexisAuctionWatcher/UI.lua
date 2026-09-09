@@ -47,7 +47,7 @@ local TAB_H = 24
 local CHART_HEIGHT = 340
 local CONTROL_BUTTON_SIZE = 18
 local RECIPE_CONTROLS_WIDTH = 26
-local ITEM_CONTROLS_WIDTH = 64
+local ITEM_CONTROLS_WIDTH = 92
 
 local STYLE = ICUI:Style("MalexisAuctionWatcher", {
     rowHeight = ROW_H,
@@ -694,6 +694,15 @@ local function ItemControls(row, col, x, style)
         "Scan this item", act(function(MAW, item) MAW:ScanSingleItem(item.name) end))
     box.rescan:SetPoint("LEFT", box.down, "RIGHT", 2, 0)
 
+    -- Stop tracking, beside the other things done to the row rather than off at the
+    -- far edge. Rows are pooled, so the name is read at hover and click time.
+    box.remove = Button(box, "X", 20, CONTROL_BUTTON_SIZE, { kind = "danger" })
+    box.remove:SetPoint("LEFT", box.rescan, "RIGHT", 4, 0)
+    Tooltip(box.remove, function()
+        if row.item then GameTooltip:AddLine("Stop tracking " .. row.item.name) end
+    end)
+    box.remove:SetScript("OnClick", act(function(MAW, item) MAW:RemoveItem(item.name) end))
+
     return box
 end
 
@@ -786,7 +795,6 @@ local function BuildItemsPage(page, kind)
             return Table(page, {
                 top = 0, bottom = ITEM_FOOTER_H + 4,
                 columns = ItemColumns(kind),
-                buttons = { { key = "remove", label = "X", width = 22, kind = "danger" } },
             })
         end)
 
@@ -855,10 +863,6 @@ local function BuildItemsPage(page, kind)
                     end
                 end)
             end
-
-            local remove = row.buttons.remove
-            Tooltip(remove, function() GameTooltip:AddLine("Stop tracking " .. item.name) end)
-            remove:SetScript("OnClick", function() MAW:RemoveItem(item.name) end)
         end)
     end
 
