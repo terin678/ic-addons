@@ -97,6 +97,24 @@ while you are tanking. The most useful are on the minimap shift-click menu too.
 Buttons, keybinds, menu entries and slash commands all run the same code, so they cannot
 drift apart or behave differently from each other.
 
+### A plan per raid
+
+The role plan says what each of the eight icons means, and eight is all there is: the game
+has no ninth raid target icon. What changes between raids is how you want them spent.
+Hyjal is wave after wave of things to kill and wants most of its icons on kill targets;
+Black Temple wants sheep and banish held back for the pulls that need them.
+
+On the Roles tab, the **Plan for** button chooses which raid you are editing. **Default**
+is the plan every raid follows until you give one a plan of its own.
+
+Selecting a raid does not give it a plan. The first change you make does, copied from
+whatever it was following, so you can cycle through the list to look without leaving
+anything behind. Once a raid has its own, **Use default** drops it and puts the raid back
+on the shared one.
+
+Nothing is per raid until you make it so, and an install that predates this keeps its plan
+as the default, which is what every raid then follows.
+
 ## Planning a raid before you walk in
 
 You do not have to be standing in an instance, and the addon does not have to know the mob.

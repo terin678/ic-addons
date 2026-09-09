@@ -39,6 +39,42 @@ end
 
 local frame
 
+-- Every instance the addon files rules under, sorted, with false at the front
+-- standing for "no particular one". Both tabs cycle through this list: the
+-- rules tab to filter what it shows, the roles tab to choose which plan it is
+-- editing.
+local function instanceKeys()
+    local keys, seen = { false }, {}
+    for _, key in pairs(MFD.Rules.INSTANCE_KEYS) do
+        if not seen[key] then
+            seen[key] = true
+            keys[#keys + 1] = key
+        end
+    end
+    table.sort(keys, function(a, b)
+        return tostring(a) < tostring(b)
+    end)
+    return keys
+end
+
+-- The next key after this one, wrapping. nil and false are the same state here,
+-- which is why the comparison normalises before matching.
+local function cycleKey(current)
+    local keys = instanceKeys()
+    local index = 1
+    for i, key in ipairs(keys) do
+        if (key or nil) == current then
+            index = i
+            break
+        end
+    end
+    return keys[(index % #keys) + 1] or nil
+end
+
+local function cyclePlanKey(current)
+    return cycleKey(current)
+end
+
 local function intentNames()
     local names = {}
     for intent in pairs(MFD.Roles.INTENTS) do
@@ -100,8 +136,28 @@ end
 
 -- Moves an icon's ordinal within its intent. Ordinals are renumbered from 1 so
 -- two roles of one intent never share a number.
+-- Which plan the roles tab is editing. nil is the default, the one every
+-- instance without one of its own follows.
+local planKey = nil
+
+-- The plan being edited, read only. Editing goes through editablePlan so the
+-- copy happens before the first change and never after it.
+local function shownPlan()
+    return (MFD.Roles.PlanFor(MFD.db, planKey))
+end
+
+-- The plan to write to. Selecting a zone does not give it a plan; the first
+-- edit does, copied from whatever it was following, so cycling through the
+-- list to look at them leaves nothing behind.
+local function editablePlan()
+    if not planKey then
+        return MFD.db.rolePlan
+    end
+    return MFD.Roles.Detach(MFD.db, planKey)
+end
+
 local function shiftOrdinal(icon, delta)
-    local plan = MFD.db.rolePlan
+    local plan = editablePlan()
     local role = plan[icon]
     if not role then
         return
@@ -153,10 +209,11 @@ local function makeIntentCell(row, col, x)
     button:SetPoint("LEFT", row, "LEFT", x + 2, 0)
     button:SetScript("OnClick", function(self)
         local icon = row.item
-        local role = MFD.db.rolePlan[icon]
+        local role = shownPlan()[icon]
         openIntentMenu(self, role and role.intent, function(intent)
-            MFD.db.rolePlan[icon] = MFD.db.rolePlan[icon] or { ordinal = 1 }
-            MFD.db.rolePlan[icon].intent = intent
+            local plan = editablePlan()
+            plan[icon] = plan[icon] or { ordinal = 1 }
+            plan[icon].intent = intent
             Config:Refresh()
         end)
     end)
@@ -195,8 +252,9 @@ local function makePinCell(row, col, x)
         local text = string.gsub(self:GetText(), "^%s+", "")
         text = string.gsub(text, "%s+$", "")
         local icon = row.item
-        MFD.db.rolePlan[icon] = MFD.db.rolePlan[icon] or { intent = "KILL", ordinal = 1 }
-        MFD.db.rolePlan[icon].pin = text ~= "" and text or nil
+        local plan = editablePlan()
+        plan[icon] = plan[icon] or { intent = "KILL", ordinal = 1 }
+        plan[icon].pin = text ~= "" and text or nil
         self:ClearFocus()
         Config:Refresh()
     end)
@@ -220,21 +278,32 @@ local ROLE_COLUMNS = {
 -- Repaints every row from the current role plan and the live roster, so the
 -- Owner column shows who actually holds each role right now.
 function Config:Refresh()
-    -- The role plan is edited in place, so its table identity never changes and
-    -- the marker's cache cannot notice on its own. Every editor in this file
-    -- calls Refresh after mutating, so dropping the cache here covers all of
-    -- them, including any added later.
+    -- A plan is edited in place, so its table identity does not change when its
+    -- contents do and the marker's cache cannot notice on its own. Every editor
+    -- in this file calls Refresh after mutating, so dropping the cache here
+    -- covers all of them, including any added later. Switching which plan is
+    -- shown does change identity, and the cache would catch that by itself, but
+    -- it costs nothing to clear here too.
     MFD.Marker.InvalidateRoster()
 
     if not frame or not frame:IsShown() then
         return
     end
 
-    local resolved = MFD.Roles.Resolve(MFD.db.rolePlan, MFD.Marker.CurrentRoster())
+    local plan, isOwn = MFD.Roles.PlanFor(MFD.db, planKey)
+    local resolved = MFD.Roles.Resolve(plan, MFD.Marker.CurrentRoster())
     local t = frame.table
 
+    frame.planButton:SetText(planKey or "Default")
+    frame.planNote:SetText(planKey
+        and (isOwn
+            and ("|cffffcc00" .. planKey .. " has a plan of its own.|r Use default puts it back.")
+            or ("|cff999999" .. planKey .. " follows the default.|r Change anything here and it gets a plan of its own."))
+        or "|cff999999The default, used by every raid without a plan of its own.|r")
+    frame.planReset:SetShown(isOwn and true or false)
+
     t:Render(ICON_ORDER, function(row, icon)
-        local role = MFD.db.rolePlan[icon]
+        local role = plan[icon]
         SetRaidTargetIconTexture(row.cells.icon, icon)
 
         if role then
@@ -268,8 +337,33 @@ function Config:BuildInto(container)
 
     -- The header is the table's own, so the hand-spaced string of column names
     -- that used to sit above these rows is gone with it.
+    -- Which raid this plan is for. Hyjal wants most of its icons on kill
+    -- targets and Black Temple wants sheep and banish, and before this there
+    -- was one plan for both and it got edited on the way in.
+    frame.planLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    frame.planLabel:SetPoint("TOPLEFT", frame, "TOPLEFT", 6, -8)
+    frame.planLabel:SetText("Plan for")
+
+    frame.planButton = MFD.UI.Button(frame, "Default", 110, 20)
+    frame.planButton:SetPoint("LEFT", frame.planLabel, "RIGHT", 6, 0)
+    frame.planButton:SetScript("OnClick", function()
+        planKey = cyclePlanKey(planKey)
+        Config:Refresh()
+    end)
+
+    frame.planReset = MFD.UI.Button(frame, "Use default", 96, 20)
+    frame.planReset:SetPoint("LEFT", frame.planButton, "RIGHT", 6, 0)
+    frame.planReset:SetScript("OnClick", function()
+        MFD.Roles.Reattach(MFD.db, planKey)
+        Config:Refresh()
+    end)
+
+    frame.planNote = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    frame.planNote:SetPoint("LEFT", frame.planReset, "RIGHT", 10, 0)
+    frame.planNote:SetJustifyH("LEFT")
+
     frame.table = MFD.UI.Table(frame, {
-        top = -6,
+        top = -34,
         bottom = 6,
         rowHeight = ROW_HEIGHT,
         columns = ROLE_COLUMNS,
@@ -357,32 +451,8 @@ local function ownedRule(key, merged)
     return copy, #list
 end
 
-local function filterKeys()
-    local keys = { false }
-    local seen = {}
-    for _, key in pairs(MFD.Rules.INSTANCE_KEYS) do
-        if not seen[key] then
-            seen[key] = true
-            keys[#keys + 1] = key
-        end
-    end
-    table.sort(keys, function(a, b)
-        return tostring(a) < tostring(b)
-    end)
-    return keys
-end
-
 local function cycleFilter()
-    local keys = filterKeys()
-    local index = 1
-    for i, key in ipairs(keys) do
-        if (key or nil) == filterKey then
-            index = i
-            break
-        end
-    end
-    local nextKey = keys[(index % #keys) + 1]
-    filterKey = nextKey or nil
+    filterKey = cycleKey(filterKey)
 end
 
 

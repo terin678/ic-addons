@@ -96,6 +96,50 @@ function Roles.CanIntentApply(intent, creatureType)
     return false, label .. " does not work on " .. creatureType .. " targets"
 end
 
+-- Which plan applies where. Returns the plan, and whether it belongs to this
+-- instance alone rather than being the default. Pure.
+--
+-- db.rolePlan is the default and always exists. db.rolePlans holds a plan of its
+-- own per instance, created only when somebody edits one while a zone is
+-- selected. A raid with nothing unusual about it therefore costs nothing and
+-- keeps following the default forever, including every raid that existed before
+-- this was per zone.
+--
+-- Identity matters to the caller: Marker.ResolvedRoles caches on the plan table
+-- it was handed, so returning the same table for every instance that follows the
+-- default is what keeps zoning between them from recomputing anything.
+function Roles.PlanFor(db, instanceKey)
+    local own = instanceKey and db.rolePlans and db.rolePlans[instanceKey]
+    if own then
+        return own, true
+    end
+
+    return db.rolePlan, false
+end
+
+-- Gives one instance a plan of its own, copied from whatever it was following so
+-- editing starts from what was already there rather than from nothing. Returns
+-- the plan. Mutates db, and does nothing if the instance already has one.
+function Roles.Detach(db, instanceKey)
+    if not instanceKey then
+        return db.rolePlan
+    end
+
+    db.rolePlans = db.rolePlans or {}
+    if not db.rolePlans[instanceKey] then
+        db.rolePlans[instanceKey] = MFD.H.DeepCopy((Roles.PlanFor(db, instanceKey)))
+    end
+
+    return db.rolePlans[instanceKey]
+end
+
+-- Drops an instance's own plan so it follows the default again. Mutates db.
+function Roles.Reattach(db, instanceKey)
+    if instanceKey and db.rolePlans then
+        db.rolePlans[instanceKey] = nil
+    end
+end
+
 -- Seeds the default plan into db.rolePlan when the player has none. Mutates db.
 --
 -- An empty role plan is not a neutral starting state: the allocator finds no
