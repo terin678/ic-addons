@@ -281,9 +281,23 @@ COMMANDS.tooltip = function(rest)
     if state == "on" or state == "off" then
         MAW.db.settings.tooltip = (state == "on")
         if MAW.ClearTooltipCache then MAW.ClearTooltipCache() end
+    elseif rest ~= "" then
+        -- "/maw tooltip <item>": the lines the tooltip would get, printed here
+        local lines = MAW.TooltipLines and MAW.TooltipLines(MAW:TooltipInfo(rest))
+        if not lines then
+            MAW.Print(rest .. " is not a tracked item.")
+        else
+            for _, line in ipairs(lines) do MAW.Print("  " .. line[1] .. ": " .. line[2]) end
+        end
+        return
     end
     MAW.Printf("item tooltips %s the next sell and buy blocks. /maw tooltip on|off",
         MAW.db.settings.tooltip == false and "leave out" or "show")
+    local s = MAW.tooltipStats
+    if s then
+        MAW.Printf("hook: %s; item tooltips seen: %d; last: %s%s", s.path or "none installed", s.calls,
+            s.lastOutcome, s.lastName and (" (" .. s.lastName .. ")") or "")
+    end
 end
 COMMANDS.history = function(rest)
     if MalexisAuctionWatcherUI then

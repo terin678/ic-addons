@@ -93,28 +93,58 @@ end
 -- The hook
 --------------------------------------------------------------------------------
 
+-- What /maw tooltip reports: which hook is in, how many item tooltips it has seen,
+-- and what became of the last one.
+MAW.tooltipStats = { path = nil, calls = 0, lastName = nil, lastOutcome = "none yet" }
+
+local function NonEmpty(name)
+    if type(name) == "string" and name ~= "" then return name end
+    return nil
+end
+
+-- The item's name from the ID the processor hands over first (it is cached, the tooltip
+-- is showing it), then from the tooltip itself. GetItem can answer "" on this client.
 local function DisplayedItemName(tooltip, data)
-    if TooltipUtil and TooltipUtil.GetDisplayedItem then
-        local name = TooltipUtil.GetDisplayedItem(tooltip)
-        if name then return name end
+    if data and data.id then
+        local getInfo = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+        if getInfo then
+            local name = NonEmpty((getInfo(data.id)))
+            if name then return name end
+        end
     end
     if tooltip.GetItem then
-        local name = tooltip:GetItem()
+        local name = NonEmpty((tooltip:GetItem()))
         if name then return name end
     end
-    if data and data.id and GetItemInfo then
-        return (GetItemInfo(data.id))
+    if TooltipUtil and TooltipUtil.GetDisplayedItem then
+        return NonEmpty((TooltipUtil.GetDisplayedItem(tooltip)))
     end
     return nil
 end
 
 local function OnItem(tooltip, data)
-    if not MAW.db or not MAW.db.settings or MAW.db.settings.tooltip == false then return end
-    if tooltip.IsForbidden and tooltip:IsForbidden() then return end
+    local stats = MAW.tooltipStats
+    stats.calls = stats.calls + 1
+    if not MAW.db or not MAW.db.settings or MAW.db.settings.tooltip == false then
+        stats.lastOutcome = "switched off"
+        return
+    end
+    if tooltip.IsForbidden and tooltip:IsForbidden() then
+        stats.lastOutcome = "forbidden tooltip"
+        return
+    end
     local name = DisplayedItemName(tooltip, data)
-    if not name then return end
+    stats.lastName = name
+    if not name then
+        stats.lastOutcome = "no item name on the tooltip"
+        return
+    end
     local lines = MAW.TooltipLines(MAW:TooltipInfo(name))
-    if not lines then return end
+    if not lines then
+        stats.lastOutcome = "not a tracked item"
+        return
+    end
+    stats.lastOutcome = string.format("%d line%s added", #lines, #lines == 1 and "" or "s")
     tooltip:AddLine(" ")
     tooltip:AddLine("Malexis Auction Watcher", HEADER.r, HEADER.g, HEADER.b)
     for _, line in ipairs(lines) do
@@ -132,11 +162,13 @@ function MAW.InstallTooltip()
         TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip, data)
             if tooltip == GameTooltip or tooltip == ItemRefTooltip then OnItem(tooltip, data) end
         end)
+        MAW.tooltipStats.path = "TooltipDataProcessor"
     elseif GameTooltip and GameTooltip.HookScript then
         GameTooltip:HookScript("OnTooltipSetItem", function(tooltip) OnItem(tooltip) end)
         if ItemRefTooltip and ItemRefTooltip.HookScript then
             ItemRefTooltip:HookScript("OnTooltipSetItem", function(tooltip) OnItem(tooltip) end)
         end
+        MAW.tooltipStats.path = "OnTooltipSetItem"
     else
         return false
     end
