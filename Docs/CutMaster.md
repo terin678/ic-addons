@@ -61,12 +61,29 @@ tab with the signals that fired; everything is tunable in **Filter**.
 Every line is editable in **Invite**, with a Reset per field. An empty line sends
 nothing for that case.
 
+A question asked in a whisper is answered whatever the wording. It used to need a
+phrase from a list, which meant "Able to make X?" and "X by chance?" went unanswered
+while "can you cut X?" worked. Nobody whispers a stranger to muse about gem prices, so
+in a whisper the question mark is the question. Trade chat still needs the phrase,
+since that is where people genuinely do think out loud.
+
+**Whisper-only mode** (Invite tab, or `/cm invite whisperonly`) keeps every bit of the
+detection and all of the replies above, and simply never sends the party invite. You
+invite when you decide to, which is useful when you would rather see what someone needs
+before committing to them.
+
 ### Tracks orders
 
 An order opens when someone asks and counts as *open* only once they actually join
 your group. Quantities come from the mats they hand you, not what they typed, because
 people say "bold living ruby" and then trade three. If the mats fit two cuts they
 asked for, CutMaster refuses to guess and asks you to set the split in **Orders**.
+
+It refuses in one more place: mats for a cut you do not know. Someone asking for a cut
+you lack and handing over the stones anyway used to have one of *your* cuts of that
+stone picked essentially at random and queued for delivery, which is how you hand
+someone the wrong gem. Now it fills the blank only when exactly one of your cuts takes
+that stone, and otherwise names the stone and tells you to ask which one they meant.
 
 While waiting to join, an order is *pending*, not open, so it never inflates your
 working queue with people who wandered off. It auto-cancels after 5 minutes if they
@@ -83,14 +100,24 @@ from the keyboard for a minute.
 ### Fills the trade window
 
 Open a trade with someone who has an open order and CutMaster loads their finished cuts
-for you: only gems on that order, never Bind on Pickup, re-scanning your bags fresh
-before every item so a shifted bag slot can never cause one to be silently skipped.
-Multi-item orders -- several of one gem, or several different gems -- are handled
-properly. Two honest limits from the trade window itself, not bugs: only 6 distinct
-gems fit in one trade (WoW's own slot cap), so a larger order fills what it can and
-tells you what is left for a second trade; and a bag stack can only move whole, so if
-you are holding more of a cut than this order needs, the whole stack goes in and
-CutMaster says so rather than quietly over-delivering.
+for you: only gems on that order, never Bind on Pickup, one at a time, checking the
+trade window itself after each rather than assuming the last one landed. Cut gems do
+not stack, so a four-gem order is four separate bag slots and four separate moves.
+
+How many to send is read from the stones in the window as the customer puts them in,
+not just from the order, since the order's count is not settled until the trade closes.
+Hand over mats and take the cuts in one trade and it still sends the right number.
+
+Two honest limits from the trade window itself, not bugs: only 6 distinct gems fit in
+one trade (WoW's own slot cap), so a larger order fills what it can and tells you what
+is left for a second trade; and a bag stack can only move whole, so if you are holding
+more of a cut than this order needs, the whole stack goes in and CutMaster says so
+rather than quietly over-delivering.
+
+If a fill ever looks wrong, `/cm lastfill` replays the last one tick by tick: what was
+in the window, what was in your bags, what it still owed, and where it stopped. A trade
+happens too fast to watch and leaves nothing behind afterwards, which is the only way
+to tell a gem that would not move from one that was never tried.
 
 ### Records income
 
@@ -135,9 +162,11 @@ and closing an order is prompted rather than automatic.
 | `/cm send` | Send a bark now |
 | `/cm preview` | Preview the next bark without sending |
 | `/cm invite` | Toggle auto-invite from Trade chat |
+| `/cm invite whisperonly` | Detect and reply as normal, but never auto-invite |
 | `/cm log` | Recent decisions with score breakdowns |
+| `/cm lastfill` | Replay what the last trade fill saw, tick by tick |
 | `/cm clearflags` | Clear the auto competitor flag from everyone |
-| `/cm orders` / `/cm order add\|done\|cancel\|reopen <id>` | Manage orders |
+| `/cm orders` / `/cm order add\|done\|cancel\|reopen\|removeitem <id>` | Manage orders |
 | `/cm tracker` | Toggle the slim tracker window |
 | `/cm income` | Earnings summary |
 | `/cm match <text>` / `/cm try <msg>` / `/cm trywhisper <msg>` / `/cm tryparty <msg>` | Test the matcher/classifier. Sends nothing. |

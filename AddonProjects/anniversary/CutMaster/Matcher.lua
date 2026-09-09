@@ -37,7 +37,20 @@ local WORDNUM = {
 
 function Matcher.BuildIndex(book)
     local index = { byID = {}, names = {}, aliases = {}, loose = {},
-                    bases = {}, baseTokens = {}, prefixOnly = {} }
+                    bases = {}, baseTokens = {}, prefixOnly = {}, reagents = {} }
+    for _, e in pairs(book or {}) do
+        -- Every raw gem any of our cuts consumes. A customer linking one is
+        -- showing us the stone they are bringing, not naming a cut they want,
+        -- so it must never be reported back as something we "don't have":
+        -- "lf jc with solid [Empyrean Sapphire]" got the reply "I can do
+        -- [Solid Empyrean Sapphire], but I don't have [Empyrean Sapphire]",
+        -- which reads as a refusal over the customer's own mats. Taken from
+        -- the whole book, not just matched cuts, since the stone they link is
+        -- often for a cut they have not named yet.
+        for rawID in pairs(e.reagents or {}) do
+            index.reagents[rawID] = true
+        end
+    end
     for itemID, e in pairs(book or {}) do
         -- Bind on pickup cannot be delivered, so never invite for one. Leaving
         -- it out of the index also lets NearMiss suggest the cuts we can
@@ -199,7 +212,15 @@ function Matcher.Match(raw, norm, index)
         end
     end
 
-    local toks = Util.Tokenize(norm)
+    -- Loose matching scans the customer's own typed words only. A linked
+    -- gem's bracketed display name normalizes into plain words too, and
+    -- those can accidentally share a prefix/base with a completely
+    -- different, unrelated known gem ("Purified Shadow Pearl" linked ->
+    -- "purified ... pearl" -> falsely matched "Purified Jaggal Pearl",
+    -- which nobody asked for). Stripping link text before this scan is what
+    -- keeps loose matching scoped to what the person actually wrote.
+    local looseNorm = Util.Normalize(Util.StripLinkText(raw))
+    local toks = Util.Tokenize(looseNorm)
     local pos = {}
     for i, w in ipairs(toks) do
         pos[w] = pos[w] or {}
