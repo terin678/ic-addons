@@ -113,7 +113,7 @@ Four things, in order:
    | `/gr test` (GuildRecruitment) | 31 |
    | `/ictpl test` (ICTemplate) | 27 |
    | `/maw test` (MalexisAuctionWatcher) | 15 |
-   | `/ast test` (AuctionatorSellingTweaks) | 3 |
+   | `/ast test` (AuctionatorSellingTweaks) | 4 |
    | `/mfd selftest` (MarkedForDeath) | 397 |
 
    Any decision worth arguing about belongs in a pure function with a case here, and a case

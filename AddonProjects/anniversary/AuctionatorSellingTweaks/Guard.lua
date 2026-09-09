@@ -43,6 +43,12 @@ function Guard.Judge(unitPrice, reference, floorPct)
     return { unit = unitPrice, ref = reference, underPct = math.floor(under * 100 + 0.5) }
 end
 
+-- Pure. The dialog runs its text through a format call, so a bare % in "88% under"
+-- reads as a directive and errors. Doubled, it prints as itself.
+function Guard.ForDialog(text)
+    return (tostring(text or ""):gsub("%%", "%%%%"))
+end
+
 --------------------------------------------------------------------------------
 -- Reading Auctionator's selling frame
 --------------------------------------------------------------------------------
@@ -93,9 +99,9 @@ function Guard.Check(frame)
     local verdict = Guard.Judge(EffectiveUnitPrice(frame), ref, s.floorPct)
     if not verdict then return nil end
     local name = frame.itemInfo.itemLink or "this item"
-    return string.format("|cffff4444Hold on.|r You are posting %s at %s each. %s is %s, so this is "
+    return Guard.ForDialog(string.format("|cffff4444Hold on.|r You are posting %s at %s each. %s is %s, so this is "
         .. "|cffff4444%d%% under|r it.\n\nPost anyway?", name, GetMoneyString(verdict.unit, true),
-        what:sub(1, 1):upper() .. what:sub(2), GetMoneyString(verdict.ref, true), verdict.underPct)
+        what:sub(1, 1):upper() .. what:sub(2), GetMoneyString(verdict.ref, true), verdict.underPct))
 end
 
 -- Returns whether the wraps are in place. Safe to call more than once.

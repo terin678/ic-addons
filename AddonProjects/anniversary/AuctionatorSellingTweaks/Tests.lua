@@ -25,6 +25,12 @@ T.Case("Guard: a price far under the market is asked about, one near it is not",
     T.Eq(ns.Guard.Judge("1000", "10000", 40).underPct, 90, "numbers as strings are numbers")
 end)
 
+T.Case("Guard: the dialog's text survives its format call", function()
+    T.Eq(ns.Guard.ForDialog("88% under"), "88%% under", "a percent sign is doubled")
+    T.Eq(string.format(ns.Guard.ForDialog("88% under")), "88% under", "so it prints as itself")
+    T.Eq(ns.Guard.ForDialog(nil), "", "and nothing is nothing")
+end)
+
 T.Case("Guard: the floor is a percentage that stays useful", function()
     T.Eq(ns.Guard.ClampFloor(40), 40, "the default passes through")
     T.Eq(ns.Guard.ClampFloor(0), 1, "zero would ask about every undercut")
