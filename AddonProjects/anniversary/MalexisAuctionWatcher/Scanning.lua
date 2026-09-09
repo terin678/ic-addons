@@ -176,6 +176,14 @@ function MAW:GetTabItems(tabName)
         else
             add(name)
         end
+    elseif tabName == "schedule" then
+        -- The items on this week's plan: the scan is what turns a pending block
+        -- into a hit or a miss.
+        for _, day in ipairs(self:GetWeekPlan().days) do
+            for _, row in ipairs(day.rows) do add(row.name) end
+        end
+    elseif tabName == "settings" then
+        -- Nothing to scan for
     else
         for name in pairs(db.items) do add(name) end
     end

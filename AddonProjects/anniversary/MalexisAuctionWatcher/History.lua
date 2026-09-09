@@ -46,6 +46,9 @@ function MAW:EnsureHistory(itemData)
     itemData.history.days = itemData.history.days or {}
     itemData.history.hours = itemData.history.hours or {}
     itemData.history.src = itemData.history.src or {}
+    -- Raw observations of the last few weeks as flat (timestamp, price) pairs, for
+    -- the Schedule tab's week grid; Schedule.lua slices and prunes them.
+    itemData.history.obs = itemData.history.obs or {}
     return itemData.history
 end
 
@@ -103,6 +106,12 @@ function MAW:RecordHistory(itemName, unitPrice, source, timestamp)
         hb.s = hb.s + unitPrice
         hb.n = hb.n + 1
     end
+
+    -- The week grid reads raw observations, not buckets: a real scan with its time.
+    local obs = history.obs
+    obs[#obs + 1] = timestamp
+    obs[#obs + 1] = unitPrice
+    if MAW.PruneObs and self.ObsCutoff then MAW.PruneObs(obs, self:ObsCutoff(timestamp)) end
 
     self:PruneHistory(history)
 end

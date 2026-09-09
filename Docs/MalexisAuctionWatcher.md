@@ -18,10 +18,12 @@ click the coin icon on the minimap.
 | --- | --- |
 | Materials | Items you buy. Today, low, average, high per unit. Green is cheap, amber is mid-range, red is expensive; cyan is under your low bound and magenta is over your high one. |
 | Products | Items you sell. Same columns, colors inverted so high is green. |
-| Stores | How many of each item you hold in bags, bank, and on the AH, and what it is worth. |
+| Stores | How many of each item you hold in bags, bank, and on the AH, what it is worth, and from the Schedule when it is next expected to sell dear and to be cheap to buy. |
 | History | Chart of one item, or one recipe, over time: 30 or 90 days, by weekday, by day of month, by hour. Highlights the cheapest and priciest bucket. |
 | Recipes | Material to product conversions with cost, AH net, profit, margin, and how many batches you can make now. |
 | Movers | What to act on right now: cheap materials to buy, profitable recipes you can make, products you hold at a good price. Each row has a Buy, Convert, or List button. |
+| Schedule | This week as a plan: which items are expected cheap or dear in which 4-hour block, from the last weeks' scans, and whether the blocks already behind you held. Behind a toggle, one item's whole week as a grid. |
+| Settings | Every setting on one tab: the price feeds, the auction house cut, the Movers thresholds, and the Schedule's clock, hit rule and floors. |
 
 The tabs run along the top as the navigation bar; the live one is gold. Under them sits
 the control row: Scan AH, the per-tab scan, Sort, then the tab's option (Add Item or
@@ -300,11 +302,93 @@ Three lists, each built from the data on the other tabs:
   slot, and fills start and buyout from today's price undercut by 1 copper per unit. You
   set the duration and press Create Auction.
 
+**Matures** is the other side of each trade, borrowed from the Schedule tab: for a Buy or
+a Convert, the item's or product's next block expected to sell dear, with its hour, target,
+the gain from today's price to that target, and how far off it is ("in 3d 16h"); for a
+List, the next block expected cheap enough to buy back. A row reads "no block on the
+schedule yet" until the item has a week profile.
+
 Hover a name for the same tooltips as the other tabs. Buy and List need the auction house
 open. "Refresh Table" recomputes without scanning.
 
 ```
 /maw movers
+```
+
+## Schedule
+
+Prices on a realm move with the week. Raids reset on Tuesday, so consumables climb Monday
+night; materials sag mid-week; weekends bring more players and more listings. The
+Schedule tab turns the last weeks of scans into a plan for this one.
+
+**The grid.** Seven days by six 4-hour blocks. An item's expected price in a block is the
+mean of that block's **weekly** means over the last 8 weeks (Settings), so a week in
+which you scanned five times one evening counts once. A block needs 2 complete weeks
+before it carries that expectation.
+
+**Until then it is modelled** from the history the History tab already draws: the
+weekday's average times the block's share of the day, read off the weekday and hour
+views (a weekday or a block needs 3 samples to count; a block nobody scans takes the day's
+average). So an item with months of scans has a full grid on day one, marked `~`, and each
+block trades the model for its own weeks as they complete. A block with one week and no
+model shows that week with `?`.
+
+**The plan** reads as instructions: in this block, check the item's price and buy at or
+under the target, or list at or over it. The target is the block's expected price; the
+From column says whether it came from weeks of scans or the model.
+
+From the item's own week profile, the blocks in the bottom quarter of its range are buys
+and the top quarter sells, the same quarters Movers uses. A week whose spread is under 5%
+is flat and schedules nothing. The plan shows one day at a time: a row of day tabs from
+the week's first day, and under the chosen day a row of block tabs, all day or one of the
+six. It opens on today, all day, and a `*` marks the current day and block. Each row has
+the target, this week's actual once a scan has landed in it, and a status: ahead, now,
+hit, miss, or no scan. A hit is an actual within 10% of the target (Settings).
+
+Beside the block, the row names the **hour** inside it at which the item is usually
+cheapest (for a buy) or dearest (for a sell), from its scans in that block, or from the
+hour view until it has some; rows sort by that hour, and inside an hour by the margin in
+the row's favour, best first. **Off by** is how far the actual sits from the target as the
+price moved (under is negative), green when that favours the row and red when it does
+not. The actual turns green or red the same way, and **Rows: On target** hides everything
+else, so a long evening block shrinks to what you can act on now.
+
+The **Then** column is the other half of the trade: for a buy, the item's next sell block
+(day, block, hour, target) and the gain between the two targets before the auction house
+cut; for a sell, the next buy block, so you know when to restock. "next" means the block
+falls in the following week. Where a row's number came from (weeks of scans, or the
+History model) is in its tooltip.
+
+**Does the pattern hold?** Each block also judges its past weeks against each other, by
+the same rule, and an item's pattern is the record over its scheduled blocks: "held 3 of
+4 weeks". After three judged weeks, an item that held under the floor (50%, Settings) is
+**set aside**: it drops off the plan, with the number that put it there, and comes back
+when the record climbs. The grid still shows it.
+
+**The clock.** The week runs on server time by default, because raid resets and most
+players' evenings follow the realm's clock whoever is looking. Switch to your local clock
+on the tab or in Settings; nothing is re-recorded, the grid is simply read under the other
+clock. The week starts on Tuesday; Settings moves that.
+
+Scans are what feed it: the tab's Scan button scans the items on this week's plan. The
+store keeps each item's raw scans for the last nine weeks (a few hundred at most), so the
+tab fills in over its first weeks and is not something to judge on day one.
+
+```
+/maw schedule
+```
+
+## Settings
+
+One tab for what used to be a list of slash commands: the Auctionator and TSM feeds; the
+auction house cut, scan-on-open and days of history; the Movers buy and list percentages,
+minimum margin and sale rate; and the Schedule's clock, first day of the week, hit
+tolerance, weeks of expectation, weeks a block needs, and the set-aside floor. Numbers
+apply on Enter and say what they did; the commands keep working and write the same
+settings.
+
+```
+/maw settings
 ```
 
 ## Other commands
@@ -329,3 +413,6 @@ Right-click the minimap button to start or cancel a scan. Drag it to move it.
 
 Account-wide by default. Tick "Character-Specific Data" to keep a separate list per
 character; you are offered a copy of the account data the first time.
+
+Each item keeps its recent prices, the daily and hourly history buckets, and since 1.23.0
+`history.obs`, the raw scans of the last nine weeks that the Schedule tab reads.

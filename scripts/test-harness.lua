@@ -30,6 +30,7 @@ local flavorDir = addonDir:match("^(.*)/[^/]+$")
 --------------------------------------------------------------------------------
 
 _G.time = _G.time or os.time
+_G.difftime = _G.difftime or os.difftime
 _G.date = _G.date or os.date
 _G.GetServerTime = function() return os.time() end
 _G.GetTime = function() return os.clock() end

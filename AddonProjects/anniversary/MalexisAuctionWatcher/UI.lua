@@ -47,7 +47,7 @@ local TAB_H = 24
 local CHART_HEIGHT = 340
 local CONTROL_BUTTON_SIZE = 18
 local RECIPE_CONTROLS_WIDTH = 26
-local ITEM_CONTROLS_WIDTH = 64
+local ITEM_CONTROLS_WIDTH = 92
 
 local STYLE = ICUI:Style("MalexisAuctionWatcher", {
     rowHeight = ROW_H,
@@ -694,6 +694,15 @@ local function ItemControls(row, col, x, style)
         "Scan this item", act(function(MAW, item) MAW:ScanSingleItem(item.name) end))
     box.rescan:SetPoint("LEFT", box.down, "RIGHT", 2, 0)
 
+    -- Stop tracking, beside the other things done to the row rather than off at the
+    -- far edge. Rows are pooled, so the name is read at hover and click time.
+    box.remove = Button(box, "X", 20, CONTROL_BUTTON_SIZE, { kind = "danger" })
+    box.remove:SetPoint("LEFT", box.rescan, "RIGHT", 4, 0)
+    Tooltip(box.remove, function()
+        if row.item then GameTooltip:AddLine("Stop tracking " .. row.item.name) end
+    end)
+    box.remove:SetScript("OnClick", act(function(MAW, item) MAW:RemoveItem(item.name) end))
+
     return box
 end
 
@@ -786,7 +795,6 @@ local function BuildItemsPage(page, kind)
             return Table(page, {
                 top = 0, bottom = ITEM_FOOTER_H + 4,
                 columns = ItemColumns(kind),
-                buttons = { { key = "remove", label = "X", width = 22, kind = "danger" } },
             })
         end)
 
@@ -855,10 +863,6 @@ local function BuildItemsPage(page, kind)
                     end
                 end)
             end
-
-            local remove = row.buttons.remove
-            Tooltip(remove, function() GameTooltip:AddLine("Stop tracking " .. item.name) end)
-            remove:SetScript("OnClick", function() MAW:RemoveItem(item.name) end)
         end)
     end
 
@@ -877,18 +881,48 @@ local function StoresColumns()
     if TsmColumnsShown() then
         for _, col in ipairs(TSM_COLUMNS) do
             cols[#cols + 1] = { key = "tsm_" .. col.key, label = col.header,
-                width = TSM_CELL_WIDTH, justify = "RIGHT", hit = true }
+                width = 70, justify = "RIGHT", hit = true }
         end
     end
-    cols[#cols + 1] = { key = "inv",   label = "Inventory", width = 80, justify = "RIGHT" }
-    cols[#cols + 1] = { key = "bank",  label = "Bank",      width = 80, justify = "RIGHT" }
-    cols[#cols + 1] = { key = "ah",    label = "AH",        width = 80, justify = "RIGHT" }
-    cols[#cols + 1] = { key = "total", label = "Total",     width = 80, justify = "RIGHT" }
-    cols[#cols + 1] = { key = "value", label = "Value",     width = 100, justify = "RIGHT" }
+    -- The three counts share one cell, which paid for the two Schedule columns.
+    cols[#cols + 1] = { key = "held",  label = "Bags / bank / AH", width = 110, justify = "RIGHT" }
+    cols[#cols + 1] = { key = "total", label = "Total",     width = 55, justify = "RIGHT" }
+    cols[#cols + 1] = { key = "value", label = "Value",     width = 90, justify = "RIGHT" }
     cols[#cols + 1] = { key = "ahnet",
         label = string.format("AH Net -%d%%", math.floor(MAW:GetAHCut() * 100 + 0.5)),
-        width = 100, justify = "RIGHT" }
+        width = 90, justify = "RIGHT" }
+    -- When the Schedule expects the item to sell dear, and to be cheap to buy
+    cols[#cols + 1] = { key = "sell", label = "Sell when", width = 140, hit = true }
+    cols[#cols + 1] = { key = "buy",  label = "Buy when",  width = 140, hit = true }
     return cols
+end
+
+-- "Sat 13:00  1.45g" for a Stores cell, with the whole story in its tooltip.
+local function WhenCell(t, row, key, m, verb, itemName)
+    local MAW = _G.MalexisAuctionWatcher
+    if not m then
+        t:Set(row, key, "-", DIM)
+        Tooltip(row.hit[key], function()
+            GameTooltip:AddLine(itemName)
+            GameTooltip:AddLine("No " .. verb .. " block on the Schedule yet: the item needs a week profile.", 0.7, 0.7, 0.7, true)
+        end)
+        return
+    end
+    t:Set(row, key, string.format("%s%s %s  %s", m.nextWeek and "next " or "", MAW.WEEKDAY_NAMES[m.wday],
+        m.hour and string.format("%02d:00", m.hour) or MAW.BLOCK_LABELS[m.block], FormatMoney(m.expected)),
+        verb == "sell" and COLOR_LOW or WHITE)
+    Tooltip(row.hit[key], function()
+        GameTooltip:AddLine(itemName)
+        GameTooltip:AddLine(string.format("%s %s%s %s%s, %s", verb == "sell" and "Sell" or "Buy",
+            m.nextWeek and "next " or "", MAW.WEEKDAY_NAMES[m.wday], MAW.BLOCK_LABELS[m.block],
+            m.hour and string.format(" around %02d:00", m.hour) or "", m.away), 0.9, 0.7, 1)
+        GameTooltip:AddDoubleLine("Target", (verb == "sell" and ">= " or "<= ") .. FormatMoney(m.expected), 1, 1, 1, 1, 0.8, 0.5)
+        if m.gain then
+            GameTooltip:AddDoubleLine(verb == "sell" and "Over today's price" or "Under today's price",
+                string.format("%+.0f%%", m.gain * 100), 1, 1, 1, 1, 0.9, 0.6)
+        end
+        GameTooltip:AddLine("From the Schedule tab's week profile for this item.", 0.6, 0.6, 0.6)
+    end)
 end
 
 -- One stock line: counts, what it is worth, and what the auction house would leave you.
@@ -936,6 +970,7 @@ local function BuildStoresPage(page)
 
     local legend = Note(footer,
         "Value uses each item's latest price. Hover an item name for its source and time."
+        .. "  Sell when / Buy when: the Schedule's next block expected dear or cheap, with its target."
         .. "\n|cffe0b060[A]|r = Auctionator, |cffe0b060[T]|r = TSM.",
         STYLE.pageWidth - 26)
     legend:SetPoint("TOPLEFT", view.drop, "BOTTOMLEFT", 0, -6)
@@ -1022,10 +1057,16 @@ local function BuildStoresPage(page)
                 end
             end
 
-            t:Set(row, "inv", tostring(e.inv), WHITE)
-            t:Set(row, "bank", tostring(e.bank), WHITE)
-            t:Set(row, "ah", tostring(e.ah), WHITE)
+            t:Set(row, "held", string.format("%d / %d / %d", e.inv, e.bank, e.ah), WHITE)
             t:Set(row, "total", tostring(e.total), COLOR_AVE)
+
+            if e.kind == "item" then
+                WhenCell(t, row, "sell", MAW:MaturityFor(e.name, "sell", e.unit), "sell", e.name)
+                WhenCell(t, row, "buy", MAW:MaturityFor(e.name, "buy", e.unit), "buy", e.name)
+            else
+                Tooltip(row.hit.sell, nil)
+                Tooltip(row.hit.buy, nil)
+            end
 
             -- Value is graded on the unit price, so an empty shelf still reads high or
             -- low. A totals line is money in hand (green); an item with no bounds has
@@ -1812,10 +1853,11 @@ local function BuildMoversPage(page)
         -- Clear of the window's resize grip in the bottom-right corner.
         bottom = 20,
         columns = {
-            { key = "badge",  label = "",        width = 70 },
-            { key = "name",   label = "Item",    width = 260, hit = true },
-            { key = "price",  label = "Price",   width = 90, justify = "RIGHT" },
-            { key = "reason", label = "Why",     width = "flex" },
+            { key = "badge",   label = "",        width = 70 },
+            { key = "name",    label = "Item",    width = 240, hit = true },
+            { key = "price",   label = "Price",   width = 90, justify = "RIGHT" },
+            { key = "reason",  label = "Why",     width = 290 },
+            { key = "matures", label = "Matures", width = "flex" },
         },
         buttons = { { key = "act", label = "", width = 80, template = "SecureActionButtonTemplate" } },
     })
@@ -1833,7 +1875,8 @@ local function BuildMoversPage(page)
         end
         self.hint:SetText(string.format(
             "Buy: any item at or below %d%% of its range.   Convert: recipes above %d%% margin with mats on hand%s."
-            .. "\nList: any item at or above %d%% of range that you hold.",
+            .. "\nList: any item at or above %d%% of range that you hold.   Matures: the Schedule's next block on the other "
+            .. "side of the trade, and the gain from here to its target.",
             MAW:MoverSetting("moverBuyPct") * 100, MAW:MoverSetting("moverMinMargin"), gate,
             MAW:MoverSetting("moverSellPct") * 100))
 
@@ -1872,6 +1915,20 @@ local function BuildMoversPage(page)
             t:Set(row, "price",
                 FormatMoney(entry.kind == "convert" and entry.profit or entry.price),
                 entry.kind == "convert" and COLOR_LOW or WHITE)
+            -- The other side of the trade, from the Schedule: when a buy or a craft
+            -- is expected to sell dear, or when a sale can be bought back cheap.
+            local m = entry.matures
+            if m then
+                local verb = (entry.kind == "sell") and "restock" or "sell"
+                t:Set(row, "matures", string.format("%s %s%s %s%s %s%s, %s",
+                    verb, m.nextWeek and "next " or "", MAW.WEEKDAY_NAMES[m.wday], MAW.BLOCK_LABELS[m.block],
+                    m.hour and string.format(" %02d:00", m.hour) or "",
+                    (verb == "sell" and ">= " or "<= ") .. FormatMoney(m.expected),
+                    m.gain and string.format(" %+.0f%%", m.gain * 100) or "", m.away),
+                    (entry.kind == "sell") and WHITE or COLOR_LOW)
+            else
+                t:Set(row, "matures", "no block on the schedule yet", DIM)
+            end
             t:Set(row, "reason", entry.reason, DIM)
 
             local btn = row.buttons.act
@@ -1939,6 +1996,33 @@ local BUILDERS = {
     history   = BuildHistoryPage,
     recipes   = BuildRecipesPage,
     movers    = BuildMoversPage,
+}
+
+-- What the per-tab scan button says. A key missing here reads "Scan Tab".
+local SCAN_LABELS = {
+    materials = "Scan Materials", products = "Scan Products", stores = "Scan All",
+    recipes = "Scan Recipes", history = "Scan Item", movers = "Scan All",
+}
+
+-- A page in its own file registers here at load, before the window is built. The
+-- builder gets the page frame and returns a view with a Refresh method.
+function MAWUI.RegisterTab(key, label, builder, scanLabel)
+    TABS[#TABS + 1] = { key = key, label = label }
+    BUILDERS[key] = builder
+    if scanLabel then SCAN_LABELS[key] = scanLabel end
+end
+
+-- The file-local helpers a page in another file needs, handed over once so no page
+-- copies a colour or a wrapper.
+MAWUI.kit = {
+    ICUI = ICUI, STYLE = STYLE,
+    Button = Button, Toolbar = Toolbar, Table = Table, Tooltip = Tooltip, Note = Note,
+    CachedTable = CachedTable, FormatMoney = FormatMoney, GetPriceColor = GetPriceColor,
+    SourceTooltip = SourceTooltip,
+    colors = {
+        LOW = COLOR_LOW, AVE = COLOR_AVE, HIGH = COLOR_HIGH, BELOW = COLOR_BELOW, ABOVE = COLOR_ABOVE,
+        DIM = DIM, WHITE = WHITE, BONE = BONE, GOLD = GOLD, TSM = TSM_TINT,
+    },
 }
 
 -- Create the main UI
@@ -2156,11 +2240,7 @@ function MAWUI:RefreshData()
     end
 
     -- Per-tab control bar
-    local scanLabels = {
-        materials = "Scan Materials", products = "Scan Products", stores = "Scan All",
-        recipes = "Scan Recipes", history = "Scan Item", movers = "Scan All",
-    }
-    mainFrame.scanTabBtn:SetText(scanLabels[currentTab] or "Scan Tab")
+    mainFrame.scanTabBtn:SetText(SCAN_LABELS[currentTab] or "Scan Tab")
 
     local onItems = (currentTab == "materials" or currentTab == "products")
     mainFrame.sortBtn:SetShown(onItems)
@@ -2171,7 +2251,7 @@ function MAWUI:RefreshData()
     if currentTab == "stores" then
         mainFrame.refreshBtn:SetText("Refresh Counts")
         mainFrame.refreshBtn:Show()
-    elseif currentTab == "recipes" or currentTab == "movers" then
+    elseif currentTab == "recipes" or currentTab == "movers" or currentTab == "schedule" then
         mainFrame.refreshBtn:SetText("Refresh Table")
         mainFrame.refreshBtn:Show()
     else

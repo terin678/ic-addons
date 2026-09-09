@@ -6,7 +6,7 @@
 -- `local addonName, ns = ...` pair. LibICCore attaches to that table just the same, so
 -- MAW.Print, MAW.db, MAW.Util and the rest are the same names the other addons use.
 local addonName = "MalexisAuctionWatcher"
-local VERSION = "1.22.0"
+local VERSION = "1.23.0"
 local Core = LibStub("LibICCore-1.0")
 local MAW = {}
 
@@ -149,6 +149,11 @@ local Defaults = {
         outputFrame = 1,
         debug = false,
         minimap = { hide = false },
+        -- The Schedule tab: which clock the week runs on, what counts as a hit, how
+        -- many weeks form an expectation and how many a block needs, when an item is
+        -- set aside, and the day the week starts on (wday, 3 = Tuesday, raid reset).
+        schedule = { clock = "server", tolerancePct = 10, weeks = 8, minWeeks = 2,
+                     minReliabilityPct = 50, weekStart = 3 },
     },
 }
 
@@ -190,6 +195,8 @@ local HELP = {
     { "history [item name]", "open the price history chart" },
     { "recipes", "open the material -> product profit table" },
     { "movers", "what to buy, convert, and list right now" },
+    { "schedule", "this week's expected buys and sells, and whether last week's held" },
+    { "settings", "every setting on one tab" },
     { "sources", "show or toggle the Auctionator and TSM price feeds" },
     { "retention <days>", "days of price history to keep" },
     { "ahcut <percent>", "auction house cut used for net values (default 5)" },
@@ -259,6 +266,12 @@ COMMANDS.movers = function()
 end
 COMMANDS.recipes = function()
     if MalexisAuctionWatcherUI then MalexisAuctionWatcherUI:ShowTab("recipes") end
+end
+COMMANDS.schedule = function()
+    if MalexisAuctionWatcherUI then MalexisAuctionWatcherUI:ShowTab("schedule") end
+end
+COMMANDS.settings = function()
+    if MalexisAuctionWatcherUI then MalexisAuctionWatcherUI:ShowTab("settings") end
 end
 COMMANDS.history = function(rest)
     if MalexisAuctionWatcherUI then
@@ -374,6 +387,7 @@ Core:Attach(MAW, {
         -- Both repair in place and are safe to run every load, which is why they are
         -- not schema steps.
         if MAW.MigrateHistory then MAW:MigrateHistory() end
+        if MAW.SeedScheduleObs then MAW:SeedScheduleObs() end
         if MAW.RepairGemPresetData then MAW:RepairGemPresetData() end
 
         if MAW.Minimap and MAW.Minimap.Init then MAW.Minimap.Init() end
@@ -409,6 +423,8 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
             MalexisAuctionWatcherAHTab.Create()
         end
     elseif event == "PLAYER_LOGIN" then
+        -- The realm's clock against this PC's, for the Schedule tab
+        if MAW.RefreshServerOffset then MAW.RefreshServerOffset() end
         -- Other addons are loaded by now; detect optional price sources
         if MAW.DetectSources then
             MAW:DetectSources()
