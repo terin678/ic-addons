@@ -867,6 +867,8 @@ RC.inspectUntil = 0      -- inspect regardless until this time
 local NotifyInspect = NotifyInspect
 local CanInspect = CanInspect
 local CheckInteractDistance = CheckInteractDistance
+local UnitExists = UnitExists
+local UnitIsVisible = UnitIsVisible
 local InCombatLockdown = InCombatLockdown
 local GetNumTalents = GetNumTalents
 local GetTalentInfo = GetTalentInfo
@@ -939,6 +941,16 @@ function RC:PumpInspect(now)
     local entry = RC.rows[name]
     local unit = entry and entry.unit
     if not unit or name == UnitName("player") then
+        deferInspect(name, now)
+        return
+    end
+
+    -- CheckInteractDistance puts "Unknown unit." on the error frame when it is
+    -- handed somebody who is not in the world, and that is a UI error rather
+    -- than a Lua one, so the pcall below never caught it. Before a raid is
+    -- summoned most of the roster is somewhere else, and every pass of the
+    -- inspect pump put another red line across the middle of the screen.
+    if not (UnitExists and UnitExists(unit) and UnitIsVisible and UnitIsVisible(unit)) then
         deferInspect(name, now)
         return
     end

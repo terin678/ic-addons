@@ -1070,10 +1070,16 @@ local function buildRulesFrame()
     rulesFrame.ruleHeader = rulesFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     rulesFrame.ruleHeader:SetPoint("TOPLEFT", rulesFrame, "TOPLEFT", 350, -36)
 
+    -- One line, and bounded to the pane it sits in. The rule list starts 342
+    -- in and the page is 920 wide, so there are 564 pixels here and the old
+    -- sentence wanted closer to 690 of them.
     rulesFrame.ruleHint = rulesFrame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     rulesFrame.ruleHint:SetPoint("TOPLEFT", rulesFrame.ruleHeader, "BOTTOMLEFT", 0, -2)
-    rulesFrame.ruleHint:SetText("top = highest priority.  grab a row by the |cffffd100grip|r on its left to drag it anywhere.  "
-        .. "amber = merged from another player")
+    rulesFrame.ruleHint:SetWidth(560)
+    rulesFrame.ruleHint:SetJustifyH("LEFT")
+    rulesFrame.ruleHint:SetWordWrap(false)
+    rulesFrame.ruleHint:SetText("top = highest priority.  drag a row by its |cffffd100grip|r.  "
+        .. "amber = merged from someone else")
 
     rulesFrame.ruleList = CreateFrame("Frame", nil, rulesFrame)
     rulesFrame.ruleList:SetPoint("TOPLEFT", rulesFrame, "TOPLEFT", 342, -76)
