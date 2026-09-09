@@ -95,7 +95,7 @@ end
 
 -- What /maw tooltip reports: which hook is in, how many item tooltips it has seen,
 -- and what became of the last one.
-MAW.tooltipStats = { path = nil, calls = 0, lastName = nil, lastOutcome = "none yet" }
+MAW.tooltipStats = { path = nil, calls = 0, lastTooltip = nil, lastName = nil, lastOutcome = "none yet" }
 
 local function NonEmpty(name)
     if type(name) == "string" and name ~= "" then return name end
@@ -124,7 +124,6 @@ end
 
 local function OnItem(tooltip, data)
     local stats = MAW.tooltipStats
-    stats.calls = stats.calls + 1
     if not MAW.db or not MAW.db.settings or MAW.db.settings.tooltip == false then
         stats.lastOutcome = "switched off"
         return
@@ -154,19 +153,34 @@ local function OnItem(tooltip, data)
     tooltip:Show()
 end
 
+-- Every item tooltip the client reports comes through here: counted, named, and an
+-- error inside the handler is kept for /maw tooltip as well as raised.
+local function Handle(tooltip, data)
+    local stats = MAW.tooltipStats
+    stats.calls = stats.calls + 1
+    stats.lastTooltip = (tooltip and tooltip.GetName and tooltip:GetName()) or "unnamed"
+    if not tooltip or not tooltip.AddLine then
+        stats.lastOutcome = "not a tooltip frame"
+        return
+    end
+    local ok, err = pcall(OnItem, tooltip, data)
+    if not ok then
+        stats.lastOutcome = "error: " .. tostring(err)
+        if geterrorhandler then geterrorhandler()(err) end
+    end
+end
+
 -- Returns whether the hook is in place. Safe to call more than once.
 function MAW.InstallTooltip()
     if MAW.tooltipInstalled then return true end
     if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall
         and Enum and Enum.TooltipDataType and Enum.TooltipDataType.Item then
-        TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip, data)
-            if tooltip == GameTooltip or tooltip == ItemRefTooltip then OnItem(tooltip, data) end
-        end)
+        TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, Handle)
         MAW.tooltipStats.path = "TooltipDataProcessor"
     elseif GameTooltip and GameTooltip.HookScript then
-        GameTooltip:HookScript("OnTooltipSetItem", function(tooltip) OnItem(tooltip) end)
+        GameTooltip:HookScript("OnTooltipSetItem", function(tooltip) Handle(tooltip) end)
         if ItemRefTooltip and ItemRefTooltip.HookScript then
-            ItemRefTooltip:HookScript("OnTooltipSetItem", function(tooltip) OnItem(tooltip) end)
+            ItemRefTooltip:HookScript("OnTooltipSetItem", function(tooltip) Handle(tooltip) end)
         end
         MAW.tooltipStats.path = "OnTooltipSetItem"
     else

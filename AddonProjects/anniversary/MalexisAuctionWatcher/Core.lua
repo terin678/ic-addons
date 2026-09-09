@@ -295,8 +295,9 @@ COMMANDS.tooltip = function(rest)
         MAW.db.settings.tooltip == false and "leave out" or "show")
     local s = MAW.tooltipStats
     if s then
-        MAW.Printf("hook: %s; item tooltips seen: %d; last: %s%s", s.path or "none installed", s.calls,
-            s.lastOutcome, s.lastName and (" (" .. s.lastName .. ")") or "")
+        MAW.Printf("hook: %s; item tooltips seen: %d; last: %s%s%s", s.path or "none installed", s.calls,
+            s.lastOutcome, s.lastName and (" (" .. s.lastName .. ")") or "",
+            s.lastTooltip and (" on " .. s.lastTooltip) or "")
     end
 end
 COMMANDS.history = function(rest)
