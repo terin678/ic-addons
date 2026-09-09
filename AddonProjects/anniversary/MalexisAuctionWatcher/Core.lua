@@ -6,7 +6,7 @@
 -- `local addonName, ns = ...` pair. LibICCore attaches to that table just the same, so
 -- MAW.Print, MAW.db, MAW.Util and the rest are the same names the other addons use.
 local addonName = "MalexisAuctionWatcher"
-local VERSION = "1.23.0"
+local VERSION = "1.24.0"
 local Core = LibStub("LibICCore-1.0")
 local MAW = {}
 
@@ -40,16 +40,30 @@ function MAW:FireCallbacks(event, ...)
 end
 
 -- Format money in gold/silver/copper
+-- Pure. "1.61g", "85s", "42c": gold to the hundredth, otherwise whole silver, copper
+-- only under a silver. For lines where the coin does not matter, like a tooltip.
+function MAW:FormatMoneyRound(copper)
+    copper = math.floor((tonumber(copper) or 0) + 0.5)
+    local sign, amount = copper < 0 and "-" or "", math.abs(copper)
+    local silver = math.floor(amount / 100 + 0.5)
+    if silver >= 100 then return sign .. string.format("%.2fg", amount / 10000) end
+    if silver >= 1 then return sign .. string.format("%ds", silver) end
+    return sign .. string.format("%dc", amount)
+end
+
 function MAW:FormatMoney(copper)
+    copper = copper and math.floor(copper + 0.5) or nil   -- averages arrive as fractions
     if not copper or copper == 0 then
         return "0c"
     end
 
-    local gold = math.floor(copper / 10000)
-    local silver = math.floor((copper % 10000) / 100)
-    local copperRemainder = copper % 100
+    -- Sized on the absolute amount, the sign put back in front: "-1g 23s 45c"
+    local sign, amount = copper < 0 and "-" or "", math.abs(copper)
+    local gold = math.floor(amount / 10000)
+    local silver = math.floor((amount % 10000) / 100)
+    local copperRemainder = amount % 100
 
-    local str = ""
+    local str = sign
     if gold > 0 then
         str = str .. gold .. "g "
     end
@@ -154,6 +168,11 @@ local Defaults = {
         -- set aside, and the day the week starts on (wday, 3 = Tuesday, raid reset).
         schedule = { clock = "server", tolerancePct = 10, weeks = 8, minWeeks = 2,
                      minReliabilityPct = 50, weekStart = 3 },
+        -- The next sell and buy blocks on a tracked item's game tooltip
+        tooltip = true,
+        -- The column each tab's list is sorted by, { key, desc } per tab key; a tab
+        -- with none keeps its own order.
+        columnSort = {},
     },
 }
 
@@ -197,6 +216,7 @@ local HELP = {
     { "movers", "what to buy, convert, and list right now" },
     { "schedule", "this week's expected buys and sells, and whether last week's held" },
     { "settings", "every setting on one tab" },
+    { "tooltip on | off", "the next sell and buy blocks on item tooltips" },
     { "sources", "show or toggle the Auctionator and TSM price feeds" },
     { "retention <days>", "days of price history to keep" },
     { "ahcut <percent>", "auction house cut used for net values (default 5)" },
@@ -272,6 +292,30 @@ COMMANDS.schedule = function()
 end
 COMMANDS.settings = function()
     if MalexisAuctionWatcherUI then MalexisAuctionWatcherUI:ShowTab("settings") end
+end
+COMMANDS.tooltip = function(rest)
+    local state = (rest or ""):lower()
+    if state == "on" or state == "off" then
+        MAW.db.settings.tooltip = (state == "on")
+        if MAW.ClearTooltipCache then MAW.ClearTooltipCache() end
+    elseif rest ~= "" then
+        -- "/maw tooltip <item>": the lines the tooltip would get, printed here
+        local lines = MAW.TooltipLines and MAW.TooltipLines(MAW:TooltipInfo(rest))
+        if not lines then
+            MAW.Print(rest .. " is not a tracked item.")
+        else
+            for _, line in ipairs(lines) do MAW.Print("  " .. line[1] .. ": " .. line[2]) end
+        end
+        return
+    end
+    MAW.Printf("item tooltips %s the next sell and buy blocks. /maw tooltip on|off",
+        MAW.db.settings.tooltip == false and "leave out" or "show")
+    local s = MAW.tooltipStats
+    if s then
+        MAW.Printf("hook: %s; item tooltips seen: %d; last: %s%s%s", s.path or "none installed", s.calls,
+            s.lastOutcome, s.lastName and (" (" .. s.lastName .. ")") or "",
+            s.lastTooltip and (" on " .. s.lastTooltip) or "")
+    end
 end
 COMMANDS.history = function(rest)
     if MalexisAuctionWatcherUI then
@@ -425,6 +469,10 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
     elseif event == "PLAYER_LOGIN" then
         -- The realm's clock against this PC's, for the Schedule tab
         if MAW.RefreshServerOffset then MAW.RefreshServerOffset() end
+        -- The next sell and buy blocks on item tooltips
+        if MAW.InstallTooltip and not MAW.InstallTooltip() then
+            MAW.Print("this client offers no item tooltip hook; tooltips are unchanged.")
+        end
         -- Other addons are loaded by now; detect optional price sources
         if MAW.DetectSources then
             MAW:DetectSources()

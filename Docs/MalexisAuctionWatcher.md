@@ -30,6 +30,14 @@ the control row: Scan AH, the per-tab scan, Sort, then the tab's option (Add Ite
 Refresh) and the character-specific checkbox on the right. The window is one fixed size on
 every tab, and how long ago you last scanned reads in the header beside the guild mark.
 
+**Sorting.** Every list sorts by a column when you click its header, and a second click
+turns the order round; an arrow marks the column. Rows with nothing in that column go
+last either way, and a list with sections (Stores, Movers, the Schedule) sorts inside
+each section. The choice is kept per tab until you change it. On Materials and Products
+the Sort button then reads "Sort: Column" and clicking it goes back to the Movers or
+manual order; elsewhere the tab's own order (Recipes by best margin, say) is what you get
+before you click a header.
+
 Every list is built from the shared widget library (see [ICLibs](ICLibs.md)): the column
 headers stay put while the rows scroll, a row is one line that truncates rather than
 wrapping, and the full text is in the hover tooltip. Rows are reused as you refresh
@@ -378,12 +386,42 @@ tab fills in over its first weeks and is not something to judge on day one.
 /maw schedule
 ```
 
+## Item tooltips
+
+Hover a tracked item anywhere, in your bags, the bank, the auction house or a chat link,
+and the tooltip ends with a short block from MAW: **Sell when** and **Buy when**, the
+item's next dear and cheap blocks with their target price, how far off they are, and how
+the target compares with today's price ("12% over now" for a sell, "15% under now" for a
+buy). They are the same answers as the Stores tab's two columns, so an item needs a week
+profile on the Schedule before either line appears; until then the block says "not enough
+weeks yet", and an item whose week is flat says so. Items MAW is not tracking are left
+alone. Auctionator's and TSM's own tooltip lines are untouched; MAW's come after them.
+
+**Is it worth converting?** When the item is a material in a recipe MAW knows, one more
+line per recipe says whether the batch is worth more as the product than sold as it is:
+"Convert to Primal Life: +20% over selling as is" in green when the gain clears the
+Movers margin, in gold with "barely worth the batch" when it is over nothing but under
+that margin, and in red with "sell as is" when converting loses. The comparison is the
+product's net after the house cut against the materials' own net after the cut, at
+today's prices. A product gets the mirror line, "From 10 Mote of Life: +20% over its
+materials", so a stack of primals says whether the motes would have fetched more. A
+recipe missing a price says which one. At most three recipes are listed, the best
+first, so which mote is worth turning into a primal is on the tooltip rather than in
+your memory.
+
+Switch it off on the Settings tab or with the command.
+
+```
+/maw tooltip on|off
+```
+
 ## Settings
 
 One tab for what used to be a list of slash commands: the Auctionator and TSM feeds; the
 auction house cut, scan-on-open and days of history; the Movers buy and list percentages,
 minimum margin and sale rate; and the Schedule's clock, first day of the week, hit
-tolerance, weeks of expectation, weeks a block needs, and the set-aside floor. Numbers
+tolerance, weeks of expectation, weeks a block needs, the set-aside floor, and whether item
+tooltips carry the next sell and buy blocks. Numbers
 apply on Enter and say what they did; the commands keep working and write the same
 settings.
 
@@ -395,6 +433,7 @@ settings.
 
 ```
 /maw minsale <percent>    TSM sale rate a product needs before Movers suggests converting
+/maw tooltip on|off       the next sell and buy blocks on item tooltips
 /maw list                 list tracked items
 /maw prices <item>        last 10 entries for an item
 /maw add <name or link>   track an item (materials tab)

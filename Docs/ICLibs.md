@@ -30,7 +30,7 @@ carries neither directive and sits on its own in the alphabetical list.
 | CallbackHandler-1.0, LibDataBroker-1.1, LibDBIcon-1.0 | — | The minimap launcher, and what it stands on |
 | LibICCore-1.0 | 2 | The plumbing every addon used to carry its own copy of: Print, the saved-variable bootstrap and its load check, Util, Log, the test harness, the slash dispatcher, reset, the minimap launcher, the probe |
 | LibICTradeSkill-1.0 | 2 | Reads the open profession window into plain tables, merges scans into a per-profession book, and checks Bind on Pickup reagents |
-| LibICUI-1.0 | 6 | Windows, tabs, buttons, lists and toolbars in the guild palette, plus relative ages and the brand itself |
+| LibICUI-1.0 | 7 | Windows, tabs, buttons, lists and toolbars in the guild palette, plus relative ages and the brand itself |
 
 The MINOR goes up whenever a library's API changes, and LibStub hands every caller the
 highest one loaded. Bump it in the library source and in this table together, or a reader
@@ -138,7 +138,7 @@ local UI = LibStub("LibICUI-1.0")
 | `UI:Skin(frame, color, border)` / `UI:Panel(parent, opts)` | Paints a frame, or makes a raised panel. |
 | `UI:ScrollList(parent, top, bottom, right)` | Plain scroll frame and content child. |
 | `UI:Toolbar(parent, opts)` | A control row: `tb:Left(widget)` appends, `tb:Right(widget)` packs from the right. |
-| `UI:Table(parent, opts)` | Header frame plus a pooled fixed-height row list. `t:Render(list, fill)`, `t:Row(i)`, `t:Set(row, key, text, color)`, `t:Span(row, text)`, `t:Tint(row, color)`, `t:SetSelected(item)`. |
+| `UI:Table(parent, opts)` | Header frame plus a pooled fixed-height row list. `t:Render(list, fill)`, `t:Row(i)`, `t:Set(row, key, text, color)`, `t:Span(row, text)`, `t:Tint(row, color)`, `t:SetSelected(item)`, `t:SetLabel(key, text)`, `t:SetSort(key, desc)`. With `opts.onSort(sort, t)` every labelled column header is a button: a click sorts by it, a second turns it round, an arrow marks it; `UI.SortList(list, sort, valueOf, tiebreak)` orders the rows, blanks last. |
 | `UI:Logo(parent, size, large)` | The guild mark as a texture. |
 | `UI:Hex(color)` | A `\|cffrrggbb` code from a brand colour. |
 

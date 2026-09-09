@@ -600,6 +600,130 @@ T.Case("Schedule: the ring keeps the last weeks and the last few hundred, oldest
     T.Eq(seeded[1] .. "," .. seeded[2] .. "," .. seeded[3] .. "," .. seeded[4], "5,11,9,12", "oldest first, bid where there was no buyout")
 end)
 
+T.Case("Tooltip: the next sell and buy blocks read as one line each", function()
+    -- Targets are averages and arrive as fractions; the line shows them to the silver
+    T.Eq(MAW:FormatMoneyRound(16085.2397), "1.61g", "gold to the hundredth")
+    T.Eq(MAW:FormatMoneyRound(8523.9), "85s", "whole silver under a gold")
+    T.Eq(MAW:FormatMoneyRound(9999), "1.00g", "rounding up to a gold says gold")
+    T.Eq(MAW:FormatMoneyRound(42.4), "42c", "copper only under a silver")
+    T.Eq(MAW:FormatMoney(8523.9), "85s 24c", "and the long form no longer prints a fraction")
+
+    local sell = { wday = 7, block = 4, hour = 13, expected = 14500, nextWeek = false, away = "in 3d 16h", gain = 0.12 }
+    T.Eq(MAW.WhenText(sell, "sell"), "Sat 13:00  1.45g  in 3d 16h, 12% over now",
+        "day, hour, target, distance, and the gain in words a seller wants")
+    sell.gain = -0.08
+    T.Eq(MAW.WhenText(sell, "sell"), "Sat 13:00  1.45g  in 3d 16h, 8% under now", "a sell below today reads as under")
+
+    -- A buy's gain is positive when the block is cheaper, so the same sign reads "under"
+    local buy = { wday = 3, block = 6, expected = 10200, nextWeek = true, blocksAway = 12, gain = 0.15 }
+    T.Eq(MAW.WhenText(buy, "buy"), "next Tue 20-24  1.02g  in 2d, 15% under now",
+        "next week, the block when no hour is known, distance counted from the blocks")
+    buy.gain = nil
+    T.Eq(MAW.WhenText(buy, "buy"), "next Tue 20-24  1.02g  in 2d", "no price today, no comparison")
+    T.Eq(MAW.WhenText(nil, "buy"), nil, "no block, no line")
+
+    local lines = MAW.TooltipLines({ sell = sell, buy = buy })
+    T.Eq(#lines, 2, "one line a side")
+    T.Eq(lines[1][1], "Sell when", "the sell first")
+    T.Eq(lines[2][1], "Buy when", "then the buy")
+    T.Eq(MAW.TooltipLines({ buy = buy })[1][1], "Buy when", "a side with no block is left out")
+    T.Eq(MAW.TooltipLines({})[1][2], "not enough weeks yet", "a tracked item with no profile says why")
+    T.Eq(MAW.TooltipLines({ flat = true })[1][2], "flat, nothing to time", "and so does a flat one")
+    T.Eq(MAW.TooltipLines(nil), nil, "an untracked item gets nothing")
+end)
+
+T.Case("Tooltip: whether an item is worth more converted than sold as it is", function()
+    -- Ten motes at 1g each sold as they are net 9.5g after the cut; the primal nets
+    -- 11.4g (12g less the cut), so converting is 20% better.
+    local calc = { complete = true, matCost = 100000, ahNet = 114000 }
+    local v = MAW.ConvertVerdict(calc, 0.05, 10)
+    T.Near(v.pct, 20, 0.01, "twenty percent over selling the motes")
+    T.Eq(v.grade, "does", "at or over the Movers margin, it does pay")
+    T.Eq(MAW.ConvertVerdict({ complete = true, matCost = 100000, ahNet = 98000 }, 0.05, 10).grade, "could",
+        "over nothing but under the margin, it could")
+    T.Eq(MAW.ConvertVerdict({ complete = true, matCost = 100000, ahNet = 90000 }, 0.05, 10).grade, "not",
+        "under selling as is, it does not")
+    T.Eq(MAW.ConvertVerdict({ complete = false, matCost = 100000, missing = { "Primal Life" } }, 0.05, 10), nil,
+        "no verdict while a price is missing")
+    T.Eq(MAW.ConvertVerdict({ complete = true, matCost = 0, ahNet = 500 }, 0.05, 10), nil, "nor from free materials")
+
+    local motes = { name = "Mote of Life -> Primal Life", product = "Primal Life",
+        materials = { { item = "Mote of Life", count = 10 } } }
+    local might = { name = "Primal Might", product = "Primal Might",
+        materials = { { item = "Primal Earth", count = 1 }, { item = "Primal Water", count = 1 },
+                      { item = "Primal Air", count = 1 } } }
+    T.Eq(MAW.MaterialsText(motes), "10 Mote of Life", "one material, named with its count")
+    T.Eq(MAW.MaterialsText(might), "1 Primal Earth +2 more", "several, the first and how many more")
+
+    local line = MAW.ConvertLine({ role = "material", recipe = motes, verdict = v })
+    T.Eq(line[1], "Convert to Primal Life", "a material's line names the product")
+    T.Eq(line[2], "+20% over selling as is", "and what converting does")
+    line = MAW.ConvertLine({ role = "product", recipe = motes, verdict = { pct = -12, grade = "not" } })
+    T.Eq(line[1], "From 10 Mote of Life", "a product's line names its materials")
+    T.Eq(line[2], "-12%, the materials fetch more", "and says the motes were the better sale")
+    line = MAW.ConvertLine({ role = "material", recipe = motes, missing = { "Primal Life" } })
+    T.Eq(line[2], "no price for Primal Life", "a missing price is named")
+
+    -- Materials first, best first, and never more than three
+    local entries = {
+        { role = "product", recipe = motes, verdict = { pct = 20, grade = "does" } },
+        { role = "material", recipe = { name = "b", product = "B", materials = {} }, verdict = { pct = 3, grade = "could" } },
+        { role = "material", recipe = { name = "a", product = "A", materials = {} }, verdict = { pct = 15, grade = "does" } },
+        { role = "material", recipe = { name = "c", product = "C", materials = {} }, verdict = nil },
+        { role = "material", recipe = { name = "d", product = "D", materials = {} }, verdict = { pct = -4, grade = "not" } },
+    }
+    local lines = MAW.ConvertLines(entries)
+    T.Eq(#lines, 3, "three at most")
+    T.Eq(lines[1][1], "Convert to A", "the best material first")
+    T.Eq(lines[2][1], "Convert to B", "then the next")
+    T.Eq(lines[3][1], "Convert to D", "a loss still outranks no verdict")
+    T.Eq(#MAW.ConvertLines(nil), 0, "no recipes, no lines")
+
+    local all = MAW.TooltipLines({ convert = { entries[1] } })
+    T.Eq(all[1][1], "Week pattern", "the week comes first")
+    T.Eq(all[2][1], "From 10 Mote of Life", "then the recipe")
+end)
+
+T.Case("Sorting: a column click orders by value, blanks last, ties as they were", function()
+    local ICUI = LibStub("LibICUI-1.0")
+    local function rows()
+        return {
+            { name = "Felweed",     profit = 200,  margin = nil },
+            { name = "Mote of Life", profit = -50, margin = 12 },
+            { name = "ancient Lichen", profit = 900, margin = 12 },
+            { name = "Dreaming Glory", profit = nil, margin = 40 },
+        }
+    end
+    local function value(r, key) return r[key] end
+    local function names(list)
+        local out = {}
+        for i, r in ipairs(list) do out[i] = r.name end
+        return table.concat(out, ",")
+    end
+
+    T.Eq(names(ICUI.SortList(rows(), { key = "profit", desc = true }, value)),
+        "ancient Lichen,Felweed,Mote of Life,Dreaming Glory", "biggest profit first, no profit last")
+    T.Eq(names(ICUI.SortList(rows(), { key = "profit", desc = false }, value)),
+        "Mote of Life,Felweed,ancient Lichen,Dreaming Glory", "smallest first, no profit still last")
+    T.Eq(names(ICUI.SortList(rows(), { key = "name" }, value)),
+        "ancient Lichen,Dreaming Glory,Felweed,Mote of Life", "names sort without regard to case")
+    T.Eq(names(ICUI.SortList(rows(), { key = "margin" }, value)),
+        "Mote of Life,ancient Lichen,Dreaming Glory,Felweed", "equal margins keep their order")
+    T.Eq(names(ICUI.SortList(rows(), { key = "margin" }, value, function(a, b) return a.name > b.name end)),
+        "ancient Lichen,Mote of Life,Dreaming Glory,Felweed", "unless a tiebreak says otherwise")
+    T.Eq(names(ICUI.SortList(rows(), nil, value)), "Felweed,Mote of Life,ancient Lichen,Dreaming Glory",
+        "no sort leaves the list alone")
+
+    -- A loss reads in the same coins as a gain, with the sign in front
+    local H = _G.MalexisAuctionWatcherHelpers
+    T.Eq(H.FormatMoney(-12345), "-1.23g", "a loss of a gold and change is gold, not silvers")
+    T.Eq(H.FormatMoney(-850), "-8.5s", "a smaller loss is silver")
+    T.Eq(H.FormatMoney(-42), "-42c", "and a tiny one copper")
+    T.Eq(H.FormatMoney(12345), "1.23g", "a gain is as it was")
+    T.Eq(MAW:FormatMoney(-12345), "-1g 23s 45c", "the long form carries the sign too")
+    T.Eq(MAW:FormatMoneyRound(-12345), "-1.23g", "and so does the rounded one")
+end)
+
 T.Case("Window scale: a usable percentage survives, an unusable one is clamped", function()
     local UI = _G.MalexisAuctionWatcherUI
     if not UI or not UI.ClampScale then

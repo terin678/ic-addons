@@ -38,7 +38,7 @@ so no addon bundles a copy:
   `Core:Bindings` do the rest. Every addon with saved variables attaches, and `lint.py`
   fails one that does not.
 - `LibICTradeSkill-1.0` (MINOR 2) reads a profession window into a book.
-- `LibICUI-1.0` (MINOR 6) is the window, tab, list and widget toolkit in the guild
+- `LibICUI-1.0` (MINOR 7) is the window, tab, list and widget toolkit in the guild
   palette, and carries the brand itself. Four addons depend on it.
 
 Addons list `## Dependencies: ICLibs` in their TOC and fetch a library with
@@ -113,7 +113,7 @@ Four things, in order:
    | `/cm test` (CutMaster) | 135 |
    | `/gr test` (GuildRecruitment) | 31 |
    | `/ictpl test` (ICTemplate) | 27 |
-   | `/maw test` (MalexisAuctionWatcher) | 21 |
+   | `/maw test` (MalexisAuctionWatcher) | 24 |
    | `/ast test` (AuctionatorSellingTweaks) | 4 |
    | `/mfd selftest` (MarkedForDeath) | 397 |
 

@@ -94,6 +94,38 @@ local function SortMode()
     return Setting("sortMode") == "manual" and "manual" or "movers"
 end
 
+-- The column a tab's list is sorted by, { key, desc }, kept per tab in the settings.
+-- nil is the tab's own order: mover position, your manual order, best margin first.
+local function ColumnSort(tab)
+    local all = Setting("columnSort")
+    return all and all[tab] or nil
+end
+
+local function SetColumnSort(tab, sort)
+    local s = MalexisAuctionWatcherDB and MalexisAuctionWatcherDB.settings
+    if not s then return end
+    s.columnSort = s.columnSort or {}
+    s.columnSort[tab] = sort and { key = sort.key, desc = sort.desc and true or false } or nil
+end
+
+-- A table's onSort for one tab: remember the click, redraw.
+local function SortBy(tab)
+    return function(sort)
+        SetColumnSort(tab, sort)
+        MAWUI:RefreshData()
+    end
+end
+
+-- Draws the arrow on the sorted column, or none. Called every refresh, since a
+-- cached table may have been built before the setting was.
+local function ApplySort(t, tab)
+    local sort = ColumnSort(tab)
+    t:SetSort(sort and sort.key, sort and sort.desc)
+    return sort
+end
+
+local SortList = ICUI.SortList
+
 local function Note(parent, text, width)
     local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     fs:SetJustifyH("LEFT")
@@ -746,7 +778,28 @@ local function ItemRows(kind, sortMode)
         end
     end
 
-    if sortMode == "movers" then
+    local colSort = ColumnSort(kind)
+    if colSort then
+        local acctKey = ACCOUNTING_COLUMNS[kind].key
+        SortList(list, colSort, function(item, key)
+            local ref, stats = item.data.tsmRef, item.stats
+            if key == "name" then return item.name end
+            if key == "tsm_historical" or key == "tsm_market" then
+                local v = ref and ref[key:sub(5)]
+                return (v and v > 0) and v or nil
+            end
+            if key == "tsm_acct" then
+                local v = ref and ref[acctKey]
+                return (v and v > 0) and v or nil
+            end
+            if key == "tsm_rate" then return ref and ref.velocity and ref.velocity.rate end
+            if key == "today" then return (stats.today and stats.today > 0) and stats.today or nil end
+            if key == "low" then return stats.low end
+            if key == "ave" then return stats.average end
+            if key == "high" then return stats.high end
+            return nil
+        end, function(a, b) return a.order < b.order end)
+    elseif sortMode == "movers" then
         for _, item in ipairs(list) do
             item.pos = MAW:GetRangePosition(item.name)
         end
@@ -795,8 +848,10 @@ local function BuildItemsPage(page, kind)
             return Table(page, {
                 top = 0, bottom = ITEM_FOOTER_H + 4,
                 columns = ItemColumns(kind),
+                onSort = SortBy(kind),
             })
         end)
+        ApplySort(t, kind)
 
         t:Render(ItemRows(kind, SortMode()), function(row, item)
             local stats = item.stats
@@ -957,6 +1012,16 @@ local function SumEntries(list, label)
     return row
 end
 
+-- The Schedule's next sell or buy block for a Stores entry, worked out once per refresh
+-- whether the sort or the cell asks first. false is "asked, none".
+local function StoreWhen(e, verb)
+    e.when = e.when or {}
+    if e.when[verb] == nil then
+        e.when[verb] = _G.MalexisAuctionWatcher:MaturityFor(e.name, verb, e.unit) or false
+    end
+    return e.when[verb] or nil
+end
+
 local function BuildStoresPage(page)
     local view = {}
 
@@ -986,13 +1051,12 @@ local function BuildStoresPage(page)
             return Table(page, {
                 top = 0, bottom = STORES_FOOTER_H + 4,
                 columns = cols,
+                onSort = SortBy("stores"),
             })
         end)
         -- The AH cut can change, so refresh the labels the table was built with.
-        for _, col in ipairs(cols) do
-            local label = t.header.labels[col.key]
-            if label then label:SetText(col.label or "") end
-        end
+        for _, col in ipairs(cols) do t:SetLabel(col.key, col.label) end
+        local colSort = ApplySort(t, "stores")
 
         local products, materials = {}, {}
         for itemName, itemData in pairs((db and db.items) or {}) do
@@ -1006,8 +1070,27 @@ local function BuildStoresPage(page)
         local function byOrder(a, b)
             return (a.data.order or 0) < (b.data.order or 0)
         end
-        table.sort(products, byOrder)
-        table.sort(materials, byOrder)
+        -- Each section sorts on its own, by the clicked column or by your order.
+        local function StoreValue(e, key)
+            local ref = e.data.tsmRef
+            if key == "name" then return e.name end
+            if key == "tsm_historical" or key == "tsm_market" then
+                local v = ref and ref[key:sub(5)]
+                return (v and v > 0) and v or nil
+            end
+            if key == "held" then return e.inv end
+            if key == "total" then return e.total end
+            if key == "value" then return e.value end
+            if key == "ahnet" then return e.ahNet end
+            if key == "sell" or key == "buy" then
+                local m = StoreWhen(e, key)
+                return m and m.blocksAway or nil
+            end
+            return nil
+        end
+        for _, list in ipairs({ products, materials }) do
+            if colSort then SortList(list, colSort, StoreValue, byOrder) else table.sort(list, byOrder) end
+        end
 
         -- Grand total first, then each section with its own subtotal underneath.
         local all = {}
@@ -1061,8 +1144,8 @@ local function BuildStoresPage(page)
             t:Set(row, "total", tostring(e.total), COLOR_AVE)
 
             if e.kind == "item" then
-                WhenCell(t, row, "sell", MAW:MaturityFor(e.name, "sell", e.unit), "sell", e.name)
-                WhenCell(t, row, "buy", MAW:MaturityFor(e.name, "buy", e.unit), "buy", e.name)
+                WhenCell(t, row, "sell", StoreWhen(e, "sell"), "sell", e.name)
+                WhenCell(t, row, "buy", StoreWhen(e, "buy"), "buy", e.name)
             else
                 Tooltip(row.hit.sell, nil)
                 Tooltip(row.hit.buy, nil)
@@ -1605,6 +1688,20 @@ local function RecipeControls(row, col, x, style)
     return box
 end
 
+-- A recipe's profit under every TSM basis, keyed by basis, worked out once per refresh
+-- whether the sort or the row asks first. Empty without TSM.
+local function RecipeByBasis(calc, tsmOn)
+    if not calc.byBasis then
+        calc.byBasis = {}
+        if tsmOn then
+            for _, r in ipairs(_G.MalexisAuctionWatcher:CompareRecipeBases(calc.recipe)) do
+                calc.byBasis[r.basis.key] = r
+            end
+        end
+    end
+    return calc.byBasis
+end
+
 local function BuildRecipesPage(page)
     local view = {}
 
@@ -1703,11 +1800,14 @@ local function BuildRecipesPage(page)
                     key = col.key, label = col.header, width = col.width,
                     justify = (col.key ~= "name") and "RIGHT" or "LEFT",
                     hit = (col.key == "name" or col.key == "sells" or col.basis) and true or nil,
+                    -- A number column's first click puts the biggest first
+                    desc = (col.key ~= "name") or nil,
                 }
             end
             return Table(page, {
                 top = -30, bottom = RECIPE_FOOTER_H + 4,
                 columns = cols,
+                onSort = SortBy("recipes"),
                 buttons = {
                     { key = "edit", label = "E", width = 22 },
                     { key = "remove", label = "X", width = 22, kind = "danger" },
@@ -1715,32 +1815,46 @@ local function BuildRecipesPage(page)
             })
         end)
 
-        for _, col in ipairs(columns) do
-            local label = t.header.labels[col.key]
-            if label then label:SetText(col.header or "") end
-        end
+        for _, col in ipairs(columns) do t:SetLabel(col.key, col.header) end
+        local colSort = ApplySort(t, "recipes")
 
         local rows = {}
         for _, recipe in ipairs(MAW:GetRecipes()) do
             rows[#rows + 1] = MAW:ComputeRecipeProfit(recipe, RecipeBasis())
         end
-        -- Best margin first; recipes without prices go to the bottom
-        table.sort(rows, function(a, b)
-            local ma = a.margin or -math.huge
-            local mb = b.margin or -math.huge
-            if ma ~= mb then return ma > mb end
-            return a.recipe.name < b.recipe.name
-        end)
+        local byName = function(a, b) return a.recipe.name < b.recipe.name end
+        if colSort then
+            local basisOf = {}
+            for _, col in ipairs(columns) do basisOf[col.key] = col.basis end
+            SortList(rows, colSort, function(calc, key)
+                if key == "name" then return calc.recipe.name end
+                if key == "matCost" then return (calc.complete or #calc.missing == 0) and calc.matCost or nil end
+                if key == "productValue" then return calc.productValue end
+                if key == "ahNet" then return calc.ahNet end
+                if key == "profit" then return calc.profit end
+                if key == "margin" then return calc.margin end
+                if key == "canMake" then return calc.canMake end
+                if key == "sells" then return calc.velocity and calc.velocity.rate end
+                if basisOf[key] then
+                    local r = RecipeByBasis(calc, tsmOn)[basisOf[key]]
+                    return r and r.profit or nil
+                end
+                return nil
+            end, byName)
+        else
+            -- Best margin first; recipes without prices go to the bottom
+            table.sort(rows, function(a, b)
+                local ma = a.margin or -math.huge
+                local mb = b.margin or -math.huge
+                if ma ~= mb then return ma > mb end
+                return byName(a, b)
+            end)
+        end
 
         local totalProfit, totalMakeable, anyFallback = 0, 0, false
         t:Render(rows, function(row, calc)
             if calc.fallback and #calc.fallback > 0 then anyFallback = true end
-            local byBasis = {}
-            if tsmOn then
-                for _, r in ipairs(MAW:CompareRecipeBases(calc.recipe)) do
-                    byBasis[r.basis.key] = r
-                end
-            end
+            local byBasis = RecipeByBasis(calc, tsmOn)
 
             for _, col in ipairs(columns) do
                 if col.key == "name" then
@@ -1860,6 +1974,7 @@ local function BuildMoversPage(page)
             { key = "matures", label = "Matures", width = "flex" },
         },
         buttons = { { key = "act", label = "", width = 80, template = "SecureActionButtonTemplate" } },
+        onSort = SortBy("movers"),
     })
     view.table = t
 
@@ -1880,10 +1995,23 @@ local function BuildMoversPage(page)
             MAW:MoverSetting("moverBuyPct") * 100, MAW:MoverSetting("moverMinMargin"), gate,
             MAW:MoverSetting("moverSellPct") * 100))
 
+        -- Each section sorts on its own by the clicked column; Price is a recipe's
+        -- profit per batch, Why is how far into its range an item sits or a recipe's
+        -- margin, Matures is how soon the other side of the trade comes.
+        local colSort = ApplySort(t, "movers")
+        local function MoverValue(entry, key)
+            if key == "name" then return entry.name end
+            if key == "price" then return entry.kind == "convert" and entry.profit or entry.price end
+            if key == "reason" then return entry.kind == "convert" and entry.margin or entry.pos end
+            if key == "matures" then return entry.matures and entry.matures.blocksAway or nil end
+            return nil
+        end
+
         local rows = {}
         for _, sec in ipairs(MOVER_SECTIONS) do
             rows[#rows + 1] = { kind = "section", title = sec.title }
             local list = movers[sec.key]
+            if colSort then SortList(list, colSort, MoverValue) end
             if #list == 0 then
                 rows[#rows + 1] = { kind = "empty" }
             else
@@ -2019,6 +2147,7 @@ MAWUI.kit = {
     Button = Button, Toolbar = Toolbar, Table = Table, Tooltip = Tooltip, Note = Note,
     CachedTable = CachedTable, FormatMoney = FormatMoney, GetPriceColor = GetPriceColor,
     SourceTooltip = SourceTooltip,
+    SortBy = SortBy, ApplySort = ApplySort, SortList = SortList,
     colors = {
         LOW = COLOR_LOW, AVE = COLOR_AVE, HIGH = COLOR_HIGH, BELOW = COLOR_BELOW, ABOVE = COLOR_ABOVE,
         DIM = DIM, WHITE = WHITE, BONE = BONE, GOLD = GOLD, TSM = TSM_TINT,
@@ -2119,14 +2248,21 @@ function MAWUI:CreateUI()
     -- Sort toggle for Materials/Products: by mover position or by your manual order
     local sortBtn = Button(bar, "Sort: Movers", 120, 24)
     sortBtn:SetScript("OnClick", function()
-        local s = MalexisAuctionWatcherDB.settings
-        s.sortMode = (SortMode() == "manual") and "movers" or "manual"
+        -- Sorted by a column: the click goes back to the tab's own order. Otherwise
+        -- it switches between the two of those.
+        if ColumnSort(currentTab) then
+            SetColumnSort(currentTab, nil)
+        else
+            local s = MalexisAuctionWatcherDB.settings
+            s.sortMode = (SortMode() == "manual") and "movers" or "manual"
+        end
         MAWUI:RefreshData()
     end)
     Tooltip(sortBtn, function()
         GameTooltip:AddLine("Row order")
         GameTooltip:AddLine("Movers: materials cheapest-in-range first, products highest-in-range first. Items without a range go last.", 1, 1, 1)
         GameTooltip:AddLine("Manual: the order you set with the arrows.", 1, 1, 1)
+        GameTooltip:AddLine("Column: click a header to sort by it, again to turn it round. This button goes back.", 1, 1, 1)
     end)
     bar:Left(sortBtn)
     mainFrame.sortBtn = sortBtn
@@ -2245,7 +2381,8 @@ function MAWUI:RefreshData()
     local onItems = (currentTab == "materials" or currentTab == "products")
     mainFrame.sortBtn:SetShown(onItems)
     if onItems then
-        mainFrame.sortBtn:SetText(SortMode() == "manual" and "Sort: Manual" or "Sort: Movers")
+        mainFrame.sortBtn:SetText(ColumnSort(currentTab) and "Sort: Column"
+            or (SortMode() == "manual" and "Sort: Manual" or "Sort: Movers"))
     end
     mainFrame.addBtn:SetShown(onItems)
     if currentTab == "stores" then

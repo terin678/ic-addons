@@ -187,6 +187,12 @@ local function BuildSettingsPage(page)
             MAW:ScheduleSettings().minReliabilityPct = math.floor(n)
             return math.floor(n), string.format("Items whose pattern held under %d%% are set aside.", math.floor(n))
         end)
+    ry = CheckRow(RIGHT_X, ry, "Show the next sell and buy blocks on item tooltips",
+        function() return Settings().tooltip ~= false end,
+        function(on)
+            Settings().tooltip = on
+            if MAW.ClearTooltipCache then MAW.ClearTooltipCache() end
+        end)
     local schedNote = Label(page, "The plan lists an item's cheap and dear blocks once a block has enough complete "
         .. "weeks behind it. After three judged weeks on those blocks, an item whose pattern held "
         .. "under the floor is set aside; the grid still shows it. The slash commands keep working "
