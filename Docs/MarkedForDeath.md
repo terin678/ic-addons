@@ -374,7 +374,7 @@ Every command is in `/mfd help`.
 | `/mfd candidates` | The hostile mobs the addon can currently see. |
 | `/mfd selftest` | Run the built-in test suite. `/mfd test` does the same. |
 | `/mfd version` | Print the addon version and the ICLibs versions it is running against. |
-| `/mfd out [n]` | Move everything the addon prints to ChatFrame n. |
+| `/mfd out [n]` | Move everything the addon prints to ChatFrame n. Bare, it lists your chat windows by name and number and marks the one it is printing to. |
 | `/mfd scale [percent]` | Resize the window. Dragging its bottom-right corner does the same. |
 | `/mfd reset [what]` | Restore `settings`, the log, or everything, to defaults. |
 

@@ -183,13 +183,13 @@ local function addEdit(entry, x, y, width)
     -- Escape comes with the library's box; Enter to commit does not.
     box:SetScript("OnEnterPressed", box.ClearFocus)
 
-    -- Anchored under the box, so its width is the box's and not the column's.
-    -- Sized from the column it ran 84 pixels past the right edge, which on the
-    -- healer side is the edge of the window: the label starts 104 in from the
-    -- column and has to stop 4 short of it.
-    box.preview = MFD.UI.CellLabel(frame, "", "GameFontDisableSmall")
-    box.preview:SetPoint("TOPLEFT", box, "BOTTOMLEFT", 4, -2)
-    box.preview:SetWidth(width - 108)
+    -- Under the label rather than under the box, so it gets the whole column
+    -- instead of only what is left to the right of "Extra healers", and wraps
+    -- rather than truncating. Six healers did not fit on one indented line and
+    -- a list of names you can only read half of is no use at all.
+    box.preview = MFD.UI.Label(frame, "", "GameFontDisableSmall")
+    box.preview:SetPoint("TOPLEFT", label, "BOTTOMLEFT", 0, -6)
+    box.preview:SetWidth(width - 8)
 
     -- Set last, so the handler cannot fire against a preview that does not
     -- exist yet when SetText runs during the first refresh.
@@ -234,7 +234,9 @@ local function buildKind(kind, x, width)
 
     addEdit(editFor(kind), x, y, width)
 
-    return y - 40
+    -- Room for the box and two wrapped lines of readback under it. The list of
+    -- names is the one thing here that grows with the raid.
+    return y - 64
 end
 
 -- The boss list. One row per encounter with a tick per kind, so both lists are
