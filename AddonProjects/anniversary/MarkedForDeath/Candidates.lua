@@ -150,6 +150,16 @@ function Candidates.ObserveUnit(unit, now)
         return nil
     end
 
+    -- A pet belongs to a player, and a player's pet is not raid trash. In a
+    -- neutral city with both factions in it, every opposing hunter's pet reads
+    -- as a live enemy creature with an npcID of its own, so they were being
+    -- learned by the dozen under their owners' names and then offered as things
+    -- to mark. This covers charmed and mind-controlled units for the same
+    -- reason: somebody else is deciding what they do.
+    if UnitPlayerControlled and UnitPlayerControlled(unit) then
+        return nil
+    end
+
     local npcID = MFD.H.NpcIDFromKey(key)
     local name = UnitName(unit)
     Candidates.Observe(Candidates.set, key, npcID, unit, now, name)
@@ -161,7 +171,8 @@ function Candidates.ObserveUnit(unit, now)
     -- control cannot land on this mob.
     if MFD.db and not MFD.db.learnedMobs[npcID] then
         MFD.Learned.Record(MFD.db, npcID, UnitName(unit), GetRealZoneText(), time(),
-            UnitCreatureType and UnitCreatureType(unit) or nil)
+            UnitCreatureType and UnitCreatureType(unit) or nil,
+            MFD.Rules.currentInstanceKey)
     end
 
     return key
@@ -172,7 +183,11 @@ MFD.Learned = MFD.Learned or {}
 -- Records a sighting so the mob becomes searchable even when the bundled
 -- database missed it. Mutates db.learnedMobs and nothing else.
 -- Incomplete observations are dropped rather than stored half-formed.
-function MFD.Learned.Record(db, npcID, name, zone, now, creatureType)
+--
+-- instanceKey is where it was seen, in the same terms the rules are filed
+-- under, so the rule editor can offer it for that instance and nowhere else.
+-- The zone name is kept alongside because it is what a person reads.
+function MFD.Learned.Record(db, npcID, name, zone, now, creatureType, instanceKey)
     if type(npcID) ~= "number" or type(name) ~= "string" or name == "" then
         return
     end
@@ -180,6 +195,7 @@ function MFD.Learned.Record(db, npcID, name, zone, now, creatureType)
     db.learnedMobs[npcID] = {
         name = name,
         zone = zone,
+        instanceKey = instanceKey,
         seenAt = now,
         creatureType = creatureType,
     }

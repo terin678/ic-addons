@@ -184,11 +184,6 @@ function MFD.Search(query, instanceKey, bundled, learned)
     local zoneNames = MFD.Rules and MFD.Rules.INSTANCE_ZONE_NAMES or {}
     local targetZone = instanceKey and zoneNames[instanceKey]
 
-    local knownZones = {}
-    for _, zoneName in pairs(zoneNames) do
-        knownZones[zoneName] = true
-    end
-
     for _, npcID in ipairs(H.SortedKeys(bundled)) do
         local entry = bundled[npcID]
         local matchesInstance = not instanceKey or entry[2] == instanceKey
@@ -201,8 +196,21 @@ function MFD.Search(query, instanceKey, bundled, learned)
     for _, npcID in ipairs(H.SortedKeys(learned)) do
         local entry = learned[npcID]
         if not seen[npcID] and entry.name and string.find(string.lower(entry.name), needle, 1, true) then
-            local isMappable = entry.zone and knownZones[entry.zone]
-            local matchesInstance = not targetZone or not isMappable or entry.zone == targetZone
+            -- Where it was seen decides where it is offered. A sighting that
+            -- cannot be placed in this instance is not shown here: treating
+            -- "somewhere I cannot identify" as "everywhere" put every hunter
+            -- pet seen in Shattrath into the rule list for every raid.
+            local matchesInstance
+            if not instanceKey then
+                matchesInstance = true
+            elseif entry.instanceKey then
+                matchesInstance = entry.instanceKey == instanceKey
+            else
+                -- Seen before the instance was recorded beside it, so the zone
+                -- name is all there is to go on.
+                matchesInstance = targetZone ~= nil and entry.zone == targetZone
+            end
+
             if matchesInstance then
                 results[#results + 1] = { npcID = npcID, name = entry.name, source = "learned" }
             end
