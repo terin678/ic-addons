@@ -34,13 +34,14 @@ local function GainText(verb, gain)
     return string.format(", %d%% %s now", math.floor(math.abs(gain) * 100 + 0.5), word)
 end
 
--- Pure. One block as one line: "Sat 13:00  1g 45s  in 3d 16h, 12% over now". `m` is
--- what MaturityFor returns; nil when there is no block.
+-- Pure. One block as one line: "Sat 13:00  1.45g  in 3d 16h, 12% over now". `m` is
+-- what MaturityFor returns; nil when there is no block. The target is an average, so
+-- it is shown to the silver: nobody times a trade by the copper.
 function MAW.WhenText(m, verb)
     if not m then return nil end
     local when = string.format("%s%s %s", m.nextWeek and "next " or "", MAW.WEEKDAY_NAMES[m.wday] or "?",
         m.hour and string.format("%02d:00", m.hour) or (MAW.BLOCK_LABELS[m.block] or "?"))
-    return string.format("%s  %s  %s%s", when, MAW:FormatMoney(m.expected),
+    return string.format("%s  %s  %s%s", when, MAW:FormatMoneyRound(m.expected),
         m.away or MAW.DescribeAway(m.blocksAway), GainText(verb, m.gain))
 end
 

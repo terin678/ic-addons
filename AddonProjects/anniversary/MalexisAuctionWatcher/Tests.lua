@@ -601,18 +601,25 @@ T.Case("Schedule: the ring keeps the last weeks and the last few hundred, oldest
 end)
 
 T.Case("Tooltip: the next sell and buy blocks read as one line each", function()
+    -- Targets are averages and arrive as fractions; the line shows them to the silver
+    T.Eq(MAW:FormatMoneyRound(16085.2397), "1.61g", "gold to the hundredth")
+    T.Eq(MAW:FormatMoneyRound(8523.9), "85s", "whole silver under a gold")
+    T.Eq(MAW:FormatMoneyRound(9999), "1.00g", "rounding up to a gold says gold")
+    T.Eq(MAW:FormatMoneyRound(42.4), "42c", "copper only under a silver")
+    T.Eq(MAW:FormatMoney(8523.9), "85s 24c", "and the long form no longer prints a fraction")
+
     local sell = { wday = 7, block = 4, hour = 13, expected = 14500, nextWeek = false, away = "in 3d 16h", gain = 0.12 }
-    T.Eq(MAW.WhenText(sell, "sell"), "Sat 13:00  1g 45s  in 3d 16h, 12% over now",
+    T.Eq(MAW.WhenText(sell, "sell"), "Sat 13:00  1.45g  in 3d 16h, 12% over now",
         "day, hour, target, distance, and the gain in words a seller wants")
     sell.gain = -0.08
-    T.Eq(MAW.WhenText(sell, "sell"), "Sat 13:00  1g 45s  in 3d 16h, 8% under now", "a sell below today reads as under")
+    T.Eq(MAW.WhenText(sell, "sell"), "Sat 13:00  1.45g  in 3d 16h, 8% under now", "a sell below today reads as under")
 
     -- A buy's gain is positive when the block is cheaper, so the same sign reads "under"
     local buy = { wday = 3, block = 6, expected = 10200, nextWeek = true, blocksAway = 12, gain = 0.15 }
-    T.Eq(MAW.WhenText(buy, "buy"), "next Tue 20-24  1g 2s  in 2d, 15% under now",
+    T.Eq(MAW.WhenText(buy, "buy"), "next Tue 20-24  1.02g  in 2d, 15% under now",
         "next week, the block when no hour is known, distance counted from the blocks")
     buy.gain = nil
-    T.Eq(MAW.WhenText(buy, "buy"), "next Tue 20-24  1g 2s  in 2d", "no price today, no comparison")
+    T.Eq(MAW.WhenText(buy, "buy"), "next Tue 20-24  1.02g  in 2d", "no price today, no comparison")
     T.Eq(MAW.WhenText(nil, "buy"), nil, "no block, no line")
 
     local lines = MAW.TooltipLines({ sell = sell, buy = buy })

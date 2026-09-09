@@ -40,7 +40,18 @@ function MAW:FireCallbacks(event, ...)
 end
 
 -- Format money in gold/silver/copper
+-- Pure. "1.61g", "85s", "42c": gold to the hundredth, otherwise whole silver, copper
+-- only under a silver. For lines where the coin does not matter, like a tooltip.
+function MAW:FormatMoneyRound(copper)
+    copper = math.floor((tonumber(copper) or 0) + 0.5)
+    local silver = math.floor(copper / 100 + 0.5)
+    if silver >= 100 then return string.format("%.2fg", copper / 10000) end
+    if silver >= 1 then return string.format("%ds", silver) end
+    return string.format("%dc", copper)
+end
+
 function MAW:FormatMoney(copper)
+    copper = copper and math.floor(copper + 0.5) or nil   -- averages arrive as fractions
     if not copper or copper == 0 then
         return "0c"
     end
