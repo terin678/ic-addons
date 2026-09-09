@@ -611,6 +611,15 @@ practice this does not matter: the first time your raid walks past a pack it is 
 and searchable from then on. `/mfd coverage` shows what you have learned that is not
 bundled.
 
+A learned mob is offered for the instance it was seen in and nowhere else, so setting up
+one raid never shows you what you walked past in another. Cycle the filter button beside
+the search box to **this zone** to search everything regardless.
+
+Player pets are never learned and never marked. In a neutral city with both factions
+standing in it, an opposing hunter's pet reads as a live enemy creature with an npc id of
+its own, and without that rule they arrive in the list by the dozen under their owners'
+names.
+
 ## When it is not marking
 
 Run `/mfd debug`. It reports the actual reason in order of how fundamental it is:

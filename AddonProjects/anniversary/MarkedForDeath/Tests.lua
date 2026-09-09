@@ -740,6 +740,7 @@ T.Case("Learned: recording a mob stores its name and zone", function()
     MFD.Learned.Record(db, 22890, "Illidari Nightlord", "Black Temple", 1000)
     T.Eq(db.learnedMobs[22890].name, "Illidari Nightlord", "name")
     T.Eq(db.learnedMobs[22890].zone, "Black Temple", "zone")
+    T.Eq(db.learnedMobs[22890].instanceKey, nil, "no key when none was supplied")
     T.Eq(db.learnedMobs[22890].seenAt, 1000, "timestamp")
 end)
 
@@ -1191,6 +1192,44 @@ T.Case("Search: learned mobs appear alongside bundled ones", function()
     T.Eq(results[1].source, "learned", "marked as derived so the UI can amber it")
 end)
 
+-- Setting up Hyjal, the rule editor offered NotEnuffTuna, Picklesjr, oscar and
+-- a dozen more: hunter pets seen in Shattrath, where both factions stand around
+-- and an opposing player's pet reads as a live enemy creature. A sighting that
+-- cannot be placed in the instance being filtered for is no longer treated as
+-- belonging to all of them.
+T.Case("Search: a mob learned somewhere else is not offered for this raid", function()
+    local learned = {
+        [23326] = { name = "NotEnuffTuna", zone = "Shattrath City" },
+        [17899] = { name = "Shadowy Necromancer", zone = "Hyjal Summit" },
+    }
+
+    local results = MFD.Search("", "HYJAL", {}, learned)
+    T.Eq(#results, 1, "one of the two belongs here")
+    T.Eq(results[1].name, "Shadowy Necromancer", "and it is the one seen in Hyjal")
+end)
+
+T.Case("Search: with no instance filter everything learned is still offered", function()
+    local learned = {
+        [23326] = { name = "NotEnuffTuna", zone = "Shattrath City" },
+        [17899] = { name = "Shadowy Necromancer", zone = "Hyjal Summit" },
+    }
+
+    T.Eq(#MFD.Search("", nil, {}, learned), 2, "no filter, no hiding")
+end)
+
+T.Case("Search: a recorded instance key beats the zone name", function()
+    -- Newer sightings carry the key the rules are filed under, which needs no
+    -- zone-name table and cannot drift out of step with one.
+    local learned = {
+        [17899] = { name = "Shadowy Necromancer", zone = "Hyjal Summit", instanceKey = "HYJAL" },
+        [22873] = { name = "Coilskar General", zone = "Black Temple", instanceKey = "BLACKTEMPLE" },
+    }
+
+    local results = MFD.Search("", "HYJAL", {}, learned)
+    T.Eq(#results, 1, "only the Hyjal one")
+    T.Eq(results[1].npcID, 17899, "by key, not by name")
+end)
+
 T.Case("Search: a bundled entry wins over a learned duplicate", function()
     local bundled = { [100] = { "Illidari Nightlord", "BLACKTEMPLE" } }
     local learned = { [100] = { name = "Illidari Nightlord", zone = "Black Temple" } }
@@ -1206,19 +1245,26 @@ T.Case("Search: results are sorted by name for a stable list", function()
     T.Eq(results[2].name, "Zealot", "second")
 end)
 
-T.Case("Search: a learned mob is filtered by the zone it was seen in", function()
-    -- Learned entries carry a zone name, not an instance key, so the filter
-    -- matches through the instance's display name. A learned mob seen in a
-    -- zone we cannot map is shown rather than hidden: losing it is worse.
+T.Case("Search: a learned mob is filtered by where it was seen", function()
+    -- An older entry carries only a zone name, so the filter matches through
+    -- the instance's display name.
+    --
+    -- A sighting that cannot be placed in the instance being filtered for used
+    -- to be shown anyway, on the reasoning that losing it was worse than
+    -- showing it. That reasoning does not survive contact with a city: every
+    -- hunter pet seen in Shattrath was unplaceable, so every one of them was
+    -- offered as a mob to mark in every raid. Nothing is actually lost, because
+    -- cycling the filter button to "this zone" searches unfiltered.
     local learned = {
         [300] = { name = "Some Trash", zone = "Black Temple" },
         [400] = { name = "Other Trash", zone = "Hyjal Summit" },
         [500] = { name = "Odd Trash", zone = "Somewhere Unmapped" },
     }
     local results = MFD.Search("trash", "BLACKTEMPLE", {}, learned)
-    T.Eq(#results, 2, "the BT one and the unmappable one")
-    T.Eq(results[1].npcID, 500, "Odd sorts before Some")
-    T.Eq(results[2].npcID, 300, "then the BT mob")
+    T.Eq(#results, 1, "only the one seen in Black Temple")
+    T.Eq(results[1].npcID, 300, "the BT mob")
+
+    T.Eq(#MFD.Search("trash", nil, {}, learned), 3, "and unfiltered still finds all three")
 end)
 
 T.Case("Announce: formats icon, intent and owner compactly", function()
