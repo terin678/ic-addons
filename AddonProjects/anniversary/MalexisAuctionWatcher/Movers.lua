@@ -131,6 +131,8 @@ function MAW:GetMovers()
                     kind = "buy", name = itemName, itemID = itemData.itemID, price = today,
                     low = low, high = high, pos = pos, source = source, when = when, itemType = itemType,
                     reason = string.format("%s @ %d%% {%s - %s}", typeTag, pct, fm(low), fm(high)),
+                    -- When what is bought now is expected to sell dear
+                    matures = self.MaturityFor and self:MaturityFor(itemName, "sell", today) or nil,
                 })
             end
             -- Expensive and in hand is a listing whatever the type: spare mats sell too
@@ -153,6 +155,8 @@ function MAW:GetMovers()
                         kind = "sell", name = itemName, itemID = itemData.itemID, price = today,
                         low = low, high = high, pos = pos, owned = owned, source = source, when = when, itemType = itemType,
                         reason = string.format("%s @ %d%% {%s - %s}, hold %d%s", typeTag, pct, fm(low), fm(high), owned, note),
+                        -- When to buy it back cheap
+                        matures = self.MaturityFor and self:MaturityFor(itemName, "buy", today) or nil,
                     })
                 end
             end
@@ -173,6 +177,8 @@ function MAW:GetMovers()
                     reason = string.format("%.0f%% margin, %s/batch, x%d%s", calc.margin,
                         _G.MalexisAuctionWatcherHelpers.FormatMoney(calc.profit), calc.canMake,
                         note and (", " .. note) or ""),
+                    -- When the product is expected to sell dear
+                    matures = self.MaturityFor and self:MaturityFor(recipe.product, "sell", calc.productUnit) or nil,
                 })
             elseif self.debugMode then
                 MAW.Debug("%s", "Convert skipped " .. recipe.name .. ": " .. tostring(note))

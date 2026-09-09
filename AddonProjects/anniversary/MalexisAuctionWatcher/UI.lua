@@ -1812,10 +1812,11 @@ local function BuildMoversPage(page)
         -- Clear of the window's resize grip in the bottom-right corner.
         bottom = 20,
         columns = {
-            { key = "badge",  label = "",        width = 70 },
-            { key = "name",   label = "Item",    width = 260, hit = true },
-            { key = "price",  label = "Price",   width = 90, justify = "RIGHT" },
-            { key = "reason", label = "Why",     width = "flex" },
+            { key = "badge",   label = "",        width = 70 },
+            { key = "name",    label = "Item",    width = 240, hit = true },
+            { key = "price",   label = "Price",   width = 90, justify = "RIGHT" },
+            { key = "matures", label = "Matures", width = 290 },
+            { key = "reason",  label = "Why",     width = "flex" },
         },
         buttons = { { key = "act", label = "", width = 80, template = "SecureActionButtonTemplate" } },
     })
@@ -1833,7 +1834,8 @@ local function BuildMoversPage(page)
         end
         self.hint:SetText(string.format(
             "Buy: any item at or below %d%% of its range.   Convert: recipes above %d%% margin with mats on hand%s."
-            .. "\nList: any item at or above %d%% of range that you hold.",
+            .. "\nList: any item at or above %d%% of range that you hold.   Matures: the Schedule's next block on the other "
+            .. "side of the trade, and the gain from here to its target.",
             MAW:MoverSetting("moverBuyPct") * 100, MAW:MoverSetting("moverMinMargin"), gate,
             MAW:MoverSetting("moverSellPct") * 100))
 
@@ -1872,6 +1874,20 @@ local function BuildMoversPage(page)
             t:Set(row, "price",
                 FormatMoney(entry.kind == "convert" and entry.profit or entry.price),
                 entry.kind == "convert" and COLOR_LOW or WHITE)
+            -- The other side of the trade, from the Schedule: when a buy or a craft
+            -- is expected to sell dear, or when a sale can be bought back cheap.
+            local m = entry.matures
+            if m then
+                local verb = (entry.kind == "sell") and "restock" or "sell"
+                t:Set(row, "matures", string.format("%s %s%s %s%s %s%s, %s",
+                    verb, m.nextWeek and "next " or "", MAW.WEEKDAY_NAMES[m.wday], MAW.BLOCK_LABELS[m.block],
+                    m.hour and string.format(" %02d:00", m.hour) or "",
+                    (verb == "sell" and ">= " or "<= ") .. FormatMoney(m.expected),
+                    m.gain and string.format(" %+.0f%%", m.gain * 100) or "", m.away),
+                    (entry.kind == "sell") and WHITE or COLOR_LOW)
+            else
+                t:Set(row, "matures", "no block on the schedule yet", DIM)
+            end
             t:Set(row, "reason", entry.reason, DIM)
 
             local btn = row.buttons.act

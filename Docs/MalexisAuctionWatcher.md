@@ -302,6 +302,12 @@ Three lists, each built from the data on the other tabs:
   slot, and fills start and buyout from today's price undercut by 1 copper per unit. You
   set the duration and press Create Auction.
 
+**Matures** is the other side of each trade, borrowed from the Schedule tab: for a Buy or
+a Convert, the item's or product's next block expected to sell dear, with its hour, target,
+the gain from today's price to that target, and how far off it is ("in 3d 16h"); for a
+List, the next block expected cheap enough to buy back. A row reads "no block on the
+schedule yet" until the item has a week profile.
+
 Hover a name for the same tooltips as the other tabs. Buy and List need the auction house
 open. "Refresh Table" recomputes without scanning.
 

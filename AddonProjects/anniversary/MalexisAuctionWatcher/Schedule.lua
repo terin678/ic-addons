@@ -403,6 +403,48 @@ function MAW.ComposeSchedule(obs, now, opts)
 end
 
 --------------------------------------------------------------------------------
+-- Pure: the next block on the other side of a trade
+--------------------------------------------------------------------------------
+
+--[[
+Pure. From a slot, the item's next block carrying `wanted` ("buy" or "sell") in week
+order, wrapping into next week when this week has none left. Returns
+    { slot, wday, block, hour, expected, nextWeek, blocksAway }
+or nil when the item has no such block at all. blocksAway is how many 4-hour blocks
+lie between: 0 is the block we are in, 42 a full week.
+]]
+function MAW.NextAction(slots, wanted, fromSlot, weekStart)
+    local fromPos = SlotPosition(fromSlot, weekStart)
+    local best, first
+    for i = 1, SLOTS do
+        local s = slots[i]
+        if s and s.action == wanted then
+            local pos, wday, block = SlotPosition(i, weekStart)
+            local c = { slot = i, wday = wday, block = block, hour = s.hour, expected = s.expected, pos = pos }
+            if pos > fromPos and (not best or pos < best.pos) then best = c end
+            if not first or pos < first.pos then first = c end
+        end
+    end
+    local hit, nextWeek = best, false
+    if not hit then hit, nextWeek = first, true end
+    if not hit then return nil end
+    hit.nextWeek = nextWeek
+    hit.blocksAway = nextWeek and (hit.pos - fromPos + SLOTS) or (hit.pos - fromPos)
+    hit.pos = nil
+    return hit
+end
+
+-- Pure. "now", "in 4h", "in 1d 8h": how far away a block is, in whole blocks.
+function MAW.DescribeAway(blocksAway)
+    if not blocksAway or blocksAway <= 0 then return "now" end
+    local hours = blocksAway * BLOCK_HOURS
+    local days, rest = math.floor(hours / 24), hours % 24
+    if days == 0 then return string.format("in %dh", rest) end
+    if rest == 0 then return string.format("in %dd", days) end
+    return string.format("in %dd %dh", days, rest)
+end
+
+--------------------------------------------------------------------------------
 -- Pure: the week's plan across items
 --------------------------------------------------------------------------------
 
@@ -450,14 +492,9 @@ function MAW.WeekPlan(items, opts)
                 table.sort(actions, function(a, b) return a.pos < b.pos end)
                 local function Counter(a)
                     local wanted = (a.action == "buy") and "sell" or "buy"
-                    local first
-                    for _, b in ipairs(actions) do
-                        if b.action == wanted then
-                            if b.pos > a.pos then return b, false end
-                            if not first then first = b end
-                        end
-                    end
-                    return first, first ~= nil          -- next week's, when there is one
+                    local c = MAW.NextAction(sc.slots, wanted, a.slot, weekStart)
+                    if c then c.action = wanted end
+                    return c, c and c.nextWeek or false
                 end
 
                 for _, a in ipairs(actions) do
@@ -575,6 +612,26 @@ function MAW:GetWeekPlan()
         }
     end
     return MAW.WeekPlan(items, opts)
+end
+
+--[[
+When a trade made now comes good, for the Movers tab: the item's next block carrying
+`wanted` from the block we are in, with the gain between `price` (what it costs or
+fetches now) and that block's target. nil when the item has no such block yet.
+    { slot, wday, block, hour, expected, nextWeek, blocksAway, away, gain }
+]]
+function MAW:MaturityFor(itemName, wanted, price)
+    local schedule = self:GetSchedule(itemName)
+    if not schedule or schedule.flat then return nil end
+    local sc = self:ScheduleSettings()
+    local next = MAW.NextAction(schedule.slots, wanted, schedule.currentSlot, sc.weekStart)
+    if not next then return nil end
+    next.away = MAW.DescribeAway(next.blocksAway)
+    if price and price > 0 and next.expected and next.expected > 0 then
+        next.gain = (wanted == "sell") and (next.expected - price) / price
+            or (price - next.expected) / next.expected
+    end
+    return next
 end
 
 -- The window the store keeps, one week beyond what the grid reads.

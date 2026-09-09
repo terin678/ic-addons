@@ -544,6 +544,41 @@ T.Case("Schedule: the History buckets model a block until real weeks exist", fun
     T.Eq(s.slots[(2 - 1) * 6 + 1].expected, nil, "Monday, with nothing to go on, stays empty")
 end)
 
+T.Case("Schedule: the next block on the other side of a trade, and how far off it is", function()
+    local slots = {}
+    for i = 1, 42 do slots[i] = {} end
+    slots[18] = { action = "buy", expected = 100, hour = 21 }        -- Tue 20-24, position 6
+    slots[40] = { action = "sell", expected = 300, hour = 13 }       -- Sat 12-16, position 28
+    slots[10] = { action = "sell", expected = 250 }                  -- Mon 12-16, position 40
+
+    local n = MAW.NextAction(slots, "sell", 18, 3)
+    T.Eq(n.slot, 40, "from Tuesday night, the Saturday sell comes first")
+    T.Eq(n.nextWeek, false, "this week")
+    T.Eq(n.blocksAway, 22, "twenty-two blocks on")
+    T.Eq(MAW.DescribeAway(n.blocksAway), "in 3d 16h", "which is three days and change")
+
+    n = MAW.NextAction(slots, "sell", 41, 3)
+    T.Eq(n.slot, 10, "from Saturday evening, Monday's sell is next")
+    n = MAW.NextAction(slots, "sell", 11, 3)
+    T.Eq(n.slot, 40, "from Monday evening the week wraps to Saturday")
+    T.Eq(n.nextWeek, true, "next week's")
+    T.Eq(n.blocksAway, 29, "counted through the week's end")
+
+    n = MAW.NextAction(slots, "buy", 40, 3)
+    T.Eq(n.slot, 18, "a sell's other side is next Tuesday's buy")
+    T.Eq(n.nextWeek, true, "next week")
+    T.Eq(n.hour, 21, "with its hour")
+
+    T.Eq(MAW.NextAction(slots, "buy", 18, 3).slot, 18, "the only buy block, from itself, is a week away")
+    T.Eq(MAW.NextAction(slots, "buy", 18, 3).blocksAway, 42, "a whole week")
+    T.Eq(MAW.NextAction({}, "sell", 18, 3), nil, "no blocks, no answer")
+
+    T.Eq(MAW.DescribeAway(0), "now", "this block")
+    T.Eq(MAW.DescribeAway(1), "in 4h", "the next one")
+    T.Eq(MAW.DescribeAway(6), "in 1d", "a day exactly")
+    T.Eq(MAW.DescribeAway(nil), "now", "and nothing is now")
+end)
+
 T.Case("Schedule: the ring keeps the last weeks and the last few hundred, oldest first", function()
     local obs = { 1, 10, 5, 11, 9, 12 }
     MAW.PruneObs(obs, 5)
