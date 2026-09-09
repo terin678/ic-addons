@@ -45,10 +45,85 @@ function MAW.WhenText(m, verb)
         m.away or MAW.DescribeAway(m.blocksAway), GainText(verb, m.gain))
 end
 
+--------------------------------------------------------------------------------
+-- Pure: is the item worth more converted?
+--------------------------------------------------------------------------------
+
+local COULD = { r = 1, g = 0.82, b = 0 }
+local NOT = { r = 1, g = 0.5, b = 0.5 }
+local MAX_CONVERT_LINES = 3
+
+--[[
+Pure. Whether a recipe's batch is worth more as the product than as the materials it
+eats, from ComputeRecipeProfit's figures: the materials sold as they are net their cost
+less the house cut, the product nets `ahNet`. Returns { pct, grade } with grade "does"
+(at or over the Movers margin), "could" (over nothing but under it) or "not"; nil while
+a price is missing.
+]]
+function MAW.ConvertVerdict(calc, cut, minMargin)
+    if not calc or not calc.complete or not calc.ahNet or not calc.matCost or calc.matCost <= 0 then return nil end
+    local asIs = calc.matCost * (1 - (cut or 0))
+    if asIs <= 0 then return nil end
+    local pct = (calc.ahNet - asIs) / asIs * 100
+    local grade = (pct <= 0 and "not") or (pct < (minMargin or 10) and "could") or "does"
+    return { pct = pct, grade = grade }
+end
+
+-- Pure. "10 Mote of Life", "1 Primal Earth +4 more": what a recipe eats, briefly.
+function MAW.MaterialsText(recipe)
+    local mats = recipe.materials or {}
+    if #mats == 0 then return "?" end
+    local first = string.format("%d %s", mats[1].count or 1, mats[1].item)
+    if #mats == 1 then return first end
+    return string.format("%s +%d more", first, #mats - 1)
+end
+
+--[[
+Pure. One recipe as one tooltip line, { left, right, color }. `entry` is
+{ role = "material" | "product", recipe, verdict, missing }: a material's line says what
+converting it would do, a product's says whether it beat its materials.
+]]
+function MAW.ConvertLine(entry)
+    local recipe, v = entry.recipe, entry.verdict
+    local left = entry.role == "product" and ("From " .. MAW.MaterialsText(recipe)) or ("Convert to " .. recipe.product)
+    if not v then
+        local missing = entry.missing and entry.missing[1]
+        return { left, missing and ("no price for " .. missing) or "not priced yet", NOTE }
+    end
+    local pct = string.format("%+.0f%%", v.pct)
+    local right, color
+    if entry.role == "product" then
+        if v.grade == "does" then right, color = pct .. " over its materials", SELL
+        elseif v.grade == "could" then right, color = pct .. " over its materials, barely", COULD
+        else right, color = pct .. ", the materials fetch more", NOT end
+    else
+        if v.grade == "does" then right, color = pct .. " over selling as is", SELL
+        elseif v.grade == "could" then right, color = pct .. ", barely worth the batch", COULD
+        else right, color = pct .. ", sell as is", NOT end
+    end
+    return { left, right, color }
+end
+
+-- Pure. The recipes worth a line, best first, materials before products, at most a few.
+function MAW.ConvertLines(entries)
+    local sorted = {}
+    for _, e in ipairs(entries or {}) do sorted[#sorted + 1] = e end
+    table.sort(sorted, function(a, b)
+        if a.role ~= b.role then return a.role == "material" end
+        local pa, pb = a.verdict and a.verdict.pct or -math.huge, b.verdict and b.verdict.pct or -math.huge
+        if pa ~= pb then return pa > pb end
+        return (a.recipe.name or "") < (b.recipe.name or "")
+    end)
+    local lines = {}
+    for i = 1, math.min(#sorted, MAX_CONVERT_LINES) do lines[i] = MAW.ConvertLine(sorted[i]) end
+    return lines
+end
+
 --[[
 Pure. The lines the tooltip gets for one item, as { left, right, color }; nil for an
 item that is not tracked (info == nil). A tracked item with no block on either side
-gets one dim line saying why, so the tooltip still tells you MAW knows the item.
+gets one dim line saying why, so the tooltip still tells you MAW knows the item. Then
+one line per recipe the item is part of, saying whether converting pays.
 ]]
 function MAW.TooltipLines(info)
     if not info then return nil end
@@ -58,12 +133,35 @@ function MAW.TooltipLines(info)
     if #lines == 0 then
         lines[1] = { "Week pattern", info.flat and "flat, nothing to time" or "not enough weeks yet", NOTE }
     end
+    for _, line in ipairs(MAW.ConvertLines(info.convert)) do lines[#lines + 1] = line end
     return lines
 end
 
 --------------------------------------------------------------------------------
 -- The item's answer, cached briefly
 --------------------------------------------------------------------------------
+
+-- Every recipe the item is part of, with its verdict, for ConvertLines.
+function MAW:ConvertInfo(itemName)
+    local out = {}
+    local cut, minMargin = self:GetAHCut(), self:MoverSetting("moverMinMargin")
+    for _, recipe in ipairs(self:GetRecipes()) do
+        local role
+        if recipe.product == itemName then
+            role = "product"
+        else
+            for _, mat in ipairs(recipe.materials or {}) do
+                if mat.item == itemName then role = "material" break end
+            end
+        end
+        if role then
+            local calc = self:ComputeRecipeProfit(recipe)
+            out[#out + 1] = { role = role, recipe = recipe, missing = calc.missing,
+                verdict = MAW.ConvertVerdict(calc, cut, minMargin) }
+        end
+    end
+    return out
+end
 
 function MAW:TooltipInfo(itemName)
     local db = self:GetActiveDB()
@@ -81,6 +179,7 @@ function MAW:TooltipInfo(itemName)
         info.sell = self:MaturityFor(itemName, "sell", price, schedule)
         info.buy = self:MaturityFor(itemName, "buy", price, schedule)
     end
+    info.convert = self:ConvertInfo(itemName)
     cache[itemName] = { at = now, info = info }
     return info
 end

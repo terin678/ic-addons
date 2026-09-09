@@ -632,6 +632,58 @@ T.Case("Tooltip: the next sell and buy blocks read as one line each", function()
     T.Eq(MAW.TooltipLines(nil), nil, "an untracked item gets nothing")
 end)
 
+T.Case("Tooltip: whether an item is worth more converted than sold as it is", function()
+    -- Ten motes at 1g each sold as they are net 9.5g after the cut; the primal nets
+    -- 11.4g (12g less the cut), so converting is 20% better.
+    local calc = { complete = true, matCost = 100000, ahNet = 114000 }
+    local v = MAW.ConvertVerdict(calc, 0.05, 10)
+    T.Near(v.pct, 20, 0.01, "twenty percent over selling the motes")
+    T.Eq(v.grade, "does", "at or over the Movers margin, it does pay")
+    T.Eq(MAW.ConvertVerdict({ complete = true, matCost = 100000, ahNet = 98000 }, 0.05, 10).grade, "could",
+        "over nothing but under the margin, it could")
+    T.Eq(MAW.ConvertVerdict({ complete = true, matCost = 100000, ahNet = 90000 }, 0.05, 10).grade, "not",
+        "under selling as is, it does not")
+    T.Eq(MAW.ConvertVerdict({ complete = false, matCost = 100000, missing = { "Primal Life" } }, 0.05, 10), nil,
+        "no verdict while a price is missing")
+    T.Eq(MAW.ConvertVerdict({ complete = true, matCost = 0, ahNet = 500 }, 0.05, 10), nil, "nor from free materials")
+
+    local motes = { name = "Mote of Life -> Primal Life", product = "Primal Life",
+        materials = { { item = "Mote of Life", count = 10 } } }
+    local might = { name = "Primal Might", product = "Primal Might",
+        materials = { { item = "Primal Earth", count = 1 }, { item = "Primal Water", count = 1 },
+                      { item = "Primal Air", count = 1 } } }
+    T.Eq(MAW.MaterialsText(motes), "10 Mote of Life", "one material, named with its count")
+    T.Eq(MAW.MaterialsText(might), "1 Primal Earth +2 more", "several, the first and how many more")
+
+    local line = MAW.ConvertLine({ role = "material", recipe = motes, verdict = v })
+    T.Eq(line[1], "Convert to Primal Life", "a material's line names the product")
+    T.Eq(line[2], "+20% over selling as is", "and what converting does")
+    line = MAW.ConvertLine({ role = "product", recipe = motes, verdict = { pct = -12, grade = "not" } })
+    T.Eq(line[1], "From 10 Mote of Life", "a product's line names its materials")
+    T.Eq(line[2], "-12%, the materials fetch more", "and says the motes were the better sale")
+    line = MAW.ConvertLine({ role = "material", recipe = motes, missing = { "Primal Life" } })
+    T.Eq(line[2], "no price for Primal Life", "a missing price is named")
+
+    -- Materials first, best first, and never more than three
+    local entries = {
+        { role = "product", recipe = motes, verdict = { pct = 20, grade = "does" } },
+        { role = "material", recipe = { name = "b", product = "B", materials = {} }, verdict = { pct = 3, grade = "could" } },
+        { role = "material", recipe = { name = "a", product = "A", materials = {} }, verdict = { pct = 15, grade = "does" } },
+        { role = "material", recipe = { name = "c", product = "C", materials = {} }, verdict = nil },
+        { role = "material", recipe = { name = "d", product = "D", materials = {} }, verdict = { pct = -4, grade = "not" } },
+    }
+    local lines = MAW.ConvertLines(entries)
+    T.Eq(#lines, 3, "three at most")
+    T.Eq(lines[1][1], "Convert to A", "the best material first")
+    T.Eq(lines[2][1], "Convert to B", "then the next")
+    T.Eq(lines[3][1], "Convert to D", "a loss still outranks no verdict")
+    T.Eq(#MAW.ConvertLines(nil), 0, "no recipes, no lines")
+
+    local all = MAW.TooltipLines({ convert = { entries[1] } })
+    T.Eq(all[1][1], "Week pattern", "the week comes first")
+    T.Eq(all[2][1], "From 10 Mote of Life", "then the recipe")
+end)
+
 T.Case("Window scale: a usable percentage survives, an unusable one is clamped", function()
     local UI = _G.MalexisAuctionWatcherUI
     if not UI or not UI.ClampScale then

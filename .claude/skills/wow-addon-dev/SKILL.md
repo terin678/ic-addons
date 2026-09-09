@@ -113,7 +113,7 @@ Four things, in order:
    | `/cm test` (CutMaster) | 135 |
    | `/gr test` (GuildRecruitment) | 31 |
    | `/ictpl test` (ICTemplate) | 27 |
-   | `/maw test` (MalexisAuctionWatcher) | 22 |
+   | `/maw test` (MalexisAuctionWatcher) | 23 |
    | `/ast test` (AuctionatorSellingTweaks) | 4 |
    | `/mfd selftest` (MarkedForDeath) | 397 |
 

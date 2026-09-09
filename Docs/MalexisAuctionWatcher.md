@@ -389,6 +389,18 @@ profile on the Schedule before either line appears; until then the block says "n
 weeks yet", and an item whose week is flat says so. Items MAW is not tracking are left
 alone. Auctionator's and TSM's own tooltip lines are untouched; MAW's come after them.
 
+**Is it worth converting?** When the item is a material in a recipe MAW knows, one more
+line per recipe says whether the batch is worth more as the product than sold as it is:
+"Convert to Primal Life: +20% over selling as is" in green when the gain clears the
+Movers margin, in gold with "barely worth the batch" when it is over nothing but under
+that margin, and in red with "sell as is" when converting loses. The comparison is the
+product's net after the house cut against the materials' own net after the cut, at
+today's prices. A product gets the mirror line, "From 10 Mote of Life: +20% over its
+materials", so a stack of primals says whether the motes would have fetched more. A
+recipe missing a price says which one. At most three recipes are listed, the best
+first, so which mote is worth turning into a primal is on the tooltip rather than in
+your memory.
+
 Switch it off on the Settings tab or with the command.
 
 ```
