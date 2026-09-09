@@ -412,9 +412,8 @@ local function BuildSchedulePage(page)
                 or "Nothing tracked."
         end
         self.hint:SetText(string.format(
-            "Week of %s, %s.  %s\nEach row: check the price in that block and act if it is on the right side of the target. "
-            .. "Targets come from %d complete week%s of scans in the block, or until then (~) are modelled from the "
-            .. "History tab's weekday and hour averages. A hit is within %d%%.",
+            "Week of %s, %s.  %s\nCheck the price in the block and act on the right side of the target. Targets: %d complete "
+            .. "week%s of scans in the block, else modelled (~) from the History tab. A hit is within %d%%.",
             startText, clockText, summary, sc.minWeeks, sc.minWeeks == 1 and "" or "s", sc.tolerancePct))
     end
 
