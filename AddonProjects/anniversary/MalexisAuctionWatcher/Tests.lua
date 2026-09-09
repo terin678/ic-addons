@@ -600,6 +600,31 @@ T.Case("Schedule: the ring keeps the last weeks and the last few hundred, oldest
     T.Eq(seeded[1] .. "," .. seeded[2] .. "," .. seeded[3] .. "," .. seeded[4], "5,11,9,12", "oldest first, bid where there was no buyout")
 end)
 
+T.Case("Tooltip: the next sell and buy blocks read as one line each", function()
+    local sell = { wday = 7, block = 4, hour = 13, expected = 14500, nextWeek = false, away = "in 3d 16h", gain = 0.12 }
+    T.Eq(MAW.WhenText(sell, "sell"), "Sat 13:00  1g 45s  in 3d 16h, 12% over now",
+        "day, hour, target, distance, and the gain in words a seller wants")
+    sell.gain = -0.08
+    T.Eq(MAW.WhenText(sell, "sell"), "Sat 13:00  1g 45s  in 3d 16h, 8% under now", "a sell below today reads as under")
+
+    -- A buy's gain is positive when the block is cheaper, so the same sign reads "under"
+    local buy = { wday = 3, block = 6, expected = 10200, nextWeek = true, blocksAway = 12, gain = 0.15 }
+    T.Eq(MAW.WhenText(buy, "buy"), "next Tue 20-24  1g 2s  in 2d, 15% under now",
+        "next week, the block when no hour is known, distance counted from the blocks")
+    buy.gain = nil
+    T.Eq(MAW.WhenText(buy, "buy"), "next Tue 20-24  1g 2s  in 2d", "no price today, no comparison")
+    T.Eq(MAW.WhenText(nil, "buy"), nil, "no block, no line")
+
+    local lines = MAW.TooltipLines({ sell = sell, buy = buy })
+    T.Eq(#lines, 2, "one line a side")
+    T.Eq(lines[1][1], "Sell when", "the sell first")
+    T.Eq(lines[2][1], "Buy when", "then the buy")
+    T.Eq(MAW.TooltipLines({ buy = buy })[1][1], "Buy when", "a side with no block is left out")
+    T.Eq(MAW.TooltipLines({})[1][2], "not enough weeks yet", "a tracked item with no profile says why")
+    T.Eq(MAW.TooltipLines({ flat = true })[1][2], "flat, nothing to time", "and so does a flat one")
+    T.Eq(MAW.TooltipLines(nil), nil, "an untracked item gets nothing")
+end)
+
 T.Case("Window scale: a usable percentage survives, an unusable one is clamped", function()
     local UI = _G.MalexisAuctionWatcherUI
     if not UI or not UI.ClampScale then

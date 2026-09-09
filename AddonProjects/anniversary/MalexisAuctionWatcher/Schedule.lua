@@ -617,11 +617,12 @@ end
 --[[
 When a trade made now comes good, for the Movers tab: the item's next block carrying
 `wanted` from the block we are in, with the gain between `price` (what it costs or
-fetches now) and that block's target. nil when the item has no such block yet.
+fetches now) and that block's target. nil when the item has no such block yet. Pass
+`schedule` when you already hold the item's week, to save composing it again.
     { slot, wday, block, hour, expected, nextWeek, blocksAway, away, gain }
 ]]
-function MAW:MaturityFor(itemName, wanted, price)
-    local schedule = self:GetSchedule(itemName)
+function MAW:MaturityFor(itemName, wanted, price, schedule)
+    schedule = schedule or self:GetSchedule(itemName)
     if not schedule or schedule.flat then return nil end
     local sc = self:ScheduleSettings()
     local next = MAW.NextAction(schedule.slots, wanted, schedule.currentSlot, sc.weekStart)

@@ -378,12 +378,30 @@ tab fills in over its first weeks and is not something to judge on day one.
 /maw schedule
 ```
 
+## Item tooltips
+
+Hover a tracked item anywhere, in your bags, the bank, the auction house or a chat link,
+and the tooltip ends with a short block from MAW: **Sell when** and **Buy when**, the
+item's next dear and cheap blocks with their target price, how far off they are, and how
+the target compares with today's price ("12% over now" for a sell, "15% under now" for a
+buy). They are the same answers as the Stores tab's two columns, so an item needs a week
+profile on the Schedule before either line appears; until then the block says "not enough
+weeks yet", and an item whose week is flat says so. Items MAW is not tracking are left
+alone. Auctionator's and TSM's own tooltip lines are untouched; MAW's come after them.
+
+Switch it off on the Settings tab or with the command.
+
+```
+/maw tooltip on|off
+```
+
 ## Settings
 
 One tab for what used to be a list of slash commands: the Auctionator and TSM feeds; the
 auction house cut, scan-on-open and days of history; the Movers buy and list percentages,
 minimum margin and sale rate; and the Schedule's clock, first day of the week, hit
-tolerance, weeks of expectation, weeks a block needs, and the set-aside floor. Numbers
+tolerance, weeks of expectation, weeks a block needs, the set-aside floor, and whether item
+tooltips carry the next sell and buy blocks. Numbers
 apply on Enter and say what they did; the commands keep working and write the same
 settings.
 
@@ -395,6 +413,7 @@ settings.
 
 ```
 /maw minsale <percent>    TSM sale rate a product needs before Movers suggests converting
+/maw tooltip on|off       the next sell and buy blocks on item tooltips
 /maw list                 list tracked items
 /maw prices <item>        last 10 entries for an item
 /maw add <name or link>   track an item (materials tab)

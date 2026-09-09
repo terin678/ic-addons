@@ -6,7 +6,7 @@
 -- `local addonName, ns = ...` pair. LibICCore attaches to that table just the same, so
 -- MAW.Print, MAW.db, MAW.Util and the rest are the same names the other addons use.
 local addonName = "MalexisAuctionWatcher"
-local VERSION = "1.23.0"
+local VERSION = "1.24.0"
 local Core = LibStub("LibICCore-1.0")
 local MAW = {}
 
@@ -154,6 +154,8 @@ local Defaults = {
         -- set aside, and the day the week starts on (wday, 3 = Tuesday, raid reset).
         schedule = { clock = "server", tolerancePct = 10, weeks = 8, minWeeks = 2,
                      minReliabilityPct = 50, weekStart = 3 },
+        -- The next sell and buy blocks on a tracked item's game tooltip
+        tooltip = true,
     },
 }
 
@@ -197,6 +199,7 @@ local HELP = {
     { "movers", "what to buy, convert, and list right now" },
     { "schedule", "this week's expected buys and sells, and whether last week's held" },
     { "settings", "every setting on one tab" },
+    { "tooltip on | off", "the next sell and buy blocks on item tooltips" },
     { "sources", "show or toggle the Auctionator and TSM price feeds" },
     { "retention <days>", "days of price history to keep" },
     { "ahcut <percent>", "auction house cut used for net values (default 5)" },
@@ -272,6 +275,15 @@ COMMANDS.schedule = function()
 end
 COMMANDS.settings = function()
     if MalexisAuctionWatcherUI then MalexisAuctionWatcherUI:ShowTab("settings") end
+end
+COMMANDS.tooltip = function(rest)
+    local state = (rest or ""):lower()
+    if state == "on" or state == "off" then
+        MAW.db.settings.tooltip = (state == "on")
+        if MAW.ClearTooltipCache then MAW.ClearTooltipCache() end
+    end
+    MAW.Printf("item tooltips %s the next sell and buy blocks. /maw tooltip on|off",
+        MAW.db.settings.tooltip == false and "leave out" or "show")
 end
 COMMANDS.history = function(rest)
     if MalexisAuctionWatcherUI then
@@ -425,6 +437,10 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
     elseif event == "PLAYER_LOGIN" then
         -- The realm's clock against this PC's, for the Schedule tab
         if MAW.RefreshServerOffset then MAW.RefreshServerOffset() end
+        -- The next sell and buy blocks on item tooltips
+        if MAW.InstallTooltip and not MAW.InstallTooltip() then
+            MAW.Print("this client offers no item tooltip hook; tooltips are unchanged.")
+        end
         -- Other addons are loaded by now; detect optional price sources
         if MAW.DetectSources then
             MAW:DetectSources()
