@@ -3449,13 +3449,28 @@ T.Case("CombatLog: heroics only when asked for, and only heroics", function()
     T.Eq(CL.ShouldLog("party", 173, on), false, "a normal dungeon is still no")
 end)
 
-T.Case("CombatLog: never stops a log it did not start", function()
+T.Case("CombatLog: never stops a log it has no business stopping", function()
     -- The rule that stops two addons cutting each other's files short.
-    T.Eq(CL.Decide(false, true, false), nil, "somebody else is logging, leave it")
+    T.Eq(CL.Decide(false, true, false), nil, "logging where we would not, and not ours: leave it")
     T.Eq(CL.Decide(false, true, true), "stop", "ours, and we have left the raid")
     T.Eq(CL.Decide(true, false, false), "start", "should be logging and nothing is")
-    T.Eq(CL.Decide(true, true, true), nil, "already running, nothing to do")
+    T.Eq(CL.Decide(true, true, true), nil, "ours and already running, nothing to do")
     T.Eq(CL.Decide(false, false, false), nil, "nothing to do at all")
+end)
+
+-- A reload inside a raid used to lose the claim on a running log for the rest
+-- of the night: nothing would close it on the way out and the file kept growing
+-- while you quested. Somewhere the settings say to log, taking it over is the
+-- behaviour that was asked for whoever opened it.
+T.Case("CombatLog: a log already running where we would log is adopted", function()
+    T.Eq(CL.Decide(true, true, false), "adopt", "reloaded in a raid with logging on")
+    T.Eq(CL.Decide(true, true, true), nil, "and only once, not every zone event after")
+end)
+
+T.Case("CombatLog: nothing is adopted where the settings say not to log", function()
+    -- shouldLog false covers both being outside a raid and having the setting
+    -- switched off, so a log started by hand is never taken over.
+    T.Eq(CL.Decide(false, true, false), nil, "hands off")
 end)
 
 -- One limiter owns every outbound message. Before it there was a throttle per

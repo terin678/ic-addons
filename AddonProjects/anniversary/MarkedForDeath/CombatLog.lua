@@ -4,9 +4,8 @@
 -- Same manner as MRT's AutoLogging, including the two details that make it work
 -- rather than nearly work. It decides two seconds after the zone event, because
 -- GetInstanceInfo is not reliable the instant a loading screen ends. And it
--- only ever switches logging off if it was the one that switched it on, so it
--- cannot stamp on somebody who turned it on by hand or on another addon that
--- wants it running.
+-- only ever switches logging off where it would have switched it on, so it
+-- cannot stamp on a log somebody is keeping for a reason of their own.
 local MFD = _G.MarkedForDeath or {}
 
 MFD.CombatLog = MFD.CombatLog or {}
@@ -40,16 +39,27 @@ function CombatLog.ShouldLog(zoneType, difficultyID, settings)
     return false
 end
 
--- What to do given where we are, whether the game is logging, and whether we
--- are the ones who started it. Returns "start", "stop" or nil. Pure.
+-- What to do given where we are, whether the game is logging, and whether
+-- stopping it is ours to do. Returns "start", "adopt", "stop" or nil. Pure.
 --
--- The nil cases are the important ones. Already logging and it is not ours:
--- leave it alone, somebody else wants it. Not logging and we should not be:
--- nothing to do. Doing either of those anyway is how two addons end up fighting
--- over one switch and the log ends up truncated.
+-- "adopt" is the reload case. The claim is deliberately not saved, so after a
+-- reload inside a raid the addon no longer believes the running log is its own
+-- and will not close it on the way out, leaving the file growing all evening.
+-- Taking it over is safe precisely where this would have started one itself: if
+-- the settings say log here, then whoever opened the file, closing it on the way
+-- out is the behaviour that was asked for. Somewhere the settings say not to
+-- log, shouldLog is false, nothing is adopted and nothing is touched, which is
+-- what keeps a log somebody started by hand out of reach.
+--
+-- The nil cases still matter. Logging where we should not be and it is not ours
+-- to stop: leave it. Not logging and we should not be: nothing to do.
 function CombatLog.Decide(shouldLog, isLogging, isOurs)
     if shouldLog and not isLogging then
         return "start"
+    end
+
+    if shouldLog and isLogging and not isOurs then
+        return "adopt"
     end
 
     if not shouldLog and isLogging and isOurs then
@@ -61,9 +71,10 @@ end
 
 -- ---------------------------------------------------------------- client --
 
--- Whether this addon is the one that turned logging on. Not saved: a reload
--- ends our claim, because after it we genuinely do not know who started the
--- file that is currently open.
+-- Whether closing the running log is this addon's to do. Starting one sets it,
+-- and so does finding one already running somewhere we would have started it.
+-- Not saved, because a reload genuinely does not know what it inherited; it is
+-- worked out again on the first Evaluate after the reload instead.
 CombatLog.isOurs = false
 
 local function settings()
@@ -99,6 +110,14 @@ function CombatLog.Evaluate()
         MFD.Print("|cff66ff66combat logging on|r for " .. tostring(zoneType or "here")
             .. ". The file is in Logs\\WoWCombatLog.txt.")
         MFD.Log.Add(MFD.Log.KINDS.LOGGING, "combat logging started in " .. tostring(zoneType))
+    elseif action == "adopt" then
+        -- Logged, not printed. This happens on every reload inside a raid and
+        -- nothing observable changes at the time; the whole effect is that the
+        -- log is closed later instead of left running.
+        CombatLog.isOurs = true
+        MFD.Log.Add(MFD.Log.KINDS.LOGGING,
+            "combat logging was already on in " .. tostring(zoneType)
+                .. ", taken over so it stops on the way out")
     elseif action == "stop" then
         pcall(LoggingCombat, false)
         CombatLog.isOurs = false
