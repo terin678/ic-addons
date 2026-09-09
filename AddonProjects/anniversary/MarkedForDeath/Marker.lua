@@ -522,7 +522,7 @@ end
 
 -- Recomputes the desired map from the current candidates, rules and roles.
 function Marker:Desired()
-    local roles = Marker.ResolvedRoles(MFD.db.rolePlan)
+    local roles = Marker.ResolvedRoles(MFD.Roles.PlanFor(MFD.db, MFD.Rules.currentInstanceKey))
     local candidates = MFD.Candidates.ToList(MFD.Candidates.set)
     -- Rules may be filed by npcID or by name; the allocator only thinks in
     -- ids, so name rules are matched onto the mobs actually on screen first.
@@ -615,7 +615,7 @@ function Marker:Diagnose()
     end
 
     local roleCount = 0
-    for _ in pairs(MFD.db.rolePlan) do
+    for _ in pairs((MFD.Roles.PlanFor(MFD.db, MFD.Rules.currentInstanceKey))) do
         roleCount = roleCount + 1
     end
 

@@ -10,7 +10,7 @@ local ADDON_NAME = "MarkedForDeath"
 local Core = LibStub("LibICCore-1.0")
 
 -- Must match ## Version: in the toc and the packaged zip name.
-MFD.VERSION = "1.24.0"
+MFD.VERSION = "1.25.0"
 
 -- Bumped only when the saved-variable shape changes in a way that needs a
 -- migration. See MIGRATIONS.
@@ -41,6 +41,9 @@ end
 
 local DB_DEFAULTS = {
     rolePlan = {},
+    -- Per instance overrides, keyed the same way rules are. Empty means every
+    -- zone follows rolePlan, which is what every install did before this.
+    rolePlans = {},
     rules = {},
     rulesVersion = { counter = 0, hash = "" },
     designatedLead = { name = "", setBy = "", setAt = 0 },

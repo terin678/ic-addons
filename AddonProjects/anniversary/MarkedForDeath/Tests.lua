@@ -1267,6 +1267,70 @@ T.Case("Search: a learned mob is filtered by where it was seen", function()
     T.Eq(#MFD.Search("trash", nil, {}, learned), 3, "and unfiltered still finds all three")
 end)
 
+-- Hyjal wants most of its icons on kill targets and Black Temple wants sheep
+-- and banish. There was one plan for both, so it got edited on the way in.
+T.Case("Roles: a raid without a plan of its own follows the default", function()
+    local db = { rolePlan = { [8] = { intent = "KILL", ordinal = 1 } }, rolePlans = {} }
+
+    local plan, isOwn = MFD.Roles.PlanFor(db, "HYJAL")
+    T.Eq(plan, db.rolePlan, "the very same table, not a copy")
+    T.Eq(isOwn, false, "and it knows the plan is not Hyjal's own")
+
+    T.Eq((MFD.Roles.PlanFor(db, nil)), db.rolePlan, "so does no instance at all")
+end)
+
+-- Identity is the point: Marker.ResolvedRoles caches on the plan table it was
+-- handed, so every raid that follows the default has to get one table back or
+-- zoning between them would recompute the roster every time.
+T.Case("Roles: two raids on the default share one table", function()
+    local db = { rolePlan = { [8] = { intent = "KILL", ordinal = 1 } }, rolePlans = {} }
+    T.Eq((MFD.Roles.PlanFor(db, "HYJAL")), (MFD.Roles.PlanFor(db, "BLACKTEMPLE")), "one table")
+end)
+
+T.Case("Roles: Detach copies what the raid was already following", function()
+    local db = {
+        rolePlan = { [8] = { intent = "KILL", ordinal = 1, pin = "Grimmtusk" } },
+        rolePlans = {},
+    }
+
+    local own = MFD.Roles.Detach(db, "HYJAL")
+    T.Eq(own[8].intent, "KILL", "starts from what was there")
+    T.Eq(own[8].pin, "Grimmtusk", "pins and all")
+
+    own[8].intent = "SHEEP"
+    T.Eq(db.rolePlan[8].intent, "KILL", "and editing it leaves the default alone")
+
+    local plan, isOwn = MFD.Roles.PlanFor(db, "HYJAL")
+    T.Eq(plan[8].intent, "SHEEP", "Hyjal now has its own")
+    T.Eq(isOwn, true, "and says so")
+    T.Eq((MFD.Roles.PlanFor(db, "BLACKTEMPLE"))[8].intent, "KILL", "Black Temple is untouched")
+end)
+
+T.Case("Roles: Detach twice does not throw away the first edit", function()
+    local db = { rolePlan = { [8] = { intent = "KILL", ordinal = 1 } }, rolePlans = {} }
+
+    MFD.Roles.Detach(db, "HYJAL")[8].intent = "SHEEP"
+    T.Eq(MFD.Roles.Detach(db, "HYJAL")[8].intent, "SHEEP", "the second call returns the same plan")
+end)
+
+T.Case("Roles: Reattach puts a raid back on the default", function()
+    local db = { rolePlan = { [8] = { intent = "KILL", ordinal = 1 } }, rolePlans = {} }
+    MFD.Roles.Detach(db, "HYJAL")[8].intent = "SHEEP"
+
+    MFD.Roles.Reattach(db, "HYJAL")
+    local plan, isOwn = MFD.Roles.PlanFor(db, "HYJAL")
+    T.Eq(plan, db.rolePlan, "back on the default table")
+    T.Eq(isOwn, false, "and no longer its own")
+end)
+
+T.Case("Roles: an install that predates per zone plans still resolves", function()
+    -- rolePlans is absent entirely on a table saved before this existed.
+    local db = { rolePlan = { [8] = { intent = "KILL", ordinal = 1 } } }
+    local plan, isOwn = MFD.Roles.PlanFor(db, "HYJAL")
+    T.Eq(plan, db.rolePlan, "the default, as it always was")
+    T.Eq(isOwn, false, "nothing of its own")
+end)
+
 T.Case("Announce: formats icon, intent and owner compactly", function()
     local line = MFD.Announce.Format({
         { key = "1:A", icon = 8, intent = "KILL" },
