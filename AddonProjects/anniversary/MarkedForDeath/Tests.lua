@@ -2536,6 +2536,32 @@ T.Case("Conflicts: several are listed in the order given", function()
     T.Eq(lines[2], "B: p. Fix: do q", "second")
 end)
 
+-- A fill-in raider in Gruul's with MRT auto logging on was told in red that
+-- another addon was fighting over raid icons. Nothing was: the only conflict
+-- that fired was about the combat log, and as a raider without assist he could
+-- not have placed an icon anyway. The headline now says what was found.
+T.Case("Conflicts: the headline names what was actually found", function()
+    T.Eq(MFD.Conflicts.Headline({ { topic = "combat logging" } }),
+        "another addon is also handling combat logging:", "the logging one alone")
+
+    T.Eq(MFD.Conflicts.Headline({ { topic = "raid icons" } }),
+        "another addon is also handling raid icons:", "the marking one alone")
+end)
+
+T.Case("Conflicts: a headline covering several topics names each once", function()
+    T.Eq(MFD.Conflicts.Headline({
+        { topic = "raid icons" },
+        { topic = "raid icons" },
+        { topic = "combat logging" },
+    }), "another addon is also handling raid icons and combat logging:",
+        "the repeat is not listed twice")
+end)
+
+T.Case("Conflicts: nothing found has no headline to print", function()
+    T.Eq(MFD.Conflicts.Headline({}), nil, "empty")
+    T.Eq(MFD.Conflicts.Headline(nil), nil, "and nil, which Detect can never return but Format accepts")
+end)
+
 T.Case("Conflicts: Evaluate only reports the ones whose test says so", function()
     local found = MFD.Conflicts.Evaluate({
         { label = "On", what = "w", fix = "f", isActive = function() return true end },
