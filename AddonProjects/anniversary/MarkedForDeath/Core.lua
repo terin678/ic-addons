@@ -10,7 +10,7 @@ local ADDON_NAME = "MarkedForDeath"
 local Core = LibStub("LibICCore-1.0")
 
 -- Must match ## Version: in the toc and the packaged zip name.
-MFD.VERSION = "1.25.3"
+MFD.VERSION = "1.25.4"
 
 -- Bumped only when the saved-variable shape changes in a way that needs a
 -- migration. See MIGRATIONS.
@@ -291,7 +291,7 @@ end
 local commands = {}
 
 commands.selftest = {
-    desc = "run the test suite in game",
+    desc = "run the test suite in game, the same as /mfd test",
     run = function()
         if not MFD.Tests then
             MFD.Error("test suite not loaded")
@@ -1043,7 +1043,8 @@ local HELP = {
     { "", "open the main window" },
     { "help", "this list" },
     { "version", "addon and library versions" },
-    { "out [n]", "print to ChatFrame n" },
+    { "out [n]", "print to ChatFrame n, or bare to name your chat windows" },
+    { "test", "run the built-in checks, the same as selftest and as /cm test" },
     { "scale [percent]", "resize the window, or drag its bottom-right corner" },
     { "reset [what]", "restore settings, the log, or everything, to defaults" },
 }
