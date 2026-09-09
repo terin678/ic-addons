@@ -1,11 +1,15 @@
 ## Interface: 20506
 ## Title: Auctionator Selling Tweaks
-## Notes: Adds an Expiry column before "You?" in Auctionator's Selling tab price list and narrows "You?"
+## Notes: A guard against posting far under the market, and an Expiry column before "You?" in Auctionator's Selling tab price list.
 ## Author: Malexis
-## Version: 1.0.1
+## Version: 1.1.0
 ## IconTexture: Interface\AddOns\AuctionatorSellingTweaks\ImpulseControl-64.tga
 ## Group: MalexisAuctionWatcher
 ## Category: Impulse Control
-## Dependencies: Auctionator
+## SavedVariables: AuctionatorSellingTweaksDB
+## Dependencies: Auctionator, ICLibs
 
 Core.lua
+Columns.lua
+Guard.lua
+Tests.lua

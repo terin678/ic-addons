@@ -2,12 +2,23 @@
 .SYNOPSIS
   Zip an addon folder for sharing. The archive extracts straight into Interface\AddOns.
 
+.DESCRIPTION
+  By default the zip also carries the addon's required addons from the same flavor
+  (## Dependencies), so one archive extracts into a working install for a guildmate.
+  -NoDeps ships the one folder only, which is what a CurseForge project wants: ICLibs is
+  its own project there and each addon marks it as a required dependency.
+
+  Prints a summary and returns the path of the zip it wrote.
+
 .EXAMPLE
   .\scripts\package.ps1 -Flavor anniversary -Addon MalexisAuctionWatcher
+  .\scripts\package.ps1 -Flavor anniversary -Addon MalexisAuctionWatcher -NoDeps -OutDir dist\curseforge
 #>
 param(
     [Parameter(Mandatory = $true)][ValidateSet("era", "anniversary", "retail")][string]$Flavor,
-    [Parameter(Mandatory = $true)][string]$Addon
+    [Parameter(Mandatory = $true)][string]$Addon,
+    [switch]$NoDeps,
+    [string]$OutDir
 )
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -18,20 +29,25 @@ $toc = Get-Content (Join-Path $source "$Addon.toc")
 $versionLine = $toc | Where-Object { $_ -match '^## Version:\s*(.+)$' } | Select-Object -First 1
 $version = if ($versionLine -match '^## Version:\s*(.+)$') { $Matches[1].Trim() } else { "dev" }
 
-$dist = Join-Path $repoRoot "dist"
+$dist = if ($OutDir) { $OutDir } else { Join-Path $repoRoot "dist" }
+if (-not [IO.Path]::IsPathRooted($dist)) { $dist = Join-Path $repoRoot $dist }
 New-Item -ItemType Directory -Force $dist | Out-Null
-$zip = Join-Path $dist "$Addon-$version-$Flavor.zip"
+$zipName = if ($NoDeps) { "$Addon-$version.zip" } else { "$Addon-$version-$Flavor.zip" }
+$zip = Join-Path $dist $zipName
 if (Test-Path $zip) { Remove-Item $zip -Force }
 
 # Required addons from the same flavor (## Dependencies / ## RequiredDeps) ship in the zip,
-# so one archive extracts into a working install.
+# so one archive extracts into a working install. Not for a CurseForge upload, where the
+# dependency is a separate project and a bundled copy could overwrite a newer one.
 $paths = @($source)
-$depLine = $toc | Where-Object { $_ -match '^## (Dependencies|RequiredDeps):\s*(.+)$' } | Select-Object -First 1
-if ($depLine -match '^## (Dependencies|RequiredDeps):\s*(.+)$') {
-    foreach ($dep in ($Matches[2] -split ',')) {
-        $dep = $dep.Trim()
-        $depPath = Join-Path $repoRoot "AddonProjects\$Flavor\$dep"
-        if ($dep -and (Test-Path $depPath)) { $paths += $depPath }
+if (-not $NoDeps) {
+    $depLine = $toc | Where-Object { $_ -match '^## (Dependencies|RequiredDeps):\s*(.+)$' } | Select-Object -First 1
+    if ($depLine -match '^## (Dependencies|RequiredDeps):\s*(.+)$') {
+        foreach ($dep in ($Matches[2] -split ',')) {
+            $dep = $dep.Trim()
+            $depPath = Join-Path $repoRoot "AddonProjects\$Flavor\$dep"
+            if ($dep -and (Test-Path $depPath)) { $paths += $depPath }
+        }
     }
 }
 
@@ -64,3 +80,4 @@ try {
 }
 
 Write-Host "Packaged $zip ($($paths.Count) folders, $count files)"
+Write-Output $zip

@@ -46,13 +46,32 @@ extracts straight into `Interface\AddOns`.
    python scripts/lint.py
    ```
 
-5. Package for sharing:
+5. Package for sharing with a guildmate:
 
    ```powershell
    .\scripts\package.ps1 -Flavor anniversary -Addon MalexisAuctionWatcher
    ```
 
-   The zip lands in `dist/` (ignored by git).
+   The zip lands in `dist/` (ignored by git) and carries ICLibs alongside the addon, so
+   one archive extracts into a working install.
+
+## Releasing to CurseForge
+
+ICLibs is its own CurseForge project and the published addons each mark it as a Required
+Dependency there, so an upload zip holds one folder and nothing else. One command builds
+the whole set from `main`:
+
+```powershell
+.\scripts\release.ps1
+```
+
+It lints, runs every addon's headless cases, and stops at the first failure. Then it
+writes `dist/curseforge/<Addon>-<version>.zip` for ICLibs, MalexisAuctionWatcher,
+TradeMaster, GuildRecruitment and MarkedForDeath, removing each addon's older zips, and a
+`MANIFEST.md` with the version table, SHA-256 of every zip, and the recent commits per
+addon to paste into the changelog box. Upload ICLibs first when it changed. `-Addon` narrows
+the set, `-OutDir` points it somewhere else, `-SkipTests` skips the cases (lint still runs).
+AuctionatorSellingTweaks, CutMaster and ICTemplate are not in the set on purpose.
 
 ## Starting a new addon
 
@@ -88,7 +107,7 @@ request. Development happens on branches:
 | --- | --- | --- |
 | anniversary | [MalexisAuctionWatcher](AddonProjects/anniversary/MalexisAuctionWatcher) | Price tracking, history charts, recipe profit, Auctionator/TSM feeds. Guide: [Docs/MalexisAuctionWatcher.md](Docs/MalexisAuctionWatcher.md) |
 | anniversary | [CutMaster](AddonProjects/anniversary/CutMaster) | Jewelcrafting book scanning, trade chat/whisper customer detection, order tracking, income. Guide: [Docs/CutMaster.md](Docs/CutMaster.md) |
-| anniversary | [AuctionatorSellingTweaks](AddonProjects/anniversary/AuctionatorSellingTweaks) | Expiry column before "You?" in Auctionator's Selling price list. Guide: [Docs/AuctionatorSellingTweaks.md](Docs/AuctionatorSellingTweaks.md) |
+| anniversary | [AuctionatorSellingTweaks](AddonProjects/anniversary/AuctionatorSellingTweaks) | A confirm before posting far under the market, and an Expiry column in Auctionator's Selling price list. Guide: [Docs/AuctionatorSellingTweaks.md](Docs/AuctionatorSellingTweaks.md) |
 | anniversary | [TradeMaster](AddonProjects/anniversary/TradeMaster) | Crafting business assistant for any profession, generalised from CutMaster. Guide: [Docs/TradeMaster.md](Docs/TradeMaster.md) |
 | anniversary | [ICLibs](AddonProjects/anniversary/ICLibs) | Shared libraries (LibStub, LibICTradeSkill, LibICUI) required by MalexisAuctionWatcher, TradeMaster, ICTemplate and GuildRecruitment. Guide: [Docs/ICLibs.md](Docs/ICLibs.md) |
 | anniversary | [ICTemplate](AddonProjects/anniversary/ICTemplate) | The worked example: every LibICUI widget on screen beside the source it was built from. Copy it to start a new addon. Guide: [Docs/ICTemplate.md](Docs/ICTemplate.md) |
