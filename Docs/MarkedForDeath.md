@@ -97,6 +97,21 @@ while you are tanking. The most useful are on the minimap shift-click menu too.
 Buttons, keybinds, menu entries and slash commands all run the same code, so they cannot
 drift apart or behave differently from each other.
 
+### Pinning a person to a job
+
+The **Pinned player** box on the Roles tab holds that icon's job for one person, so a
+pinned player keeps the same icon all night regardless of who else could do the job. It
+saves as you type; there is nothing to press.
+
+The job has to exist before anyone can be pinned to it. To put a druid on hibernate:
+change an icon's job to **Hibernate** on the Roles tab first, then type the druid's name
+into that row's Pinned player box. Until an icon carries the job there is no row to pin
+them to, and the rule editor will not offer hibernate either.
+
+The Owner column says whether the pin took. A name that is not in the group, or is in it
+but cannot do that job, reads **nobody in the group can do this** rather than failing
+quietly.
+
 ### Reserving an icon
 
 Icon reuse lends a spare crowd control icon to a kill target when nothing needs it, which
