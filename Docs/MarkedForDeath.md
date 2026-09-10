@@ -345,7 +345,7 @@ Every command is in `/mfd help`.
 | `/mfd mark` | Force a full re-mark of the visible pack, dropping any hand-placed holds. Also a button and a keybind. |
 | `/mfd clear` | Clear every icon on visible mobs. Also a button and a keybind. |
 | `/mfd announce` | Post the current assignments to raid chat now, for calling a pack out before the pull. Also a button and a keybind. |
-| `/mfd announce off\|on` | Silence or restore every automatic mark announcement in one go, rather than three ticks on the Settings tab. `/mfd announce` on its own still posts when you ask it to. |
+| `/mfd announce off\|on` | Silence or restore every automatic line about marks in one go: the three announcement settings and the late crowd control raid warning with its whisper. Death calls are separate, under `/mfd deaths`. `/mfd announce` on its own still posts when you ask it to. |
 | `/mfd deaths [tank|healer] [on|off|auto]` | Cycle or set one kind's death override. Bare, it reports both. Also buttons and keybinds. |
 | `/mfd healers` | Who the addon currently counts as a healer, and why it might be nobody. |
 | `/mfd where` | Current zone, its map id, and how many rules are active here. |

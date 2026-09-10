@@ -10,7 +10,7 @@ local ADDON_NAME = "MarkedForDeath"
 local Core = LibStub("LibICCore-1.0")
 
 -- Must match ## Version: in the toc and the packaged zip name.
-MFD.VERSION = "1.25.6"
+MFD.VERSION = "1.25.7"
 
 -- Bumped only when the saved-variable shape changes in a way that needs a
 -- migration. See MIGRATIONS.
@@ -760,17 +760,23 @@ commands.healers = {
     end,
 }
 
--- The three settings that put a mark line in raid chat, in one switch. They are
--- separate in the settings tab because they answer different questions, but
--- "stop talking" is one thought and should not need three ticks to say.
+-- Everything that makes the addon talk about marks on its own, in one switch.
+-- These stay separate on the settings tab because they answer different
+-- questions, but "stop talking" is one thought and should not need four ticks
+-- to say.
+--
+-- The late crowd control alert is in here because it is the loudest of the lot:
+-- a raid warning and a whisper to whoever owns the job, at the moment a sheep
+-- or banish target walks in after the pull.
 local ANNOUNCE_SETTINGS = {
     "isAnnounceOnMarkEnabled",
     "isAnnounceAddsEnabled",
     "isAnnounceEnabled",
+    "isLateCCAlertEnabled",
 }
 
 commands.announce = {
-    desc = "call the assignments out now; 'off' or 'on' silences or restores all of them",
+    desc = "call the assignments out now; 'off' or 'on' silences or restores every automatic line",
     run = function(rest)
         local arg = string.lower(string.match(rest or "", "^%s*(%S*)") or "")
 
@@ -781,9 +787,11 @@ commands.announce = {
             end
             MFD.UI.Settings:Refresh()
             MFD.Print(isOn
-                and "announcements on."
-                or "announcements off. Nothing goes to raid chat on its own; "
-                    .. "/mfd announce still posts when you ask for it.")
+                and "announcements on, late crowd control warnings included."
+                or "announcements off, late crowd control warnings and their "
+                    .. "whispers included. Nothing goes out on its own; "
+                    .. "/mfd announce still posts when you ask for it, and "
+                    .. "death calls are separate, under /mfd deaths.")
             return
         end
 
