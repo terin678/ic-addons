@@ -10,7 +10,7 @@ local ADDON_NAME = "MarkedForDeath"
 local Core = LibStub("LibICCore-1.0")
 
 -- Must match ## Version: in the toc and the packaged zip name.
-MFD.VERSION = "1.25.5"
+MFD.VERSION = "1.25.6"
 
 -- Bumped only when the saved-variable shape changes in a way that needs a
 -- migration. See MIGRATIONS.
@@ -760,9 +760,40 @@ commands.healers = {
     end,
 }
 
+-- The three settings that put a mark line in raid chat, in one switch. They are
+-- separate in the settings tab because they answer different questions, but
+-- "stop talking" is one thought and should not need three ticks to say.
+local ANNOUNCE_SETTINGS = {
+    "isAnnounceOnMarkEnabled",
+    "isAnnounceAddsEnabled",
+    "isAnnounceEnabled",
+}
+
 commands.announce = {
-    desc = "call the current assignments out in raid chat now, before the pull",
-    run = function()
+    desc = "call the assignments out now; 'off' or 'on' silences or restores all of them",
+    run = function(rest)
+        local arg = string.lower(string.match(rest or "", "^%s*(%S*)") or "")
+
+        if arg == "off" or arg == "on" then
+            local isOn = arg == "on"
+            for _, key in ipairs(ANNOUNCE_SETTINGS) do
+                MFD.db.settings[key] = isOn
+            end
+            MFD.UI.Settings:Refresh()
+            MFD.Print(isOn
+                and "announcements on."
+                or "announcements off. Nothing goes to raid chat on its own; "
+                    .. "/mfd announce still posts when you ask for it.")
+            return
+        end
+
+        if arg ~= "" then
+            MFD.Error("say '/mfd announce', or '/mfd announce off' or 'on'.")
+            return
+        end
+
+        -- Asking for it explicitly is not an announcement the addon decided to
+        -- make, so this still works while the automatic ones are off.
         MFD.Actions.Run("announce")
     end,
 }
