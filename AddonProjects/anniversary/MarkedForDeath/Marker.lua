@@ -549,11 +549,15 @@ Marker.pullCrowdControl = nil
 
 local lastAlertAt = 0
 
+-- Whether this engagement has already had its late crowd control warning.
+-- Cleared when combat starts, beside the rest of the per-pull state.
+Marker.hasAlertedLateCC = false
+
 -- Shouts about a crowd control assignment that appeared after the pull.
 --
 -- Silent before combat, because the allocator is still settling and the pull
 -- announcement covers it. Silent for anything present at the pull. Authority
--- only, and once per mob.
+-- only, and once per engagement.
 function Marker:AlertLateCrowdControl(desired, now)
     if not MFD.IsEnabled() or not MFD.db.settings.isLateCCAlertEnabled then
         return
@@ -565,6 +569,15 @@ function Marker:AlertLateCrowdControl(desired, now)
         return
     end
 
+    -- Once per engagement. It used to be once per mob, which is the same thing
+    -- on a pull with one straggler and a wall of text in Hyjal, where a wave
+    -- arrives a few at a time and every new crowd control target was its own
+    -- raid warning and its own whisper. The first one says what the raid needs
+    -- to know: something turned up that was not in the plan.
+    if Marker.hasAlertedLateCC then
+        return
+    end
+
     for _, assignment in ipairs(desired.list) do
         local def = MFD.Roles.INTENTS[assignment.intent]
         local isCrowdControl = def and def.classes
@@ -572,6 +585,7 @@ function Marker:AlertLateCrowdControl(desired, now)
             and not Marker.alertedCrowdControl[assignment.key] then
 
             Marker.alertedCrowdControl[assignment.key] = true
+            Marker.hasAlertedLateCC = true
             lastAlertAt = now
 
             local learned = MFD.db.learnedMobs[MFD.H.NpcIDFromKey(assignment.key)]
@@ -844,6 +858,7 @@ MFD.RegisterInit(function()
             local desired = Marker.lastDesired
             Marker.pullCrowdControl = {}
             wipe(Marker.alertedCrowdControl)
+            Marker.hasAlertedLateCC = false
 
             if desired then
                 for key, icon in pairs(desired.byKey) do

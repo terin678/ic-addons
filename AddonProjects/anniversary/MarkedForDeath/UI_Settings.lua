@@ -69,7 +69,7 @@ local TOGGLES = {
     },
     {
         label = "Raid warning when crowd control turns up late",
-        tip = "If a sheep or banish target appears after the pull, take its icon back, post a raid warning and whisper whoever owns that job.",
+        tip = "If a sheep or banish target appears after the pull, take its icon back, post a raid warning and whisper whoever owns that job. Once per engagement, not once per mob: a wave arriving a few at a time used to be a warning and a whisper each. /mfd announce off silences this along with the rest.",
         get = function() return MFD.db.settings.isLateCCAlertEnabled end,
         set = function(v) MFD.db.settings.isLateCCAlertEnabled = v end,
     },
