@@ -49,8 +49,51 @@ end
 -- Runs every registered case. Returns true when all passed. Failures are also
 -- written to saved variables in game so they survive a /reload and can be read
 -- off disk instead of retyped out of the chat frame.
+-- The cases run against the live module tables, because that is where the code
+-- under test reads from, and several of them write to those tables: the current
+-- zone, the merged rule set, the chat limiter's state, which deaths this fight
+-- has already called.
+--
+-- In game that meant running the suite left the addon believing it was in no
+-- known zone with somebody else's rules loaded. Rules.Active returns nothing
+-- without a zone, so marking stopped dead until the next loading screen put a
+-- zone back, and nothing said so. Snapshot what the cases are known to touch,
+-- and put all of it back afterwards.
+function T.Snapshot()
+    return {
+        db = MFD.db,
+        cdb = MFD.cdb,
+        instanceKey = MFD.Rules and MFD.Rules.currentInstanceKey,
+        merged = MFD.Rules and MFD.Rules.merged,
+        chatter = MFD.Chatter and MFD.Chatter.state,
+        active = MFD.Encounters and MFD.Encounters.active,
+        deaths = MFD.Encounters and MFD.Encounters.deaths,
+    }
+end
+
+function T.Restore(saved)
+    MFD.db, MFD.cdb = saved.db, saved.cdb
+    if MFD.Rules then
+        MFD.Rules.currentInstanceKey = saved.instanceKey
+        MFD.Rules.merged = saved.merged
+    end
+    if MFD.Chatter then
+        MFD.Chatter.state = saved.chatter
+    end
+    if MFD.Encounters then
+        MFD.Encounters.active = saved.active
+        MFD.Encounters.deaths = saved.deaths
+    end
+
+    -- Anything cached from the fixtures must not outlive them.
+    if MFD.Marker and MFD.Marker.InvalidateRoster then
+        MFD.Marker.InvalidateRoster()
+    end
+end
+
 function T.Run()
     local pass, failures = 0, {}
+    local saved = T.Snapshot()
 
     for _, c in ipairs(T.cases) do
         local ok, err = pcall(c.fn)
@@ -61,6 +104,10 @@ function T.Run()
             out("|cffff4444FAIL|r " .. c.name .. " => " .. tostring(err))
         end
     end
+
+    -- Before the write below, so lastTestRun lands in the real saved variables
+    -- rather than in whichever fixture the last case happened to leave behind.
+    T.Restore(saved)
 
     if MFD.db then
         MFD.db.lastTestRun = { at = time(), passed = pass, failures = failures }
@@ -724,6 +771,21 @@ T.Case("Rules: Active returns only the current instance's rules", function()
     local active = MFD.Rules.Active()
     T.Eq(active[22890].intent, "SHEEP", "BT rule is active")
     T.Eq(active[17842], nil, "Hyjal rule is not")
+end)
+
+-- The suite is only safe to run in game because of this.
+T.Case("Tests: the runner puts live state back after the cases", function()
+    local realKey, realMerged = MFD.Rules.currentInstanceKey, MFD.Rules.merged
+    local saved = T.Snapshot()
+
+    MFD.Rules.currentInstanceKey = nil
+    MFD.Rules.merged = { PRETEND = {} }
+    MFD.Encounters.deaths = { called = { Somebody = true } }
+
+    T.Restore(saved)
+    T.Eq(MFD.Rules.currentInstanceKey, realKey, "the zone the player is actually in")
+    T.Eq(MFD.Rules.merged, realMerged, "and the rules they actually have")
+    T.Eq(MFD.Encounters.deaths.called, nil, "and no deaths carried over from a fixture")
 end)
 
 T.Case("Rules: Active is empty when the zone is unknown", function()
