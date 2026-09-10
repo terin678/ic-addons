@@ -1331,6 +1331,45 @@ end)
 
 -- Hyjal wants most of its icons on kill targets and Black Temple wants sheep
 -- and banish. There was one plan for both, so it got edited on the way in.
+-- A rule names a job and an icon carries it out, so a rule asking for a job no
+-- icon is bound to can never be marked: it falls back, silently, and whoever
+-- wrote it finds out during a pull. The rule editor offers this list instead of
+-- all fourteen intents.
+T.Case("Roles: the jobs on offer are the ones the plan can carry out", function()
+    local plan = {
+        [8] = { intent = "KILL", ordinal = 1 },
+        [7] = { intent = "KILL", ordinal = 2 },
+        [5] = { intent = "SHEEP", ordinal = 1 },
+    }
+
+    local intents = MFD.Roles.AvailableIntents(plan)
+    T.Eq(#intents, 3, "kill, sheep and ignore")
+    T.Eq(intents[1], "IGNORE", "sorted, and ignore always offered")
+    T.Eq(intents[2], "KILL", "listed once, not once per icon")
+    T.Eq(intents[3], "SHEEP", "sheep")
+
+    for _, intent in ipairs(intents) do
+        T.Eq(intent ~= "HIBERNATE", true, "no druid role, so no hibernate on offer")
+    end
+end)
+
+T.Case("Roles: a plan with a hibernate role offers hibernate", function()
+    local intents = MFD.Roles.AvailableIntents({
+        [8] = { intent = "KILL", ordinal = 1 },
+        [4] = { intent = "HIBERNATE", ordinal = 1 },
+    })
+
+    local seen = {}
+    for _, intent in ipairs(intents) do seen[intent] = true end
+    T.Eq(seen.HIBERNATE, true, "bound, so offered")
+end)
+
+T.Case("Roles: an empty plan still lets a rule say never mark", function()
+    local intents = MFD.Roles.AvailableIntents({})
+    T.Eq(#intents, 1, "just the one")
+    T.Eq(intents[1], "IGNORE", "which needs no icon behind it")
+end)
+
 T.Case("Roles: a raid without a plan of its own follows the default", function()
     local db = { rolePlan = { [8] = { intent = "KILL", ordinal = 1 } }, rolePlans = {} }
 
@@ -2091,6 +2130,51 @@ T.Case("Data: the bundled table carries real trash, not just bosses", function()
     T.Eq(nameOf(17897), "Crypt Fiend", "Hyjal wave trash")
     T.Eq(nameOf(17907), "Frost Wyrm", "Hyjal wave trash")
     T.Eq(nameOf(20040), "Crystalcore Devastator", "Tempest Keep trash")
+end)
+
+-- Moon set aside for sheep has to stay Moon even when nothing is being sheeped,
+-- so the one icon a raid reads as do-not-touch never turns up on a kill target.
+T.Case("Allocator: a reserved icon is never lent to a kill target", function()
+    local db = { rolePlan = {} }
+    MFD.Roles.EnsurePlan(db)
+    db.rolePlan[5].isReserved = true          -- Moon, sheep one
+
+    -- Built here rather than with the shared helper, which is declared further
+    -- down the file and so is not in scope yet.
+    local candidates = {}
+    for i = 1, 8 do
+        candidates[i] = { key = "100:" .. string.char(64 + i), npcID = 100, name = "Trash" }
+    end
+
+    local roles = MFD.Roles.Resolve(db.rolePlan, roster("Grimmtusk", "MAGE"))
+    local out = MFD.Allocator.Compute(candidates,
+        { [100] = { intent = "KILL", rank = 10 } }, roles, nil, true)
+
+    for key, icon in pairs(out.byKey) do
+        T.Eq(icon ~= 5, true, "Moon went to " .. key .. " as a kill icon")
+    end
+end)
+
+T.Case("Allocator: an unreserved spare is still lent out", function()
+    local db = { rolePlan = {} }
+    MFD.Roles.EnsurePlan(db)
+
+    -- Built here rather than with the shared helper, which is declared further
+    -- down the file and so is not in scope yet.
+    local candidates = {}
+    for i = 1, 8 do
+        candidates[i] = { key = "100:" .. string.char(64 + i), npcID = 100, name = "Trash" }
+    end
+
+    local roles = MFD.Roles.Resolve(db.rolePlan, roster("Grimmtusk", "MAGE"))
+    local out = MFD.Allocator.Compute(candidates,
+        { [100] = { intent = "KILL", rank = 10 } }, roles, nil, true)
+
+    local usedMoon = false
+    for _, icon in pairs(out.byKey) do
+        if icon == 5 then usedMoon = true end
+    end
+    T.Eq(usedMoon, true, "without the flag the spare sheep icon is fair game")
 end)
 
 T.Case("Data: every raid has more creatures than it has bosses", function()

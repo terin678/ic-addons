@@ -96,6 +96,34 @@ function Roles.CanIntentApply(intent, creatureType)
     return false, label .. " does not work on " .. creatureType .. " targets"
 end
 
+-- The jobs this plan can actually carry out, sorted. Pure.
+--
+-- A rule names an intent and an icon carries it out, so a rule asking for a job
+-- no icon is bound to can never be marked: it falls back, silently, and the
+-- person who wrote it finds out during a pull. The rule editor offers this
+-- instead of all fourteen intents, so a zone with no druid role does not offer
+-- hibernate in the first place.
+--
+-- IGNORE is always in the list. "Never mark this" is a rule's own answer and
+-- needs no icon behind it.
+function Roles.AvailableIntents(plan)
+    local seen, list = {}, {}
+
+    for _, role in pairs(plan or {}) do
+        if role.intent and not seen[role.intent] then
+            seen[role.intent] = true
+            list[#list + 1] = role.intent
+        end
+    end
+
+    if not seen.IGNORE then
+        list[#list + 1] = "IGNORE"
+    end
+
+    table.sort(list)
+    return list
+end
+
 -- Which plan applies where. Returns the plan, and whether it belongs to this
 -- instance alone rather than being the default. Pure.
 --
@@ -191,6 +219,7 @@ function Roles.Resolve(rolePlan, roster)
             ordinal = role.ordinal,
             pin = role.pin,
             isLastResort = role.isLastResort,
+            isReserved = role.isReserved,
             owner = false,
         }
         byIntent[role.intent] = byIntent[role.intent] or {}

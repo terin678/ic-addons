@@ -95,7 +95,7 @@ local intentMenu
 --
 -- Both pickers used to cycle on click. With fourteen intents, getting from
 -- Kill to Sheep was thirteen clicks and a lap if you overshot.
-local function openIntentMenu(anchor, current, onPick)
+local function openIntentMenu(anchor, current, onPick, allowed)
     if not intentMenu then
         intentMenu = CreateFrame("Frame", "MarkedForDeathIntentMenu", UIParent, "UIDropDownMenuTemplate")
 
@@ -118,8 +118,31 @@ local function openIntentMenu(anchor, current, onPick)
     end
     intentMenu.openFor = anchor
 
+    -- `allowed` narrows the list to the jobs this zone's plan can carry out.
+    -- The intent already on the thing being edited is always included, so a
+    -- rule written before the plan changed can still be seen and changed rather
+    -- than looking like it holds a job that does not exist.
+    local offered = allowed or intentNames()
+    if current then
+        local hasCurrent = false
+        for _, intent in ipairs(offered) do
+            if intent == current then
+                hasCurrent = true
+                break
+            end
+        end
+        if not hasCurrent then
+            local widened = { current }
+            for _, intent in ipairs(offered) do
+                widened[#widened + 1] = intent
+            end
+            table.sort(widened)
+            offered = widened
+        end
+    end
+
     UIDropDownMenu_Initialize(intentMenu, function()
-        for _, intent in ipairs(intentNames()) do
+        for _, intent in ipairs(offered) do
             local info = UIDropDownMenu_CreateInfo()
             info.text = MFD.Roles.INTENTS[intent].label
             info.checked = intent == current
@@ -266,11 +289,36 @@ local function makePinCell(row, col, x)
     return box
 end
 
+-- Ticked, this icon is never lent to a kill target when its own job has
+-- nothing to do. Moon set aside for sheep is the case it exists for.
+local function makeReservedCell(row, col, x)
+    local check = MFD.UI.CheckBox(row, "")
+    check:SetPoint("LEFT", row, "LEFT", x + 6, 0)
+
+    check:SetScript("OnClick", function(self)
+        local icon = row.item
+        local plan = editablePlan()
+        plan[icon] = plan[icon] or { intent = "KILL", ordinal = 1 }
+        plan[icon].isReserved = self:GetChecked() and true or nil
+        Config:Refresh()
+    end)
+
+    MFD.UI.Tooltip(check, function()
+        GameTooltip:AddLine("Reserved", 1, 1, 1)
+        GameTooltip:AddLine("Icon reuse lends a spare crowd control icon to a kill target "
+            .. "when nothing needs it. Tick this and that never happens to this icon, so "
+            .. "the one the raid reads as do-not-touch stays that way.", 0.8, 0.8, 0.8, true)
+    end)
+
+    return check
+end
+
 local ROLE_COLUMNS = {
     { key = "icon",   label = "",       width = 24, type = "texture" },
     { key = "job",    label = "Job",    width = 120 },
     { key = "change", label = "Change", width = 72, type = "custom", make = makeIntentCell },
     { key = "order",  label = "Order",  width = 56, type = "custom", make = makeOrderCell },
+    { key = "reserved", label = "Reserved", width = 64, type = "custom", make = makeReservedCell },
     { key = "pin",    label = "Pinned player", width = 120, type = "custom", make = makePinCell },
     { key = "owner",  label = "Owner right now", width = "flex" },
 }
@@ -316,6 +364,8 @@ function Config:Refresh()
         if not row.cells.pin:HasFocus() then
             row.cells.pin:SetText(role and role.pin or "")
         end
+
+        row.cells.reserved:SetChecked(role and role.isReserved and true or false)
 
         local record = resolved.byIcon[icon]
         if not record then
@@ -590,11 +640,17 @@ local function makeRuleIntentCell(row, col, x)
         if not item then
             return
         end
+        -- Only the jobs this zone's plan can actually carry out. A rule asking
+        -- for a job no icon is bound to falls back silently, and the person who
+        -- wrote it finds out mid pull.
+        local zone = RulesUI:TargetKey()
+        local plan = MFD.Roles.PlanFor(MFD.db, zone)
+
         openIntentMenu(self, item.rule.intent, function(intent)
             local rule = ownedRule(item.key, item.rule)
             rule.intent = intent
             commitRules()
-        end)
+        end, MFD.Roles.AvailableIntents(plan))
     end)
     return button
 end

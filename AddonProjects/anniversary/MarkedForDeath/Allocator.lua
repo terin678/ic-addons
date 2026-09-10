@@ -156,9 +156,12 @@ function Allocator.Compute(candidates, rulesByNpcID, roles, locked, allowIconReu
         -- Ordered so the best-placed spare goes first: sheep role one before
         -- sheep role two, and anything flagged last resort after everything
         -- else. That is what puts Circle behind a spare Moon.
+        -- A reserved icon is never spare. Moon set aside for sheep stays Moon
+        -- even when nothing is being sheeped, so the one icon the raid reads as
+        -- "do not hit this" never turns up on a kill target.
         local spare = {}
         for icon, role in pairs(roles.byIcon) do
-            if not usedIcons[icon] then
+            if not usedIcons[icon] and not role.isReserved then
                 spare[#spare + 1] = { icon = icon, role = role }
             end
         end

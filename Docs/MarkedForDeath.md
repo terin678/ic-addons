@@ -97,6 +97,26 @@ while you are tanking. The most useful are on the minimap shift-click menu too.
 Buttons, keybinds, menu entries and slash commands all run the same code, so they cannot
 drift apart or behave differently from each other.
 
+### Reserving an icon
+
+Icon reuse lends a spare crowd control icon to a kill target when nothing needs it, which
+is usually what you want: a Moon doing nothing is a wasted icon. It is not what you want
+for the one icon the raid reads as **do not touch this**.
+
+Tick **Reserved** on the Roles tab and that icon is never lent out. Moon stays Moon whether
+or not anything is being sheeped, and every other icon is still fair game.
+
+### Only the jobs a raid can do
+
+The job picker in the rule editor offers what that zone's plan can actually carry out, not
+all fourteen. If no icon is bound to Hibernate, Hibernate is not on the menu, because a
+rule asking for a job no icon carries falls back silently and you find out mid pull.
+
+Bind an icon to the job on the Roles tab first and it appears. **Never mark** is always
+offered, since that is a rule's own answer and needs no icon behind it. A rule already
+holding a job that has since gone from the plan still shows that job, so you can see it
+and change it rather than wondering what it is set to.
+
 ### A plan per raid
 
 The role plan says what each of the eight icons means, and eight is all there is: the game
