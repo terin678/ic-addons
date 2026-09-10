@@ -271,20 +271,40 @@ local function makePinCell(row, col, x)
     local box = MFD.UI.EditBox(row, col.width - 6, row.rowHeight - 2)
     box:SetPoint("LEFT", row, "LEFT", x + 2, 0)
 
-    box:SetScript("OnEnterPressed", function(self)
+    -- Saved as it is typed, which is what every other box in this addon does
+    -- and what this one did not. It committed on Enter alone, with nothing
+    -- saying so, so a name typed and then clicked away from was silently
+    -- dropped and the row went on reading as though nobody was pinned.
+    --
+    -- Guarded on HasFocus because Refresh calls SetText on every unfocused box,
+    -- and without the guard that write would come straight back here.
+    box:SetScript("OnTextChanged", function(self)
+        if not self:HasFocus() then
+            return
+        end
+
+        local icon = row.item
+        if not icon then
+            return
+        end
+
         local text = string.gsub(self:GetText(), "^%s+", "")
         text = string.gsub(text, "%s+$", "")
-        local icon = row.item
+
         local plan = editablePlan()
         plan[icon] = plan[icon] or { intent = "KILL", ordinal = 1 }
         plan[icon].pin = text ~= "" and text or nil
-        self:ClearFocus()
+    end)
+
+    -- Repainting is left until the box is done with, rather than run on every
+    -- keystroke: the Owner column is what changes, and watching it say nobody
+    -- can do this while a name is half typed helps no one.
+    box:SetScript("OnEditFocusLost", function()
         Config:Refresh()
     end)
-    box:SetScript("OnEscapePressed", function(self)
-        self:ClearFocus()
-        Config:Refresh()
-    end)
+
+    box:SetScript("OnEnterPressed", box.ClearFocus)
+    box:SetScript("OnEscapePressed", box.ClearFocus)
 
     return box
 end
