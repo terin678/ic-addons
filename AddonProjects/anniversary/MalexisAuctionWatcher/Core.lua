@@ -6,7 +6,7 @@
 -- `local addonName, ns = ...` pair. LibICCore attaches to that table just the same, so
 -- MAW.Print, MAW.db, MAW.Util and the rest are the same names the other addons use.
 local addonName = "MalexisAuctionWatcher"
-local VERSION = "1.24.0"
+local VERSION = "1.24.1"
 local Core = LibStub("LibICCore-1.0")
 local MAW = {}
 
@@ -260,15 +260,8 @@ COMMANDS.scan = function(rest)
     end
 end
 
-COMMANDS.add = function(rest)
-    -- A shift-clicked link carries the name in brackets.
-    if rest:match("|H") then
-        local linkItemName = rest:match("%[(.-)%]")
-        MAW:AddItem(linkItemName or rest)
-    else
-        MAW:AddItem(rest)
-    end
-end
+-- A shift-clicked link carries both the name and the item id; AddItem reads them out of it.
+COMMANDS.add = function(rest) MAW:AddItem(rest) end
 
 COMMANDS.remove = function(rest) MAW:RemoveItem(rest) end
 COMMANDS.list = function() MAW:ListItems() end
