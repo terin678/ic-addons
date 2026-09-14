@@ -4190,4 +4190,17 @@ T.Case("Chatter: force passed into the target slot is still force", function()
     T.Eq(sent[2].message, "second", "the second is the one the limiter would have eaten")
 end)
 
+-- Whole word, case-insensitive: catches the word on its own and inside a
+-- sentence, but not as a fragment of a longer one that only happens to
+-- contain it, which is what a plain substring search would get wrong.
+T.Case("ChatCue: matches the word, not a fragment of a longer one", function()
+    T.Eq(MFD.ChatCue.Matches("fart"), true, "bare word")
+    T.Eq(MFD.ChatCue.Matches("FART"), true, "shouting it still counts")
+    T.Eq(MFD.ChatCue.Matches("who just farted"), false, "a different word entirely")
+    T.Eq(MFD.ChatCue.Matches("that pull was a fart show"), true, "word inside a sentence")
+    T.Eq(MFD.ChatCue.Matches("farther back please"), false, "a longer word starting the same way")
+    T.Eq(MFD.ChatCue.Matches("Farthing owes me gold"), false, "a name starting the same way")
+    T.Eq(MFD.ChatCue.Matches("lol"), false, "no match at all")
+end)
+
 _G.MarkedForDeath = MFD
