@@ -2,6 +2,18 @@
 local addonName = "MalexisAuctionWatcher"
 local MAW = _G.MalexisAuctionWatcher or {}
 
+--[[
+Pure. The display name and item id carried by a shift-clicked link, or nil for plain
+text. The id is read straight out of the link rather than looked up, because GetItemInfo
+returns nothing at all for an item this client has never cached, which is the whole case
+this exists for. A recipe or enchant link has a name in brackets but no |Hitem:, so the
+id comes back nil and the caller falls back to the name.
+]]
+function MAW.ParseItemLink(text)
+    if type(text) ~= "string" or not text:match("|H") then return nil end
+    return text:match("%[(.-)%]"), tonumber(text:match("|Hitem:(%d+)"))
+end
+
 -- Get item ID from item name
 function MAW:GetItemIDFromName(itemName)
     -- GetItemInfo returns multiple values, itemLink is the 2nd return value
@@ -26,12 +38,29 @@ function MAW:AddItem(itemName, itemType)
     -- Default to "material" if not specified
     itemType = itemType or "material"
 
+    -- A shift-clicked link reaches here from /maw add, and from the dialog's name box when
+    -- one is pasted into it. Take the name and the id out of it before anything else: the
+    -- name is what the item is stored and scanned under, and the link's id is the only one
+    -- to be had for an item this client has never cached.
+    local itemID
+    local linkName, linkID = MAW.ParseItemLink(itemName)
+    if linkName then itemName, itemID = linkName, linkID end
+
     -- Get item ID from name
-    local itemID = self:GetItemIDFromName(itemName)
+    itemID = itemID or self:GetItemIDFromName(itemName)
     if not itemID or itemID == 0 then
         MAW.Print("Could not find item: " .. itemName)
-        MAW.Print("Try linking the item in chat, or viewing it in-game to cache it first")
-        MAW.Print("Example: Shift-click the item, then try /maw add again")
+        if linkName and not linkID then
+            -- A link arrived, but a recipe or enchant one: named, with no item id in it.
+            MAW.Print("That link is not an item, so it carries no id to track.")
+        elseif not linkName then
+            -- A typed name, and this client has never cached it. Say so plainly rather
+            -- than repeating advice the player has already followed.
+            MAW.Print("No item link in that, only text, and this client has no '" .. itemName
+                .. "' cached to look up.")
+            MAW.Print("Shift-click the item itself so the link carries its id. Auction house")
+            MAW.Print("Browse rows link on shift-click; some addon panes do not.")
+        end
         return
     end
 

@@ -1565,6 +1565,52 @@ T.Case("Classify: food, flask and elixirs land in their own slots", function()
     T.Eq(s.guardian, "Elixir of Major Fortitude", "guardian elixir")
 end)
 
+-- Seen on a raid's own buffs on 2026-09-14. Shattrath Flasks put the effect
+-- first and the city last, so a prefix test read everybody on one as unflasked.
+T.Case("Classify: a Shattrath flask counts as a flask", function()
+    for _, name in ipairs({ "Fortification of Shattrath", "Pure Death of Shattrath",
+                            "Relentless Assault of Shattrath", "Blinding Light of Shattrath" }) do
+        T.Eq(MFD.RaidCheck.Classify({ name }).flask, name, name)
+    end
+end)
+
+-- The buff often drops the "Elixir of" the item carries. Seen the same night:
+-- Major Agility, Major Strength, Major Shadow Power and Healing Power without
+-- it, Elixir of Major Fortitude and Elixir of Draenic Wisdom with it.
+T.Case("Classify: an elixir buff without its Elixir of still lands in its slot", function()
+    local s = MFD.RaidCheck.Classify({ "Major Agility", "Elixir of Major Fortitude" })
+    T.Eq(s.battle, "Major Agility", "battle, by the entry for Elixir of Major Agility")
+    T.Eq(s.guardian, "Elixir of Major Fortitude", "guardian, by its full name")
+
+    T.Eq(MFD.RaidCheck.Classify({ "Major Strength" }).battle, "Major Strength", "melee")
+    T.Eq(MFD.RaidCheck.Classify({ "Major Shadow Power" }).battle, "Major Shadow Power", "casters")
+    T.Eq(MFD.RaidCheck.Classify({ "Healing Power" }).battle, "Healing Power", "and healers")
+end)
+
+T.Case("Classify: the two battle elixirs seen unclassified are filed", function()
+    T.Eq(MFD.RaidCheck.Classify({ "Greater Arcane Elixir" }).battle, "Greater Arcane Elixir", "arcane")
+    T.Eq(MFD.RaidCheck.Classify({ "Elixir of Demonslaying" }).battle, "Elixir of Demonslaying", "demonslaying")
+end)
+
+-- Moophie wore Major Agility and Gift of Arthas at every pull on 2026-09-14 and
+-- was called out at every one. Gift of Arthas is an elixir, and it sat beside a
+-- battle elixir all night; nobody holds two battle elixirs at once, so it is the
+-- guardian.
+T.Case("Classify: Gift of Arthas is a guardian elixir", function()
+    local s = MFD.RaidCheck.Classify({ "Major Agility", "Gift of Arthas" })
+    T.Eq(s.battle, "Major Agility", "battle")
+    T.Eq(s.guardian, "Gift of Arthas", "guardian")
+    T.Eq(#MFD.RaidCheck.Missing(s, {}, { ELIXIRS = true }), 0, "both halves, nothing to call out")
+end)
+
+-- The short-form lookup must not start claiming ordinary buffs.
+T.Case("Classify: ordinary raid buffs are not mistaken for elixirs or flasks", function()
+    local s = MFD.RaidCheck.Classify({ "Blessing of Kings", "Arcane Intellect", "Prayer of Spirit" })
+    T.Eq(s.battle, nil, "not battle")
+    T.Eq(s.guardian, nil, "not guardian")
+    T.Eq(s.flask, nil, "not a flask")
+end)
+
 T.Case("Classify: an elixir not in either table is reported as unclassified, never dropped", function()
     local s = MFD.RaidCheck.Classify({ "Elixir of Something New" })
     T.Eq(s.battle, nil, "not filed as battle")
@@ -2467,6 +2513,22 @@ end)
 T.Case("Tanks: the raid's own main tank assignment counts", function()
     T.Eq(MFD.Tanks.IsTank("Dezedin", { Dezedin = true }, {}), true, "assigned in the raid frame")
     T.Eq(MFD.Tanks.IsTank("Someone", { Dezedin = true }, {}), false, "not a tank")
+end)
+
+-- A raid marks a tank two ways that do not overlap, and raid frames draw a
+-- shield for either. Reading only Main Tank left two shielded tanks unannounced
+-- through seven deaths in Black Temple on 2026-09-14.
+T.Case("Tanks: the tank role counts as well as Main Tank", function()
+    T.Eq(MFD.Tanks.CountsAsTank(true, "NONE"), true, "Main Tank and no role chosen")
+    T.Eq(MFD.Tanks.CountsAsTank(false, "TANK"), true, "the role icon on its own")
+    T.Eq(MFD.Tanks.CountsAsTank(true, "TANK"), true, "both")
+end)
+
+T.Case("Tanks: other roles, and no marking at all, do not count", function()
+    T.Eq(MFD.Tanks.CountsAsTank(false, "HEALER"), false, "healer role")
+    T.Eq(MFD.Tanks.CountsAsTank(false, "DAMAGER"), false, "damage role")
+    T.Eq(MFD.Tanks.CountsAsTank(false, "NONE"), false, "role never chosen")
+    T.Eq(MFD.Tanks.CountsAsTank(nil, nil), false, "neither API answered")
 end)
 
 T.Case("Tanks: a manually typed name counts even with no raid assignment", function()

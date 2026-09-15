@@ -44,9 +44,21 @@ A.FOOD = { ["Well Fed"] = true }
 
 A.FLASK_PREFIX = "Flask of "
 
+-- Shattrath Flasks name their buff the other way round: the item "Shattrath Flask
+-- of Fortification" puts "Fortification of Shattrath" on the player, so the prefix
+-- test above never saw one and everybody on a Shattrath flask read as unflasked.
+-- Seen on a raid's own buffs on 2026-09-14: Fortification, Pure Death, Relentless
+-- Assault and Blinding Light, each "of Shattrath".
+A.FLASK_SUFFIX = " of Shattrath"
+
 -- TBC elixirs by slot. An elixir in neither table is surfaced as unclassified
 -- rather than filed wrong. Verify against the client with /mfd auras; add, do
 -- not guess.
+--
+-- Listed by item name. The buff a player carries often drops the "Elixir of":
+-- Major Agility, Major Strength, Major Shadow Power and Healing Power were all
+-- seen that way on 2026-09-14, while Elixir of Major Fortitude and Elixir of
+-- Draenic Wisdom kept it. RC.Classify accepts both forms against these entries.
 A.BATTLE_ELIXIRS = {
     ["Elixir of Major Agility"] = true,
     ["Elixir of Major Strength"] = true,
@@ -59,6 +71,10 @@ A.BATTLE_ELIXIRS = {
     ["Onslaught Elixir"] = true,
     ["Fel Strength Elixir"] = true,
     ["Elixir of the Searching Eye"] = true,
+    -- Both seen on raid members on 2026-09-14 and surfacing as unclassified.
+    -- Both raise damage, which is what makes a TBC elixir a battle one.
+    ["Greater Arcane Elixir"] = true,
+    ["Elixir of Demonslaying"] = true,
 }
 
 A.GUARDIAN_ELIXIRS = {
@@ -69,6 +85,11 @@ A.GUARDIAN_ELIXIRS = {
     ["Elixir of Ironskin"] = true,
     ["Earthen Elixir"] = true,
     ["Elixir of Camouflage"] = true,
+    -- A Classic elixir TBC files as a guardian one. Confirmed an elixir in game
+    -- on 2026-09-14, and the slot follows from the log: Moophie wore it beside
+    -- Major Agility at every pull, and nobody holds two battle elixirs at once.
+    -- Missing it called him out at all eleven pulls of the night.
+    ["Gift of Arthas"] = true,
 }
 
 A.ELIXIR_PATTERN = "Elixir"

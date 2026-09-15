@@ -746,4 +746,26 @@ T.Case("Window scale: a usable percentage survives, an unusable one is clamped",
     T.Eq(UI.ClampScale("wide"), nil, "and neither is a word")
 end)
 
+T.Case("Item link: the id is read out of the link, never looked up by name", function()
+    -- The case this exists for: an item the client has never cached. GetItemInfo returns
+    -- nothing at all for one, by name or by id, so the only id available is the one
+    -- already sitting in the link text the player shift-clicked.
+    local name, id = MAW.ParseItemLink(
+        "|cffa335ee|Hitem:32819::::::::70:::::|h[Ace of Furies]|h|r")
+    T.Eq(name, "Ace of Furies", "the display name out of the brackets")
+    T.Eq(id, 32819, "and the item id out of |Hitem:")
+
+    -- A recipe posts |Htrade:, an enchant |Henchant:. Both name something in brackets and
+    -- neither carries an item id, so the caller still has to fall back to the name.
+    name, id = MAW.ParseItemLink(
+        "|Htrade:3811:1:300:2:0|h[Leatherworking: Bindings of Lightning Reflexes]|h")
+    T.Eq(name, "Leatherworking: Bindings of Lightning Reflexes", "still named")
+    T.Eq(id, nil, "but with no id to add it by")
+
+    T.Eq(MAW.ParseItemLink("Ace of Furies"), nil, "a typed name is not a link")
+    T.Eq(MAW.ParseItemLink("anyone jc on? []"), nil, "and neither are bare brackets")
+    T.Eq(MAW.ParseItemLink(nil), nil, "no text at all")
+    T.Eq(MAW.ParseItemLink(32819), nil, "nor anything that is not a string")
+end)
+
 _G.MalexisAuctionWatcher = MAW
