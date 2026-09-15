@@ -234,11 +234,13 @@ marks neither way, separated by commas:
 Dezedin, Moophie, Grimmtusk
 ```
 
-**Healers** are recognised by spec: Holy, Discipline or Restoration, which is why a shadow
-priest is never mistaken for one. Specs come from the same
-inspection the raid check grid uses, so they fill in once you open the raid check tab or
-run a ready check. The line under the Extra healers box says exactly who is currently
-counted, worth reading before the pull rather than after somebody dies unannounced.
+**Healers** are recognised three ways: the healer role icon on the raid roster, their
+spec, or the Extra healers box. The role icon works the moment it is set, the same as the
+tank icon does for tanks. Spec is Holy, Discipline or Restoration, which is why a shadow
+priest without the icon is never mistaken for one; specs come from the same inspection
+the raid check grid uses, so they fill in once you open the raid check tab or run a ready
+check. The line under the Extra healers box says exactly who is currently counted, worth
+reading before the pull rather than after somebody dies unannounced.
 
 ### Trash and bosses
 
@@ -639,6 +641,10 @@ and `error`.
 leave, so there is always a `WoWCombatLog.txt` to upload. This is the same job MRT's
 Logging does, done the same way: the decision waits two seconds after the zone event
 because the client does not reliably know where you are the instant a loading screen ends.
+
+It also checks again at every pull. If something switches logging off in the middle of a
+raid (unticking auto logging in MRT does it straight away), the next pull turns it back on
+and the saved log says so, instead of the file staying off until the next loading screen.
 
 It only ever stops a log where it would have started one. Somewhere it is set to log, a
 file already running is taken over, so that leaving closes it; anywhere it is not, the log

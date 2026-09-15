@@ -84,7 +84,8 @@ local function editFor(kind)
             -- Which healers the addon can actually see right now. Worth being
             -- able to answer before the pull rather than after somebody dies
             -- unannounced.
-            local known = MFD.Healers.Known(MFD.Healers.KnownSpecs(), MFD.Tanks.ParseList(text))
+            local known = MFD.Healers.Known(MFD.Healers.KnownSpecs(), MFD.Tanks.ParseList(text),
+                MFD.Healers.RoleHealers())
             if #known == 0 then
                 return AMBER .. "none recognised yet. Run a ready check, or type names.|r"
             end

@@ -110,16 +110,13 @@ Four things, in order:
    | Command | Cases |
    | --- | --- |
    | `/tm test` (TradeMaster) | 149 |
-   | `/cm test` (CutMaster) | 135 |
+   | `/cm test` (CutMaster) | 154 |
    | `/gr test` (GuildRecruitment) | 31 |
    | `/ictpl test` (ICTemplate) | 27 |
    | `/maw test` (MalexisAuctionWatcher) | 25 |
    | `/jam test` (JamminWithJam) | 17 |
    | `/ast test` (AuctionatorSellingTweaks) | 4 |
-   | `/mfd test` (MarkedForDeath) | 434 |
-
-   CutMaster does not run headlessly: its bundled LibDBIcon indexes a stub it cannot
-   handle during `ADDON_LOADED`, so its count is the last one taken in game.
+   | `/mfd test` (MarkedForDeath) | 438 |
 
    Any decision worth arguing about belongs in a pure function with a case here, and a case
    that asserts an ordering must have that ordering worked out rather than assumed.

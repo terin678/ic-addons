@@ -37,7 +37,7 @@ Set `theme = false` in a style to get plain Blizzard controls instead of the gui
 The palette is the default; nothing has to ask for it.
 ]]
 
-local MAJOR, MINOR = "LibICUI-1.0", 7
+local MAJOR, MINOR = "LibICUI-1.0", 8
 local Lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not Lib then return end
 
@@ -1129,6 +1129,9 @@ function Lib:Table(parent, opts)
     if not width then
         local pw = parent:GetWidth() or 0
         -- A frame anchored on two sides can report 0 before its first layout.
+        -- The fallback is the page, which is right for a list that spans it. A
+        -- list in a pane inset from the page's left edge has to pass width, or
+        -- size its pane outright, or this guesses the whole page for it.
         if pw < 50 then pw = style.pageWidth or 700 end
         width = pw - 26
     end
@@ -1227,16 +1230,20 @@ function Lib:Table(parent, opts)
     -- scrollbar is drawn just outside that width, in the 26px the caller left
     -- for it; making the frame itself wider pushes the bar off the page.
     local scrollTop = top - style.headerHeight
-    local parentWidth = parent:GetWidth() or 0
-    if parentWidth < 50 then parentWidth = style.pageWidth or 700 end
 
     local scroll = CreateFrame("ScrollFrame", nil, parent, "UIPanelScrollFrameTemplate")
     scroll:SetPoint("TOPLEFT", left, scrollTop)
     if opts.height then
         scroll:SetSize(width, opts.height)
     else
-        scroll:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT",
-            left + width - parentWidth, opts.bottom or 0)
+        -- The width is set outright and the bottom anchored on the left edge, so
+        -- the frame is `width` wide whatever the parent reads at build time. It
+        -- used to place its right edge from parent:GetWidth(), which reads 0 for
+        -- a two-sided parent before layout, and the page-width fallback for that
+        -- put the scrollbar in the middle of any list not starting at the page's
+        -- left edge (MarkedForDeath's rule list, until it sized its pane).
+        scroll:SetWidth(width)
+        scroll:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", left, opts.bottom or 0)
     end
     local content = CreateFrame("Frame", nil, scroll)
     content:SetSize(1, 1)

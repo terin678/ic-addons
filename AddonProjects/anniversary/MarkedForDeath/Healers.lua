@@ -1,10 +1,12 @@
 -- Healer death announcements.
 --
--- Who counts as a healer comes from their spec, which this addon already
--- learns by inspection for the raid check grid, plus a list you type. There is
--- no healer role on this client's raid roster the way there is a main tank
--- flag, so spec is the honest source: a shadow priest is not a healer and no
--- amount of reading their class will say so.
+-- Who counts as a healer comes from three places: the healer role icon on the
+-- raid roster, their spec, which this addon already learns by inspection for
+-- the raid check grid, and a list you type. The role icon is live on this
+-- client, the same one tank warnings read, and it answers for healers the
+-- inspect pump has not reached yet. Spec still counts on its own because a raid
+-- rarely sets every role, and it is spec, not class, that says a shadow priest
+-- is not a healer.
 local MFD = _G.MarkedForDeath or {}
 
 MFD.Healers = MFD.Healers or {}
@@ -20,9 +22,16 @@ Healers.HEALING_SPECS = {
     ["Restoration"] = true,
 }
 
--- Takes a player name, { [name] = spec } for the specs known, and the typed
--- list. Returns whether that player counts. Pure.
-function Healers.IsHealer(name, specs, manual)
+-- Whether a raid role, as UnitGroupRolesAssigned reports it, is the healer
+-- icon. Pure. nil and "NONE" are a role nobody chose, not a claim either way.
+function Healers.CountsAsHealer(role)
+    return role == "HEALER"
+end
+
+-- Takes a player name, { [name] = spec } for the specs known, the typed list,
+-- and { [name] = true } for everyone wearing the healer role icon. Returns
+-- whether that player counts. Pure.
+function Healers.IsHealer(name, specs, manual, roles)
     if type(name) ~= "string" or name == "" then
         return false
     end
@@ -34,17 +43,28 @@ function Healers.IsHealer(name, specs, manual)
         end
     end
 
+    if (roles or {})[name] then
+        return true
+    end
+
     return Healers.HEALING_SPECS[(specs or {})[name]] == true
 end
 
 -- Everyone currently recognised as a healer, sorted. Pure. The settings panel
 -- shows this, because "will this work tonight" is a question worth being able
 -- to answer before the pull rather than after somebody dies unremarked.
-function Healers.Known(specs, manual)
+function Healers.Known(specs, manual, roles)
     local seen, names = {}, {}
 
     for name, spec in pairs(specs or {}) do
         if Healers.HEALING_SPECS[spec] and not seen[name] then
+            seen[name] = true
+            names[#names + 1] = name
+        end
+    end
+
+    for name in pairs(roles or {}) do
+        if not seen[name] then
             seen[name] = true
             names[#names + 1] = name
         end
@@ -73,6 +93,33 @@ end
 -- healer left flagged Main Tank matches both, and one line is enough.
 Healers.announced = MFD.Tanks.announced
 local announced = Healers.announced
+
+local UnitGroupRolesAssigned = UnitGroupRolesAssigned
+local UnitName = UnitName
+local IsInRaid = IsInRaid
+
+-- Returns { [name] = true } for everyone in the raid wearing the healer role
+-- icon. Each unit is read inside pcall, as the tank reader does, so a client
+-- without the API reads nobody rather than erroring.
+function Healers.RoleHealers()
+    local healers = {}
+    if not (UnitGroupRolesAssigned and IsInRaid and IsInRaid()) then
+        return healers
+    end
+
+    for i = 1, GetNumGroupMembers() do
+        local unit = "raid" .. i
+        local ok, role = pcall(UnitGroupRolesAssigned, unit)
+        if ok and Healers.CountsAsHealer(role) then
+            local name = UnitName(unit)
+            if name then
+                healers[name] = true
+            end
+        end
+    end
+
+    return healers
+end
 
 -- Specs the addon knows, from both sources it has: what other people running
 -- this addon report about themselves, and what inspection learned. A client's
@@ -113,7 +160,7 @@ function Healers:OnDeath(name, now)
     if not MFD.Encounters.ShouldAnnounce(MFD.Encounters.Settings("healer"), MFD.Encounters.active) then
         return
     end
-    if not Healers.IsHealer(name, Healers.KnownSpecs(), Healers.ManualList()) then
+    if not Healers.IsHealer(name, Healers.KnownSpecs(), Healers.ManualList(), Healers.RoleHealers()) then
         return
     end
     if not MFD.Tanks.ShouldAnnounce(name, announced, now, MFD.Tanks.REPEAT_SECONDS) then
