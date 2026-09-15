@@ -116,7 +116,7 @@ Four things, in order:
    | `/maw test` (MalexisAuctionWatcher) | 25 |
    | `/jam test` (JamminWithJam) | 17 |
    | `/ast test` (AuctionatorSellingTweaks) | 4 |
-   | `/mfd test` (MarkedForDeath) | 434 |
+   | `/mfd test` (MarkedForDeath) | 438 |
 
    Any decision worth arguing about belongs in a pure function with a case here, and a case
    that asserts an ordering must have that ordering worked out rather than assumed.

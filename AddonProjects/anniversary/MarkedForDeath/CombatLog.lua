@@ -6,6 +6,10 @@
 -- GetInstanceInfo is not reliable the instant a loading screen ends. And it
 -- only ever switches logging off where it would have switched it on, so it
 -- cannot stamp on a log somebody is keeping for a reason of their own.
+--
+-- It also looks again at every pull. Something else can switch logging off in
+-- the middle of a raid (unticking MRT's auto logging does it on the spot), and
+-- a check that ran only on loading screens left the log off until the next one.
 local MFD = _G.MarkedForDeath or {}
 
 MFD.CombatLog = MFD.CombatLog or {}
@@ -18,6 +22,21 @@ CombatLog.SETTLE_SECONDS = 2
 -- TBC dungeon difficulties, for the optional heroic case. Raids are recognised
 -- by zone type instead, which needs no id table and cannot rot.
 CombatLog.DIFFICULTY_HEROIC_DUNGEON = 174
+
+-- When each event looks again. "settle" waits SETTLE_SECONDS for the zone to
+-- report itself properly; "now" is a pull, where the zone is already known and
+-- waiting would be two seconds of the fight missing from the file. Every key is
+-- registered, so an event this client does not have must not go in here.
+CombatLog.CHECK_TIMING = {
+    PLAYER_ENTERING_WORLD = "settle",
+    ZONE_CHANGED_NEW_AREA = "settle",
+    PLAYER_REGEN_DISABLED = "now",
+}
+
+-- Returns "settle", "now" or nil for an event name. Pure.
+function CombatLog.WhenToCheck(event)
+    return CombatLog.CHECK_TIMING[event]
+end
 
 -- Should the combat log be running here? Takes what GetInstanceInfo reports and
 -- the settings. Pure, which is the only reason this is testable at all: the
@@ -81,7 +100,9 @@ local function settings()
     return MFD.db.settings.combatLog
 end
 
-function CombatLog.Evaluate()
+-- reason, when given, goes on the end of a "started" log line, so the saved log
+-- says when logging had to be switched back on at a pull.
+function CombatLog.Evaluate(reason)
     if not MFD.db then
         return
     end
@@ -109,7 +130,8 @@ function CombatLog.Evaluate()
         CombatLog.isOurs = true
         MFD.Print("|cff66ff66combat logging on|r for " .. tostring(zoneType or "here")
             .. ". The file is in Logs\\WoWCombatLog.txt.")
-        MFD.Log.Add(MFD.Log.KINDS.LOGGING, "combat logging started in " .. tostring(zoneType))
+        MFD.Log.Add(MFD.Log.KINDS.LOGGING, "combat logging started in " .. tostring(zoneType)
+            .. (reason and (", " .. reason) or ""))
     elseif action == "adopt" then
         -- Logged, not printed. This happens on every reload inside a raid and
         -- nothing observable changes at the time; the whole effect is that the
@@ -126,6 +148,15 @@ function CombatLog.Evaluate()
     end
 end
 
+-- Runs Evaluate straight away, reporting an error rather than throwing it.
+-- Both paths come through here.
+function CombatLog.EvaluateNow(reason)
+    local ok, err = pcall(CombatLog.Evaluate, reason)
+    if not ok then
+        MFD.Error("combat logging check failed: " .. tostring(err))
+    end
+end
+
 -- Runs Evaluate after the settle delay, coalescing the burst of zone events a
 -- single loading screen produces into one decision.
 local pending = false
@@ -138,20 +169,23 @@ function CombatLog.Schedule()
 
     C_Timer.After(CombatLog.SETTLE_SECONDS, function()
         pending = false
-        local ok, err = pcall(CombatLog.Evaluate)
-        if not ok then
-            MFD.Error("combat logging check failed: " .. tostring(err))
-        end
+        CombatLog.EvaluateNow()
     end)
 end
 
 MFD.RegisterInit(function()
     local frame = CreateFrame("Frame")
-    frame:RegisterEvent("PLAYER_ENTERING_WORLD")
-    frame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
+    for event in pairs(CombatLog.CHECK_TIMING) do
+        frame:RegisterEvent(event)
+    end
 
-    frame:SetScript("OnEvent", function()
-        CombatLog.Schedule()
+    frame:SetScript("OnEvent", function(_, event)
+        local timing = CombatLog.WhenToCheck(event)
+        if timing == "now" then
+            CombatLog.EvaluateNow("at a pull, after something had switched it off")
+        elseif timing == "settle" then
+            CombatLog.Schedule()
+        end
     end)
 
     CombatLog.Schedule()

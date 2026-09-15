@@ -10,7 +10,7 @@ local ADDON_NAME = "MarkedForDeath"
 local Core = LibStub("LibICCore-1.0")
 
 -- Must match ## Version: in the toc and the packaged zip name.
-MFD.VERSION = "1.28.1"
+MFD.VERSION = "1.29.0"
 
 -- Bumped only when the saved-variable shape changes in a way that needs a
 -- migration. See MIGRATIONS.
@@ -761,7 +761,8 @@ commands.deaths = {
 commands.healers = {
     desc = "list who the addon currently counts as a healer",
     run = function()
-        local known = MFD.Healers.Known(MFD.Healers.KnownSpecs(), MFD.Healers.ManualList())
+        local known = MFD.Healers.Known(MFD.Healers.KnownSpecs(), MFD.Healers.ManualList(),
+            MFD.Healers.RoleHealers())
         if #known == 0 then
             MFD.Print("no healers recognised. Specs come from inspection, so open the raid check "
                 .. "tab or run a ready check, or type names on the Deaths tab.")

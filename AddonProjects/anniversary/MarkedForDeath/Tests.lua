@@ -3471,6 +3471,27 @@ T.Case("Healers: the known list merges both sources and sorts, without duplicate
     T.Eq(table.concat(known, ","), "Amara,Kaylia,Thok", "sorted, deduplicated, no shadow priest")
 end)
 
+-- The healer role icon, the same source tank warnings read, catches a healer
+-- the inspect pump has not reached yet.
+T.Case("Healers: the healer role icon counts without a spec", function()
+    T.Eq(H.IsHealer("Moophie", {}, {}, { Moophie = true }), true, "role icon only")
+    T.Eq(H.IsHealer("Vex", { Vex = "Shadow" }, {}, { Kaylia = true }), false, "somebody else's icon")
+    T.Eq(H.IsHealer("Kaylia", { Kaylia = "Holy" }, {}, nil), true, "spec still counts with no role table")
+end)
+
+T.Case("Healers: only the healer role reads as a healer", function()
+    T.Eq(H.CountsAsHealer("HEALER"), true, "healer")
+    T.Eq(H.CountsAsHealer("TANK"), false, "tank")
+    T.Eq(H.CountsAsHealer("DAMAGER"), false, "damage")
+    T.Eq(H.CountsAsHealer("NONE"), false, "never chosen")
+    T.Eq(H.CountsAsHealer(nil), false, "the API did not answer")
+end)
+
+T.Case("Healers: the known list includes the role icon, once", function()
+    local known = H.Known({ Thok = "Restoration" }, { "Amara" }, { Moophie = true, Thok = true })
+    T.Eq(table.concat(known, ","), "Amara,Moophie,Thok", "all three sources, no duplicates")
+end)
+
 -- The defense brake exists for one thing: an icon of ours being wiped by
 -- something that will not stop. Everything else that moves an icon is either
 -- our own decision or a person's, and counting those burns the budget on
@@ -3831,6 +3852,16 @@ T.Case("CombatLog: nothing is adopted where the settings say not to log", functi
     -- shouldLog false covers both being outside a raid and having the setting
     -- switched off, so a log started by hand is never taken over.
     T.Eq(CL.Decide(false, true, false), nil, "hands off")
+end)
+
+-- Unticking MRT's auto logging mid-raid switched logging off on the spot, and
+-- with checks only on loading screens it stayed off until the next one.
+T.Case("CombatLog: a pull looks again, straight away", function()
+    T.Eq(CL.WhenToCheck("PLAYER_REGEN_DISABLED"), "now", "entering combat")
+    T.Eq(CL.WhenToCheck("ZONE_CHANGED_NEW_AREA"), "settle", "a zone change waits")
+    T.Eq(CL.WhenToCheck("PLAYER_ENTERING_WORLD"), "settle", "a loading screen waits")
+    T.Eq(CL.WhenToCheck("PLAYER_REGEN_ENABLED"), nil, "leaving combat is no reason")
+    T.Eq(CL.Decide(true, false, true), "start", "ours, switched off by something else, back on")
 end)
 
 -- One limiter owns every outbound message. Before it there was a throttle per
