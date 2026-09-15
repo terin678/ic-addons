@@ -1565,6 +1565,41 @@ T.Case("Classify: food, flask and elixirs land in their own slots", function()
     T.Eq(s.guardian, "Elixir of Major Fortitude", "guardian elixir")
 end)
 
+-- Seen on a raid's own buffs on 2026-09-14. Shattrath Flasks put the effect
+-- first and the city last, so a prefix test read everybody on one as unflasked.
+T.Case("Classify: a Shattrath flask counts as a flask", function()
+    for _, name in ipairs({ "Fortification of Shattrath", "Pure Death of Shattrath",
+                            "Relentless Assault of Shattrath", "Blinding Light of Shattrath" }) do
+        T.Eq(MFD.RaidCheck.Classify({ name }).flask, name, name)
+    end
+end)
+
+-- The buff often drops the "Elixir of" the item carries. Seen the same night:
+-- Major Agility, Major Strength, Major Shadow Power and Healing Power without
+-- it, Elixir of Major Fortitude and Elixir of Draenic Wisdom with it.
+T.Case("Classify: an elixir buff without its Elixir of still lands in its slot", function()
+    local s = MFD.RaidCheck.Classify({ "Major Agility", "Elixir of Major Fortitude" })
+    T.Eq(s.battle, "Major Agility", "battle, by the entry for Elixir of Major Agility")
+    T.Eq(s.guardian, "Elixir of Major Fortitude", "guardian, by its full name")
+
+    T.Eq(MFD.RaidCheck.Classify({ "Major Strength" }).battle, "Major Strength", "melee")
+    T.Eq(MFD.RaidCheck.Classify({ "Major Shadow Power" }).battle, "Major Shadow Power", "casters")
+    T.Eq(MFD.RaidCheck.Classify({ "Healing Power" }).battle, "Healing Power", "and healers")
+end)
+
+T.Case("Classify: the two battle elixirs seen unclassified are filed", function()
+    T.Eq(MFD.RaidCheck.Classify({ "Greater Arcane Elixir" }).battle, "Greater Arcane Elixir", "arcane")
+    T.Eq(MFD.RaidCheck.Classify({ "Elixir of Demonslaying" }).battle, "Elixir of Demonslaying", "demonslaying")
+end)
+
+-- The short-form lookup must not start claiming ordinary buffs.
+T.Case("Classify: ordinary raid buffs are not mistaken for elixirs or flasks", function()
+    local s = MFD.RaidCheck.Classify({ "Blessing of Kings", "Arcane Intellect", "Prayer of Spirit" })
+    T.Eq(s.battle, nil, "not battle")
+    T.Eq(s.guardian, nil, "not guardian")
+    T.Eq(s.flask, nil, "not a flask")
+end)
+
 T.Case("Classify: an elixir not in either table is reported as unclassified, never dropped", function()
     local s = MFD.RaidCheck.Classify({ "Elixir of Something New" })
     T.Eq(s.battle, nil, "not filed as battle")

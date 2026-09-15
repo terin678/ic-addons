@@ -39,11 +39,16 @@ function RC.Classify(auraNames)
     for name in pairs(nameSet) do
         if A.FOOD[name] then
             state.food = name
-        elseif string.sub(name, 1, #A.FLASK_PREFIX) == A.FLASK_PREFIX then
+        elseif string.sub(name, 1, #A.FLASK_PREFIX) == A.FLASK_PREFIX
+            or string.sub(name, -#A.FLASK_SUFFIX) == A.FLASK_SUFFIX then
             state.flask = name
-        elseif A.BATTLE_ELIXIRS[name] then
+        -- The tables list item names, and many elixir buffs drop the "Elixir
+        -- of" the item carries, so "Major Agility" is looked up as "Elixir of
+        -- Major Agility" too. The slot comes from the table's own entry either
+        -- way, so accepting the short form files nothing on a guess.
+        elseif A.BATTLE_ELIXIRS[name] or A.BATTLE_ELIXIRS["Elixir of " .. name] then
             state.battle = name
-        elseif A.GUARDIAN_ELIXIRS[name] then
+        elseif A.GUARDIAN_ELIXIRS[name] or A.GUARDIAN_ELIXIRS["Elixir of " .. name] then
             state.guardian = name
         elseif string.find(name, A.ELIXIR_PATTERN, 1, true) then
             state.unclassifiedElixir = name
