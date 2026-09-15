@@ -86,6 +86,30 @@ secure button are blocked once `InCombatLockdown()` is true. A pooled row theref
 the *previous* item's attributes: disable the button rather than leave it pointing at
 someone else's action. Creating frames in combat is fine; only the secure calls are not.
 
+## Units and the raid roster
+
+**"Unknown unit." in red across the screen, and no Lua error anywhere.**
+`CheckInteractDistance(unit, i)` on a unit that is not in the world (a raid member still in
+Shattrath, or offline) puts `Unknown unit.` on `UIErrorsFrame`. That is a UI error, not a
+Lua one, so a `pcall` around the call catches nothing. Check
+`UnitExists(unit) and UnitIsVisible(unit)` first. MarkedForDeath's inspect pump printed it
+on every pass before a raid was summoned, until 1.25.2.
+
+**A tank with a shield on every raid frame is not a tank to `GetPartyAssignment`.** A raid
+marks a tank two ways that do not overlap: Set Main Tank, read by
+`GetPartyAssignment("MAINTANK", unit)`, and the tank role icon, read by
+`UnitGroupRolesAssigned(unit) == "TANK"`, which is live on 20506. ElvUI draws the same
+shield for either, so reading only one misses tanks the raid believes it has marked.
+MarkedForDeath read Main Tank alone and called no tank death in a raid until 1.27.2.
+
+## The combat log
+
+**The log file lags the game by minutes.** `WoWCombatLog-*.txt` is written through a buffer,
+so its last line and modified time can sit two or three minutes behind while logging works
+fine, and a `/reload` flushes it. Silence in the file is not evidence that logging stopped.
+A `COMBAT_LOG_VERSION` line marks every switch-on and every reload, and a `ZONE_CHANGE` to an
+outdoor zone just before a gap means the player left the instance.
+
 ## Chat
 
 **A public channel message needs a hardware event.** `SendChatMessage` to `CHANNEL` or `SAY`

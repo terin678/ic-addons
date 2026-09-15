@@ -10,7 +10,7 @@ local ADDON_NAME = "MarkedForDeath"
 local Core = LibStub("LibICCore-1.0")
 
 -- Must match ## Version: in the toc and the packaged zip name.
-MFD.VERSION = "1.28.0"
+MFD.VERSION = "1.28.1"
 
 -- Bumped only when the saved-variable shape changes in a way that needs a
 -- migration. See MIGRATIONS.
@@ -77,6 +77,11 @@ local DB_DEFAULTS = {
         isIconReuseEnabled = true,
         isManualOverrideEnabled = true,
         isLateCCAlertEnabled = true,
+        -- Which plan the Roles tab and which zone the Rules tab were showing,
+        -- so a reload opens them where they were left. false is the default
+        -- plan and the zone the player is in.
+        rolesPlanKey = false,
+        rulesFilterKey = false,
         -- The addon's own record of what it did, kept in SavedVariables so it
         -- can be read after a raid rather than remembered during one.
         isLogEnabled = true,
@@ -359,6 +364,12 @@ function MFD.SetEnabled(isEnabled)
 
     if MFD.UI and MFD.UI.Settings then
         MFD.UI.Settings:Refresh()
+    end
+
+    -- The window's own master button and title say the state too, and the
+    -- Settings tickbox and /mfd on|off change it without going through them.
+    if MFD.UI and MFD.UI.Main and MFD.UI.Main.PaintMaster then
+        MFD.UI.Main:PaintMaster()
     end
 end
 

@@ -190,6 +190,11 @@ local function addEdit(entry, x, y, width)
     box.preview = MFD.UI.Label(frame, "", "GameFontDisableSmall")
     box.preview:SetPoint("TOPLEFT", label, "BOTTOMLEFT", 0, -6)
     box.preview:SetWidth(width - 8)
+    -- buildKind leaves room for three lines; a fourth would draw over the
+    -- status line and the legend under it.
+    if box.preview.SetMaxLines then
+        box.preview:SetMaxLines(3)
+    end
 
     -- Set last, so the handler cannot fire against a preview that does not
     -- exist yet when SetText runs during the first refresh.
@@ -234,8 +239,9 @@ local function buildKind(kind, x, width)
 
     addEdit(editFor(kind), x, y, width)
 
-    -- Room for the box and two wrapped lines of readback under it. The list of
-    -- names is the one thing here that grows with the raid.
+    -- Room for the box and up to three lines of readback under it, the cap
+    -- addEdit sets. The list of names is the one thing here that grows with
+    -- the raid.
     return y - 64
 end
 
@@ -286,6 +292,7 @@ local function buildBossList(top)
 
         local heading = list:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         heading:SetPoint("TOPLEFT", list, "TOPLEFT", left, -rowIndex * ROW_HEIGHT)
+        heading:SetWordWrap(false)
         heading:SetText(group.instance)
 
         -- One all-or-none per kind, since the lists are independent.
@@ -300,6 +307,7 @@ local function buildBossList(top)
             end
             all.text = all:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
             all.text:SetAllPoints()
+            all.text:SetWordWrap(false)
             all.text:SetText(KIND_SHORT[kind])
             all.kind, all.instance = kind, group.instance
 
@@ -381,7 +389,13 @@ function Deaths:BuildInto(container)
 
     -- Two columns of controls, one per kind, so neither reads as a sub-setting
     -- of the other.
-    local half = math.floor(((frame:GetWidth() or 860) - 32) / 2)
+    -- GetWidth reads 0, not nil, before the first layout, so an "or" never
+    -- falls back; the same guard the boss list uses.
+    local pageWidth = frame:GetWidth()
+    if not pageWidth or pageWidth < COLUMN_WIDTH then
+        pageWidth = MFD.UI.PAGE_W
+    end
+    local half = math.floor((pageWidth - 32) / 2)
     local bottom = buildKind("tank", 16, half)
     buildKind("healer", 16 + half + 16, half)
 

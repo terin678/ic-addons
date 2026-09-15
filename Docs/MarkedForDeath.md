@@ -140,7 +140,8 @@ Hyjal is wave after wave of things to kill and wants most of its icons on kill t
 Black Temple wants sheep and banish held back for the pulls that need them.
 
 On the Roles tab, the **Plan for** button chooses which raid you are editing. **Default**
-is the plan every raid follows until you give one a plan of its own.
+is the plan every raid follows until you give one a plan of its own. The tab remembers
+which one you were on, so a reload opens it there.
 
 Selecting a raid does not give it a plan. The first change you make does, copied from
 whatever it was following, so you can cycle through the list to look without leaving
@@ -156,10 +157,12 @@ You do not have to be standing in an instance, and the addon does not have to kn
 
 Open `/mfd rules`, click the filter button until it reads the instance you are planning
 (Black Temple, Hyjal, whichever), and build the list from the bank in Shattrath if you
-like. Rules go to the zone the filter names, not to wherever you are standing.
+like. Rules go to the zone the filter names, not to wherever you are standing. The filter
+is remembered across a reload; set it back to **this zone** to follow you again.
 
 For a whole instance at once, click **Paste list** (or `/mfd bulk`) and paste a kill
-order, best target first:
+order, best target first. It sits with **Share**, **Load file** and **Format** in the row
+of buttons above the rule list:
 
 ```
 -- first pull

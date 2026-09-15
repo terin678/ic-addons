@@ -105,17 +105,21 @@ Four things, in order:
    `ns.Tests.Run()`. A file that calls the client at file scope fails here by name,
    which is the standard being enforced; a case that needs real widgets returns early
    on `IC_HEADLESS`. Runs in a second; use it before every `/reload`.
-3. The same cases in game. Six addons carry a `Tests.lua`, loaded last:
+3. The same cases in game. Eight addons carry a `Tests.lua`, loaded last:
 
    | Command | Cases |
    | --- | --- |
-   | `/tm test` (TradeMaster) | 138 |
+   | `/tm test` (TradeMaster) | 149 |
    | `/cm test` (CutMaster) | 135 |
    | `/gr test` (GuildRecruitment) | 31 |
    | `/ictpl test` (ICTemplate) | 27 |
-   | `/maw test` (MalexisAuctionWatcher) | 24 |
+   | `/maw test` (MalexisAuctionWatcher) | 25 |
+   | `/jam test` (JamminWithJam) | 17 |
    | `/ast test` (AuctionatorSellingTweaks) | 4 |
-   | `/mfd selftest` (MarkedForDeath) | 397 |
+   | `/mfd test` (MarkedForDeath) | 434 |
+
+   CutMaster does not run headlessly: its bundled LibDBIcon indexes a stub it cannot
+   handle during `ADDON_LOADED`, so its count is the last one taken in game.
 
    Any decision worth arguing about belongs in a pure function with a case here, and a case
    that asserts an ordering must have that ordering worked out rather than assumed.

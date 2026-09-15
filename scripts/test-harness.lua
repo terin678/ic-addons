@@ -206,7 +206,7 @@ if addonName == "MarkedForDeath" then
     local files = {
         "Helpers.lua", "JSON.lua", "Data_Mobs.lua", "Data_Auras.lua", "Data_Bosses.lua",
         "Log.lua", "Actions.lua", "Roles.lua", "Rules.lua", "Allocator.lua", "Candidates.lua",
-        "Marker.lua", "Conflicts.lua", "Chatter.lua", "CombatLog.lua", "UI_ActionBar.lua",
+        "Marker.lua", "Conflicts.lua", "Chatter.lua", "ChatCue.lua", "CombatLog.lua", "UI_ActionBar.lua",
         "Comms.lua", "RaidCheck.lua", "Encounters.lua", "Tanks.lua", "Healers.lua", "Tests.lua",
     }
     for _, name in ipairs(files) do
