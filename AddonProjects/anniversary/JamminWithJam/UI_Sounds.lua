@@ -10,16 +10,17 @@ reads as a broken addon.
 ]]
 
 UI.RegisterPage(10, "Sounds", function(page)
+    -- Two explicit short lines rather than one long string left to wrap on
+    -- its own: the table 8px below has to know exactly how tall this is.
     local intro = UI.Label(page,
-        "Play sends a chat line the Discord bot is listening for; it does not "
-        .. "make sound by itself. See the About tab if nothing happens on the "
-        .. "Discord side.", "GameFontDisableSmall")
+        "Play sends a chat line the Discord bot listens for -- it makes no sound here.\n"
+        .. "See the About tab if nothing happens on the Discord side.", "GameFontDisableSmall")
     intro:SetPoint("TOPLEFT", 0, -2)
     intro:SetWidth(UI.Style.pageWidth - 20)
     intro:SetSpacing(2)
 
     local t = UI.Table(page, {
-        top = -34,
+        top = -42,
         columns = {
             { key = "label", label = "Sound", width = "flex" },
             { key = "status", label = "Status", width = 170 },
@@ -32,8 +33,10 @@ UI.RegisterPage(10, "Sounds", function(page)
             local state = ns.Sounds.ReadState(sound)
             local blocked = ns.Sounds.BlockReason(state)
 
+            -- The same amber the status column uses for "blocked": one
+            -- meaning per colour across the addon, not a second orange.
             t:Set(row, "label", sound.officerOnly
-                and ("|cffdf9c33" .. sound.label .. "|r  |cff888888(officers)|r")
+                and ("|cffffcc00" .. sound.label .. "|r  |cff888888(officers)|r")
                 or sound.label)
             t:Set(row, "status", blocked and ("|cffffcc00" .. blocked .. "|r")
                 or "|cff44ff44ready|r")

@@ -11,12 +11,12 @@ to a 300-entry window, filtered, and 100 of those drawn. Reading the whole pile 
 every click buys nothing anyone can see.
 ]]
 
+-- Sounds.lua only ever writes two kinds; these have to name exactly those
+-- two, or a filter button here hides everything it claims to show.
 local KINDS = {
     { key = "all", label = "All" },
-    { key = "ok", label = "Did" },
-    { key = "warn", label = "Skipped" },
-    { key = "err", label = "Failed" },
-    { key = "info", label = "Noted" },
+    { key = "sent", label = "Played" },
+    { key = "skipped", label = "Skipped" },
 }
 
 local SHOWN = 100
@@ -107,8 +107,9 @@ UI.RegisterPage(40, "Log", function(page)
 
         -- Say what is being held back. A filtered list that merely looks short is
         -- the thing that gets reported as data loss.
-        -- Short enough to clear the buttons on its left. The toolbar is 674 wide
-        -- and the left cluster ends around 500, so this has about 170 to live in.
+        -- Short enough to clear the buttons on its left. Only two kind filters
+        -- here (not ICTemplate's five), so the left cluster ends well before
+        -- ICTemplate's own 500px mark and this has more than the 170px it had.
         local parts = { string.format("%d of %d", #entries, #seen) }
         if hidden > 0 then parts[#parts + 1] = string.format("%d hidden", hidden) end
         hint:SetText("|cff888888" .. table.concat(parts, "  \194\183  ") .. "|r")

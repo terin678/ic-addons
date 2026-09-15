@@ -138,6 +138,13 @@ Core:Attach(ns, {
     help = HELP,
     commands = COMMANDS,
     loadedHint = "/jam opens the soundboard, /jam help lists commands.",
+    -- One colour per kind everywhere: green played, amber did not. Sounds.lua
+    -- is the only thing that writes these; the Log page's filter buttons
+    -- have to name the same two kinds, which is what UI_Log.lua's KINDS does.
+    logKinds = {
+        sent = "|cff44ff44",
+        skipped = "|cffffcc00",
+    },
 
     onLoad = function()
         if ns.Minimap and ns.Minimap.Init then ns.Minimap.Init() end

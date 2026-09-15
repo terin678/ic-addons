@@ -18,7 +18,9 @@ Copy this block into a new addon and change the style name.
 local ICUI = LibStub("LibICUI-1.0")
 UI.Lib = ICUI
 
-local WIDTH, HEIGHT = 640, 420
+-- Same as ICTemplate's: the About page below reuses its offsets exactly
+-- (toolbar, status and table positions), and those were tuned for this size.
+local WIDTH, HEIGHT = 720, 560
 local TAB_H, ROW_H = 22, 18
 local PAGE_INSET = 10
 
@@ -211,11 +213,12 @@ end
 -- Registered here rather than in its own file because it is the page that reports
 -- on the addon itself, and it is the last one either way.
 UI.RegisterPage(90, "About", function(page)
+    -- Two explicit lines, each well short of the width, rather than one long
+    -- string left to wrap on its own: the toolbar 34px below has to know how
+    -- tall this is, and a wrap this file cannot see is how the two collide.
     local intro = Label(page,
-        "Clicking Play on the Sounds tab puts a short line in chat. Nothing here "
-        .. "talks to Discord: a companion bot on someone's PC watches this "
-        .. "client's own chat log for that line and plays the sound there. "
-        .. "Docs/JamminWithJam.md has the setup for that bot.")
+        "Clicking Play on the Sounds tab sends a chat line; it makes no sound\n"
+        .. "by itself. A Discord bot on this PC plays it -- see Docs/JamminWithJam.md.")
     intro:SetPoint("TOPLEFT", 0, -2)
     intro:SetWidth(STYLE.pageWidth - 20)
     intro:SetSpacing(3)
