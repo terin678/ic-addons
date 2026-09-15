@@ -541,7 +541,8 @@ grid, it does not ask anybody anything.
 
 **The grid** (`/mfd check`) is one row per person: food, flask, both elixir slots,
 Intellect, Mark of the Wild, Fortitude, Spirit, Shadow Protection, the blessings they
-hold, durability, spec and addon version. Green is present. Red is missing and worth
+hold, durability, spec and addon version. Shadow Protection is shown for information and
+never required: it is never red and never called out. Green is present. Red is missing and worth
 fixing. Grey is either not a problem (nobody here can cast it, or the raid does not expect
 it) or unknown. It opens by itself on every ready check for the raid leader and
 assistants, and only them; a checkbox on it turns that off. While it is open it updates
@@ -567,7 +568,10 @@ broken weapon at 70% overall matters more than 40% spread evenly.
 requirement with two ways to meet it and the addon checks it as one. A flask on its own is
 fine. A battle elixir and a guardian elixir together is fine. One elixir on its own is
 half the job and reads as missing. The three columns are still shown separately so you can
-see what somebody is actually running; they just answer to one requirement.
+see what somebody is actually running; they just answer to one requirement. The callout
+names the half that is missing, so the raid reads `Guardian elixir: Jspeed` for someone on
+a battle elixir alone, `Battle elixir:` for the other way round, and `Flask or elixirs:` only
+for someone with nothing on.
 
 **Click a consumable column header** (Food, or Flask for the flask-or-elixirs
 requirement) to toggle whether the raid expects it. Greyed headers are not expected and

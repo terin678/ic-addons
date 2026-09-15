@@ -1736,6 +1736,48 @@ T.Case("MergeRow: a reported false does not erase a scanned present name", funct
     T.Eq(row.state.flask, "Flask of Blinding Light", "present in the scan wins for names")
 end)
 
+-- Named for the half that is missing. Jspeed ran Major Agility and no guardian
+-- elixir at every pull on 2026-09-14 and was told "Flask or elixirs", which
+-- reads as having nothing on.
+T.Case("Missing: one elixir without a flask names the half that is missing", function()
+    local battleOnly = MFD.RaidCheck.Missing(MFD.RaidCheck.Classify({ "Major Agility" }), {}, { ELIXIRS = true })
+    T.Eq(battleOnly[1].column, "ELIXIRS", "still the one requirement, so the grid paints it the same")
+    T.Eq(battleOnly[1].label, "Guardian elixir", "battle on, guardian missing")
+
+    local guardianOnly = MFD.RaidCheck.Missing(MFD.RaidCheck.Classify({ "Elixir of Draenic Wisdom" }), {}, { ELIXIRS = true })
+    T.Eq(guardianOnly[1].label, "Battle elixir", "guardian on, battle missing")
+
+    local nothing = MFD.RaidCheck.Missing(MFD.RaidCheck.Classify({}), {}, { ELIXIRS = true })
+    T.Eq(nothing[1].label, "Flask or elixirs", "nothing on at all")
+end)
+
+T.Case("Callout: each kind of elixir short lands on its own line", function()
+    local function row(name, auras)
+        return { name = name, missing = MFD.RaidCheck.Missing(MFD.RaidCheck.Classify(auras), {}, { ELIXIRS = true }) }
+    end
+    local lines = MFD.RaidCheck.FormatCallout({
+        row("Jspeed", { "Major Agility" }),
+        row("Moophie", { "Major Agility" }),
+        row("Demitri", { "Elixir of Draenic Wisdom" }),
+        row("Rippimpsea", {}),
+    })
+    local seen = {}
+    for _, l in ipairs(lines) do seen[l] = true end
+    T.Eq(seen["Guardian elixir: Jspeed, Moophie"], true, "the two battle-only players together")
+    T.Eq(seen["Battle elixir: Demitri"], true, "the guardian-only one")
+    T.Eq(seen["Flask or elixirs: Rippimpsea"], true, "the one with nothing")
+end)
+
+-- Shadow Protection named about twenty people at every callout in Black Temple
+-- on 2026-09-14. It is still read, and shown, but never required.
+T.Case("Missing: Shadow Protection is never required, even with a priest present", function()
+    local withPriest = MFD.RaidCheck.Providers({ { name = "Kaylia", class = "PRIEST" } })
+    for _, m in ipairs(MFD.RaidCheck.Missing(MFD.RaidCheck.Classify({}), withPriest, {})) do
+        T.Eq(m.column ~= "SP", true, "never called out")
+    end
+    T.Eq(MFD.RaidCheck.Classify({ "Prayer of Shadow Protection" }).SP, true, "but still read, for the grid")
+end)
+
 T.Case("Missing: a flask satisfies the elixir requirement on its own", function()
     local state = MFD.RaidCheck.Classify({ "Flask of Relentless Assault" })
     local missing = MFD.RaidCheck.Missing(state, {}, { ELIXIRS = true })

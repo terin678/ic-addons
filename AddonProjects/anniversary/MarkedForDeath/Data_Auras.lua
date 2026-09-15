@@ -16,7 +16,11 @@ A.RAID_BUFFS = {
     MOTW   = { label = "MotW",   names = { "Mark of the Wild", "Gift of the Wild" },             classes = { "DRUID" } },
     FORT   = { label = "Fort",   names = { "Power Word: Fortitude", "Prayer of Fortitude" },     classes = { "PRIEST" } },
     SPIRIT = { label = "Spirit", names = { "Divine Spirit", "Prayer of Spirit" },                classes = { "PRIEST" } },
-    SP     = { label = "SProt",  names = { "Shadow Protection", "Prayer of Shadow Protection" }, classes = { "PRIEST" } },
+    -- Shown on the grid, never required. It named about twenty people at every
+    -- callout in Black Temple on 2026-09-14, on fights where nobody needed it,
+    -- and a line the raid learns to skip teaches it to skip the others too.
+    SP     = { label = "SProt",  names = { "Shadow Protection", "Prayer of Shadow Protection" }, classes = { "PRIEST" },
+               isRequired = false },
 }
 
 -- Column order for every surface. The three priest buffs sit together, and
