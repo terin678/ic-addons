@@ -78,7 +78,12 @@ local function Stub(kind, name)
     f.IsShown = function(self) return self._shown end
     f.IsVisible = function(self) return self._shown end
     f.GetName = function(self) return self._name end
-    f.GetParent = function() return _G.UIParent end
+    -- The frame this was made on, not UIParent for everyone. A library that
+    -- reads a field its own button set, through a texture's GetParent, got
+    -- UIParent's catch-all function instead; LibDBIcon's icon does exactly that,
+    -- which is what kept CutMaster from running here at all.
+    f.GetParent = function(self) return self._parent or _G.UIParent end
+    f.SetParent = function(self, p) self._parent = p end
     f.SetText = function(self, s) self._text = s end
     f.GetText = function(self) return self._text end
     f.GetChecked = function() return false end
@@ -93,9 +98,29 @@ local function Stub(kind, name)
     f.GetRight = function() return 0 end
     f.GetCenter = function() return 0, 0 end
     f.HasFocus = function() return false end
-    f.CreateFontString = function() return Stub("FontString") end
-    f.CreateTexture = function() return Stub("Texture") end
+    f.CreateFontString = function(self)
+        local child = Stub("FontString")
+        child._parent = self
+        return child
+    end
+    f.CreateTexture = function(self)
+        local child = Stub("Texture")
+        child._parent = self
+        return child
+    end
     f.GetFontString = function(self) return Stub("FontString") end
+    -- A real group, not the catch-all's nil, so a library can build its fades
+    -- on it. LibDBIcon's minimap button does, as soon as it is registered.
+    f.CreateAnimationGroup = function(self)
+        local group = Stub("AnimationGroup")
+        group._parent = self
+        group.CreateAnimation = function(owner, kind)
+            local anim = Stub(kind or "Animation")
+            anim._parent = owner
+            return anim
+        end
+        return group
+    end
     f.GetObjectType = function(self) return self._kind end
     frames[#frames + 1] = f
     if name then _G[name] = f end
@@ -104,7 +129,11 @@ end
 
 -- Tests that need a real client (a page drawing itself) read this and step aside.
 _G.IC_HEADLESS = true
-_G.CreateFrame = function(kind, name) return Stub(kind or "Frame", name) end
+_G.CreateFrame = function(kind, name, parent)
+    local f = Stub(kind or "Frame", name)
+    f._parent = parent
+    return f
+end
 _G.UIParent = Stub("Frame", "UIParent")
 _G.GameTooltip = Stub("GameTooltip", "GameTooltip")
 _G.Minimap = Stub("Frame", "Minimap")
