@@ -112,6 +112,7 @@ request. Development happens on branches:
 | anniversary | [ICLibs](AddonProjects/anniversary/ICLibs) | Shared libraries (LibStub, LibICTradeSkill, LibICUI) required by MalexisAuctionWatcher, TradeMaster, ICTemplate and GuildRecruitment. Guide: [Docs/ICLibs.md](Docs/ICLibs.md) |
 | anniversary | [ICTemplate](AddonProjects/anniversary/ICTemplate) | The worked example: every LibICUI widget on screen beside the source it was built from. Copy it to start a new addon. Guide: [Docs/ICTemplate.md](Docs/ICTemplate.md) |
 | anniversary | [GuildRecruitment](AddonProjects/anniversary/GuildRecruitment) | One recruitment message the raid leaders set and every officer sends, kept in step across the guild, with a log of who barked when. Guide: [Docs/GuildRecruitment.md](Docs/GuildRecruitment.md) |
+| anniversary | [JamminWithJam](AddonProjects/anniversary/JamminWithJam) | Guild soundboard: chat triggers a sound in the Discord voice channel via a companion bot. Guide: [Docs/JamminWithJam.md](Docs/JamminWithJam.md) |
 
 ## Client paths on the maintainer's machine
 

@@ -1,0 +1,23 @@
+{
+  "name": "jammin-with-jam-bot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Companion bot for the JamminWithJam WoW addon. Tails the WoW client's own chat log for !jam commands and plays the matching sound in a Discord voice channel.",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=18.11.0"
+  },
+  "dependencies": {
+    "@discordjs/voice": "^0.19.2",
+    "discord.js": "^14.27.0",
+    "dotenv": "^17.4.2",
+    "ffmpeg-static": "^5.3.0",
+    "opusscript": "^0.1.1",
+    "tweetnacl": "^1.0.3"
+  }
+}

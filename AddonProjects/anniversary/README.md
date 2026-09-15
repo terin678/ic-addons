@@ -12,6 +12,7 @@ Target interface: 20506. Client folder `_anniversary_`.
 | ICTemplate | 1.1.0 | [Docs/ICTemplate.md](../../Docs/ICTemplate.md) |
 | GuildRecruitment | 0.4.0 | [Docs/GuildRecruitment.md](../../Docs/GuildRecruitment.md) |
 | MarkedForDeath | 1.27.0 | [Docs/MarkedForDeath.md](../../Docs/MarkedForDeath.md) |
+| JamminWithJam | 0.1.0 | [Docs/JamminWithJam.md](../../Docs/JamminWithJam.md) |
 
 `ICLibs` is a library addon. MalexisAuctionWatcher, TradeMaster, ICTemplate,
 GuildRecruitment and MarkedForDeath list it under `## Dependencies`, so it must be

@@ -20,3 +20,10 @@ SavedVariables/
 # Python bytecode from scripts/
 __pycache__/
 *.pyc
+
+# DiscordBots/*/: local secrets and machine-specific config, never shared
+node_modules/
+.env
+DiscordBots/*/config.json
+DiscordBots/*/sounds/*
+!DiscordBots/*/sounds/README.md

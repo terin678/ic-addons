@@ -1,0 +1,5 @@
+<Bindings>
+    <Binding name="JAMMINWITHJAM_TOGGLE" header="JAMMINWITHJAM" description="Open or close the JamminWithJam window">
+        JamminWithJam_Toggle()
+    </Binding>
+</Bindings>

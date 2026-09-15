@@ -1,0 +1,23 @@
+{
+  "_comment": "Copy this file to config.json and fill in the guild- and Discord-specific values. config.json is gitignored on purpose: it carries a voice channel id and a list of officer character names.",
+
+  "chatLogPath": "C:\\Program Files (x86)\\World of Warcraft\\_classic_\\Logs\\WoWChatLog.txt",
+  "triggerPrefix": "!jam",
+
+  "guildId": "REPLACE_WITH_YOUR_DISCORD_SERVER_ID",
+  "voiceChannelId": "REPLACE_WITH_THE_VOICE_CHANNEL_ID",
+
+  "globalCooldownSec": 5,
+
+  "officers": [
+    "Malexis"
+  ],
+
+  "_commandsComment": "Every id here must match a row in the addon's own CATALOGUE table in AddonProjects/anniversary/JamminWithJam/Sounds.lua -- see that file's comment. file is a path relative to this bot's sounds/ folder.",
+  "commands": [
+    { "id": "airhorn", "label": "Air Horn", "file": "airhorn.mp3", "officerOnly": false, "cooldownSec": 20 },
+    { "id": "applause", "label": "Applause", "file": "applause.mp3", "officerOnly": false, "cooldownSec": 15 },
+    { "id": "sadtrombone", "label": "Sad Trombone", "file": "sadtrombone.mp3", "officerOnly": false, "cooldownSec": 15 },
+    { "id": "wipesiren", "label": "Wipe Siren", "file": "wipesiren.mp3", "officerOnly": true, "cooldownSec": 30 }
+  ]
+}
