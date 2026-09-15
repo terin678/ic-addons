@@ -157,10 +157,10 @@ local function openIntentMenu(anchor, current, onPick, allowed)
     ToggleDropDownMenu(1, nil, intentMenu, anchor, 0, 0)
 end
 
--- Moves an icon's ordinal within its intent. Ordinals are renumbered from 1 so
--- two roles of one intent never share a number.
 -- Which plan the roles tab is editing. nil is the default, the one every
--- instance without one of its own follows.
+-- instance without one of its own follows. Mirrored in the saved settings as
+-- rolesPlanKey (false for the default): which plan the list shows is a filter,
+-- and a filter that resets on reload reads as edits that were lost.
 local planKey = nil
 
 -- The plan being edited, read only. Editing goes through editablePlan so the
@@ -179,6 +179,8 @@ local function editablePlan()
     return MFD.Roles.Detach(MFD.db, planKey)
 end
 
+-- Moves an icon's ordinal within its intent. Ordinals are renumbered from 1 so
+-- two roles of one intent never share a number.
 local function shiftOrdinal(icon, delta)
     local plan = editablePlan()
     local role = plan[icon]
@@ -268,8 +270,17 @@ end
 
 -- The pinned player. Committed on Enter so a half-typed name is never saved.
 local function makePinCell(row, col, x)
-    local box = MFD.UI.EditBox(row, col.width - 6, row.rowHeight - 2)
-    box:SetPoint("LEFT", row, "LEFT", x + 2, 0)
+    -- A frame holding the box, not the box itself. The table blanks every cell
+    -- that has a SetText each time it renders, and a box blanked with the
+    -- cursor in it fires OnTextChanged with focus and saves the pin as nobody.
+    -- A roster change while a name was being typed was enough to do it.
+    local cell = CreateFrame("Frame", nil, row)
+    cell:SetPoint("LEFT", row, "LEFT", x, 0)
+    cell:SetSize(col.width, row.rowHeight)
+
+    local box = MFD.UI.EditBox(cell, col.width - 6, row.rowHeight - 2)
+    box:SetPoint("LEFT", cell, "LEFT", 2, 0)
+    cell.box = box
 
     -- Saved as it is typed, which is what every other box in this addon does
     -- and what this one did not. It committed on Enter alone, with nothing
@@ -306,7 +317,7 @@ local function makePinCell(row, col, x)
     box:SetScript("OnEnterPressed", box.ClearFocus)
     box:SetScript("OnEscapePressed", box.ClearFocus)
 
-    return box
+    return cell
 end
 
 -- Ticked, this icon is never lent to a kill target when its own job has
@@ -365,7 +376,7 @@ function Config:Refresh()
     frame.planButton:SetText(planKey or "Default")
     frame.planNote:SetText(planKey
         and (isOwn
-            and ("|cffffcc00" .. planKey .. " has a plan of its own.|r Use default puts it back.")
+            and ("|cffffcc66" .. planKey .. " has a plan of its own.|r Use default puts it back.")
             or ("|cff999999" .. planKey .. " follows the default.|r Change anything here and it gets a plan of its own."))
         or "|cff999999The default, used by every raid without a plan of its own.|r")
     frame.planReset:SetShown(isOwn and true or false)
@@ -381,8 +392,13 @@ function Config:Refresh()
             t:Set(row, "job", "unbound", { r = 0.6, g = 0.6, b = 0.6 })
         end
 
-        if not row.cells.pin:HasFocus() then
-            row.cells.pin:SetText(role and role.pin or "")
+        -- The table blanked this button's label on the way in, as it does any
+        -- cell with a SetText, so it is put back every render.
+        row.cells.change:SetText("Change")
+
+        local pin = row.cells.pin.box
+        if not pin:HasFocus() then
+            pin:SetText(role and role.pin or "")
         end
 
         row.cells.reserved:SetChecked(role and role.isReserved and true or false)
@@ -404,6 +420,7 @@ end
 -- provides the border, the title and the dragging; this only fills the space.
 function Config:BuildInto(container)
     frame = container
+    planKey = MFD.db.settings.rolesPlanKey or nil
 
     -- The header is the table's own, so the hand-spaced string of column names
     -- that used to sit above these rows is gone with it.
@@ -418,6 +435,7 @@ function Config:BuildInto(container)
     frame.planButton:SetPoint("LEFT", frame.planLabel, "RIGHT", 6, 0)
     frame.planButton:SetScript("OnClick", function()
         planKey = cyclePlanKey(planKey)
+        MFD.db.settings.rolesPlanKey = planKey or false
         Config:Refresh()
     end)
 
@@ -472,6 +490,9 @@ local RESULT_ROWS = 60     -- most search results worth building rows for
 local RULE_ROW_HEIGHT = 24 -- pixels
 
 local rulesFrame
+-- Which zone's rules are shown; nil follows the zone the player is in.
+-- Mirrored in the saved settings as rulesFilterKey (false for this zone), for
+-- the same reason as the roles tab's plan: it decides which rows are listed.
 local filterKey = nil
 local lastResults = {}
 
@@ -527,8 +548,13 @@ local function ownedRule(key, merged)
     return copy, #list
 end
 
+local function setFilter(key)
+    filterKey = key or nil
+    MFD.db.settings.rulesFilterKey = filterKey or false
+end
+
 local function cycleFilter()
-    filterKey = cycleKey(filterKey)
+    setFilter(cycleKey(filterKey))
 end
 
 
@@ -992,7 +1018,7 @@ function RulesUI:OpenFor(npcID, name, unit)
         RulesUI:Toggle()
     end
 
-    filterKey = nil
+    setFilter(nil)
 
     local list = localList(key)
     if not localIndexOf(list, { npcID = npcID, name = name }) then
@@ -1076,32 +1102,36 @@ local function buildRulesFrame()
         RulesUI:AddRule({ name = typed })
     end)
 
-    rulesFrame.bulk = MFD.UI.Button(rulesFrame, "", 90, 20)
-    rulesFrame.bulk:SetPoint("BOTTOMLEFT", rulesFrame, "BOTTOMLEFT", 20, 10)
-    rulesFrame.bulk:SetText("Paste list")
-    rulesFrame.bulk:SetScript("OnClick", function()
-        RulesUI:ShowTransferBox("", "bulk")
-    end)
-
-    rulesFrame.share = MFD.UI.Button(rulesFrame, "", 70, 20)
-    rulesFrame.share:SetPoint("LEFT", rulesFrame.bulk, "RIGHT", 8, 0)
-    rulesFrame.share:SetText("Share")
-    rulesFrame.share:SetScript("OnClick", function()
-        RulesUI:ShowTransferBox(MFD.Rules.ToJSON(MFD.db.rules, {}), "exportjson")
+    -- The bulk actions, in a toolbar row above the rule list and right-aligned
+    -- to it. They sat in a strip under both lists before, which the window
+    -- layout rules keep for things that belong at the end of a list. Laid out
+    -- right to left so the row ends at the pane's edge however wide it is.
+    rulesFrame.format = MFD.UI.Button(rulesFrame, "", 70, 20)
+    rulesFrame.format:SetPoint("TOPRIGHT", rulesFrame, "TOPRIGHT", -6, -10)
+    rulesFrame.format:SetText("Format")
+    rulesFrame.format:SetScript("OnClick", function()
+        RulesUI:ShowTransferBox(FORMAT_HELP, "help")
     end)
 
     rulesFrame.load = MFD.UI.Button(rulesFrame, "", 80, 20)
-    rulesFrame.load:SetPoint("LEFT", rulesFrame.share, "RIGHT", 8, 0)
+    rulesFrame.load:SetPoint("RIGHT", rulesFrame.format, "LEFT", -8, 0)
     rulesFrame.load:SetText("Load file")
     rulesFrame.load:SetScript("OnClick", function()
         RulesUI:ShowTransferBox("", "importjson")
     end)
 
-    rulesFrame.format = MFD.UI.Button(rulesFrame, "", 70, 20)
-    rulesFrame.format:SetPoint("LEFT", rulesFrame.load, "RIGHT", 8, 0)
-    rulesFrame.format:SetText("Format")
-    rulesFrame.format:SetScript("OnClick", function()
-        RulesUI:ShowTransferBox(FORMAT_HELP, "help")
+    rulesFrame.share = MFD.UI.Button(rulesFrame, "", 70, 20)
+    rulesFrame.share:SetPoint("RIGHT", rulesFrame.load, "LEFT", -8, 0)
+    rulesFrame.share:SetText("Share")
+    rulesFrame.share:SetScript("OnClick", function()
+        RulesUI:ShowTransferBox(MFD.Rules.ToJSON(MFD.db.rules, {}), "exportjson")
+    end)
+
+    rulesFrame.bulk = MFD.UI.Button(rulesFrame, "", 90, 20)
+    rulesFrame.bulk:SetPoint("RIGHT", rulesFrame.share, "LEFT", -8, 0)
+    rulesFrame.bulk:SetText("Paste list")
+    rulesFrame.bulk:SetScript("OnClick", function()
+        RulesUI:ShowTransferBox("", "bulk")
     end)
 
     rulesFrame.filter = MFD.UI.Button(rulesFrame, "", 110, 20)
@@ -1115,14 +1145,15 @@ local function buildRulesFrame()
     rulesFrame.resultsNote:SetPoint("TOPLEFT", rulesFrame.search, "BOTTOMLEFT", 6, -30)
     rulesFrame.resultsNote:SetWidth(320)
     rulesFrame.resultsNote:SetJustifyH("LEFT")
+    -- One line: it ends a few pixels above the results header, so a second
+    -- line would sit on it.
+    rulesFrame.resultsNote:SetWordWrap(false)
 
     rulesFrame.results = CreateFrame("Frame", nil, rulesFrame)
     rulesFrame.results:SetPoint("TOPLEFT", rulesFrame, "TOPLEFT", 6, -76)
-    -- Stops where the toolbar starts, the same as the rule list beside it. A
-    -- list that shares pixels with a bottom-anchored control is the thing the
-    -- window layout rules forbid, and while this one only rendered twelve rows
-    -- it never reached far enough down to show it.
-    rulesFrame.results:SetPoint("BOTTOMRIGHT", rulesFrame, "BOTTOMLEFT", 336, 40)
+    -- Runs to the bottom of the page, the same as the rule list beside it, now
+    -- that nothing is anchored under either of them.
+    rulesFrame.results:SetPoint("BOTTOMRIGHT", rulesFrame, "BOTTOMLEFT", 336, 6)
 
     -- The Add button is a trailing button column rather than a widget the row
     -- builds for itself, which is what keeps every list in the addon the same
@@ -1159,9 +1190,15 @@ local function buildRulesFrame()
 
     rulesFrame.ruleList = CreateFrame("Frame", nil, rulesFrame)
     rulesFrame.ruleList:SetPoint("TOPLEFT", rulesFrame, "TOPLEFT", 342, -76)
-    rulesFrame.ruleList:SetPoint("BOTTOMRIGHT", rulesFrame, "BOTTOMRIGHT", -6, 40)
+    rulesFrame.ruleList:SetPoint("BOTTOMRIGHT", rulesFrame, "BOTTOMRIGHT", -6, 6)
 
     rulesFrame.ruleTable = MFD.UI.Table(rulesFrame.ruleList, {
+        -- Given outright rather than read from the pane. The pane is anchored on
+        -- two sides and can read 0 wide at build time, and the library's
+        -- fallback for that is the whole page, which from 342 in would run the
+        -- list past the window and clip its last columns. The pane is the page
+        -- less 342 on the left and 6 on the right; 26 more is the scrollbar.
+        width = MFD.UI.PAGE_W - 342 - 6 - 26,
         rowHeight = RULE_ROW_HEIGHT,
         columns = RULE_COLUMNS,
         buttons = RULE_BUTTONS,
@@ -1236,6 +1273,7 @@ end
 -- supplies the border, title and dragging; this only fills the space.
 function RulesUI:BuildInto(container)
     rulesFrame = container
+    filterKey = MFD.db.settings.rulesFilterKey or nil
     buildRulesFrame()
 end
 
@@ -1273,15 +1311,22 @@ local function buildTransferFrame()
     })
     transferFrame:SetFrameLevel(50)
 
+    -- Two lines at most, inside the dialog. With no width it drew as one line
+    -- as long as the sentence, and the longer hints ran well past the right
+    -- edge of a 460 pixel window.
     transferFrame.hint = MFD.UI.Label(transferFrame, "", "GameFontDisableSmall")
     transferFrame.hint:SetPoint("TOPLEFT", transferFrame, "TOPLEFT", 14, -34)
+    transferFrame.hint:SetWidth(432)
+    if transferFrame.hint.SetMaxLines then
+        transferFrame.hint:SetMaxLines(2)
+    end
 
     -- The library's multi-line area. It owns the scroll frame and the edit box,
     -- and knows the one thing that matters here: there is no clipboard API on
     -- this client, so the most a Copy button can do is select the text and let
-    -- the player press Ctrl+C.
-    transferFrame.box = MFD.UI.TextBox(transferFrame, 414, 150)
-    transferFrame.box:SetPoint("TOPLEFT", transferFrame, "TOPLEFT", 14, -52)
+    -- the player press Ctrl+C. Starts under the hint's second line.
+    transferFrame.box = MFD.UI.TextBox(transferFrame, 414, 140)
+    transferFrame.box:SetPoint("TOPLEFT", transferFrame, "TOPLEFT", 14, -62)
     transferFrame.edit = transferFrame.box.edit
 
     transferFrame.action = MFD.UI.Button(transferFrame, "", 100, 22)
