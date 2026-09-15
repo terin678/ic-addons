@@ -85,6 +85,11 @@ A.GUARDIAN_ELIXIRS = {
     ["Elixir of Ironskin"] = true,
     ["Earthen Elixir"] = true,
     ["Elixir of Camouflage"] = true,
+    -- A Classic elixir TBC files as a guardian one. Confirmed an elixir in game
+    -- on 2026-09-14, and the slot follows from the log: Moophie wore it beside
+    -- Major Agility at every pull, and nobody holds two battle elixirs at once.
+    -- Missing it called him out at all eleven pulls of the night.
+    ["Gift of Arthas"] = true,
 }
 
 A.ELIXIR_PATTERN = "Elixir"

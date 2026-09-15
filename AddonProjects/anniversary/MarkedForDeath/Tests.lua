@@ -1592,6 +1592,17 @@ T.Case("Classify: the two battle elixirs seen unclassified are filed", function(
     T.Eq(MFD.RaidCheck.Classify({ "Elixir of Demonslaying" }).battle, "Elixir of Demonslaying", "demonslaying")
 end)
 
+-- Moophie wore Major Agility and Gift of Arthas at every pull on 2026-09-14 and
+-- was called out at every one. Gift of Arthas is an elixir, and it sat beside a
+-- battle elixir all night; nobody holds two battle elixirs at once, so it is the
+-- guardian.
+T.Case("Classify: Gift of Arthas is a guardian elixir", function()
+    local s = MFD.RaidCheck.Classify({ "Major Agility", "Gift of Arthas" })
+    T.Eq(s.battle, "Major Agility", "battle")
+    T.Eq(s.guardian, "Gift of Arthas", "guardian")
+    T.Eq(#MFD.RaidCheck.Missing(s, {}, { ELIXIRS = true }), 0, "both halves, nothing to call out")
+end)
+
 -- The short-form lookup must not start claiming ordinary buffs.
 T.Case("Classify: ordinary raid buffs are not mistaken for elixirs or flasks", function()
     local s = MFD.RaidCheck.Classify({ "Blessing of Kings", "Arcane Intellect", "Prayer of Spirit" })
