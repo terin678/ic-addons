@@ -376,7 +376,7 @@ function Config:Refresh()
     frame.planButton:SetText(planKey or "Default")
     frame.planNote:SetText(planKey
         and (isOwn
-            and ("|cffffcc66" .. planKey .. " has a plan of its own.|r Use default puts it back.")
+            and ("|cffffffff" .. planKey .. " has a plan of its own.|r Use default puts it back.")
             or ("|cff999999" .. planKey .. " follows the default.|r Change anything here and it gets a plan of its own."))
         or "|cff999999The default, used by every raid without a plan of its own.|r")
     frame.planReset:SetShown(isOwn and true or false)
@@ -488,6 +488,7 @@ local RulesUI = MFD.UI.Rules
 -- never long enough to need a ceiling at all.
 local RESULT_ROWS = 60     -- most search results worth building rows for
 local RULE_ROW_HEIGHT = 24 -- pixels
+local RULE_PANE_H = 430    -- pixels: the 512 pixel page less 76 above both lists and 6 below
 
 local rulesFrame
 -- Which zone's rules are shown; nil follows the zone the player is in.
@@ -1151,9 +1152,11 @@ local function buildRulesFrame()
 
     rulesFrame.results = CreateFrame("Frame", nil, rulesFrame)
     rulesFrame.results:SetPoint("TOPLEFT", rulesFrame, "TOPLEFT", 6, -76)
-    -- Runs to the bottom of the page, the same as the rule list beside it, now
-    -- that nothing is anchored under either of them.
-    rulesFrame.results:SetPoint("BOTTOMRIGHT", rulesFrame, "BOTTOMLEFT", 336, 6)
+    -- Sized outright rather than anchored on two sides, the same as the rule
+    -- list beside it. The table reads this frame's width to size its scroll
+    -- frame, and a two-sided frame can read 0 before the first layout. Runs to
+    -- 6 above the bottom of the page now that nothing is anchored under it.
+    rulesFrame.results:SetSize(330, RULE_PANE_H)
 
     -- The Add button is a trailing button column rather than a widget the row
     -- builds for itself, which is what keeps every list in the addon the same
@@ -1190,15 +1193,17 @@ local function buildRulesFrame()
 
     rulesFrame.ruleList = CreateFrame("Frame", nil, rulesFrame)
     rulesFrame.ruleList:SetPoint("TOPLEFT", rulesFrame, "TOPLEFT", 342, -76)
-    rulesFrame.ruleList:SetPoint("BOTTOMRIGHT", rulesFrame, "BOTTOMRIGHT", -6, 6)
+    -- Sized outright: the page less 342 on the left and 6 on the right. The
+    -- table sizes its rows from the width below and its scroll frame from this
+    -- frame's own, so the two have to agree at build time, and a frame
+    -- anchored on two sides can read 0 until the first layout. The library's
+    -- fallback for 0 is the whole page, which from 342 in runs past the window.
+    local ruleListWidth = MFD.UI.PAGE_W - 342 - 6
+    rulesFrame.ruleList:SetSize(ruleListWidth, RULE_PANE_H)
 
     rulesFrame.ruleTable = MFD.UI.Table(rulesFrame.ruleList, {
-        -- Given outright rather than read from the pane. The pane is anchored on
-        -- two sides and can read 0 wide at build time, and the library's
-        -- fallback for that is the whole page, which from 342 in would run the
-        -- list past the window and clip its last columns. The pane is the page
-        -- less 342 on the left and 6 on the right; 26 more is the scrollbar.
-        width = MFD.UI.PAGE_W - 342 - 6 - 26,
+        -- 26 for the scrollbar, which the library draws past the table's width.
+        width = ruleListWidth - 26,
         rowHeight = RULE_ROW_HEIGHT,
         columns = RULE_COLUMNS,
         buttons = RULE_BUTTONS,
