@@ -11,7 +11,7 @@ Target interface: 20506. Client folder `_anniversary_`.
 | CutMaster | 1.5.1 | [Docs/CutMaster.md](../../Docs/CutMaster.md) |
 | ICTemplate | 1.1.0 | [Docs/ICTemplate.md](../../Docs/ICTemplate.md) |
 | GuildRecruitment | 0.4.0 | [Docs/GuildRecruitment.md](../../Docs/GuildRecruitment.md) |
-| MarkedForDeath | 1.27.3 | [Docs/MarkedForDeath.md](../../Docs/MarkedForDeath.md) |
+| MarkedForDeath | 1.28.0 | [Docs/MarkedForDeath.md](../../Docs/MarkedForDeath.md) |
 | JamminWithJam | 0.1.0 | [Docs/JamminWithJam.md](../../Docs/JamminWithJam.md) |
 
 `ICLibs` is a library addon. MalexisAuctionWatcher, TradeMaster, ICTemplate,

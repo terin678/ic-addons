@@ -111,12 +111,33 @@ end
 -- A raid buff is missing only when absent AND someone present can cast it.
 -- A consumable is missing only when expected AND known to be absent; unknown
 -- (no self-report yet) is never reported, because "no data" is not "no flask".
+-- The words for one missing consumable, naming the part that is actually
+-- missing. Pure.
+--
+-- Somebody with a battle elixir and no flask used to be called out as "Flask or
+-- elixirs", which reads as having nothing on, so the person who had drunk half
+-- their elixirs heard they were wrong and did not know why. The column stays
+-- ELIXIRS either way, so the grid paints it the same; only the words change, and
+-- FormatCallout groups by the words, so each kind of short lands on its own line.
+function RC.MissingLabel(column, state)
+    if column == "ELIXIRS" and not state.flask then
+        if state.battle and not state.guardian then
+            return "Guardian elixir"
+        elseif state.guardian and not state.battle then
+            return "Battle elixir"
+        end
+    end
+    return RC.CONSUMABLE_LABELS[column]
+end
+
 function RC.Missing(state, providers, expected)
     local A = MFD.Data.Auras
     local missing = {}
 
     for _, column in ipairs(A.RAID_BUFF_ORDER) do
-        if providers[column] and state[column] == false then
+        -- A buff marked not required is still shown on the grid, it just never
+        -- counts as missing, so it is never red and never called out.
+        if providers[column] and state[column] == false and A.RAID_BUFFS[column].isRequired ~= false then
             missing[#missing + 1] = { column = column, label = A.RAID_BUFFS[column].label }
         end
     end
@@ -147,7 +168,7 @@ function RC.Missing(state, providers, expected)
 
     for _, column in ipairs(RC.CONSUMABLE_ORDER) do
         if expected[column] and present[column] == false then
-            missing[#missing + 1] = { column = column, label = RC.CONSUMABLE_LABELS[column] }
+            missing[#missing + 1] = { column = column, label = RC.MissingLabel(column, state) }
         end
     end
 
