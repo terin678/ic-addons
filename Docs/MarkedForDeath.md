@@ -222,17 +222,17 @@ their own trash setting, their own boss list, their own override, their own extr
 Nothing you do to one touches the other, because wanting healer calls on Naj'entus and
 tank calls on Illidan is a normal thing to want.
 
-**Main tanks** are picked up automatically from the raid frame. Right click a portrait,
-Set Main Tank, and they count. The Extra tanks box is only for tanks the raid does not
-flag, separated by commas:
+**Tanks** are picked up automatically, whichever way the raid marks them: the raid
+leader's right click, Set Main Tank, or the tank role icon. Raid frames such as ElvUI draw
+the same shield for both, so both count. The Extra tanks box is only for tanks the raid
+marks neither way, separated by commas:
 
 ```
 Dezedin, Moophie, Grimmtusk
 ```
 
-**Healers** are recognised by spec: Holy, Discipline or Restoration. There is no healer
-role on this client's raid roster the way there is a main tank flag, so spec is the honest
-source, and it is why a shadow priest is never mistaken for one. Specs come from the same
+**Healers** are recognised by spec: Holy, Discipline or Restoration, which is why a shadow
+priest is never mistaken for one. Specs come from the same
 inspection the raid check grid uses, so they fill in once you open the raid check tab or
 run a ready check. The line under the Extra healers box says exactly who is currently
 counted, worth reading before the pull rather than after somebody dies unannounced.

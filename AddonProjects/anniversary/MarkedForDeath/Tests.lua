@@ -2504,6 +2504,22 @@ T.Case("Tanks: the raid's own main tank assignment counts", function()
     T.Eq(MFD.Tanks.IsTank("Someone", { Dezedin = true }, {}), false, "not a tank")
 end)
 
+-- A raid marks a tank two ways that do not overlap, and raid frames draw a
+-- shield for either. Reading only Main Tank left two shielded tanks unannounced
+-- through seven deaths in Black Temple on 2026-09-14.
+T.Case("Tanks: the tank role counts as well as Main Tank", function()
+    T.Eq(MFD.Tanks.CountsAsTank(true, "NONE"), true, "Main Tank and no role chosen")
+    T.Eq(MFD.Tanks.CountsAsTank(false, "TANK"), true, "the role icon on its own")
+    T.Eq(MFD.Tanks.CountsAsTank(true, "TANK"), true, "both")
+end)
+
+T.Case("Tanks: other roles, and no marking at all, do not count", function()
+    T.Eq(MFD.Tanks.CountsAsTank(false, "HEALER"), false, "healer role")
+    T.Eq(MFD.Tanks.CountsAsTank(false, "DAMAGER"), false, "damage role")
+    T.Eq(MFD.Tanks.CountsAsTank(false, "NONE"), false, "role never chosen")
+    T.Eq(MFD.Tanks.CountsAsTank(nil, nil), false, "neither API answered")
+end)
+
 T.Case("Tanks: a manually typed name counts even with no raid assignment", function()
     T.Eq(MFD.Tanks.IsTank("Moophie", {}, { "Moophie" }), true, "typed list")
     T.Eq(MFD.Tanks.IsTank("moophie", {}, { "Moophie" }), true, "case insensitive")

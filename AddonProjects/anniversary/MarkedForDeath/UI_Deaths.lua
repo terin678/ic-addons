@@ -55,7 +55,7 @@ local function editFor(kind)
     return {
         label = isTank and "Extra tanks" or "Extra healers",
         tip = isTank
-            and "Whoever the raid flags as Main Tank is picked up automatically. Only type names the raid does not flag. Commas between them."
+            and "Whoever the raid marks as a tank is picked up automatically, by Main Tank or by the tank role icon. Only type names the raid does not mark. Commas between them."
             or "Anyone whose spec the addon has read as Holy, Discipline or Restoration already counts. Type names here for people it cannot see.",
         get = function() return settings(kind).names end,
         set = function(v) settings(kind).names = v end,
@@ -71,7 +71,7 @@ local function editFor(kind)
                 if #assigned > 0 then
                     parts[#parts + 1] = GREEN .. "from the raid:|r " .. table.concat(assigned, ", ")
                 else
-                    parts[#parts + 1] = GREY .. "nobody set as Main Tank|r"
+                    parts[#parts + 1] = GREY .. "nobody marked as a tank, by Main Tank or role|r"
                 end
 
                 local typed = MFD.Tanks.ParseList(text)

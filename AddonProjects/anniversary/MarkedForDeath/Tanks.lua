@@ -70,9 +70,23 @@ function Tanks.FormatDeath(name)
     return name .. " has died"
 end
 
+-- Whether one raid member counts as a tank, from the two things a raid can mark
+-- them with. Pure.
+--
+-- A raid marks a tank two ways and they do not overlap: the raid leader's Set
+-- Main Tank, and the tank role icon. Raid frames like ElvUI draw a shield for
+-- either, so a tank can look marked on every frame while only one of the two is
+-- actually set. Reading Main Tank alone left two tanks with shields on their
+-- frames unannounced through seven deaths in Black Temple on 2026-09-14, while
+-- every healer who died in the same fights was called.
+function Tanks.CountsAsTank(isMainTank, role)
+    return isMainTank == true or role == "TANK"
+end
+
 -- ---------------------------------------------------------------- client --
 
 local GetPartyAssignment = GetPartyAssignment
+local UnitGroupRolesAssigned = UnitGroupRolesAssigned
 local UnitName = UnitName
 local IsInRaid = IsInRaid
 
@@ -83,17 +97,29 @@ local IsInRaid = IsInRaid
 Tanks.announced = {}
 local announced = Tanks.announced
 
--- Returns { [name] = true } for everyone the raid has flagged as a main tank.
+-- Returns { [name] = true } for everyone the raid marks as a tank, either way.
+-- Each API is checked and called inside pcall on its own, so a client missing
+-- one still reads the other.
 function Tanks.AssignedTanks()
     local assigned = {}
-    if not (IsInRaid and IsInRaid() and GetPartyAssignment) then
+    if not (IsInRaid and IsInRaid()) then
         return assigned
     end
 
     for i = 1, GetNumGroupMembers() do
         local unit = "raid" .. i
-        local ok, isMainTank = pcall(GetPartyAssignment, "MAINTANK", unit)
-        if ok and isMainTank then
+
+        local isMainTank, role = false, nil
+        if GetPartyAssignment then
+            local ok, value = pcall(GetPartyAssignment, "MAINTANK", unit)
+            isMainTank = ok and value and true or false
+        end
+        if UnitGroupRolesAssigned then
+            local ok, value = pcall(UnitGroupRolesAssigned, unit)
+            role = ok and value or nil
+        end
+
+        if Tanks.CountsAsTank(isMainTank, role) then
             local name = UnitName(unit)
             if name then
                 assigned[name] = true
