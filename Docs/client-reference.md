@@ -113,6 +113,23 @@ sound plays and no Blizzard window opens. The photo-sharing twin of this
 (`C_PhotoSharing.TakePhoto`) does nothing here: `C_PhotoSharing.IsEnabled()` is false and
 `PhotoSharingFrame` does not exist.
 
+**What a machine supports.** `IsGraphicsCVarValueSupported(cvar, value)` is the check the
+game's graphics page greys its options out with. It returns 0 for a value that is fine and
+otherwise an index into a list of `VRN_*` global strings (`VRN_ILLEGAL`, `VRN_UNSUPPORTED`,
+`VRN_NEEDS_RT`, and so on; the order is at the top of
+`Blizzard_SettingsDefinitions_Shared/Graphics.lua`). Blizzard asks it only about
+`LowLatencyMode`, `textureFilteringMode`, `shadowrt`, `vrsValar` and `msaaAlphaTest`; what
+it answers for any other variable is not known, so do not ask. Ray traced shadows cannot
+be changed on this client at present. `IsGraphicsSettingValueSupported(cvar, value, raid)`
+is the twin for the `graphics*` quality levels.
+
+**Quality levels.** Setting a `graphics*` level (`graphicsShadowQuality`) does move the raw
+variables beneath it. Setting the overall `graphicsQuality` does not move the other
+levels: the graphics page does that in Lua, asking
+`GetGraphicsCVarValueForQualityLevel(cvar, level, raid)` for each one.
+
+**`DynamicRenderScale` has crashed this client.** Its own help text calls it a beta feature.
+
 `MinimalSliderTemplate`, `MinimalSliderWithSteppersTemplate` and the `OffScreenFrame` frame
 type can all be created. `RestartGx` and `UpdateWindow` are globals.
 

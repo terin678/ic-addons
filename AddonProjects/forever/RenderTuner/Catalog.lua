@@ -20,6 +20,9 @@ the addon loads, so a row here is an offer, not a promise.
         experimental  it can crash the game or leave it unable to draw: the client calls
                 it a beta feature, or it leans on hardware and driver support that not
                 every machine has. Marked wherever the knob is shown
+        validated  the client can say which of its values this machine supports
+                (IsGraphicsCVarValueSupported). Only the variables the game's own graphics
+                page asks about are marked: what the call says of any other is unknown
         settle  a slider that is applied when the thumb is let go, not on every step:
                 the change rebuilds the client's render targets
         restart   what a change needs before it shows: "gx", "window" or "client"
@@ -49,13 +52,15 @@ Catalog.GROUPS = {
 }
 
 -- The upscaling presets. Each sets the render scale; the ones below 100% also switch the
--- resample filter to FSR 1.0. Sharpening is left where the user put it.
+-- resample filter to FSR 1.0. Sharpening is left where the user put it, and so is
+-- everything else: these are presets for upscaling, not for overall quality. `short` is
+-- the name on a button too narrow for the label.
 Catalog.PRESETS = {
     { key = "native", label = "Native", scale = 1 },
     { key = "quality", label = "Quality", scale = 0.67 },
     { key = "balanced", label = "Balanced", scale = 0.58 },
     { key = "performance", label = "Performance", scale = 0.5 },
-    { key = "ultra", label = "Ultra Performance", scale = 0.3334 },
+    { key = "ultra", label = "Ultra Performance", short = "Ultra", scale = 0.3334 },
 }
 Catalog.FSR = 3
 
@@ -81,7 +86,7 @@ Catalog.KNOBS = {
       help = "Runs the sharpening pass even at 100% render scale." },
     { cvar = "DynamicRenderScale", label = "Dynamic render scale", group = "upscale", kind = "toggle",
       experimental = true,
-      help = "Lowers the render scale by itself to hold the target frame rate. The client calls this a beta feature." },
+      help = "Lowers the render scale by itself to hold the target frame rate. The client calls this a beta feature, and it has crashed the 1.60.1 client." },
     { cvar = "DynamicRenderScaleMin", label = "Dynamic floor", group = "upscale", kind = "slider",
       min = 0.3334, max = 1, step = 0.01, format = "percent",
       help = "The lowest render scale the dynamic mode may use." },
@@ -98,11 +103,11 @@ Catalog.KNOBS = {
     { cvar = "MSAAQuality", label = "Multisample anti-aliasing", group = "aa", kind = "choice",
       choices = { { 0, "None" }, { 1, "2x" }, { 2, "4x" }, { 3, "8x" } },
       help = "Smooths the edges of geometry as it is drawn. Sharper than image anti-aliasing, and costs more." },
-    { cvar = "MSAAAlphaTest", label = "Multisample alpha test", group = "aa", kind = "toggle",
+    { cvar = "MSAAAlphaTest", label = "Multisample alpha test", group = "aa", kind = "toggle", validated = true,
       help = "Extends multisampling to cut-out textures such as leaves and fences." },
 
     -- Latency and frame rate
-    { cvar = "LowLatencyMode", label = "Low latency mode", group = "frame", kind = "choice",
+    { cvar = "LowLatencyMode", label = "Low latency mode", group = "frame", kind = "choice", validated = true,
       choices = { { 0, "Auto" }, { 1, "Off" }, { 2, "Built-in" }, { 3, "NVIDIA Reflex" }, { 4, "Reflex + Boost" },
           { 5, "Intel XeLL" } },
       help = "Cuts the delay between input and picture. It does not add frames." },
@@ -181,6 +186,7 @@ Catalog.KNOBS = {
     { cvar = "shadowBlendCascades", label = "Blend cascades", group = "shadow", kind = "toggle",
       help = "Hides the seam between shadow bands." },
     { cvar = "shadowRt", label = "Ray traced shadows", group = "shadow", kind = "choice", experimental = true,
+      validated = true,
       choices = { { 0, "Off" }, { 1, "Fair" }, { 2, "Medium" }, { 3, "High" } },
       help = "Ray traced shadows, where the graphics card supports them." },
     { cvar = "SSAO", label = "Ambient occlusion", group = "shadow", kind = "choice",
@@ -234,6 +240,7 @@ Catalog.KNOBS = {
     { cvar = "rippleDetail", label = "Ripple detail", group = "world", kind = "slider",
       min = 0, max = 2, step = 1, help = "Ripples on water surfaces." },
     { cvar = "textureFilteringMode", label = "Texture filtering", group = "world", kind = "choice",
+      validated = true,
       choices = { { 0, "Bilinear" }, { 1, "Trilinear" }, { 2, "2x anisotropic" }, { 3, "4x anisotropic" },
           { 4, "8x anisotropic" }, { 5, "16x anisotropic" } },
       help = "How textures are sharpened at a slant." },
@@ -258,7 +265,7 @@ Catalog.KNOBS = {
     { cvar = "ffxNether", label = "Nether effect", group = "effects", kind = "toggle",
       help = "The full-screen effect in the nether." },
     { cvar = "vrsValar", label = "Variable rate shading", group = "effects", kind = "choice",
-      experimental = true,
+      experimental = true, validated = true,
       choices = { { 0, "Off" }, { 1, "Standard" }, { 2, "Aggressive" } },
       help = "Shades flat parts of the picture at lower detail to save GPU time." },
     { cvar = "vrsValarAlwaysOn", label = "VRS always on", group = "effects", kind = "toggle", experimental = true,

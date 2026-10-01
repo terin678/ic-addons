@@ -24,6 +24,8 @@ the way out.
     Model.Preset(preset, limits, fsr) -> target
     Model.PresetOf(scale, presets, limits) -> preset or nil
     Model.Label(knob), Model.WARNING
+    Model.Locked(knob, live, unsupported)  -> why the client will take no other value, or nil
+    Model.AsksFirst(knob, value)           -> whether a change to this value is confirmed first
     Model.Line(knob, live, saved), Model.Status(...), Model.Brief(...)
 ]]
 
@@ -284,4 +286,38 @@ function Model.Brief(scaleText, preset, changed)
     if preset then text = text .. " " .. preset.label end
     if changed > 0 then text = text .. string.format(", %d unsaved", changed) end
     return text
+end
+
+--------------------------------------------------------------------------------
+-- What the client will not take, and what is asked about first
+--------------------------------------------------------------------------------
+
+-- `unsupported(cvar, value)` is the client's own answer: a reason, or nil when the value
+-- is fine. A choice or a toggle is locked when every value but the live one is refused;
+-- the reason for the first of them is returned. A slider is never locked here: its
+-- values are too many to ask about.
+function Model.Locked(knob, live, unsupported)
+    local values
+    if knob.kind == "toggle" then
+        values = { 0, 1 }
+    elseif knob.kind == "choice" then
+        values = {}
+        for _, choice in ipairs(knob.choices) do values[#values + 1] = choice[1] end
+    else
+        return nil
+    end
+    local first
+    for _, value in ipairs(values) do
+        if not Model.Same(value, live) then
+            local why = unsupported(knob.cvar, value)
+            if not why then return nil end
+            first = first or why
+        end
+    end
+    return first
+end
+
+-- Turning an experimental knob on is confirmed first. Turning one off never is.
+function Model.AsksFirst(knob, value)
+    return knob.experimental == true and value ~= nil and not Model.Same(value, 0)
 end

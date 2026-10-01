@@ -29,7 +29,7 @@ Nothing here runs while the game is idle: the addon acts on a command, a click o
 drag, and at login.
 ]]
 
-local VERSION = "0.2.1"
+local VERSION = "0.2.2"
 
 local Util = LibStub("LibICUtil-1.0")
 local Test = LibStub("LibICTest-1.0")
@@ -146,7 +146,17 @@ end
 function ns.SetKnob(knob, value)
     local wanted = ns.Model.Clamp(knob, value)
     if wanted == nil then return end
-    ns.ApplyTarget({ [knob.cvar] = wanted }, knob.label, true)
+    local refused = ns.Apply.Unsupported(knob.cvar, wanted)
+    if refused then
+        out.Printf("%s cannot be %s here: %s", knob.label, ns.Model.Format(knob, wanted), refused)
+        RefreshPanel()
+        return
+    end
+    -- The overall quality level carries the levels beneath it, as it does on the game's
+    -- own graphics page.
+    local target = knob.rank == 1 and ns.Apply.LevelValues(wanted) or {}
+    target[knob.cvar] = wanted
+    ns.ApplyTarget(target, knob.label, true)
 end
 
 function ns.Save()
@@ -305,6 +315,11 @@ COMMANDS.set = function(rest)
     local wanted, why = ns.Model.Clamp(knob, shown and ns.Model.FromShown(knob, shown))
     if wanted == nil then
         out.Printf("%s: %s.", knob.label, why)
+        return
+    end
+    local refused = ns.Apply.Unsupported(knob.cvar, wanted)
+    if refused then
+        out.Printf("%s cannot be %s here: %s", knob.label, ns.Model.Format(knob, wanted), refused)
         return
     end
     ns.ApplyTarget({ [knob.cvar] = wanted }, knob.label .. " " .. ns.Model.Format(knob, wanted))

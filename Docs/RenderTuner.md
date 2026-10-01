@@ -3,7 +3,7 @@
 A graphics tuner for WoW Forever: upscaling presets, a control for every graphics console
 variable worth having, and a way to go back to what you had.
 
-**Version 0.2.1 has the floating panel and the commands.** The page in the game's Options
+**Version 0.2.2 has the floating panel and the commands.** The page in the game's Options
 window and the side-by-side comparison come next.
 
 ## What the client can and cannot do
@@ -35,12 +35,14 @@ beta features. The ones marked so far:
 
 | Setting | Why |
 | --- | --- |
-| Dynamic render scale | The client's own help text calls it a beta feature |
+| Dynamic render scale | The client's own help text calls it a beta feature, and it has crashed the 1.60.1 client |
 | HDR output | Depends on the monitor and the render format, and restarts the graphics engine |
 | Ray traced shadows | Needs a graphics card and driver that support ray tracing |
 | Variable rate shading, VRS always on | Needs hardware support, and changes how the picture is shaded |
 
 The mark shows beside the setting's name in the panel, in its tooltip and in `/tuner list`.
+
+In the panel, turning an experimental setting on asks first. Turning one off never asks.
 
 The first time you open the panel in a session, a warning says this and waits for
 **I understand**. Tick **Do not show this again** and it stays away for good.
@@ -57,7 +59,10 @@ characters, keybinds or addons' data.
 minimap. A right-click there offers the presets without opening anything. Drag the panel
 by its title bar; Escape closes it. Its place is kept per character.
 
-- **Presets** run across the top. The one in use is highlighted.
+- **Upscaling presets** run across the top. The one in use is highlighted. They set the
+  render scale and the resample filter and nothing else, and clicking one brings the
+  Upscaling group into view so you can see what it changed. "Quality" and "Performance"
+  are the names DLSS uses for render scales; they do not touch the quality levels.
 - **Save** keeps the settings as they are now. **Revert** puts everything back to the
   saved set. **More...** has the client's defaults, the way back to before RenderTuner,
   and a restart of the graphics engine.
@@ -67,6 +72,11 @@ by its title bar; Escape closes it. Its place is kept per character.
   a count. The title bar reads, for example, "67% Quality, 2 unsaved".
 - **Hover a setting's name** for what it does, its console variable, and its saved value.
   **Click the name** to put that one setting back to its saved value or the client's default.
+- **A greyed-out setting** is one this client will not change at the moment, such as
+  ray traced shadows on a client or card without ray tracing. Its tooltip gives the
+  client's reason. In a dropdown, single choices the client refuses are greyed the same way.
+- **Overall quality**, in Quality levels, moves the levels beneath it, as the same slider
+  does on the game's own graphics page.
 - **Restart graphics** appears when a change needs the graphics engine restarted before
   it shows.
 

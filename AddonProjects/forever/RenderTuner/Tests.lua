@@ -128,6 +128,8 @@ T.Case("Catalog: every knob is whole, and no variable is offered twice", functio
         T.True(knob.format == nil or FORMATS[knob.format], name .. " has a known format")
         T.True(knob.restart == nil or RESTARTS[knob.restart], name .. " has a known restart")
         T.True(knob.experimental == nil or knob.experimental == true, name .. " is experimental or says nothing")
+        T.True(knob.validated == nil or (knob.validated == true and knob.kind ~= "slider"),
+            name .. " is validated only as a toggle or a choice")
         if knob.kind == "slider" then
             T.True(type(knob.min) == "number" and type(knob.max) == "number" and knob.min < knob.max,
                 name .. " has a range")
@@ -312,6 +314,27 @@ T.Case("Model.Label, WARNING: an experimental knob says so wherever it is named"
     T.True(marked >= 1, "the catalogue marks at least the client's own beta feature")
 end)
 
+T.Case("Model.Locked: a knob is locked when the client refuses every value but the live one", function()
+    local function Refuse(values)
+        return function(_, value) return values[value] end
+    end
+    T.Eq(Model.Locked(CHOICE, 0, Refuse({ [2] = "needs ray tracing", [3] = "needs more" })), "needs ray tracing",
+        "every other choice refused: locked, with the first reason")
+    T.Eq(Model.Locked(CHOICE, 0, Refuse({ [3] = "needs more" })), nil, "one other choice allowed: not locked")
+    T.Eq(Model.Locked(CHOICE, 2, Refuse({ [2] = "odd" })), nil, "a refusal of the live value locks nothing")
+    T.Eq(Model.Locked(TOGGLE, 0, Refuse({ [1] = "no" })), "no", "a toggle that cannot be turned on")
+    T.Eq(Model.Locked(TOGGLE, 1, Refuse({ [1] = "no" })), nil, "it can still be turned off")
+    T.Eq(Model.Locked(SLIDER, 1, Refuse({ [0] = "no", [1] = "no" })), nil, "a slider is never asked about")
+end)
+
+T.Case("Model.AsksFirst: turning an experimental knob on is confirmed, turning it off is not", function()
+    local risky = { cvar = "X", label = "Risky", kind = "toggle", experimental = true }
+    T.Eq(Model.AsksFirst(risky, 1), true, "on")
+    T.Eq(Model.AsksFirst(risky, 0), false, "off")
+    T.Eq(Model.AsksFirst(risky, nil), false, "no value")
+    T.Eq(Model.AsksFirst(TOGGLE, 1), false, "a plain knob never asks")
+end)
+
 T.Case("Model.Line, Status: lines of text", function()
     T.True(Model.Line(SLIDER, 0.67, 0.67):find("Slide |cff888888S|r: 67%", 1, true), "label, variable, value")
     T.Eq(Model.Line(SLIDER, 0.67, 0.67):find("saved", 1, true), nil, "nothing more when it is as saved")
@@ -349,7 +372,24 @@ if IC_HEADLESS then
         cvars.RenderScale, cvars.ResampleQuality, cvars.ResampleSharpness = "1", "2", "0.2"
         cvars.MSAAQuality = "3,0"
 
-        local real = { C_CVar = C_CVar, min = GetMinRenderScale, max = GetMaxRenderScale, db = ns.db, cdb = ns.cdb }
+        local real = { C_CVar = C_CVar, min = GetMinRenderScale, max = GetMaxRenderScale, db = ns.db, cdb = ns.cdb,
+            supported = IsGraphicsCVarValueSupported, reason = VRN_NEEDS_RT,
+            level = GetGraphicsCVarValueForQualityLevel,
+            dialogs = StaticPopupDialogs, show = StaticPopup_Show }
+        -- This machine has no ray tracing: reason 11 in the client's list, for any value but off.
+        IsGraphicsCVarValueSupported = function(name, value)
+            return (name == "shadowRt" and value ~= 0) and 11 or 0
+        end
+        VRN_NEEDS_RT = "Needs ray tracing"
+        -- What each level beneath the overall one should be: here, never more than 2.
+        GetGraphicsCVarValueForQualityLevel = function(_, level) return math.min(level, 2) end
+        -- A confirm dialog that remembers what it was asked and can be answered.
+        local asked = {}
+        StaticPopupDialogs = {}
+        StaticPopup_Show = function(which, text, _, data)
+            asked[#asked + 1] = { text = text, yes = function() StaticPopupDialogs[which].OnAccept(nil, data) end }
+        end
+        ns.Apply.ForgetSupport()
         C_CVar = {
             GetCVar = function(name) return cvars[name] end,
             GetCVarDefault = function(name) return cvars[name] and "0" or nil end,
@@ -370,11 +410,15 @@ if IC_HEADLESS then
         ns.db = { settings = { debug = false, upscale = { last = "quality" }, skipWarning = true } }
         ns.cdb = { panel = { group = "upscale" } }
 
-        local ok, err = pcall(body, cvars, sets, SlashCmdList.RENDERTUNER)
+        local ok, err = pcall(body, cvars, sets, SlashCmdList.RENDERTUNER, asked)
 
         if ns.Panel.IsShown() then ns.Panel.Toggle() end
         ns.Panel.ResetWarning()
         C_CVar, GetMinRenderScale, GetMaxRenderScale = real.C_CVar, real.min, real.max
+        IsGraphicsCVarValueSupported, VRN_NEEDS_RT = real.supported, real.reason
+        GetGraphicsCVarValueForQualityLevel = real.level
+        StaticPopupDialogs, StaticPopup_Show = real.dialogs, real.show
+        ns.Apply.ForgetSupport()
         ns.db, ns.cdb = real.db, real.cdb
         ns.pendingRestart = nil
         if not ok then error(err, 0) end
@@ -486,6 +530,22 @@ if IC_HEADLESS then
             made = ns.Panel.Counts()
             T.Eq(made, #ns.Apply.Knobs(), "a row for every knob once every group has been seen")
 
+            -- The overall quality level carries the levels beneath it.
+            ns.Panel.ShowGroup("quality")
+            local overall = ns.Panel.Row("graphicsQuality")
+            overall.control.inner:GetScript("OnValueChanged")(overall.control.inner, 6)
+            T.Eq(cvars.graphicsQuality, "6", "the overall level is set")
+            T.Eq(cvars.graphicsShadowQuality, "2", "and each level beneath it to what the client says")
+            T.Eq(ns.Panel.Row("graphicsShadowQuality").control:GetValue(), 2, "which the rows show")
+
+            -- A preset brings the settings it changes into view.
+            ns.Panel.Preset("performance"):GetScript("OnClick")(ns.Panel.Preset("performance"))
+            T.Eq(ns.cdb.panel.group, "upscale", "a preset shows the upscaling group")
+            T.Eq(cvars.RenderScale, "0.5", "sets the scale")
+            T.Near(ns.Panel.Row("RenderScale").control:GetValue(), 0.5, "and the row shows it")
+            T.Eq(ns.Panel.Row("graphicsQuality"):IsShown(), false, "the quality levels are out of view, and untouched")
+            T.Eq(cvars.graphicsQuality, "6", "as the variable says")
+
             run("revert")
             T.Eq(cvars.ResampleSharpness, "0.2", "revert from the command line reaches the same settings")
             ns.Panel.ShowGroup("upscale")
@@ -530,6 +590,41 @@ if IC_HEADLESS then
             run("")
             T.Eq(notice:IsShown(), false, "not even in a new session")
             T.True(ns.Panel.IsShown(), "the panel opens straight away")
+        end)
+    end)
+
+    T.Case("Panel: a value the client refuses is not set, and an experimental knob asks first", function()
+        WithClient(function(cvars, sets, run, asked)
+            cvars.shadowRt, cvars.DynamicRenderScale = "0", "0"
+            ns.Baseline()
+            run("")
+
+            -- Ray traced shadows on a machine without ray tracing.
+            ns.Panel.ShowGroup("shadow")
+            local rt = ns.Panel.Row("shadowRt")
+            T.Eq(rt.locked, "Needs ray tracing", "the row is locked, with the client's reason")
+            T.Eq(rt.name.icTextRole, "textDisabled", "and greyed out")
+            T.Eq(ns.Panel.Row("shadowSoft").locked, false, "a knob the client is not asked about is left alone")
+            local before = #sets
+            run("set shadowRt 2")
+            T.Eq(#sets, before, "the command refuses it too")
+            T.Eq(cvars.shadowRt, "0", "and the variable is untouched")
+
+            -- Dynamic render scale: experimental, so turning it on is asked about.
+            ns.Panel.ShowGroup("upscale")
+            local dynamic = ns.Panel.Row("DynamicRenderScale")
+            dynamic.control:GetScript("OnClick")(dynamic.control)
+            T.Eq(cvars.DynamicRenderScale, "0", "a click does not turn it on")
+            T.Eq(dynamic.control:GetChecked(), false, "and the box goes back to what is live")
+            T.Eq(#asked, 1, "it asks")
+            T.True(asked[1].text:find("Dynamic render scale is experimental", 1, true), "naming the knob")
+            asked[1].yes()
+            T.Eq(cvars.DynamicRenderScale, "1", "yes turns it on")
+            T.Eq(dynamic.control:GetChecked(), true, "and the box shows it")
+
+            dynamic.control:GetScript("OnClick")(dynamic.control)
+            T.Eq(cvars.DynamicRenderScale, "0", "turning it off is not asked about")
+            T.Eq(#asked, 1, "no second question")
         end)
     end)
 end

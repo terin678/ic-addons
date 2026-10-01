@@ -648,6 +648,7 @@ opts = {
     choices = { { value, label }, ... },
     value,
     onChange = fn(value, choice),   -- for a pick from the menu, not for SetValue
+    disabled = fn(value) -> reason, -- asked as the menu opens: a reason greys that choice out
 }
 c:SetValue(v) and c:GetValue().
 ]]
@@ -661,6 +662,7 @@ function W.Choice(parent, w, h, opts)
             for _, choice in ipairs(self.icChoices) do
                 items[#items + 1] = {
                     text = choice[2],
+                    disabled = self.icDisabled and self.icDisabled(choice[1]) or nil,
                     radio = function() return self.icValue == choice[1] end,
                     onClick = function()
                         if self.icValue == choice[1] then return end
@@ -675,6 +677,7 @@ function W.Choice(parent, w, h, opts)
     c.icChoices = opts.choices or {}
     c.icValue = opts.value
     c.icOnChange = opts.onChange or false
+    c.icDisabled = opts.disabled or false
 
     -- Room on the right for the mark that says this opens a list.
     c.label:ClearAllPoints()
@@ -727,25 +730,37 @@ A context menu at the pointer. items is a list of:
     { text = "Locked", checked = fn() -> bool, onClick = fn }
     { text = "High", radio = fn() -> bool, onClick = fn }     one of several; the menu closes
     { divider = true }
+Any item but a title or a divider may carry disabled = true, or disabled = "the reason",
+which greys it out and shows the reason in its tooltip.
 Returns false on a client without the modern menu, so the caller can say so.
 ]]
 function W.Menu(owner, items)
     if type(MenuUtil) ~= "table" or type(MenuUtil.CreateContextMenu) ~= "function" then return false end
     MenuUtil.CreateContextMenu(owner, function(_, root)
         for _, item in ipairs(items or {}) do
+            local made
             if item.title then
                 root:CreateTitle(item.title)
             elseif item.divider then
                 root:CreateDivider()
             elseif item.checked then
-                root:CreateCheckbox(item.text, item.checked, item.onClick)
+                made = root:CreateCheckbox(item.text, item.checked, item.onClick)
             elseif item.radio then
-                root:CreateRadio(item.text, item.radio, function()
+                made = root:CreateRadio(item.text, item.radio, function()
                     if item.onClick then item.onClick() end
                     return MenuResponse and MenuResponse.Close or nil
                 end)
             else
-                root:CreateButton(item.text, item.onClick)
+                made = root:CreateButton(item.text, item.onClick)
+            end
+            if made and item.disabled then
+                made:SetEnabled(false)
+                if type(item.disabled) == "string" then
+                    made:SetTooltip(function(tooltip)
+                        GameTooltip_SetTitle(tooltip, item.text)
+                        GameTooltip_AddErrorLine(tooltip, item.disabled)
+                    end)
+                end
             end
         end
     end)

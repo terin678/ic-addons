@@ -6,7 +6,7 @@ view behind it.
 
     +----------------------------------------------------------------+
     | RenderTuner                       67% Quality, 2 unsaved     x |   drag the bar
-    | [Native] [Quality] [Balanced] [Performance] [Ultra Perf.]      |   upscaling presets
+    | Upscaling: [Native] [Quality] [Balanced] [Performance] [Ultra] |   presets for the render scale
     | [Save] [Revert] [More...]                  [Restart graphics]  |
     | Upscaling         | Render scale      <---o------->  67%       |
     | Anti-aliasing (1) | Resample filter   [ FSR 1.0      v ]       |
@@ -36,6 +36,7 @@ local PAD = 8
 local BAR_H = 24
 local BUTTON_H = 22
 local GROUP_W = 160
+local PRESET_LABEL_W = 70
 local GROUP_H = 22
 local ROW_H = 24
 local LABEL_W = 230
@@ -76,6 +77,9 @@ local function RowTip(tip, row)
     if knob.experimental then
         tip:AddLine("Experimental: this one can crash the game. Save a set that works first.", 1, 0.5, 0.25, true)
     end
+    if row.locked then
+        tip:AddLine("This client will not change it at the moment: " .. row.locked, 1, 0.3, 0.3, true)
+    end
     tip:AddLine(" ")
     tip:AddDoubleLine("Console variable", knob.cvar, 0.7, 0.7, 0.7, 1, 1, 1)
     tip:AddDoubleLine("Now", Model.Format(knob, live), 0.7, 0.7, 0.7, 1, 1, 1)
@@ -103,10 +107,23 @@ local function RowMenu(row)
     W.Menu(row.name, items)
 end
 
+-- A change from a control. Turning an experimental knob on is asked about first; the
+-- control goes back to what is live until the answer is yes.
+local function Change(knob, value)
+    if Model.AsksFirst(knob, value) then
+        W.Confirm(string.format("%s is experimental and can crash the game.\n\nSet it to %s?",
+            knob.label, Model.Format(knob, value)), function() ns.SetKnob(knob, value) end)
+        Panel.Refresh()
+        return
+    end
+    ns.SetKnob(knob, value)
+end
+
 local function BuildRow(knob)
     local row = CreateFrame("Frame", nil, frame)
     row:SetSize(LABEL_W + CONTROL_W, ROW_H)
     row.knob = knob
+    row.locked = false
 
     row.name = W.Button(row, Model.Label(knob), LABEL_W - 6, ROW_H - 4, {
         kind = "flat", justify = "LEFT", font = "body", textRole = "text",
@@ -122,19 +139,20 @@ local function BuildRow(knob)
             width = CONTROL_W, valueWidth = 64, min = knob.min, max = knob.max, step = knob.step, value = knob.min,
             live = knob.settle ~= true,
             format = function(shown) return Model.Format(knob, Model.FromShown(knob, shown)) end,
-            onChange = function(shown) ns.SetKnob(knob, Model.FromShown(knob, shown)) end,
+            onChange = function(shown) Change(knob, Model.FromShown(knob, shown)) end,
         })
         row.control:SetPoint("LEFT", row, "LEFT", LABEL_W, 0)
     elseif knob.kind == "toggle" then
         row.control = W.CheckBox(row, {
             size = 16,
-            onClick = function(checked) ns.SetKnob(knob, checked and 1 or 0) end,
+            onClick = function(checked) Change(knob, checked and 1 or 0) end,
         })
         row.control:SetPoint("LEFT", row, "LEFT", LABEL_W + 2, 0)
     else
         row.control = W.Choice(row, CONTROL_W - 62, ROW_H - 4, {
             choices = knob.choices,
-            onChange = function(value) ns.SetKnob(knob, value) end,
+            disabled = function(value) return ns.Apply.Unsupported(knob.cvar, value) end,
+            onChange = function(value) Change(knob, value) end,
         })
         row.control:SetPoint("LEFT", row, "LEFT", LABEL_W, 0)
     end
@@ -152,7 +170,19 @@ local function UpdateRow(row, live, saved)
     else
         row.control:SetValue(value)
     end
-    row.name:SetTextRole(Model.Same(value, saved[knob.cvar]) and "text" or "accent")
+
+    -- A knob the client will take no other value for is greyed out, with the client's
+    -- reason in its tooltip.
+    row.locked = Model.Locked(knob, value, ns.Apply.Unsupported) or false
+    if knob.kind ~= "slider" then
+        row.control:SetEnabled(row.locked == false)
+        row.control:SetAlpha(row.locked == false and 1 or 0.4)
+    end
+    if row.locked then
+        row.name:SetTextRole("textDisabled")
+    else
+        row.name:SetTextRole(Model.Same(value, saved[knob.cvar]) and "text" or "accent")
+    end
 end
 
 --------------------------------------------------------------------------------
@@ -203,20 +233,31 @@ local function Build()
     p.status = W.Label(bar, "", { font = "small", color = "textDim", justify = "RIGHT" })
     p.status:SetPoint("RIGHT", close, "LEFT", -6, 0)
 
-    -- Presets, sharing the width
+    -- Presets, sharing the width after a label that says what they are presets of: the
+    -- names are DLSS's, and without it "Quality" and "Performance" read as overall
+    -- graphics settings, which they are not.
     local gap = 4
-    local presetW = (WIDTH - PAD * 2 - gap * (#Catalog.PRESETS - 1)) / #Catalog.PRESETS
+    local stripLabel = W.Label(p, "Upscaling", { color = "textDim" })
+    stripLabel:SetPoint("LEFT", p, "TOPLEFT", PAD, -(BAR_H + PAD + BUTTON_H / 2))
+    local stripX = PAD + PRESET_LABEL_W
+    local presetW = (WIDTH - stripX - PAD - gap * (#Catalog.PRESETS - 1)) / #Catalog.PRESETS
     for index, preset in ipairs(Catalog.PRESETS) do
-        local b = W.Button(p, preset.label, presetW, BUTTON_H, {
-            onClick = function() ns.ApplyPreset(preset) end,
+        local b = W.Button(p, preset.short or preset.label, presetW, BUTTON_H, {
+            onClick = function()
+                -- Bring the settings a preset changes into view, so the change is seen.
+                if Place() then Place().group = "upscale" end
+                ns.ApplyPreset(preset)
+                Panel.Refresh()
+            end,
         })
-        b:SetPoint("TOPLEFT", p, "TOPLEFT", PAD + (index - 1) * (presetW + gap), -(BAR_H + PAD))
+        b:SetPoint("TOPLEFT", p, "TOPLEFT", stripX + (index - 1) * (presetW + gap), -(BAR_H + PAD))
         W.Tooltip(b, function(tip)
             local limits = ns.Apply.Limits()
             local scale = math.max(limits.min, math.min(limits.max, preset.scale))
-            tip:AddLine(preset.label)
-            tip:AddLine(string.format("Render scale %d%%", math.floor(scale * 100 + 0.5)), 1, 1, 1)
-            if preset.scale < 1 then tip:AddLine("Upscaled with FSR 1.0", 1, 1, 1) end
+            tip:AddLine(preset.label .. " upscaling")
+            tip:AddLine(string.format("Sets the render scale to %d%%.", math.floor(scale * 100 + 0.5)), 1, 1, 1)
+            if preset.scale < 1 then tip:AddLine("Sets the resample filter to FSR 1.0.", 1, 1, 1) end
+            tip:AddLine("Changes nothing else: the quality levels stay as they are.", 0.7, 0.7, 0.7, true)
         end)
         presetButtons[preset.key] = b
     end
@@ -334,6 +375,8 @@ local function Open()
         local place = Place()
         W.SetPlace(frame, place and place.x or 0.5, place and place.y or 0.18)
     end
+    -- What the client supports is asked afresh each time the panel opens.
+    ns.Apply.ForgetSupport()
     frame:Show()
     Panel.Refresh()
 end
@@ -422,4 +465,8 @@ end
 
 function Panel.Row(cvar)
     return rows[cvar]
+end
+
+function Panel.Preset(key)
+    return presetButtons[key]
 end
