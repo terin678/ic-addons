@@ -105,7 +105,7 @@ Four things, in order:
    `ns.Tests.Run()`. A file that calls the client at file scope fails here by name,
    which is the standard being enforced; a case that needs real widgets returns early
    on `IC_HEADLESS`. Runs in a second; use it before every `/reload`.
-3. The same cases in game. Nine addons carry a `Tests.lua`, loaded last:
+3. The same cases in game. Ten addons carry a `Tests.lua`, loaded last:
 
    | Command | Cases |
    | --- | --- |
@@ -117,7 +117,8 @@ Four things, in order:
    | `/jam test` (JamminWithJam) | 17 |
    | `/ast test` (AuctionatorSellingTweaks) | 4 |
    | `/mfd test` (MarkedForDeath) | 438 |
-   | `/ickit test` (ICKit, the Forever kit) | 32 |
+   | `/ickit test` (ICKit, the Forever kit) | 33 |
+   | `/sticky test` (Stickies, Forever) | 15 |
 
    Any decision worth arguing about belongs in a pure function with a case here, and a case
    that asserts an ordering must have that ordering worked out rather than assumed.

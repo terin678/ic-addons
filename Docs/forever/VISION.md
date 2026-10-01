@@ -61,6 +61,7 @@ addon needs it and not before.
    *(built: ICKit 0.3.0)*
 4. **Stickies.** The first addon: small draggable notes that stay on screen, each a title
    and a checklist. A note belongs to one character or to the whole account.
+   *(built: Stickies 0.1.0)*
 5. **A Forever addon template,** cut from Stickies once it works, so the next addon starts
    from something real.
 
