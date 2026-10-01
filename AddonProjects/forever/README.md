@@ -5,7 +5,7 @@ Target interface: 16001 (product `wow_classic_beta`, version 1.60.1). Client fol
 
 | Addon | Version | Guide |
 | --- | --- | --- |
-| ICKit | 0.1.0 | [Docs/ICKit.md](../../Docs/ICKit.md) |
+| ICKit | 0.2.0 | [Docs/ICKit.md](../../Docs/ICKit.md) |
 
 `ICKit` is the library addon for this flavor. Addons here list it under `## Dependencies`,
 so it must be installed alongside them; `scripts/package.ps1` bundles it into their zips

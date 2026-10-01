@@ -20,29 +20,59 @@ will not load unless the player ticks "Load out of date AddOns".
 
 The flavor name to folder, interface and library mapping is `scripts/flavors.psd1`. The
 client installs as `_classic_beta_` and runs as `WowB.exe`; `.build.info` lists it as
-`wow_classic_beta` at 1.60.1.70124. There is no exported Blizzard interface source on
-disk, so nothing below the first list is confirmed yet.
+`wow_classic_beta`. Everything below was confirmed on build 1.60.1 (70124) on 2026-09-30,
+either by `/ickit probe` running in the client (the report is saved to `ICKitDB.probe`) or
+by reading the exported interface source.
 
-Confirmed by running our own addon (ICKit) on it: nothing yet. This list grows as
-`/ickit` and, from the next kit version, `/ickit probe` report back.
+**It is the modern client base.** `WOW_PROJECT_ID` is 1, the same value as
+`WOW_PROJECT_MAINLINE` (`WOW_PROJECT_CLASSIC` is 2), so a check for "is this Classic" by
+project id says no. Branch on the interface number or on whether an API exists, never on
+the project id.
 
-Seen in another addon that loads on this client (OlympusMute, `## Interface: 16001`),
-so likely but not yet checked by us: `SLASH_*` with `SlashCmdList`, `ADDON_LOADED` and
-`PLAYER_LOGIN`, `C_Timer.After`, `StaticPopup_Show`, the `GameFont*` font objects,
-`UIPanelButtonTemplate`, `UICheckButtonTemplate`, `InputBoxTemplate`, a guarded
-`BackdropTemplate`, and `StartMoving` with `RegisterForDrag`.
+Present: `C_AddOns.GetAddOnMetadata` and `IsAddOnLoaded`, `C_Timer.After` and `NewTicker`,
+`C_Item.GetItemInfo`, `C_Container`, `C_AuctionHouse`, `C_TooltipInfo` with
+`TooltipDataProcessor`, `C_ChatInfo.SendAddonMessage` and `RegisterAddonMessagePrefix`,
+`MenuUtil.CreateContextMenu`, `Settings.RegisterCanvasLayoutCategory`, `StaticPopup_Show`
+with `StaticPopupDialogs`, `EditModeManagerFrame`, `AddonCompartmentFrame`,
+`CreateFramePool`, `Mixin`, `hooksecurefunc`, `issecretvalue`, `debugprofilestop`,
+`C_AddOnProfiler.GetAddOnMetric`, `UpdateAddOnMemoryUsage` and `GetAddOnMemoryUsage`,
+`UpdateAddOnCPUUsage`, `GetAddOnCPUUsage` and `GetFunctionCPUUsage`, `GetCVar` and
+`C_CVar.GetCVar`, `GetServerTime`, `GetPhysicalScreenSize`, `UISpecialFrames`,
+`UIDropDownMenu_Initialize`, and the font objects `GameFontNormal`, `GameFontNormalSmall`,
+`GameFontHighlight`, `GameFontHighlightSmall`, `GameFontDisableSmall`.
 
-Inferred from files the client writes (Edit Mode caches, `Blizzard_AuctionHouseUI` and
-`Blizzard_SettingsDefinitions_Shared` saved variables): this is the modern client base,
-so expect `C_AddOns` rather than `GetAddOnMetadata`, the modern Settings panel, and no
-`UIDropDownMenu` or `EasyMenu`. Treat each as unknown until probed.
+Absent: the globals `GetAddOnMetadata` and `GetItemInfo`, `EasyMenu`,
+`InterfaceOptions_AddCategory`, and the legacy auction call `QueryAuctionItems`. Anything
+written for the Anniversary client that uses these does not run here.
 
-Character folders under `WTF` are two-part names under a numeric realm folder. Never
-build a "Name-Realm" key by hand on this client; use the per-character saved table.
+Frame templates that create without error: `BackdropTemplate`, `UIPanelButtonTemplate`,
+`UICheckButtonTemplate`, `InputBoxTemplate`, `UIPanelScrollFrameTemplate`,
+`BasicFrameTemplateWithInset`, `UIPanelCloseButton`. The modern scroll pieces
+(`WowScrollBoxList`, `MinimalScrollBar`) are in the source too.
 
-To get ground truth: launch the client with `-console`, open the console at the login
-screen and run `ExportInterfaceFiles code`. If the build allows it, a
-`BlizzardInterfaceCode` folder appears in `_classic_beta_` to grep.
+Methods: `Texture:SetColorTexture` exists, and a frame made without `BackdropTemplate` has
+no `SetBackdrop`. Draw fills and edges with colour textures and a widget needs no template
+at all. The moving, clamping, edit-box and check-button methods the widgets use are all
+present, as are the script handlers `OnDragStart`, `OnDragStop`, `OnMouseDown`, `OnEnter`,
+`OnEnterPressed`, `OnEscapePressed`, `OnEditFocusLost`, `OnTextChanged` and `OnClick`.
+
+**Character names are two-part.** `UnitName("player")` and `UnitFullName("player")` both
+return two values that are the character's two names (a first and a second name), not a
+name and a realm. `GetRealmName()` is "Classic Beta PvE 2" and `GetNormalizedRealmName()` is
+"ClassicBetaPvE2". Never build a "Name-Realm" key by hand; use the per-character saved
+table, or `UnitGUID` when a key is needed.
+
+Load order is `ADDON_LOADED`, `PLAYER_LOGIN`, `PLAYER_ENTERING_WORLD`, and both the
+account and the per-character saved tables are in hand at `ADDON_LOADED`. Both are written
+on `/reload`.
+
+`GetBuildInfo()` returns six values here: version, build, date, interface, then two empty
+strings. `UIParent` on a 3840 by 2160 screen was 1923 by 1082 at an effective scale of
+0.71, so positions are stored as fractions of `UIParent`, not as pixels.
+
+The interface source is exported at `_classic_beta_\BlizzardInterfaceCode` (launch with
+`-console`, then `ExportInterfaceFiles code` at the login screen; it cannot be run in
+game). Grep it before using an API the probe did not cover, and re-export after a patch.
 
 ## APIs known to work on anniversary (20506)
 

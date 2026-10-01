@@ -2,14 +2,20 @@
 ## Title: ICKit
 ## Notes: The shared kit under the Impulse Control addons for WoW Forever: small libraries, added one layer at a time.
 ## Author: Malexis
-## Version: 0.1.0
+## Version: 0.2.0
 ## IconTexture: Interface\AddOns\ICKit\Textures\ImpulseControl-64.tga
 ## Group: ICKit
 ## Category: Impulse Control
+## SavedVariables: ICKitDB
+## SavedVariablesPerCharacter: ICKitCharDB
 ## X-Category: Library
 
 LibStub\LibStub.lua
 LibICUtil-1.0\LibICUtil-1.0.lua
 LibICTest-1.0\LibICTest-1.0.lua
+LibICEnv-1.0\LibICEnv-1.0.lua
+LibICStore-1.0\LibICStore-1.0.lua
+LibICConsole-1.0\LibICConsole-1.0.lua
 Core.lua
+Probe.lua
 Tests.lua
