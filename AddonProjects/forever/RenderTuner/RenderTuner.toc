@@ -1,0 +1,15 @@
+## Interface: 16001
+## Title: RenderTuner
+## Notes: Tunes the client's rendering: upscaling presets and a control for every graphics console variable. This build only asks the client what it has.
+## Author: Malexis
+## Version: 0.0.1
+## IconTexture: Interface\Icons\INV_Misc_Spyglass_03
+## Group: ICKit
+## Category: Impulse Control
+## SavedVariables: RenderTunerDB
+## SavedVariablesPerCharacter: RenderTunerCharDB
+## Dependencies: ICKit
+
+Core.lua
+Probe.lua
+Tests.lua
