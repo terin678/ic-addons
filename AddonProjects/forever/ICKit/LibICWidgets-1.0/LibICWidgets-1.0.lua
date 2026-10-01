@@ -14,6 +14,7 @@ is the exception: its bar is the client's own.
     W.EditBox(parent, w, h, opts)       one line of text
     W.Slider(parent, opts)              a number between two ends, its value beside it
     W.Choice(parent, w, h, opts)        one of a short list, picked from a menu
+    W.Scroll(parent, w, h, opts)        a window onto content taller than itself
     W.Tooltip(frame, builder)           builder(GameTooltip, frame) adds the lines
     W.Menu(owner, items)                a context menu from a list
     W.Confirm(text, onAccept)           a yes/no dialog
@@ -420,6 +421,7 @@ opts = {
     onEscape = fn(box),             -- Escape, after focus is dropped
     onFocusLost = fn(box),
     onTab = fn(box, backwards),     -- Tab, or Shift-Tab with backwards = true
+    onChange = fn(text, box),       -- each change the player types, not one made by SetText
 }
 Escape always drops focus. A box with focus takes every key, movement included, so an
 addon drops focus (box:ClearFocus()) when combat starts.
@@ -438,6 +440,7 @@ function W.EditBox(parent, w, h, opts)
     e.icOnEscape = opts.onEscape or false
     e.icOnFocusLost = opts.onFocusLost or false
     e.icOnTab = opts.onTab or false
+    e.icOnChange = opts.onChange or false
     e.icFocused = false
 
     e.placeholder = e:CreateFontString(nil, "OVERLAY", theme.fonts.body)
@@ -468,7 +471,10 @@ function W.EditBox(parent, w, h, opts)
         SyncPlaceholder(self)
         if self.icOnFocusLost then self.icOnFocusLost(self) end
     end)
-    e:SetScript("OnTextChanged", SyncPlaceholder)
+    e:SetScript("OnTextChanged", function(self, userInput)
+        SyncPlaceholder(self)
+        if userInput and self.icOnChange then self.icOnChange(self:GetText() or "", self) end
+    end)
     -- Tab, and Shift-Tab as backwards = true, for moving between the boxes of a list.
     e:SetScript("OnTabPressed", function(self)
         if self.icOnTab then
@@ -697,6 +703,113 @@ function W.Choice(parent, w, h, opts)
 
     c:SetLabel(ChoiceLabel(c))
     return c
+end
+
+--------------------------------------------------------------------------------
+-- Scroll
+--------------------------------------------------------------------------------
+
+-- Pure. How far down a view of height `viewH` may be scrolled over content of height
+-- `contentH`, and `offset` held inside that.
+function W.ScrollClamp(offset, contentH, viewH)
+    local range = math.max(0, (contentH or 0) - (viewH or 0))
+    offset = tonumber(offset) or 0
+    if offset < 0 then offset = 0 elseif offset > range then offset = range end
+    return offset, range
+end
+
+local SCROLL_BAR_W = 8
+
+--[[
+A window onto content taller than itself. Put children on s.content and say how tall
+they are; the mouse wheel and a thin bar on the right scroll it. The bar is the client's
+own slider turned on its side, so dragging it runs no OnUpdate, and it hides itself when
+everything fits.
+
+opts = { step = 24 }                -- how far one notch of the wheel moves
+s.content                           -- parent your rows to this; it is `w` less the bar wide
+s:SetContentHeight(h)               -- call when the rows change
+s:ScrollTo(offset), s:GetOffset()
+]]
+function W.Scroll(parent, w, h, opts)
+    opts = opts or {}
+    local s = CreateFrame("ScrollFrame", nil, parent)
+    s:SetSize(w, h)
+    s.icStep = opts.step or 24
+    s.icViewH = h
+    s.icContentH = 0
+    s.icOffset = 0
+    s.icQuiet = false
+
+    local content = CreateFrame("Frame", nil, s)
+    content:SetSize(w - SCROLL_BAR_W - 4, 1)
+    s:SetScrollChild(content)
+    s.content = content
+
+    -- Beside the view, not inside it: a scroll frame clips what it holds.
+    local bar = CreateFrame("Slider", nil, parent)
+    bar:SetOrientation("VERTICAL")
+    bar:SetWidth(SCROLL_BAR_W)
+    -- Above the view it sits beside, so a press on the bar reaches the bar.
+    bar:SetFrameLevel((s:GetFrameLevel() or 0) + 5)
+    bar:SetPoint("TOPRIGHT", s, "TOPRIGHT", 0, 0)
+    bar:SetPoint("BOTTOMRIGHT", s, "BOTTOMRIGHT", 0, 0)
+    bar:SetMinMaxValues(0, 1)
+    bar:SetValueStep(1)
+    bar:SetValue(0)
+    bar:EnableMouse(true)
+    bar.icTrack = bar:CreateTexture(nil, "BACKGROUND")
+    bar.icTrack:SetAllPoints(bar)
+    bar.icThumb = bar:CreateTexture(nil, "ARTWORK")
+    bar.icThumb:SetSize(SCROLL_BAR_W, 30)
+    bar:SetThumbTexture(bar.icThumb)
+    bar:Hide()
+    s.bar = bar
+
+    function s:GetOffset()
+        return self.icOffset
+    end
+
+    function s:ScrollTo(offset)
+        self.icOffset = W.ScrollClamp(offset, self.icContentH, self.icViewH)
+        self:SetVerticalScroll(self.icOffset)
+        self.icQuiet = true
+        self.bar:SetValue(self.icOffset)
+        self.icQuiet = false
+    end
+
+    function s:SetContentHeight(height)
+        self.icContentH = math.max(0, tonumber(height) or 0)
+        self.content:SetHeight(math.max(1, self.icContentH))
+        local _, range = W.ScrollClamp(0, self.icContentH, self.icViewH)
+        self.icQuiet = true
+        self.bar:SetMinMaxValues(0, math.max(1, range))
+        self.icQuiet = false
+        -- The thumb is as much of the bar as the view is of the content.
+        if range > 0 then
+            self.bar.icThumb:SetHeight(math.max(20, self.icViewH * self.icViewH / self.icContentH))
+        end
+        self.bar:SetShown(range > 0)
+        self:ScrollTo(self.icOffset)
+    end
+
+    bar:SetScript("OnValueChanged", function(_, value)
+        if s.icQuiet == true then return end
+        s.icOffset = W.ScrollClamp(value, s.icContentH, s.icViewH)
+        s:SetVerticalScroll(s.icOffset)
+    end)
+
+    s:EnableMouseWheel(true)
+    s:SetScript("OnMouseWheel", function(self, delta)
+        self:ScrollTo(self.icOffset - (tonumber(delta) or 0) * self.icStep)
+    end)
+
+    Track(bar, function(self, theme)
+        local track, thumb = theme.colors.field, theme.colors.edge
+        self.icTrack:SetColorTexture(track.r, track.g, track.b, 0.6)
+        self.icThumb:SetColorTexture(thumb.r, thumb.g, thumb.b, 1)
+    end)
+    return s
 end
 
 --------------------------------------------------------------------------------

@@ -10,7 +10,8 @@ model; everything the model needs from the client comes through here.
     Apply.Defaults()     -> the same, for the client's defaults
     Apply.Run(plan)      -> how many were set, and the names of those that were refused
     Apply.Unsupported(cvar, value) -> why this client will not take that value, or nil
-    Apply.LevelValues(level) -> what the overall quality level sets each level beneath it to
+    Apply.LevelValues(level, raid) -> what the overall quality level sets each level beneath it to
+    Apply.Framerate()    -> frames per second, as the client measures it
     Apply.Restart(need)  restarts what a change needs, where an addon can
 ]]
 
@@ -146,12 +147,14 @@ end
 -- The client does not move the other quality levels when the overall one changes; the
 -- game's graphics page does it in Lua, by asking the client what each level should be.
 -- This asks the same question for every level in the catalogue.
-function Apply.LevelValues(level)
+-- `raid` asks for the raid set of levels.
+function Apply.LevelValues(level, raid)
+    raid = raid == true
     local values = {}
     if type(GetGraphicsCVarValueForQualityLevel) ~= "function" then return values end
     for _, knob in ipairs(Apply.Knobs()) do
-        if knob.rank == 2 then
-            local try = Env.Try(knob.cvar, GetGraphicsCVarValueForQualityLevel, knob.cvar, level, false)
+        if knob.rank == 2 and (knob.raid == true) == raid then
+            local try = Env.Try(knob.cvar, GetGraphicsCVarValueForQualityLevel, knob.cvar, level, raid)
             local value = try.ok and tonumber(try.values[1]) or nil
             if value then values[knob.cvar] = value end
         end
@@ -171,4 +174,8 @@ function Apply.Restart(need)
         return true
     end
     return false
+end
+
+function Apply.Framerate()
+    return type(GetFramerate) == "function" and tonumber(GetFramerate()) or 0
 end

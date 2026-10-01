@@ -112,7 +112,7 @@ T.Case("Catalog: every knob is whole, and no variable is offered twice", functio
     local groups = {}
     for _, group in ipairs(Catalog.GROUPS) do groups[group.key] = true end
     local KINDS = { slider = true, toggle = true, choice = true }
-    local FORMATS = { percent = true, percent100 = true, fps = true, nits = true }
+    local FORMATS = { percent = true, percent100 = true, fps = true, nits = true, level = true }
     local RESTARTS = { gx = true, window = true, client = true }
 
     local seen = {}
@@ -141,7 +141,35 @@ T.Case("Catalog: every knob is whole, and no variable is offered twice", functio
             end
         end
     end
-    T.True(#Catalog.KNOBS > 80, "the catalogue is there")
+    T.True(#Catalog.KNOBS > 120, "the catalogue is there")
+
+    local used = {}
+    for _, knob in ipairs(Catalog.KNOBS) do used[knob.group] = true end
+    for _, group in ipairs(Catalog.GROUPS) do
+        T.True(used[group.key], group.key .. " has at least one knob")
+        T.True(type(group.note) == "string" and group.note ~= "", group.key .. " says what it is for")
+    end
+end)
+
+T.Case("Catalog: the quality levels come twice, for the world and for raids, each under a master", function()
+    local world, raid, masters = 0, 0, {}
+    for _, knob in ipairs(Catalog.KNOBS) do
+        if knob.rank == 2 then
+            if knob.raid then raid = raid + 1 else world = world + 1 end
+            T.Eq(knob.format, "level", knob.cvar .. " reads as a level")
+        elseif knob.rank == 1 then
+            masters[#masters + 1] = knob.cvar .. (knob.raid and " raid" or "")
+        end
+    end
+    T.Eq(world, raid, "as many raid levels as world levels")
+    T.True(world >= 15, "all of them")
+    T.Eq(table.concat(masters, ", "), "graphicsQuality, RAIDgraphicsQuality raid", "one master for each set")
+
+    T.Eq(Catalog.LEVELS[1].level, 0, "the lowest quality preset is the game's level 1")
+    T.Eq(Catalog.LEVELS[#Catalog.LEVELS].level, 9, "the highest is its level 10")
+    for i = 2, #Catalog.LEVELS do
+        T.True(Catalog.LEVELS[i].level > Catalog.LEVELS[i - 1].level, "each higher than the last")
+    end
 end)
 
 T.Case("Catalog: the presets run from native down, and the model can read each", function()
@@ -165,7 +193,7 @@ local SLIDER = { cvar = "S", label = "Slide", kind = "slider", min = 0.3334, max
 local SHARP = { cvar = "R", label = "Sharp", kind = "slider", min = 0, max = 2, step = 0.1, reversed = true }
 local TOGGLE = { cvar = "T", label = "Tog", kind = "toggle", restart = "gx" }
 local CHOICE = { cvar = "C", label = "Pick", kind = "choice", choices = { { 0, "None" }, { 2, "Two" }, { 3, "Three" } } }
-local LEVEL = { cvar = "L", label = "Level", kind = "slider", min = 0, max = 9, step = 1, rank = 2 }
+local LEVEL = { cvar = "L", label = "Level", kind = "slider", min = 0, max = 9, step = 1, rank = 2, format = "level" }
 local MASTER = { cvar = "M", label = "Master", kind = "slider", min = 0, max = 9, step = 1, rank = 1,
     restart = "client" }
 
@@ -226,6 +254,61 @@ T.Case("Model.Format: what the user reads", function()
     T.Eq(Model.Format({ kind = "slider", min = 80, max = 1000, format = "nits" }, 203), "203 nits", "nits")
     T.Eq(Model.Format({ kind = "slider", min = 10, max = 100, format = "percent100" }, 80), "80%", "a whole percent")
     T.Eq(Model.Format(SLIDER, nil), "?", "no value")
+end)
+
+T.Case("Model.Shown, FromShown, ShownRange: the numbers a player reads", function()
+    T.Near(Model.Shown(SHARP, 0.2), 1.8, "a reversed slider reads from the other end")
+    T.Near(Model.FromShown(SHARP, 1.8), 0.2, "and back")
+    T.Eq(Model.Shown(LEVEL, 9), 10, "a quality level counts from 1")
+    T.Eq(Model.FromShown(LEVEL, 10), 9, "and back to the variable's count from 0")
+    T.Eq(Model.Shown(SLIDER, 0.67), 0.67, "a plain slider is itself")
+    local low, high = Model.ShownRange(LEVEL)
+    T.Eq(low .. " to " .. high, "1 to 10", "a level's range as shown")
+    low, high = Model.ShownRange(SHARP)
+    T.Eq(low .. " to " .. high, "0 to 2", "a reversed range keeps its ends in order")
+    T.Eq(Model.Format(LEVEL, 0), "1", "a level is written as the game writes it")
+    T.Eq(Model.RangeText(LEVEL), "1 to 10", "in its range too")
+    T.Eq(Model.RangeText(SHARP), "0 to 2", "a reversed range reads low to high")
+    T.Eq(Model.RangeText(CHOICE), "None, Two, Three", "a choice lists its names")
+    T.Eq(Model.RangeText(TOGGLE), "on or off", "a toggle")
+end)
+
+T.Case("Model.Matches, View: which knobs are in view", function()
+    local a = { cvar = "shadowMode", label = "Shadow mode", group = "shadow", kind = "slider", help = "The technique." }
+    local b = { cvar = "SSAO", label = "Ambient occlusion", group = "light", kind = "choice",
+        help = "Contact shadows in corners." }
+    local c = { cvar = "Gamma", label = "Gamma", group = "colour", kind = "slider", help = "Gamma correction." }
+    local knobs = { a, b, c }
+    local groups = { { key = "shadow", label = "Shadows" }, { key = "light", label = "Lighting and fog" },
+        { key = "colour", label = "Colour" } }
+
+    T.True(Model.Matches(a, "SHADOW", "Shadows"), "by name, whatever the case")
+    T.True(Model.Matches(b, "ssao", nil), "by console variable")
+    T.True(Model.Matches(b, "contact", nil), "by its help")
+    T.True(Model.Matches(c, "colour", "Colour"), "by its group")
+    T.True(Model.Matches(b, "ambient corner", nil), "every word must be there, in any order")
+    T.Eq(Model.Matches(b, "ambient potato", nil), false, "one missing word is no match")
+    T.True(Model.Matches(a, "", nil), "nothing typed matches everything")
+
+    local live, saved = { shadowMode = 2, SSAO = 0, Gamma = 1 }, { shadowMode = 4, SSAO = 0, Gamma = 1 }
+    local function Names(list)
+        local out = {}
+        for i, knob in ipairs(list) do out[i] = knob.cvar end
+        return table.concat(out, " ")
+    end
+    T.Eq(Names(Model.View(knobs, { group = "light" }, live, saved, groups)), "SSAO", "a group")
+    T.Eq(Names(Model.View(knobs, { changed = true }, live, saved, groups)), "shadowMode", "what differs from saved")
+    T.Eq(Names(Model.View(knobs, { search = "shadow" }, live, saved, groups)), "shadowMode SSAO",
+        "a search crosses groups, in catalogue order")
+    T.Eq(Names(Model.View(knobs, { search = "shadow", group = "colour" }, live, saved, groups)), "shadowMode SSAO",
+        "and beats the group picked")
+    T.Eq(Names(Model.View(knobs, { search = "  ", group = "colour" }, live, saved, groups)), "Gamma",
+        "a blank search is no search")
+    T.Eq(#Model.View(knobs, { search = "zzz" }, live, saved, groups), 0, "nothing found")
+
+    T.Eq(Model.LevelOf(4, Catalog.LEVELS).key, "good", "a quality preset by its level")
+    T.Eq(Model.LevelOf(5, Catalog.LEVELS), nil, "a level in between is no preset")
+    T.Eq(Model.LevelOf(nil, Catalog.LEVELS), nil, "nor is no level")
 end)
 
 T.Case("Model.Snapshot, Fill, Diff: sets of values", function()
@@ -383,6 +466,7 @@ if IC_HEADLESS then
         VRN_NEEDS_RT = "Needs ray tracing"
         -- What each level beneath the overall one should be: here, never more than 2.
         GetGraphicsCVarValueForQualityLevel = function(_, level) return math.min(level, 2) end
+        GetFramerate = function() return 141.6 end
         -- A confirm dialog that remembers what it was asked and can be answered.
         local asked = {}
         StaticPopupDialogs = {}
@@ -417,6 +501,7 @@ if IC_HEADLESS then
         C_CVar, GetMinRenderScale, GetMaxRenderScale = real.C_CVar, real.min, real.max
         IsGraphicsCVarValueSupported, VRN_NEEDS_RT = real.supported, real.reason
         GetGraphicsCVarValueForQualityLevel = real.level
+        GetFramerate = nil
         StaticPopupDialogs, StaticPopup_Show = real.dialogs, real.show
         ns.Apply.ForgetSupport()
         ns.db, ns.cdb = real.db, real.cdb
@@ -533,10 +618,11 @@ if IC_HEADLESS then
             -- The overall quality level carries the levels beneath it.
             ns.Panel.ShowGroup("quality")
             local overall = ns.Panel.Row("graphicsQuality")
-            overall.control.inner:GetScript("OnValueChanged")(overall.control.inner, 6)
-            T.Eq(cvars.graphicsQuality, "6", "the overall level is set")
-            T.Eq(cvars.graphicsShadowQuality, "2", "and each level beneath it to what the client says")
-            T.Eq(ns.Panel.Row("graphicsShadowQuality").control:GetValue(), 2, "which the rows show")
+            overall.control.inner:GetScript("OnValueChanged")(overall.control.inner, 7)
+            T.Eq(cvars.graphicsQuality, "6", "level 7 as the game counts is 6 in the variable")
+            T.Eq(cvars.graphicsShadowQuality, "2", "and each level beneath it is set to what the client says")
+            T.Eq(ns.Panel.Row("graphicsShadowQuality").control:GetValue(), 3, "which the rows show, counted from 1")
+            T.Eq(cvars.raidGraphicsShadowQuality, "1", "the raid levels are a separate set, and untouched")
 
             -- A preset brings the settings it changes into view.
             ns.Panel.Preset("performance"):GetScript("OnClick")(ns.Panel.Preset("performance"))
@@ -553,6 +639,87 @@ if IC_HEADLESS then
 
             run("")
             T.Eq(ns.Panel.IsShown(), false, "the bare command closes it again")
+        end)
+    end)
+
+    T.Case("Panel: quality presets, the search box, the Changed view and the ways back", function()
+        WithClient(function(cvars, sets, run)
+            ns.Baseline()
+            run("")
+            local frame = ns.Panel.Frame()
+
+            -- A quality preset sets the master level and the levels beneath it, and shows them.
+            ns.Panel.Level("high"):GetScript("OnClick")(ns.Panel.Level("high"))
+            T.Eq(cvars.graphicsQuality, "6", "High is level 7 of 10")
+            T.Eq(cvars.graphicsViewDistance, "2", "with the levels beneath it")
+            T.Eq(ns.cdb.panel.group, "quality", "and the quality levels come into view")
+            T.Eq(cvars.RenderScale, "1", "upscaling is left alone")
+            T.Eq(ns.Panel.Level("high").icKind, "accent", "the preset in use is highlighted")
+            T.Eq(frame.head:GetText(), "Quality levels", "the heading names the group")
+
+            run("quality low")
+            T.Eq(cvars.graphicsQuality, "0", "the command does the same")
+            T.Eq(ns.Panel.Level("low").icKind, "accent", "and the panel follows")
+            T.Eq(ns.Panel.Level("high").icKind, "normal", "the other is let go")
+
+            -- The raid master carries the raid levels, not the world's.
+            ns.Panel.ShowGroup("raid")
+            local raid = ns.Panel.Row("RAIDgraphicsQuality")
+            raid.control.inner:GetScript("OnValueChanged")(raid.control.inner, 10)
+            T.Eq(cvars.RAIDgraphicsQuality, "9", "the raid master")
+            T.Eq(cvars.raidGraphicsViewDistance, "2", "moves the raid levels")
+            T.Eq(cvars.graphicsViewDistance, "0", "and not the world's")
+
+            -- Search crosses groups and beats the group picked.
+            ns.Panel.Search("sharp")
+            local _, showing = ns.Panel.Counts()
+            T.True(showing >= 3, "a search finds knobs in more than one group")
+            T.True(ns.Panel.Row("ResampleSharpness"):IsShown(), "from upscaling")
+            T.True(ns.Panel.Row("CMAA2ExtraSharpness"):IsShown(), "and from anti-aliasing")
+            T.Eq(ns.Panel.Row("RAIDgraphicsQuality"):IsShown(), false, "the group that was in view gives way")
+            T.Eq(frame.head:GetText(), 'Search: "sharp"', "the heading says what was searched for")
+            ns.Panel.Search("no such setting")
+            T.Eq(frame.empty:GetText(), "No setting matches.", "nothing found says so")
+            ns.Panel.Search("")
+            T.True(ns.Panel.Row("RAIDgraphicsQuality"):IsShown(), "clearing the search brings the group back")
+
+            -- A changed row gains an undo, and the heading a way back for all in view.
+            ns.Panel.ShowGroup("colour")
+            local gamma = ns.Panel.Row("Gamma")
+            T.Eq(gamma.undo:IsShown(), false, "no undo on a row that is as saved")
+            T.Eq(frame.revertView:IsShown(), false, "and nothing to revert in view")
+            gamma.control.inner:GetScript("OnValueChanged")(gamma.control.inner, 1.4)
+            T.Eq(cvars.Gamma, "1.4", "changed")
+            T.True(gamma.undo:IsShown(), "the undo appears")
+            T.True(frame.revertView:IsShown(), "and the way back for the view")
+            gamma.undo:GetScript("OnClick")(gamma.undo)
+            T.Eq(cvars.Gamma, "1", "undo puts the one setting back")
+            T.Eq(gamma.undo:IsShown(), false, "and goes away again")
+
+            -- The Changed view lists what differs, and keeps a row that has been put back.
+            ns.Panel.ShowGroup("changed")
+            local changedRows = select(2, ns.Panel.Counts())
+            T.Eq(changedRows, #ns.Changes(), "one row for each setting that differs from saved")
+            T.True(ns.Panel.Row("graphicsQuality"):IsShown(), "the quality level is among them")
+            local level = ns.Panel.Row("graphicsQuality")
+            level.undo:GetScript("OnClick")(level.undo)
+            T.True(level:IsShown(), "put back, it stays in the list while the view is open")
+            T.Eq(select(2, ns.Panel.Counts()), changedRows, "so nothing jumps under the pointer")
+            frame.revertView:GetScript("OnClick")(frame.revertView)
+            T.Eq(#ns.Changes(), 0, "Revert these puts back everything in view")
+            ns.Panel.ShowGroup("changed")
+            T.Eq(select(2, ns.Panel.Counts()), 0, "and opened afresh, the view is empty")
+            T.Eq(frame.empty:GetText(), "Nothing differs from the saved set.", "and says so")
+
+            -- A long group scrolls.
+            ns.Panel.ShowGroup("world")
+            frame.scroll:ScrollTo(48)
+            T.Eq(frame.scroll:GetOffset(), 0, "a group that fits does not scroll")
+            ns.Panel.ShowGroup("quality")
+            frame.scroll:ScrollTo(48)
+            T.Eq(frame.scroll:GetOffset(), 48, "a long one does")
+            ns.Panel.ShowGroup("colour")
+            T.Eq(frame.scroll:GetOffset(), 0, "and a new view starts at the top")
         end)
     end)
 

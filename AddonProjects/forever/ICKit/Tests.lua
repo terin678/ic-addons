@@ -554,6 +554,43 @@ T.Case("Widgets: a slider and a choice keep their value and report a change, not
     T.Eq(c.label:GetText(), "9", "a value with no label shows itself")
 end)
 
+T.Case("Widgets: a scroll view stays inside its content, and its bar shows only when needed", function()
+    local offset, range = W.ScrollClamp(50, 300, 100)
+    T.Eq(offset, 50, "an offset inside the range is kept")
+    T.Eq(range, 200, "the range is the content less the view")
+    T.Eq(W.ScrollClamp(-10, 300, 100), 0, "not above the top")
+    T.Eq(W.ScrollClamp(999, 300, 100), 200, "not past the bottom")
+    T.Eq(W.ScrollClamp(40, 80, 100), 0, "content that fits does not scroll")
+
+    local p = W.Panel(nil, { width = 240, height = 120 })
+    p:Hide()
+    local s = W.Scroll(p, 200, 100, { step = 24 })
+    s:SetContentHeight(300)
+    T.Eq(s.bar:IsShown(), true, "taller content shows the bar")
+    s:GetScript("OnMouseWheel")(s, -1)
+    T.Eq(s:GetOffset(), 24, "one notch down moves one step")
+    s:GetScript("OnMouseWheel")(s, 1)
+    s:GetScript("OnMouseWheel")(s, 1)
+    T.Eq(s:GetOffset(), 0, "and it stops at the top")
+    s:ScrollTo(999)
+    T.Eq(s:GetOffset(), 200, "and at the bottom")
+    s.bar:GetScript("OnValueChanged")(s.bar, 120)
+    T.Eq(s:GetOffset(), 120, "dragging the bar scrolls")
+    s:SetContentHeight(150)
+    T.Eq(s:GetOffset(), 50, "shorter content pulls the view back inside it")
+    s:SetContentHeight(60)
+    T.Eq(s.bar:IsShown(), false, "content that fits hides the bar")
+    T.Eq(s:GetOffset(), 0, "at the top")
+
+    local typed = {}
+    local edit = W.EditBox(p, 100, 18, { onChange = function(text) typed[#typed + 1] = text end })
+    edit:SetText("sha")
+    edit:GetScript("OnTextChanged")(edit, true)
+    T.Eq(typed[1], "sha", "an edit box reports what the player types")
+    edit:GetScript("OnTextChanged")(edit, false)
+    T.Eq(#typed, 1, "and not a change made for it")
+end)
+
 T.Case("Widgets: a move starts on the press and ends on the release", function()
     -- Not on the client's drag event, which waits for the pointer to travel and then
     -- makes the frame jump the distance it missed.

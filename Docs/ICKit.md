@@ -65,7 +65,7 @@ should not. The counters cost two clock reads a call and need no console variabl
 | LibICStore-1.0 | 1 | Saved variables: defaults, schema, migrations, and whether the file really loaded |
 | LibICConsole-1.0 | 1 | Prefixed printing and the slash-command dispatcher with its help |
 | LibICTheme-1.0 | 1 | The theme registry: colour and font roles, the selected theme, change listeners |
-| LibICWidgets-1.0 | 2 | Themed frames drawn from colour textures: panel, label, button, check box, edit box, slider, choice, tooltip, menu, confirm |
+| LibICWidgets-1.0 | 2 | Themed frames drawn from colour textures: panel, label, button, check box, edit box, slider, choice, scroll, tooltip, menu, confirm |
 
 The libraries never print. An addon decides what to say, in its own voice. Only
 LibICWidgets creates frames, apart from the store's one event frame.
@@ -249,6 +249,7 @@ Blizzard frame template, repaints when the theme changes, and runs no `OnUpdate`
 | `W.Tooltip(frame, builder, anchor)` | `builder(GameTooltip, frame)` adds the lines; nil removes it. It hooks, so a button keeps its hover highlight. The tooltip sits at the pointer (`ANCHOR_CURSOR_RIGHT`) unless `anchor` says otherwise. |
 | `W.Slider(parent, opts)` | A number between two ends with its value written beside it. `opts`: `width`, `valueWidth`, `min`, `max`, `step`, `value`, `format(value)`, `live` (false waits for the thumb to be let go), `onChange(value, slider)`. `s:SetValue(v)` moves it without calling `onChange`; `s:GetValue()`. The bar is the client's `MinimalSliderWithSteppersTemplate`, so its art is not themed. `W.SliderValue(raw, min, max, step)` is the pure half: whole steps, with both ends reachable. |
 | `W.Choice(parent, w, h, opts)` | One of a short list: a button showing the current choice that opens a menu of them all. `opts`: `choices` as `{ { value, label }, ... }`, `value`, `onChange(value, choice)`, `disabled(value)` returning a reason to grey a choice out. `c:SetValue(v)`, `c:GetValue()`. |
+| `W.Scroll(parent, w, h, opts)` | A window onto content taller than itself: parent rows to `s.content`, call `s:SetContentHeight(h)` when they change. The mouse wheel and a thin bar scroll it; the bar hides when everything fits. `opts.step` is one wheel notch. `s:ScrollTo(offset)`, `s:GetOffset()`. `W.ScrollClamp(offset, contentH, viewH)` is the pure half. |
 | `W.Menu(owner, items)` | A context menu. Items: `{ title }`, `{ text, onClick }`, `{ text, checked = fn, onClick }`, `{ text, radio = fn, onClick }` (one of several; picking closes the menu), `{ divider = true }`. An item may carry `disabled = true` or `disabled = "the reason"`. |
 | `W.Confirm(text, onAccept)` | A yes/no dialog. |
 | `W.Compartment(opts)` | An entry in the client's Addon Compartment, the list of addons beside the minimap: the modern way onto the minimap, costing no frame. `opts`: `text`, `icon`, `onClick(mouseButton)`, `tooltip`. Returns false on a client without one. |

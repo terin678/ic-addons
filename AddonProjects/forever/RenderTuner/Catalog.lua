@@ -13,9 +13,11 @@ the addon loads, so a row here is an offer, not a promise.
         label   what the user reads
         group   one of Catalog.GROUPS
         kind    "slider", "toggle" or "choice"
-        min, max, step      for a slider
+        min, max, step      for a slider, in the variable's own numbers
         choices             for a choice: { { value, label }, ... }
-        format  how a slider's value reads: "percent" (a fraction), "percent100", "fps", "nits", or nil for the number
+        format  how a slider's value reads: "percent" (a fraction), "percent100", "fps",
+                "nits", "level" (a quality level, counted from 1 as the game shows it),
+                or nil for the number
         reversed  the variable runs backwards: shown and set as max - value
         experimental  it can crash the game or leave it unable to draw: the client calls
                 it a beta feature, or it leans on hardware and driver support that not
@@ -28,35 +30,42 @@ the addon loads, so a row here is an offer, not a promise.
         restart   what a change needs before it shows: "gx", "window" or "client"
         rank    1 and 2 are set before the rest: they are Blizzard's quality levels, and
                 the client moves other variables when they change
+        raid    it belongs to the client's second set of levels, used inside raids
         help    one sentence
     }
 
-Left out on purpose: the RAID* copies of these variables (the client's second profile for
-raids), variables that take text (the graphics API, the adapter), and the engine's
-threading, streaming and debugging variables.
+Left out on purpose: the raw RAID* copies of the variables beneath the raid levels,
+variables that take text (the graphics API, the adapter, the screenshot format), and the
+engine's threading, streaming and debugging variables.
 ]]
 
 local Catalog = {}
 ns.Catalog = Catalog
 
 Catalog.GROUPS = {
-    { key = "upscale", label = "Upscaling" },
-    { key = "aa", label = "Anti-aliasing" },
-    { key = "frame", label = "Latency and frame rate" },
-    { key = "colour", label = "Colour" },
-    { key = "hdr", label = "HDR" },
-    { key = "quality", label = "Quality levels" },
-    { key = "shadow", label = "Shadows and lighting" },
-    { key = "world", label = "World detail" },
-    { key = "effects", label = "Effects" },
+    { key = "upscale", label = "Upscaling", note = "Render scale, the upscaling filter and sharpening" },
+    { key = "aa", label = "Anti-aliasing", note = "Smoothing of jagged edges" },
+    { key = "frame", label = "Latency and frame rate", note = "Input delay, sync and frame rate limits" },
+    { key = "colour", label = "Colour", note = "Gamma, brightness and contrast" },
+    { key = "hdr", label = "HDR", note = "High dynamic range output" },
+    { key = "quality", label = "Quality levels", note = "The levels on the game's own graphics page" },
+    { key = "shadow", label = "Shadows", note = "Shadow technique, resolution and range" },
+    { key = "light", label = "Lighting and fog", note = "Ambient occlusion, fog, bloom and lights" },
+    { key = "ssao", label = "Ambient occlusion tuning", note = "The fine controls of the contact shadows" },
+    { key = "texture", label = "Textures", note = "Texture resolution and filtering" },
+    { key = "world", label = "View distance and detail", note = "How far things are drawn, and how detailed" },
+    { key = "water", label = "Water and weather", note = "Liquids, reflections, rain and snow" },
+    { key = "particles", label = "Particles and spells", note = "Spell effects, particles and crowds" },
+    { key = "effects", label = "Effects and camera", note = "Field of view, full-screen effects, outlines" },
+    { key = "raid", label = "Raid profile", note = "A second set of quality levels the game uses inside raids" },
+    { key = "misc", label = "Cursor and screenshots", note = "The pointer and saved screenshots" },
 }
 
 -- The upscaling presets. Each sets the render scale; the ones below 100% also switch the
 -- resample filter to FSR 1.0. Sharpening is left where the user put it, and so is
 -- everything else: these are presets for upscaling, not for overall quality. The lowest
 -- is the client's floor and is named for how it looks, not after DLSS's "Ultra
--- Performance", which promised more than a third of the pixels can give. `short` is
--- the name on a button too narrow for the label.
+-- Performance", which promised more than a third of the pixels can give.
 Catalog.PRESETS = {
     { key = "native", label = "Native", scale = 1 },
     { key = "quality", label = "Quality", scale = 0.67 },
@@ -66,11 +75,41 @@ Catalog.PRESETS = {
 }
 Catalog.FSR = 3
 
+-- The overall quality presets: points on the game's own 1 to 10 quality slider. Each
+-- sets that level and the levels beneath it, and leaves upscaling alone. `level` is the
+-- variable's value, which counts from 0.
+Catalog.LEVELS = {
+    { key = "low", label = "Low", level = 0 },
+    { key = "fair", label = "Fair", level = 2 },
+    { key = "good", label = "Good", level = 4 },
+    { key = "high", label = "High", level = 6 },
+    { key = "ultra", label = "Ultra", level = 9 },
+}
+
 local OFF_LOW_MED_HIGH_ULTRA = { { 0, "Off" }, { 1, "Low" }, { 2, "Medium" }, { 3, "High" }, { 4, "Ultra" } }
 
-local function Level(cvar, label, max, help)
-    return { cvar = cvar, label = label, group = "quality", kind = "slider", min = 0, max = max, step = 1,
-        rank = 2, help = help }
+-- The quality levels, once for the world and once for raids.
+local LEVELS = {
+    { "ViewDistance", "View distance", 9, "How far the world is drawn." },
+    { "EnvironmentDetail", "Environment detail", 9, "How far objects are drawn." },
+    { "GroundClutter", "Ground clutter", 9, "Density and distance of grass and small ground detail." },
+    { "ShadowQuality", "Shadow quality", 5, "From blob shadows to high-resolution soft shadows." },
+    { "LiquidDetail", "Liquid detail", 3, "Water and lava quality." },
+    { "PBRLiquidDetail", "Liquid shading", 2, "Physically based water quality." },
+    { "ParticleDensity", "Particle density", 5, "How many particles spells and effects use." },
+    { "SSAO", "Ambient occlusion", 4, "Contact shadows in corners and creases." },
+    { "DepthEffects", "Depth effects", 3, "Effects that read scene depth, such as soft particles." },
+    { "ComputeEffects", "Compute effects", 4, "Volumetric fog and other compute-shader effects." },
+    { "OutlineMode", "Outline mode", 2, "Outlines on selected and hovered units." },
+    { "TextureResolution", "Texture resolution", 2, "World and character texture size." },
+    { "SpellDensity", "Spell density", 2, "How many of other players' spell effects are drawn." },
+    { "ProjectedTextures", "Projected textures", 1, "Ground effects projected onto terrain." },
+    { "LightMode", "Lighting quality", 2, "How many lights are drawn, and how well." },
+}
+
+local function Level(prefix, group, row, raid)
+    return { cvar = prefix .. row[1], label = row[2], group = group, kind = "slider", min = 0, max = row[3],
+        step = 1, format = "level", rank = 2, raid = raid, help = row[4] }
 end
 
 Catalog.KNOBS = {
@@ -156,27 +195,25 @@ Catalog.KNOBS = {
       help = "The brightest the monitor can show, in nits." },
     { cvar = "HDRFactor", label = "HDR factor", group = "hdr", kind = "slider", min = 1, max = 8, step = 0.1,
       help = "How far above standard range HDR lighting may push. Capped by the peak brightness." },
+    { cvar = "RenderFormat", label = "Render format", group = "hdr", kind = "choice", restart = "gx",
+      experimental = true,
+      choices = { { 0, "8-bit" }, { 1, "10-bit" }, { 2, "16-bit float" }, { 3, "32-bit float" } },
+      help = "The precision the world is drawn at. HDR and smooth gradients need 16-bit float; lower saves memory." },
 
     -- Quality levels: Blizzard's own, set before the variables beneath them.
     { cvar = "graphicsQuality", label = "Overall quality", group = "quality", kind = "slider",
-      min = 0, max = 9, step = 1, rank = 1, help = "The master level in the game's own graphics page, shown there as 1 to 10." },
-    Level("graphicsViewDistance", "View distance", 9, "How far the world is drawn."),
-    Level("graphicsEnvironmentDetail", "Environment detail", 9, "How far objects are drawn."),
-    Level("graphicsGroundClutter", "Ground clutter", 9, "Density and distance of grass and small ground detail."),
-    Level("graphicsShadowQuality", "Shadow quality", 5, "From blob shadows to high-resolution soft shadows."),
-    Level("graphicsLiquidDetail", "Liquid detail", 3, "Water and lava quality."),
-    Level("graphicsPBRLiquidDetail", "Liquid shading", 2, "Physically based water quality."),
-    Level("graphicsParticleDensity", "Particle density", 5, "How many particles spells and effects use."),
-    Level("graphicsSSAO", "Ambient occlusion", 4, "Contact shadows in corners and creases."),
-    Level("graphicsDepthEffects", "Depth effects", 3, "Effects that read scene depth, such as soft particles."),
-    Level("graphicsComputeEffects", "Compute effects", 4, "Volumetric fog and other compute-shader effects."),
-    Level("graphicsOutlineMode", "Outline mode", 2, "Outlines on selected and hovered units."),
-    Level("graphicsTextureResolution", "Texture resolution", 2, "World and character texture size."),
-    Level("graphicsSpellDensity", "Spell density", 2, "How many of other players' spell effects are drawn."),
-    Level("graphicsProjectedTextures", "Projected textures", 1, "Ground effects projected onto terrain."),
-    Level("graphicsLightMode", "Lighting quality", 2, "How many lights are drawn, and how well."),
+      min = 0, max = 9, step = 1, format = "level", rank = 1,
+      help = "The master level on the game's own graphics page. Moving it moves the levels beneath it." },
+    Level("graphics", "quality", LEVELS[1]), Level("graphics", "quality", LEVELS[2]),
+    Level("graphics", "quality", LEVELS[3]), Level("graphics", "quality", LEVELS[4]),
+    Level("graphics", "quality", LEVELS[5]), Level("graphics", "quality", LEVELS[6]),
+    Level("graphics", "quality", LEVELS[7]), Level("graphics", "quality", LEVELS[8]),
+    Level("graphics", "quality", LEVELS[9]), Level("graphics", "quality", LEVELS[10]),
+    Level("graphics", "quality", LEVELS[11]), Level("graphics", "quality", LEVELS[12]),
+    Level("graphics", "quality", LEVELS[13]), Level("graphics", "quality", LEVELS[14]),
+    Level("graphics", "quality", LEVELS[15]),
 
-    -- Shadows and lighting
+    -- Shadows
     { cvar = "shadowMode", label = "Shadow mode", group = "shadow", kind = "slider", min = 0, max = 4, step = 1,
       help = "The shadow technique, from simplest to best." },
     { cvar = "shadowSoft", label = "Soft shadows", group = "shadow", kind = "toggle",
@@ -187,30 +224,80 @@ Catalog.KNOBS = {
       min = 1, max = 4, step = 1, help = "How many distance bands shadows are split into." },
     { cvar = "shadowBlendCascades", label = "Blend cascades", group = "shadow", kind = "toggle",
       help = "Hides the seam between shadow bands." },
+    { cvar = "entityShadowFadeScale", label = "Creature shadow range", group = "shadow", kind = "slider",
+      min = 10, max = 100, step = 5, help = "How far away creatures and players stop casting shadows." },
     { cvar = "shadowRt", label = "Ray traced shadows", group = "shadow", kind = "choice", experimental = true,
       validated = true,
       choices = { { 0, "Off" }, { 1, "Fair" }, { 2, "Medium" }, { 3, "High" } },
       help = "Ray traced shadows, where the graphics card supports them." },
-    { cvar = "SSAO", label = "Ambient occlusion", group = "shadow", kind = "choice",
-      choices = OFF_LOW_MED_HIGH_ULTRA, help = "Contact shadows in corners and creases." },
-    { cvar = "sunShafts", label = "Sun shafts", group = "shadow", kind = "choice",
-      choices = { { 0, "Off" }, { 1, "Low" }, { 2, "High" } }, help = "Light rays around the sun." },
-    { cvar = "volumeFog", label = "Volumetric fog", group = "shadow", kind = "toggle",
-      help = "Fog that takes light and shadow." },
-    { cvar = "volumeFogLevel", label = "Volumetric fog quality", group = "shadow", kind = "slider",
-      min = 0, max = 4, step = 1, help = "Resolution of the volumetric fog." },
-    { cvar = "volumeFogInterior", label = "Volumetric fog indoors", group = "shadow", kind = "toggle",
-      help = "Volumetric fog inside buildings and caves." },
-    { cvar = "bloomEnable", label = "Bloom", group = "shadow", kind = "toggle",
-      help = "Glow around bright areas." },
-    { cvar = "bloomUserMult", label = "Bloom strength", group = "shadow", kind = "slider",
-      min = 0, max = 2, step = 0.1, help = "Multiplier on the bloom." },
-    { cvar = "specular", label = "Specular lighting", group = "shadow", kind = "slider",
-      min = 0, max = 1, step = 0.05, help = "Strength of specular highlights." },
-    { cvar = "reflectionMode", label = "Reflections", group = "shadow", kind = "slider",
-      min = 0, max = 3, step = 1, help = "What water reflects, from nothing to everything." },
 
-    -- World detail
+    -- Lighting and fog
+    { cvar = "SSAO", label = "Ambient occlusion", group = "light", kind = "choice",
+      choices = OFF_LOW_MED_HIGH_ULTRA, help = "Contact shadows in corners and creases." },
+    { cvar = "sunShafts", label = "Sun shafts", group = "light", kind = "choice",
+      choices = { { 0, "Off" }, { 1, "Low" }, { 2, "High" } }, help = "Light rays around the sun." },
+    { cvar = "volumeFog", label = "Volumetric fog", group = "light", kind = "toggle",
+      help = "Fog that takes light and shadow." },
+    { cvar = "volumeFogLevel", label = "Volumetric fog quality", group = "light", kind = "slider",
+      min = 0, max = 4, step = 1, help = "Resolution of the volumetric fog." },
+    { cvar = "volumeFogInterior", label = "Volumetric fog indoors", group = "light", kind = "toggle",
+      help = "Volumetric fog inside buildings and caves." },
+    { cvar = "bloomEnable", label = "Bloom", group = "light", kind = "toggle",
+      help = "Glow around bright areas." },
+    { cvar = "bloomUserMult", label = "Bloom strength", group = "light", kind = "slider",
+      min = 0, max = 2, step = 0.1, help = "Multiplier on the bloom." },
+    { cvar = "specular", label = "Specular lighting", group = "light", kind = "slider",
+      min = 0, max = 1, step = 0.05, help = "Strength of specular highlights." },
+    { cvar = "maxLightDist", label = "Light distance", group = "light", kind = "slider",
+      min = 256, max = 4096, step = 64, help = "The farthest a light is drawn from." },
+    { cvar = "clusteredShading", label = "Lit transparent surfaces", group = "light", kind = "toggle",
+      help = "Lets lights fall on glass, water and other see-through surfaces." },
+
+    -- Ambient occlusion tuning: the ASSAO shader's own controls, ranges from its help text.
+    { cvar = "assaoRadius", label = "Radius", group = "ssao", kind = "slider", min = 0.1, max = 10, step = 0.05,
+      help = "The size of the area each point looks at for occluders. Larger gives broader, softer shading." },
+    { cvar = "assaoShadowMult", label = "Strength", group = "ssao", kind = "slider", min = 0, max = 5, step = 0.1,
+      help = "A straight multiplier on the darkening." },
+    { cvar = "assaoShadowPower", label = "Contrast", group = "ssao", kind = "slider", min = 0.5, max = 5, step = 0.02,
+      help = "Raises the darkening to a power: higher deepens the darkest creases." },
+    { cvar = "assaoShadowClamp", label = "Darkest allowed", group = "ssao", kind = "slider",
+      min = 0, max = 1, step = 0.01, help = "The cap on how dark the effect may make a point." },
+    { cvar = "assaoDetailShadowStrength", label = "Fine detail", group = "ssao", kind = "slider",
+      min = 0, max = 5, step = 0.1,
+      help = "Adds small-scale shading from neighbouring pixels. More detail, and more shimmer in motion." },
+    { cvar = "assaoSharpness", label = "Edge sharpness", group = "ssao", kind = "slider",
+      min = 0, max = 1, step = 0.01, help = "How strictly the blur keeps to edges. 1 does not bleed across them at all." },
+    { cvar = "assaoBlurPassCount", label = "Blur passes", group = "ssao", kind = "slider",
+      min = 0, max = 6, step = 1, help = "How many smoothing passes run over the result." },
+    { cvar = "assaoHorizonAngleThresh", label = "Self-shadow limit", group = "ssao", kind = "slider",
+      min = 0, max = 0.5, step = 0.01, help = "Stops flat surfaces from shading themselves." },
+    { cvar = "assaoFadeOutFrom", label = "Fade starts at", group = "ssao", kind = "slider",
+      min = 0, max = 300, step = 5, help = "The distance at which the effect begins to fade." },
+    { cvar = "assaoFadeOutTo", label = "Fade ends at", group = "ssao", kind = "slider",
+      min = 0, max = 1000, step = 10, help = "The distance at which the effect is gone." },
+    { cvar = "assaoAdaptiveQualityLimit", label = "Adaptive quality limit", group = "ssao", kind = "slider",
+      min = 0, max = 1, step = 0.05, help = "How much extra sampling the highest ambient occlusion level may spend." },
+    { cvar = "assaoNormals", label = "Use surface normals", group = "ssao", kind = "toggle",
+      help = "Uses the direction surfaces face, for more accurate shading." },
+    { cvar = "ssaoMagicNormals", label = "Blend normal sources", group = "ssao", kind = "toggle",
+      help = "Mixes two sources of surface direction, as a compromise between buildings, foliage and characters." },
+
+    -- Textures
+    { cvar = "textureFilteringMode", label = "Texture filtering", group = "texture", kind = "choice",
+      validated = true,
+      choices = { { 0, "Bilinear" }, { 1, "Trilinear" }, { 2, "2x anisotropic" }, { 3, "4x anisotropic" },
+          { 4, "8x anisotropic" }, { 5, "16x anisotropic" } },
+      help = "How textures are sharpened at a slant." },
+    { cvar = "worldBaseMip", label = "World texture reduction", group = "texture", kind = "slider",
+      min = 0, max = 2, step = 1, help = "Halves world texture resolution for each step. 0 is full detail." },
+    { cvar = "terrainMipLevel", label = "Terrain texture reduction", group = "texture", kind = "slider",
+      min = 0, max = 1, step = 1, help = "Lowers the resolution of terrain blending. 0 is full detail." },
+    { cvar = "componentTextureLevel", label = "Character texture reduction", group = "texture", kind = "slider",
+      min = 0, max = 2, step = 1, help = "Halves character texture resolution for each step. 0 is full detail." },
+    { cvar = "useHighResTextures", label = "Prefer upscaled textures", group = "texture", kind = "toggle",
+      help = "Uses the higher-resolution versions of textures where the game has them." },
+
+    -- View distance and detail
     { cvar = "farclip", label = "Far clip", group = "world", kind = "slider", min = 500, max = 10000, step = 100,
       help = "The farthest distance anything is drawn at." },
     { cvar = "horizonStart", label = "Fog start", group = "world", kind = "slider", min = 400, max = 4000, step = 100,
@@ -221,43 +308,60 @@ Catalog.KNOBS = {
       min = 200, max = 650, step = 10, help = "How far terrain keeps its full detail." },
     { cvar = "wmoLodDist", label = "Building detail distance", group = "world", kind = "slider",
       min = 100, max = 650, step = 10, help = "How far buildings keep their full detail." },
+    { cvar = "wmoDoodadDist", label = "Building props distance", group = "world", kind = "slider",
+      min = 500, max = 2000, step = 100, help = "How far away the props inside and on buildings are loaded." },
     { cvar = "doodadLodScale", label = "Object detail scale", group = "world", kind = "slider",
       min = 50, max = 200, step = 5, help = "How far trees, rocks and props keep their full detail." },
     { cvar = "entityLodDist", label = "Creature detail distance", group = "world", kind = "slider",
       min = 5, max = 30, step = 1, help = "How far creatures and players keep their full detail." },
     { cvar = "lodObjectCullSize", label = "Small object culling", group = "world", kind = "slider",
       min = 10, max = 40, step = 1, help = "Objects smaller than this on screen are not drawn. Lower draws more." },
+    { cvar = "lodObjectCullDist", label = "Culling starts at", group = "world", kind = "slider",
+      min = 10, max = 100, step = 5, help = "The nearest distance at which small objects may be dropped." },
+    { cvar = "lodObjectMinSize", label = "Smallest object kept", group = "world", kind = "slider",
+      min = 0, max = 40, step = 1, help = "The size under which an object is always dropped at range." },
     { cvar = "lodObjectFadeScale", label = "Object fade scale", group = "world", kind = "slider",
       min = 50, max = 200, step = 5, help = "How far away objects fade out." },
     { cvar = "groundEffectFade", label = "Ground clutter fade", group = "world", kind = "slider",
       min = 30, max = 500, step = 10, help = "How far away grass fades out." },
-    { cvar = "weatherDensity", label = "Weather density", group = "world", kind = "slider",
-      min = 0, max = 3, step = 1, help = "How heavy rain, snow and sandstorms are." },
-    { cvar = "particleDensity", label = "Particle density", group = "world", kind = "slider",
-      min = 10, max = 100, step = 5, format = "percent100", help = "Share of particles drawn." },
-    { cvar = "waterDetail", label = "Water detail", group = "world", kind = "slider",
-      min = 0, max = 3, step = 1, help = "Water surface quality." },
-    { cvar = "pbrLiquidDetail", label = "Water shading", group = "world", kind = "slider",
-      min = 0, max = 2, step = 1, help = "Physically based water quality." },
-    { cvar = "rippleDetail", label = "Ripple detail", group = "world", kind = "slider",
-      min = 0, max = 2, step = 1, help = "Ripples on water surfaces." },
-    { cvar = "textureFilteringMode", label = "Texture filtering", group = "world", kind = "choice",
-      validated = true,
-      choices = { { 0, "Bilinear" }, { 1, "Trilinear" }, { 2, "2x anisotropic" }, { 3, "4x anisotropic" },
-          { 4, "8x anisotropic" }, { 5, "16x anisotropic" } },
-      help = "How textures are sharpened at a slant." },
-    { cvar = "projectedTextures", label = "Projected textures", group = "world", kind = "toggle",
-      help = "Ground effects projected onto terrain." },
-    { cvar = "DepthBasedOpacity", label = "Soft edges", group = "world", kind = "toggle",
-      help = "Fades particles and water where they meet solid surfaces." },
-    { cvar = "particulatesEnabled", label = "Particulates", group = "world", kind = "toggle",
-      help = "Dust and motes drifting in the air." },
-    { cvar = "OutlineEngineMode", label = "Outlines", group = "world", kind = "choice",
-      choices = { { 0, "Off" }, { 1, "Medium" }, { 2, "High" } }, help = "Outlines on selected and hovered units." },
-    { cvar = "spellClutter", label = "Spell clutter", group = "world", kind = "slider",
-      min = 0, max = 4, step = 1, help = "How many of other players' spell effects are drawn." },
 
-    -- Effects
+    -- Water and weather
+    { cvar = "waterDetail", label = "Water detail", group = "water", kind = "slider",
+      min = 0, max = 3, step = 1, help = "Water surface quality." },
+    { cvar = "pbrLiquidDetail", label = "Water shading", group = "water", kind = "slider",
+      min = 0, max = 2, step = 1, help = "Physically based water quality." },
+    { cvar = "rippleDetail", label = "Ripple detail", group = "water", kind = "slider",
+      min = 0, max = 2, step = 1, help = "Ripples on water surfaces." },
+    { cvar = "reflectionMode", label = "Reflections", group = "water", kind = "slider",
+      min = 0, max = 3, step = 1, help = "What water reflects, from nothing to everything." },
+    { cvar = "reflectionDownscale", label = "Reflection reduction", group = "water", kind = "slider",
+      min = 0, max = 2, step = 1, help = "Halves the resolution of reflections for each step. 0 is full detail." },
+    { cvar = "weatherDensity", label = "Weather density", group = "water", kind = "slider",
+      min = 0, max = 3, step = 1, help = "How heavy rain, snow and sandstorms are." },
+
+    -- Particles and spells
+    { cvar = "particleDensity", label = "Particle density", group = "particles", kind = "slider",
+      min = 10, max = 100, step = 5, format = "percent100", help = "Share of particles drawn." },
+    { cvar = "particleMTDensity", label = "Layered particle density", group = "particles", kind = "slider",
+      min = 10, max = 100, step = 5, format = "percent100", help = "Share of multi-textured particles drawn." },
+    { cvar = "particulatesEnabled", label = "Particulates", group = "particles", kind = "toggle",
+      help = "Dust and motes drifting in the air." },
+    { cvar = "showfootprintparticles", label = "Footprint puffs", group = "particles", kind = "toggle",
+      help = "The puffs of dust and snow kicked up by feet." },
+    { cvar = "spellClutter", label = "Spell clutter", group = "particles", kind = "slider",
+      min = 0, max = 4, step = 1, help = "How many of other players' spell effects are drawn." },
+    { cvar = "projectedTextures", label = "Projected textures", group = "particles", kind = "toggle",
+      help = "Ground effects projected onto terrain." },
+    { cvar = "DepthBasedOpacity", label = "Soft edges", group = "particles", kind = "toggle",
+      help = "Fades particles and water where they meet solid surfaces." },
+    { cvar = "unitClutter", label = "Thin out crowds", group = "particles", kind = "toggle",
+      help = "Draws fewer of other players' effects when many players are close." },
+    { cvar = "unitClutterInstancesOnly", label = "Only in instances", group = "particles", kind = "toggle",
+      help = "Thins crowds out only inside dungeons and raids." },
+    { cvar = "unitClutterPlayerThreshold", label = "Crowd size", group = "particles", kind = "slider",
+      min = 1, max = 40, step = 1, help = "How many players must be near before crowds are thinned out." },
+
+    -- Effects and camera
     { cvar = "cameraFov", label = "Field of view", group = "effects", kind = "slider", min = 50, max = 90, step = 5,
       help = "The camera's field of view, in degrees." },
     { cvar = "ffxGlow", label = "Full-screen glow", group = "effects", kind = "toggle",
@@ -266,6 +370,8 @@ Catalog.KNOBS = {
       help = "The grey wash while dead." },
     { cvar = "ffxNether", label = "Nether effect", group = "effects", kind = "toggle",
       help = "The full-screen effect in the nether." },
+    { cvar = "OutlineEngineMode", label = "Outlines", group = "effects", kind = "choice",
+      choices = { { 0, "Off" }, { 1, "Medium" }, { 2, "High" } }, help = "Outlines on selected and hovered units." },
     { cvar = "vrsValar", label = "Variable rate shading", group = "effects", kind = "choice",
       experimental = true, validated = true,
       choices = { { 0, "Off" }, { 1, "Standard" }, { 2, "Aggressive" } },
@@ -275,4 +381,28 @@ Catalog.KNOBS = {
     { cvar = "physicsLevel", label = "Physics interaction", group = "effects", kind = "choice",
       choices = { { 0, "None" }, { 1, "Player only" }, { 2, "Player and NPCs" } }, restart = "client",
       help = "Which characters move cloth and foliage." },
+
+    -- Raid profile: the same levels again, used inside raids when the switch is on.
+    { cvar = "RAIDsettingsEnabled", label = "Use raid levels in raids", group = "raid", kind = "toggle",
+      help = "Switches to the levels below inside raids, and back outside them." },
+    { cvar = "RAIDgraphicsQuality", label = "Overall quality", group = "raid", kind = "slider",
+      min = 0, max = 9, step = 1, format = "level", rank = 1, raid = true,
+      help = "The master level for raids. Moving it moves the raid levels beneath it." },
+    Level("raidGraphics", "raid", LEVELS[1], true), Level("raidGraphics", "raid", LEVELS[2], true),
+    Level("raidGraphics", "raid", LEVELS[3], true), Level("raidGraphics", "raid", LEVELS[4], true),
+    Level("raidGraphics", "raid", LEVELS[5], true), Level("raidGraphics", "raid", LEVELS[6], true),
+    Level("raidGraphics", "raid", LEVELS[7], true), Level("raidGraphics", "raid", LEVELS[8], true),
+    Level("raidGraphics", "raid", LEVELS[9], true), Level("raidGraphics", "raid", LEVELS[10], true),
+    Level("raidGraphics", "raid", LEVELS[11], true), Level("raidGraphics", "raid", LEVELS[12], true),
+    Level("raidGraphics", "raid", LEVELS[13], true), Level("raidGraphics", "raid", LEVELS[14], true),
+    Level("raidGraphics", "raid", LEVELS[15], true),
+
+    -- Cursor and screenshots
+    { cvar = "HardwareCursor", label = "Hardware cursor", group = "misc", kind = "toggle",
+      help = "Lets the system draw the pointer. Off draws it in the game, which lags a little and shows in screenshots." },
+    { cvar = "cursorSizePreferred", label = "Cursor size", group = "misc", kind = "choice",
+      choices = { { -1, "Automatic" }, { 0, "32" }, { 1, "48" }, { 2, "64" }, { 3, "96" }, { 4, "128" } },
+      help = "The size of the pointer, in pixels." },
+    { cvar = "screenshotQuality", label = "Screenshot quality", group = "misc", kind = "slider",
+      min = 1, max = 10, step = 1, help = "The quality of saved screenshots." },
 }

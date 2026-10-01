@@ -29,7 +29,7 @@ Nothing here runs while the game is idle: the addon acts on a command, a click o
 drag, and at login.
 ]]
 
-local VERSION = "0.2.2"
+local VERSION = "0.3.0"
 
 local Util = LibStub("LibICUtil-1.0")
 local Test = LibStub("LibICTest-1.0")
@@ -154,9 +154,27 @@ function ns.SetKnob(knob, value)
     end
     -- The overall quality level carries the levels beneath it, as it does on the game's
     -- own graphics page.
-    local target = knob.rank == 1 and ns.Apply.LevelValues(wanted) or {}
+    local target = knob.rank == 1 and ns.Apply.LevelValues(wanted, knob.raid) or {}
     target[knob.cvar] = wanted
     ns.ApplyTarget(target, knob.label, true)
+end
+
+-- An overall quality preset: the game's master level, and the levels beneath it.
+function ns.ApplyLevel(preset)
+    local knob = ns.Model.Find(ns.Apply.Knobs(), "graphicsQuality")
+    if not knob then
+        out.Print("this client has no overall quality level.")
+        return
+    end
+    ns.SetKnob(knob, preset.level)
+    out.Printf("%s quality: level %s, and the levels beneath it.", preset.label, ns.Model.Format(knob, preset.level))
+end
+
+-- Puts a list of knobs back to their saved values: one group, or what a search found.
+function ns.RevertKnobs(knobs, what)
+    local target = {}
+    for _, knob in ipairs(knobs) do target[knob.cvar] = ns.db.saved[knob.cvar] end
+    ns.ApplyTarget(target, what)
 end
 
 function ns.Save()
@@ -199,6 +217,7 @@ local HELP = {
     { "status", "the render scale, and how many settings differ from the saved set" },
     { "preset [name]", "list the upscaling presets, or use one" },
     { "on | off", "upscale with the last preset used, or go back to native" },
+    { "quality [name]", "list the overall quality presets, or use one" },
     { "list [group | changed]", "the groups, the settings in one, or the ones that differ from saved" },
     { "set <variable> <value>", "set one console variable from the catalogue" },
     { "save", "record the settings as they are now as the saved set" },
@@ -242,6 +261,24 @@ COMMANDS.preset = function(rest)
         return
     end
     ns.ApplyPreset(preset)
+end
+
+COMMANDS.quality = function(rest)
+    if not Ready() then return end
+    if Util.Trim(rest) == "" then
+        local now = ns.Model.LevelOf(ns.Apply.Live().graphicsQuality, ns.Catalog.LEVELS)
+        for _, preset in ipairs(ns.Catalog.LEVELS) do
+            out.Printf("  %s%s: level %d of 10", preset.key, preset == now and " |cff00ff00(in use)|r" or "",
+                preset.level + 1)
+        end
+        return
+    end
+    local preset = ns.Model.FindPreset(ns.Catalog.LEVELS, rest)
+    if not preset then
+        out.Print("no quality preset by that name. /tuner quality lists them.")
+        return
+    end
+    ns.ApplyLevel(preset)
 end
 
 COMMANDS.on = function()
@@ -373,7 +410,13 @@ local _, slashTaken = Console.Slash({
 
 local frame = CreateFrame("Frame")
 frame:RegisterEvent("PLAYER_LOGIN")
-frame:SetScript("OnEvent", Env.Wrap("RenderTuner events", function()
+frame:RegisterEvent("PLAYER_REGEN_DISABLED")
+frame:SetScript("OnEvent", Env.Wrap("RenderTuner events", function(_, event)
+    if event == "PLAYER_REGEN_DISABLED" then
+        -- A box with focus takes every key, movement included. Combat gets the keyboard back.
+        if ns.Panel then ns.Panel.DropFocus() end
+        return
+    end
     -- The console variables are read here rather than when the saved tables arrive: by
     -- login the client has loaded them.
     if ns.db then
@@ -385,3 +428,11 @@ frame:SetScript("OnEvent", Env.Wrap("RenderTuner events", function()
         out.Print("|cffff9900another addon already registered the RENDERTUNER slash key.|r One of you owns /tuner now.")
     end
 end))
+
+-- For the key binding (Bindings.xml).
+function RenderTuner_Toggle()
+    if ns.db and ns.db.saved then ns.Panel.Toggle() end
+end
+
+BINDING_HEADER_RENDERTUNER = "RenderTuner"
+BINDING_NAME_RENDERTUNER_TOGGLE = "Open or close the panel"

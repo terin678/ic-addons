@@ -13,6 +13,7 @@ the way out.
     Model.Limits(min, max)           -> render scale limits, rounded inward
     Model.Clamp(knob, n)             -> value, or nil and why
     Model.Shown, Model.FromShown     the number a user reads for a slider, and back
+    Model.ShownRange(knob)           -> the slider's two ends in those numbers
     Model.Format(knob, n)            -> "67%", "CMAA2", "on"
     Model.Same(a, b)
     Model.Snapshot(knobs, get)       -> { [cvar] = number }
@@ -27,6 +28,8 @@ the way out.
     Model.Locked(knob, live, unsupported)  -> why the client will take no other value, or nil
     Model.AsksFirst(knob, value)           -> whether a change to this value is confirmed first
     Model.Line(knob, live, saved), Model.Status(...), Model.Brief(...)
+    Model.Matches(knob, text, groupLabel), Model.View(knobs, view, live, saved, groups)
+    Model.RangeText(knob), Model.LevelOf(level, levels)
 ]]
 
 local Util = LibStub("LibICUtil-1.0")
@@ -86,12 +89,26 @@ function Model.Clamp(knob, n)
     return Util.Clamp(snapped, knob.min, knob.max)
 end
 
--- A reversed slider reads backwards: the variable's 0 is the strongest setting.
+-- The number a player reads is not always the variable's own. A reversed slider reads
+-- backwards: the variable's 0 is the strongest setting. A quality level counts from 1,
+-- as the game's graphics page shows it, while the variable counts from 0.
 function Model.Shown(knob, n)
     if knob.reversed then return knob.max + knob.min - n end
+    if knob.format == "level" then return n + 1 end
     return n
 end
-Model.FromShown = Model.Shown
+
+function Model.FromShown(knob, shown)
+    if knob.reversed then return knob.max + knob.min - shown end
+    if knob.format == "level" then return shown - 1 end
+    return shown
+end
+
+-- The two ends of a slider, in the numbers the player reads.
+function Model.ShownRange(knob)
+    local a, b = Model.Shown(knob, knob.min), Model.Shown(knob, knob.max)
+    return math.min(a, b), math.max(a, b)
+end
 
 function Model.Format(knob, n)
     if n == nil then return "?" end
@@ -107,6 +124,7 @@ function Model.Format(knob, n)
     if knob.format == "percent100" then return string.format("%d%%", math.floor(shown + 0.5)) end
     if knob.format == "fps" then return string.format("%d fps", math.floor(shown + 0.5)) end
     if knob.format == "nits" then return string.format("%d nits", math.floor(shown + 0.5)) end
+    if knob.format == "level" then return string.format("%d", math.floor(shown + 0.5)) end
     return Model.Text(shown)
 end
 
@@ -320,4 +338,62 @@ end
 -- Turning an experimental knob on is confirmed first. Turning one off never is.
 function Model.AsksFirst(knob, value)
     return knob.experimental == true and value ~= nil and not Model.Same(value, 0)
+end
+
+--------------------------------------------------------------------------------
+-- Which knobs are in view
+--------------------------------------------------------------------------------
+
+-- Whether every word of `text` is somewhere in the knob's name, variable, help or group.
+function Model.Matches(knob, text, groupLabel)
+    local hay = (knob.label .. " " .. knob.cvar .. " " .. (knob.help or "") .. " " .. (groupLabel or "")):lower()
+    for word in tostring(text or ""):lower():gmatch("%S+") do
+        if not hay:find(word, 1, true) then return false end
+    end
+    return true
+end
+
+-- The knobs a view shows, in catalogue order. A view is one of
+--     { search = "text" }      every knob matching the text, whatever its group
+--     { changed = true }       every knob that differs from the saved set
+--     { group = "key" }        the knobs of one group
+-- and is tried in that order, so typing in the search box overrides the group picked.
+function Model.View(knobs, view, live, saved, groups)
+    local labels = {}
+    for _, group in ipairs(groups or {}) do labels[group.key] = group.label end
+    local search = Util.Trim(view.search or "")
+    local out = {}
+    for _, knob in ipairs(knobs) do
+        local keep
+        if search ~= "" then
+            keep = Model.Matches(knob, search, labels[knob.group])
+        elseif view.changed then
+            keep = live[knob.cvar] ~= nil and saved[knob.cvar] ~= nil and not Model.Same(live[knob.cvar], saved[knob.cvar])
+        else
+            keep = knob.group == view.group
+        end
+        if keep then out[#out + 1] = knob end
+    end
+    return out
+end
+
+-- What a knob's tooltip says of its range: "33% to 200%", or the choices by name.
+function Model.RangeText(knob)
+    if knob.kind == "slider" then
+        return Model.Format(knob, knob.reversed and knob.max or knob.min) .. " to "
+            .. Model.Format(knob, knob.reversed and knob.min or knob.max)
+    elseif knob.kind == "choice" then
+        local names = {}
+        for _, choice in ipairs(knob.choices) do names[#names + 1] = choice[2] end
+        return table.concat(names, ", ")
+    end
+    return "on or off"
+end
+
+-- The overall quality preset a level belongs to, or nil for one in between.
+function Model.LevelOf(level, levels)
+    for _, preset in ipairs(levels) do
+        if Model.Same(preset.level, level) then return preset end
+    end
+    return nil
 end
