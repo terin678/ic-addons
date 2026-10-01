@@ -34,10 +34,21 @@ are plain text: colour codes and item links are stripped to their words.
 
 ## From the minimap
 
-A note-shaped button sits on the rim of the minimap. **Left-click it for a new note**, with
-the cursor already in it. Right-click it for a short menu: a new note, show or hide every
-note, lock them in place, and whether the button itself shows. Drag it to move it round
-the rim.
+A note-shaped button sits on the rim of the minimap. **Left-click it to show your notes**,
+or to hide them when they are all showing; its tooltip says which a click will do. A
+click never makes a note, so one made by accident costs nothing.
+
+**Right-click it for the menu:**
+
+| Item | What it does |
+| --- | --- |
+| New note | Start a note on this character, with the cursor in it. |
+| Show all notes | Bring every note back on screen, including ones you hid one at a time. |
+| Hide all notes | Take every note off screen. |
+| Lock all notes in place | Stop notes being dragged. |
+| Show the minimap button | Untick to remove the button from the rim. |
+
+Drag the button to move it round the rim.
 
 Stickies is also in the game's own addon list, the small button beside the minimap, where
 left-click and right-click do the same. That entry is always there, so hiding the rim
@@ -60,20 +71,20 @@ asks first.
 | Share with all characters / Keep on this character only | Move the note between this character and the account. |
 | Clear completed | Remove every ticked line. |
 | Hide | Take the note off screen. `/sticky show` brings it back. |
-| Lock every note in place | Stop notes being dragged, so a click in a fight never moves one. |
+| Lock all notes in place | Stop notes being dragged, so a click in a fight never moves one. |
 | Delete | Delete the note, after asking. `/sticky restore` brings back the last one deleted. |
 
 ## Commands
 
 ```
-/sticky                show every note, or hide them all if none is hidden
+/sticky                show all notes, or hide them if they are all showing
 /sticky new [title]    start a note on this character
 /sticky list           every note with its number
 /sticky show [note]    show one note, by number or the start of its title, or all of them
 /sticky hide [note]    hide one note, or all of them
-/sticky lock           pin every note where it is; /sticky unlock frees them
+/sticky lock           pin all notes where they are; /sticky unlock frees them
 /sticky minimap        show or hide the button on the minimap
-/sticky reset          put every note back at its starting place
+/sticky reset          put all notes back at their starting places
 /sticky restore        bring back the last note deleted (the last ten are kept)
 /sticky test           run the built-in checks
 /sticky help

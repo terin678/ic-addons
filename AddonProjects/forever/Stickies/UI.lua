@@ -274,7 +274,7 @@ local function OpenMenu(s)
           onClick = function() ClearDone(s) end },
         { text = "Hide", onClick = function() HideNote(s) end },
         { divider = true },
-        { text = "Lock every note in place",
+        { text = "Lock all notes in place",
           checked = function() return ns.db.settings.locked == true end,
           onClick = function()
               ns.db.settings.locked = not ns.db.settings.locked

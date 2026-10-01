@@ -343,6 +343,21 @@ T.Case("Launcher: the tooltip says how many notes there are", function()
     T.True(ns.Launcher.ICON:find("INV_Misc_Note", 1, true), "and its icon is a note")
 end)
 
+T.Case("Launcher: a left-click shows or hides, it never makes a note", function()
+    T.Eq(ns.Launcher.ClickHint(3, 1), "Left-click to show all notes", "any hidden: a click shows them all")
+    T.Eq(ns.Launcher.ClickHint(3, 0), "Left-click to hide all notes", "all showing: a click hides them")
+    T.Eq(ns.Launcher.ClickHint(0, 0), "Right-click to make a note", "none yet: the menu is where one is made")
+
+    -- The hint and the click follow one rule: what Notes.ToggleAll does.
+    local db, cdb = Book()
+    local a = Notes.New(db, cdb, "a", "character", 0)
+    Notes.New(db, cdb, "b", "character", 0)
+    Notes.View(cdb, a.id).hidden = true
+    T.Eq(Notes.ToggleAll(db, cdb), "shown", "one hidden, and the click shows them all")
+    T.Eq(Notes.ToggleAll(db, cdb), "hidden", "all showing, and the click hides them")
+    T.Eq(Notes.Count(db, cdb), 2, "and neither made a note")
+end)
+
 --------------------------------------------------------------------------------
 -- The panels, headless only
 --------------------------------------------------------------------------------

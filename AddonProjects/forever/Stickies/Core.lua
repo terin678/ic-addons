@@ -83,14 +83,14 @@ Store.Register(addonName, {
 --------------------------------------------------------------------------------
 
 local HELP = {
-    { "", "show every note, or hide them all if none is hidden" },
+    { "", "show all notes, or hide them if they are all showing" },
     { "new [title]", "start a note on this character" },
     { "list", "every note with its number" },
     { "show [note]", "show one note by number or title, or all of them" },
     { "hide [note]", "hide one note, or all of them" },
-    { "lock | unlock", "pin every note where it is" },
+    { "lock | unlock", "pin all notes where they are" },
     { "minimap", "show or hide the button on the minimap" },
-    { "reset", "put every note back at its starting place" },
+    { "reset", "put all notes back at their starting places" },
     { "restore", "bring back the last note deleted" },
     { "test", "run the built-in checks" },
     { "help", "this list" },
@@ -117,12 +117,28 @@ function ns.ToggleAll()
     if result == "none" then
         out.Print("no notes yet. /sticky new starts one.")
     elseif result == "shown" then
-        out.Print("every note is showing.")
+        out.Print("all notes are showing.")
     else
-        out.Print("every note is hidden. /sticky shows them again.")
+        out.Print("all notes are hidden. /sticky shows them again.")
     end
 end
 COMMANDS[""] = ns.ToggleAll
+
+-- Shows every note, or hides every note, whatever state each was in. The commands and
+-- the minimap menu both come here.
+function ns.SetAllHidden(hidden)
+    if not Ready() then return end
+    local all = ns.Notes.All(ns.db, ns.cdb)
+    if #all == 0 then
+        out.Print("no notes yet. /sticky new starts one.")
+        return
+    end
+    for _, entry in ipairs(all) do
+        ns.Notes.View(ns.cdb, entry.note.id).hidden = hidden
+    end
+    Refresh()
+    out.Print(hidden and "all notes are hidden. /sticky shows them again." or "all notes are showing.")
+end
 
 -- Starts a note on this character and puts the cursor in it. The command, the minimap
 -- button and the compartment entry all come here. Returns the note, or nil when refused.
@@ -168,11 +184,7 @@ local function SetHidden(hidden)
     return function(rest)
         if not Ready() then return end
         if Util.Trim(rest) == "" then
-            for _, entry in ipairs(ns.Notes.All(ns.db, ns.cdb)) do
-                ns.Notes.View(ns.cdb, entry.note.id).hidden = hidden
-            end
-            Refresh()
-            out.Print(hidden and "every note is hidden. /sticky shows them again." or "every note is showing.")
+            ns.SetAllHidden(hidden)
             return
         end
         local note, _, why = ns.Notes.Match(ns.db, ns.cdb, rest)
@@ -193,7 +205,7 @@ local function SetLocked(locked)
         if not Ready() then return end
         ns.db.settings.locked = locked
         Refresh()
-        out.Print(locked and "every note is pinned where it is. /sticky unlock frees them."
+        out.Print(locked and "all notes are pinned where they are. /sticky unlock frees them."
             or "notes can be dragged by their title again.")
     end
 end
@@ -204,7 +216,7 @@ COMMANDS.reset = function()
     if not Ready() then return end
     ns.Notes.ResetPlaces(ns.cdb)
     Refresh()
-    out.Print("every note is back at its starting place.")
+    out.Print("all notes are back at their starting places.")
 end
 
 COMMANDS.restore = function()

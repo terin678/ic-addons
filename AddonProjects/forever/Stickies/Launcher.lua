@@ -5,10 +5,11 @@ The two ways in from the minimap, both doing the same thing.
 
     the Addon Compartment   the client's own list of addons beside the minimap: the modern
                             way, always there
-    a button on the rim     one click instead of two, for the thing done most often;
-                            /sticky minimap hides it
+    a button on the rim     one click instead of two; /sticky minimap hides it
 
-Left-click starts a new note. Right-click opens a short menu.
+Left-click shows the notes, or hides them if they are all showing: a click that is made
+by accident changes nothing that cannot be clicked back. Making a note is deliberate, so
+it is in the right-click menu, beside showing and hiding them all.
 ]]
 
 local Util = LibStub("LibICUtil-1.0")
@@ -41,22 +42,30 @@ local function Counts()
     return count, hidden
 end
 
+-- Pure. What a left-click will do, for the tooltip: the same rule as Notes.ToggleAll.
+function Launcher.ClickHint(count, hidden)
+    if count == 0 then return "Right-click to make a note" end
+    if hidden > 0 then return "Left-click to show all notes" end
+    return "Left-click to hide all notes"
+end
+
 local function Tip(tip)
+    local count, hidden = Counts()
     tip:AddLine("Stickies")
-    tip:AddLine(Launcher.Summary(Counts()), 1, 1, 1)
-    tip:AddLine("Left-click for a new note", 0.7, 0.7, 0.7)
-    tip:AddLine("Right-click for more", 0.7, 0.7, 0.7)
+    tip:AddLine(Launcher.Summary(count, hidden), 1, 1, 1)
+    tip:AddLine(Launcher.ClickHint(count, hidden), 0.7, 0.7, 0.7)
+    if count > 0 then tip:AddLine("Right-click for a new note and more", 0.7, 0.7, 0.7) end
 end
 
 local function OpenMenu(owner)
     if not (ns.db and ns.cdb) then return end
-    local _, hidden = Counts()
     W.Menu(owner, {
         { title = "Stickies" },
         { text = "New note", onClick = function() ns.NewNote("") end },
-        { text = hidden > 0 and "Show every note" or "Hide every note",
-          onClick = function() ns.ToggleAll() end },
-        { text = "Lock every note in place",
+        { divider = true },
+        { text = "Show all notes", onClick = function() ns.SetAllHidden(false) end },
+        { text = "Hide all notes", onClick = function() ns.SetAllHidden(true) end },
+        { text = "Lock all notes in place",
           checked = function() return ns.db.settings.locked == true end,
           onClick = function()
               ns.db.settings.locked = not ns.db.settings.locked
@@ -73,7 +82,7 @@ local function Click(mouseButton, owner)
     if mouseButton == "RightButton" then
         OpenMenu(owner)
     else
-        ns.NewNote("")
+        ns.ToggleAll()
     end
 end
 
