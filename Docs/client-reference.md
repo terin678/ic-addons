@@ -11,9 +11,38 @@ patches.
 | era | `_classic_era_` | 11508 / 11509 | Classic Era and Hardcore |
 | anniversary | `_anniversary_` | 20506 | TBC Anniversary. Legacy auction house API (`QueryAuctionItems`, `GetAuctionItemInfo`, `CanSendAuctionQuery`) |
 | retail | `_retail_` | 120100 | Modern auction house API (`C_AuctionHouse`) |
+| forever | `_classic_beta_` | 16001 | WoW Forever, in beta as product `wow_classic_beta` (1.60.1). Modern client base; see below |
 
 An addon whose `.toc` interface is lower than the client's is flagged out of date and
 will not load unless the player ticks "Load out of date AddOns".
+
+## What is known about forever (16001)
+
+The flavor name to folder, interface and library mapping is `scripts/flavors.psd1`. The
+client installs as `_classic_beta_` and runs as `WowB.exe`; `.build.info` lists it as
+`wow_classic_beta` at 1.60.1.70124. There is no exported Blizzard interface source on
+disk, so nothing below the first list is confirmed yet.
+
+Confirmed by running our own addon (ICKit) on it: nothing yet. This list grows as
+`/ickit` and, from the next kit version, `/ickit probe` report back.
+
+Seen in another addon that loads on this client (OlympusMute, `## Interface: 16001`),
+so likely but not yet checked by us: `SLASH_*` with `SlashCmdList`, `ADDON_LOADED` and
+`PLAYER_LOGIN`, `C_Timer.After`, `StaticPopup_Show`, the `GameFont*` font objects,
+`UIPanelButtonTemplate`, `UICheckButtonTemplate`, `InputBoxTemplate`, a guarded
+`BackdropTemplate`, and `StartMoving` with `RegisterForDrag`.
+
+Inferred from files the client writes (Edit Mode caches, `Blizzard_AuctionHouseUI` and
+`Blizzard_SettingsDefinitions_Shared` saved variables): this is the modern client base,
+so expect `C_AddOns` rather than `GetAddOnMetadata`, the modern Settings panel, and no
+`UIDropDownMenu` or `EasyMenu`. Treat each as unknown until probed.
+
+Character folders under `WTF` are two-part names under a numeric realm folder. Never
+build a "Name-Realm" key by hand on this client; use the per-character saved table.
+
+To get ground truth: launch the client with `-console`, open the console at the login
+screen and run `ExportInterfaceFiles code`. If the build allows it, a
+`BlizzardInterfaceCode` folder appears in `_classic_beta_` to grep.
 
 ## APIs known to work on anniversary (20506)
 

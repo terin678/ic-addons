@@ -22,7 +22,7 @@
   .\scripts\release.ps1 -OutDir E:\CurseForge\ic-addons
 #>
 param(
-    [ValidateSet("era", "anniversary", "retail")][string]$Flavor = "anniversary",
+    [string]$Flavor = "anniversary",
     [string[]]$Addon,
     [string]$OutDir,
     [switch]$SkipTests
@@ -32,9 +32,19 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $scripts = $PSScriptRoot
 
+# Flavors live in one table, flavors.psd1: the game folder, the interface, what ships.
+$flavors = Import-PowerShellDataFile (Join-Path $PSScriptRoot "flavors.psd1")
+if (-not $flavors.ContainsKey($Flavor)) {
+    throw "Unknown flavor '$Flavor'. Known: $(($flavors.Keys | Sort-Object) -join ', ')"
+}
+
 # What goes up, in upload order: the library first, since everything else depends on it.
-# AuctionatorSellingTweaks, CutMaster and ICTemplate stay local on purpose.
-$PUBLISHED = @("ICLibs", "MalexisAuctionWatcher", "TradeMaster", "GuildRecruitment", "MarkedForDeath")
+# The list is the flavor's Published row in flavors.psd1; what is left out stays local.
+$library = $flavors[$Flavor].Library
+$PUBLISHED = @($flavors[$Flavor].Published)
+if ($PUBLISHED.Count -eq 0) {
+    throw "Nothing is published for flavor '$Flavor' yet. Add it to Published in scripts\flavors.psd1."
+}
 $set = if ($Addon) { $Addon } else { $PUBLISHED }
 foreach ($name in $set) {
     if ($PUBLISHED -notcontains $name) { throw "$name is not in the published set ($($PUBLISHED -join ', '))" }
@@ -116,7 +126,7 @@ $lines = @(
     "Built $stamp from ``$branch`` at ``$commit``$(if ($dirty) { ' (working tree had uncommitted changes)' }).",
     "Flavor ``$Flavor``. Each zip holds one addon folder and extracts into Interface\AddOns.",
     "",
-    "Upload ICLibs first when it changed. On every other project, mark **ICLibs** as a",
+    "Upload $library first when it changed. On every other project, mark **$library** as a",
     "Required Dependency under Relations; the zips do not carry it.",
     "",
     "| Addon | Version | Interface | Zip | KB | Requires | SHA-256 |",

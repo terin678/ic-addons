@@ -195,6 +195,40 @@ local function TocFiles(dir)
     return files
 end
 
+-- One "## Field: value" line from an addon's .toc, or nil.
+local function TocField(dir, field)
+    local name = dir:match("([^/]+)$")
+    local toc = io.open(dir .. "/" .. name .. ".toc", "r")
+    if not toc then return nil end
+    local value
+    for line in toc:lines() do
+        local v = line:gsub("\r$", ""):match("^##%s*" .. field .. ":%s*(.-)%s*$")
+        if v and v ~= "" then
+            value = v
+            break
+        end
+    end
+    toc:close()
+    return value
+end
+
+-- The addons an addon requires, from its .toc, in the order it names them.
+local function TocDeps(dir)
+    local list = TocField(dir, "Dependencies") or TocField(dir, "RequiredDeps") or ""
+    local deps = {}
+    for dep in list:gmatch("[^,]+") do
+        dep = dep:gsub("^%s+", ""):gsub("%s+$", "")
+        if dep ~= "" then deps[#deps + 1] = dep end
+    end
+    return deps
+end
+
+-- The stub answers as the Anniversary client unless the addon's own .toc targets the
+-- Forever one, whose addons read the build to decide what the client offers.
+if tonumber((TocField(addonDir, "Interface") or ""):match("%d+")) == 16001 then
+    _G.GetBuildInfo = function() return "1.60.1", "70124", "", 16001 end
+end
+
 local function LoadFile(path, ...)
     local chunk, err = loadfile(path)
     if not chunk then
@@ -258,22 +292,34 @@ end
 -- The ICLibs shape
 --------------------------------------------------------------------------------
 
--- ICLibs first, from its own .toc, so LibStub, LibICCore and LibICUI exist. The
--- third-party libraries load too; they are pure at file scope.
-local libsDir = flavorDir .. "/ICLibs"
-local libFiles = TocFiles(libsDir)
-if not libFiles then
-    io.stderr:write("no ICLibs.toc beside " .. addonDir .. "\n")
-    os.exit(1)
-end
-local libNS = {}
-for _, rel in ipairs(libFiles) do
-    -- LibDBIcon builds minimap buttons, which is client work by design; every addon
-    -- fetches it silently and does without, so headless does without too.
-    if not rel:find("LibDBIcon", 1, true) then
-        LoadFile(libsDir .. "/" .. rel, "ICLibs", libNS)
+-- What the addon requires first, each from its own .toc, the way the client orders a
+-- load: ICLibs for the Anniversary set (so LibStub, LibICCore and LibICUI exist), ICKit
+-- for the Forever one. A dependency that is not a sibling folder (Auctionator, say) is
+-- somebody else's addon and is skipped. The third-party libraries inside load too; they
+-- are pure at file scope.
+local function LoadLibrary(name)
+    local dir = flavorDir .. "/" .. name
+    local libFiles = TocFiles(dir)
+    if not libFiles then return false end
+    local libNS = {}
+    for _, rel in ipairs(libFiles) do
+        -- LibDBIcon builds minimap buttons, which is client work by design; every addon
+        -- fetches it silently and does without, so headless does without too.
+        if not rel:find("LibDBIcon", 1, true) then
+            LoadFile(dir .. "/" .. rel, name, libNS)
+        end
     end
+    return true
 end
+
+local loaded = 0
+for _, dep in ipairs(TocDeps(addonDir)) do
+    if LoadLibrary(dep) then loaded = loaded + 1 end
+end
+-- An addon that names none (CutMaster carries its own libraries) still gets the flavor's
+-- ICLibs when there is one, as it always has. A library addon testing itself in a flavor
+-- without ICLibs simply loads nothing first.
+if loaded == 0 then LoadLibrary("ICLibs") end
 
 local files = TocFiles(addonDir)
 if not files then
@@ -294,7 +340,7 @@ if not (ns.Tests and ns.Tests.Run) and type(_G[addonName]) == "table" then
 end
 
 if not (ns.Tests and ns.Tests.Run) then
-    io.stderr:write("no ns.Tests.Run; did LibICCore attach and Tests.lua load?\n")
+    io.stderr:write("no ns.Tests.Run; did the addon set ns.Tests and did Tests.lua load?\n")
     os.exit(1)
 end
 
