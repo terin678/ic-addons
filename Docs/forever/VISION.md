@@ -21,18 +21,22 @@ the layers it needs exist.
    Nothing reaches up, and a library never knows which addon is using it.
 3. **Pure logic is separate from frames.** A model function takes its tables as arguments
    and returns a result, so it has a headless case. Frames only draw what the model says.
-4. **Client facts are probed, never assumed.** No API is used until the in-game probe or
+4. **Modern first.** Where the client offers a current mechanism and a legacy one, use
+   the current one: the Addon Compartment, `MenuUtil`, the Settings panel, the `C_`
+   namespaces. On this client the new path is the one most likely to exist and to keep
+   working. A legacy extra beside it is fine when players expect it.
+5. **Client facts are probed, never assumed.** No API is used until the in-game probe or
    exported interface source confirms it exists on this client. What is confirmed is
    written to [client-reference.md](../client-reference.md).
-5. **General audience.** Neutral names, no guild assumptions in behaviour, and every
+6. **General audience.** Neutral names, no guild assumptions in behaviour, and every
    surface is themeable. The default theme is the game's own look; the Impulse Control
    theme ships beside it for guild members to switch to.
-6. **Data from day one.** Account and character tables, a schema number and migrations
+7. **Data from day one.** Account and character tables, a schema number and migrations
    exist in the first version of every addon, so the second version never has to guess
    what the first one saved.
-7. **Idle means zero work.** No `OnUpdate` when idle, no polling. Profiling is part of the
+8. **Idle means zero work.** No `OnUpdate` when idle, no polling. Profiling is part of the
    kit, so "is this addon costing frames" is one command rather than an investigation.
-8. **No ports until the layer below exists.** A port arrives as a composition of layers
+9. **No ports until the layer below exists.** A port arrives as a composition of layers
    that are already proven, not as a copy of an Anniversary folder.
 
 ## The layers

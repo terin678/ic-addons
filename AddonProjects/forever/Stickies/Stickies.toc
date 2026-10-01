@@ -3,7 +3,7 @@
 ## Notes: Sticky notes that stay on screen: a title and a checklist you tick off. Each note belongs to one character or to every character on the account.
 ## Author: Malexis
 ## Version: 0.1.0
-## IconTexture: Interface\Icons\INV_Misc_Note_01
+## IconTexture: Interface\Icons\INV_Misc_Note_02
 ## Group: ICKit
 ## Category: Impulse Control
 ## SavedVariables: StickiesDB
@@ -13,4 +13,5 @@
 Core.lua
 Notes.lua
 UI.lua
+Launcher.lua
 Tests.lua

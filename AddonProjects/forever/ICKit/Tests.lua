@@ -531,6 +531,51 @@ T.Case("Widgets: a move starts on the press and ends on the release", function()
     T.Eq(drops, 2, "and the release drops it")
 end)
 
+T.Case("Widgets: a minimap button's place is an angle round the rim", function()
+    local x, y = W.MinimapOffset(0, 100)
+    T.Near(x, 100, "due east")
+    T.Near(y, 0, "on the centre line")
+    x, y = W.MinimapOffset(90, 100)
+    T.Near(x, 0, "due north")
+    T.Near(y, 100, "is straight up")
+    x, y = W.MinimapOffset(180, 50)
+    T.Near(x, -50, "and west is negative")
+
+    T.Near(W.MinimapAngle(10, 0, 0, 0), 0, "a pointer east of the centre")
+    T.Near(W.MinimapAngle(0, 10, 0, 0), 90, "north")
+    T.Near(W.MinimapAngle(-10, 0, 0, 0), 180, "west")
+    T.Near(W.MinimapAngle(0, -10, 0, 0), 270, "south is 270, never negative")
+    T.Near(W.MinimapAngle(110, 50, 100, 50), 0, "measured from wherever the minimap is")
+
+    x, y = W.MinimapOffset(215, 104)
+    T.Near(W.MinimapAngle(x, y, 0, 0), 215, "an angle survives the trip to a place and back")
+end)
+
+-- In game these would put a button on the player's minimap every time the cases ran.
+if IC_HEADLESS then
+    T.Case("Widgets: a minimap button keeps its angle and reports a click and a move", function()
+        local clicked, moved
+        local b = W.MinimapButton({
+            icon = "Interface\\Icons\\INV_Misc_Note_02", angle = 400,
+            onClick = function(_, mouseButton) clicked = mouseButton end,
+            onMoved = function(angle) moved = angle end,
+        })
+        T.Eq(b.icAngle, 40, "an angle wraps into one turn")
+        b:SetAngle(-90)
+        T.Eq(b.icAngle, 270, "and a negative one too")
+        b:GetScript("OnClick")(b, "RightButton")
+        T.Eq(clicked, "RightButton", "a click says which button")
+        b:GetScript("OnDragStop")(b)
+        T.Eq(moved, nil, "a drop with no drag in progress says nothing")
+        b:GetScript("OnDragStart")(b)
+        T.Eq(b.icDragging, true, "dragging starts on the client's drag event, so a press stays a click")
+        b:GetScript("OnDragStop")(b)
+        T.Eq(b.icDragging, false, "and ends when dropped")
+        T.Eq(moved, 270, "reporting where it was left")
+        T.Eq(W.Compartment({ text = "Case" }), false, "a client with no addon compartment says so")
+    end)
+end
+
 --------------------------------------------------------------------------------
 -- The addon itself
 --------------------------------------------------------------------------------

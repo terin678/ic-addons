@@ -78,6 +78,8 @@ A separate code base from the Anniversary set, built bottom-up. Read
 - Layers depend downward only, and a library is added when an addon needs it.
 - No client API is used until it is confirmed on this client (the in-game probe or
   exported source). Record what is confirmed in `Docs/client-reference.md`.
+- Modern first: where the client has a current mechanism and a legacy one, use the
+  current one. Grep `_classic_beta_\BlizzardInterfaceCode` for how the client does it.
 - An addon keeps its case registry at `ns.Tests` (from `LibICTest-1.0`); run it with
   `scripts/run-tests.ps1 -Flavor forever -Addon <Addon>`.
 - `scripts/new-addon.ps1` refuses this flavor until a Forever template exists.

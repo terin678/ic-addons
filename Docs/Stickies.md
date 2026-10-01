@@ -30,6 +30,17 @@ The title bar shows how far along you are ("2/5"). A shared note says "all" besi
 A line holds up to 120 characters and a note up to 20 lines; you can have 20 notes. Lines
 are plain text: colour codes and item links are stripped to their words.
 
+## From the minimap
+
+A note-shaped button sits on the rim of the minimap. **Left-click it for a new note**, with
+the cursor already in it. Right-click it for a short menu: a new note, show or hide every
+note, lock them in place, and whether the button itself shows. Drag it to move it round
+the rim.
+
+Stickies is also in the game's own addon list, the small button beside the minimap, where
+left-click and right-click do the same. That entry is always there, so hiding the rim
+button (`/sticky minimap`) never leaves you without a way in.
+
 ## Sharing a note between characters
 
 A new note is this character's. **Share with all characters** in the menu puts it on every
@@ -59,6 +70,7 @@ asks first.
 /sticky show [note]    show one note, by number or the start of its title, or all of them
 /sticky hide [note]    hide one note, or all of them
 /sticky lock           pin every note where it is; /sticky unlock frees them
+/sticky minimap        show or hide the button on the minimap
 /sticky reset          put every note back at its starting place
 /sticky restore        bring back the last note deleted (the last ten are kept)
 /sticky test           run the built-in checks

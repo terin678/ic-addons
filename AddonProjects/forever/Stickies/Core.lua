@@ -59,7 +59,14 @@ Store.Register(addonName, {
     character = "StickiesCharDB",
     schema = 1,
     charSchema = 1,
-    defaults = { nextId = 1, notes = {}, trash = {}, settings = { debug = false, locked = false } },
+    defaults = {
+        nextId = 1, notes = {}, trash = {},
+        settings = {
+            debug = false, locked = false,
+            -- The button on the minimap's rim: whether it shows, and where round the rim.
+            minimap = { hide = false, angle = 215 },
+        },
+    },
     charDefaults = { notes = {}, view = {} },
     onReady = Env.Wrap("Stickies saved variables", function(db, cdb, info)
         ns.db, ns.cdb, ns.loadInfo = db, cdb, info
@@ -82,6 +89,7 @@ local HELP = {
     { "show [note]", "show one note by number or title, or all of them" },
     { "hide [note]", "hide one note, or all of them" },
     { "lock | unlock", "pin every note where it is" },
+    { "minimap", "show or hide the button on the minimap" },
     { "reset", "put every note back at its starting place" },
     { "restore", "bring back the last note deleted" },
     { "test", "run the built-in checks" },
@@ -100,7 +108,9 @@ local function Refresh()
     if ns.UI then ns.UI.Refresh() end
 end
 
-COMMANDS[""] = function()
+-- Show every note if any is hidden, otherwise hide them all. The command and the
+-- minimap menu both come here.
+function ns.ToggleAll()
     if not Ready() then return end
     local result = ns.Notes.ToggleAll(ns.db, ns.cdb)
     Refresh()
@@ -112,17 +122,33 @@ COMMANDS[""] = function()
         out.Print("every note is hidden. /sticky shows them again.")
     end
 end
+COMMANDS[""] = ns.ToggleAll
 
-COMMANDS.new = function(rest)
-    if not Ready() then return end
-    local note, why = ns.Notes.New(ns.db, ns.cdb, rest, "character", time())
+-- Starts a note on this character and puts the cursor in it. The command, the minimap
+-- button and the compartment entry all come here. Returns the note, or nil when refused.
+function ns.NewNote(title)
+    if not Ready() then return nil end
+    local note, why = ns.Notes.New(ns.db, ns.cdb, title, "character", time())
     if not note then
         out.Print(why)
-        return
+        return nil
     end
     Refresh()
     if ns.UI then ns.UI.FocusAdd(note.id) end
     out.Printf("#%d %s is on screen. Type its first line and press Enter.", note.id, note.title)
+    return note
+end
+
+COMMANDS.new = function(rest)
+    ns.NewNote(rest)
+end
+
+COMMANDS.minimap = function()
+    if not Ready() then return end
+    local show = ns.db.settings.minimap.hide == true
+    if ns.Launcher then ns.Launcher.SetShown(show) end
+    out.Print(show and "the minimap button is showing."
+        or "the minimap button is hidden. Stickies is still in the addon list beside the minimap; /sticky minimap brings the button back.")
 end
 
 COMMANDS.list = function()
@@ -213,6 +239,7 @@ frame:SetScript("OnEvent", Env.Wrap("Stickies events", function(_, event)
         -- The notes are drawn here rather than when the saved tables arrive: the screen
         -- has its size by now, and a place is a fraction of it.
         Refresh()
+        if ns.Launcher then ns.Launcher.Create() end
         local count = (ns.db and ns.cdb) and ns.Notes.Count(ns.db, ns.cdb) or 0
         for _, line in ipairs(ns.LoadLines(VERSION, count, ns.loadInfo)) do out.Print(line) end
         if slashTaken then

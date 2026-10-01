@@ -313,6 +313,13 @@ T.Case("Core: the login lines", function()
     T.True(lines[3]:find("Restart the client", 1, true), "and what to do first")
 end)
 
+T.Case("Launcher: the tooltip says how many notes there are", function()
+    T.Eq(ns.Launcher.Summary(0, 0), "no notes yet", "none")
+    T.Eq(ns.Launcher.Summary(1, 0), "1 note", "one")
+    T.Eq(ns.Launcher.Summary(3, 1), "3 notes, 1 hidden", "some of them hidden")
+    T.True(ns.Launcher.ICON:find("INV_Misc_Note", 1, true), "and its icon is a note")
+end)
+
 --------------------------------------------------------------------------------
 -- The panels, headless only
 --------------------------------------------------------------------------------
@@ -359,5 +366,16 @@ if IC_HEADLESS then
         end)
         ns.db, ns.cdb = realDB, realCDB
         if not ok then error(err, 0) end
+    end)
+
+    T.Case("Launcher: the minimap button is built once and can be hidden", function()
+        ns.Launcher.Create()
+        ns.Launcher.Create()
+        T.Eq(ns.db.settings.minimap.hide, false, "it starts shown")
+        T.Eq(ns.db.settings.minimap.angle, 215, "at its default place on the rim")
+        ns.Launcher.SetShown(false)
+        T.Eq(ns.db.settings.minimap.hide, true, "hiding it is remembered")
+        ns.Launcher.SetShown(true)
+        T.Eq(ns.db.settings.minimap.hide, false, "and so is showing it again")
     end)
 end

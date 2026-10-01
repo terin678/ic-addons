@@ -249,8 +249,13 @@ Blizzard frame template, repaints when the theme changes, and runs no `OnUpdate`
 | `W.Tooltip(frame, builder, anchor)` | `builder(GameTooltip, frame)` adds the lines; nil removes it. It hooks, so a button keeps its hover highlight. The tooltip sits at the pointer (`ANCHOR_CURSOR_RIGHT`) unless `anchor` says otherwise. |
 | `W.Menu(owner, items)` | A context menu. Items: `{ title }`, `{ text, onClick }`, `{ text, checked = fn, onClick }`, `{ divider = true }`. |
 | `W.Confirm(text, onAccept)` | A yes/no dialog. |
+| `W.Compartment(opts)` | An entry in the client's Addon Compartment, the list of addons beside the minimap: the modern way onto the minimap, costing no frame. `opts`: `text`, `icon`, `onClick(mouseButton)`, `tooltip`. Returns false on a client without one. |
+| `W.MinimapButton(opts)` | A round button on the minimap's rim in the client's own art, for one-click access. `opts`: `icon`, `angle` (degrees; 0 east, 90 north), `onClick(button, mouseButton)`, `onMoved(angle)`, `tooltip`. Drag it round the rim; `button:SetAngle(degrees)`. |
 | `W.GetPlace(frame)` / `W.SetPlace(frame, fx, fy)` | Where a frame's top-left sits, as fractions of the screen. Save these, not pixels: they survive a change of resolution or interface scale. `SetPlace` holds the whole frame on screen. |
 | `W.Repaint()` | Redraws everything in the current theme. |
+
+Offer the compartment entry always and the rim button as an extra a player can hide: the
+compartment is the client's own mechanism, the rim button is what many players look for.
 
 A move starts on the press and ends on the release. The client's drag event is not used:
 it waits for the pointer to travel the drag threshold, and the frame then jumps the

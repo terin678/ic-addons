@@ -526,3 +526,142 @@ function W.Confirm(text, onAccept)
     StaticPopup_Show("ICKIT_CONFIRM", text, nil, onAccept)
     return true
 end
+
+--------------------------------------------------------------------------------
+-- Minimap button
+--------------------------------------------------------------------------------
+
+-- Pure. Where a button at `angle` degrees sits, as an offset from the minimap's centre.
+-- 0 is due east and the angle grows anticlockwise, as the client's own trigonometry has it.
+function W.MinimapOffset(angle, radius)
+    local a = math.rad(tonumber(angle) or 0)
+    return math.cos(a) * radius, math.sin(a) * radius
+end
+
+-- Pure. The angle, in degrees from 0 up to 360, of a pointer at (px, py) seen from a
+-- minimap centred on (mx, my).
+function W.MinimapAngle(px, py, mx, my)
+    local degrees = math.deg(math.atan2(py - my, px - mx))
+    if degrees < 0 then degrees = degrees + 360 end
+    return degrees
+end
+
+local function PlaceOnMinimap(button)
+    local radius = (Minimap:GetWidth() or 140) / 2 + 5
+    local x, y = W.MinimapOffset(button.icAngle, radius)
+    button:ClearAllPoints()
+    button:SetPoint("CENTER", Minimap, "CENTER", x, y)
+end
+
+-- Runs only while the button is being dragged round the minimap.
+local function FollowPointer(button)
+    local mx, my = Minimap:GetCenter()
+    local px, py = GetCursorPosition()
+    local scale = Minimap:GetEffectiveScale()
+    if not mx or not px or not scale or scale <= 0 then return end
+    button:SetAngle(W.MinimapAngle(px / scale, py / scale, mx, my))
+end
+
+--[[
+A round button on the minimap's rim, in the client's own minimap art. It is not themed:
+it sits among the game's buttons and should look like one of them.
+
+opts = {
+    icon = "Interface\\Icons\\...",
+    angle = 215,                        -- degrees round the rim; 0 is east, 90 north
+    onClick = fn(button, mouseButton),  -- left or right
+    onMoved = fn(angle),                -- dragged round the rim and dropped
+    tooltip = fn(GameTooltip, button),
+}
+button:SetAngle(degrees) moves it. Dragging is the one place a widget runs an OnUpdate,
+and only between the drag starting and the button being dropped.
+]]
+function W.MinimapButton(opts)
+    opts = opts or {}
+    local b = CreateFrame("Button", nil, Minimap)
+    b:SetSize(31, 31)
+    b:SetFrameStrata("MEDIUM")
+    b:SetFrameLevel(8)
+    b.icAngle = tonumber(opts.angle) or 215
+    b.icOnMoved = opts.onMoved or false
+    b.icDragging = false
+
+    b.back = b:CreateTexture(nil, "BACKGROUND")
+    b.back:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
+    b.back:SetSize(20, 20)
+    b.back:SetPoint("TOPLEFT", b, "TOPLEFT", 7, -5)
+
+    b.icon = b:CreateTexture(nil, "ARTWORK")
+    b.icon:SetTexture(opts.icon)
+    b.icon:SetSize(17, 17)
+    b.icon:SetPoint("TOPLEFT", b, "TOPLEFT", 7, -6)
+    b.icon:SetTexCoord(0.05, 0.95, 0.05, 0.95)
+
+    b.border = b:CreateTexture(nil, "OVERLAY")
+    b.border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+    b.border:SetSize(53, 53)
+    b.border:SetPoint("TOPLEFT", b, "TOPLEFT", 0, 0)
+
+    b:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
+
+    function b:SetAngle(degrees)
+        self.icAngle = (tonumber(degrees) or 0) % 360
+        PlaceOnMinimap(self)
+    end
+
+    b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    if opts.onClick then b:SetScript("OnClick", opts.onClick) end
+
+    -- A drag here is the client's drag event on purpose: a press must stay a click, and
+    -- the button only goes round the rim once the pointer has really moved.
+    b:RegisterForDrag("LeftButton")
+    b:SetScript("OnDragStart", function(self)
+        self.icDragging = true
+        if GameTooltip then GameTooltip:Hide() end
+        self:SetScript("OnUpdate", FollowPointer)
+    end)
+    b:SetScript("OnDragStop", function(self)
+        if self.icDragging ~= true then return end
+        self.icDragging = false
+        self:SetScript("OnUpdate", nil)
+        if self.icOnMoved then self.icOnMoved(self.icAngle) end
+    end)
+
+    if opts.tooltip then W.Tooltip(b, opts.tooltip, "ANCHOR_LEFT") end
+    b:SetAngle(b.icAngle)
+    return b
+end
+
+--[[
+An entry in the Addon Compartment: the client's own button beside the minimap that lists
+addons. This is the modern way onto the minimap, and it costs no frame of ours.
+
+opts = {
+    text = "Stickies", icon = "Interface\\Icons\\...",
+    onClick = fn(mouseButton),              -- "LeftButton", "RightButton", ...
+    tooltip = fn(GameTooltip, entry),
+}
+Returns false on a client without the compartment.
+]]
+function W.Compartment(opts)
+    opts = opts or {}
+    local frame = AddonCompartmentFrame
+    if type(frame) ~= "table" or type(frame.RegisterAddon) ~= "function" then return false end
+    frame:RegisterAddon({
+        text = opts.text,
+        icon = opts.icon,
+        func = function(_, input)
+            if opts.onClick then opts.onClick(type(input) == "table" and input.buttonName or "LeftButton") end
+        end,
+        funcOnEnter = function(entry)
+            if not opts.tooltip then return end
+            GameTooltip:SetOwner(entry, "ANCHOR_LEFT")
+            opts.tooltip(GameTooltip, entry)
+            GameTooltip:Show()
+        end,
+        funcOnLeave = function()
+            GameTooltip:Hide()
+        end,
+    })
+    return true
+end

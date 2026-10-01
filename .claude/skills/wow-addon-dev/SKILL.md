@@ -117,8 +117,8 @@ Four things, in order:
    | `/jam test` (JamminWithJam) | 17 |
    | `/ast test` (AuctionatorSellingTweaks) | 4 |
    | `/mfd test` (MarkedForDeath) | 438 |
-   | `/ickit test` (ICKit, the Forever kit) | 34 |
-   | `/sticky test` (Stickies, Forever) | 15 |
+   | `/ickit test` (ICKit, the Forever kit) | 35 |
+   | `/sticky test` (Stickies, Forever) | 16 |
 
    Any decision worth arguing about belongs in a pure function with a case here, and a case
    that asserts an ordering must have that ordering worked out rather than assumed.
@@ -155,6 +155,9 @@ built bottom-up on the library addon `ICKit`, not on ICLibs. Read
   applies unchanged. ICKit's library MINORs are recorded in `Docs/ICKit.md`.
 - Do not port an Anniversary addon or copy LibICCore/LibICUI. Add the layer the work
   needs to ICKit, with cases, then compose.
+- Modern first: prefer the client's current mechanism (Addon Compartment, `MenuUtil`,
+  the Settings panel, `C_` namespaces) to a legacy one, and grep the exported source in
+  `_classic_beta_\BlizzardInterfaceCode` for how the client does it.
 - Use no client API that has not been confirmed on this client. Confirmed facts go in
   `Docs/client-reference.md` under the forever section.
 - Run cases with `scripts/run-tests.ps1 -Flavor forever -Addon <Addon>`; the harness
