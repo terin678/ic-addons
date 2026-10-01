@@ -17,6 +17,9 @@ the addon loads, so a row here is an offer, not a promise.
         choices             for a choice: { { value, label }, ... }
         format  how a slider's value reads: "percent" (a fraction), "percent100", "fps", "nits", or nil for the number
         reversed  the variable runs backwards: shown and set as max - value
+        experimental  it can crash the game or leave it unable to draw: the client calls
+                it a beta feature, or it leans on hardware and driver support that not
+                every machine has. Marked wherever the knob is shown
         settle  a slider that is applied when the thumb is let go, not on every step:
                 the change rebuilds the client's render targets
         restart   what a change needs before it shows: "gx", "window" or "client"
@@ -77,6 +80,7 @@ Catalog.KNOBS = {
     { cvar = "ResampleAlwaysSharpen", label = "Sharpen without upscaling", group = "upscale", kind = "toggle",
       help = "Runs the sharpening pass even at 100% render scale." },
     { cvar = "DynamicRenderScale", label = "Dynamic render scale", group = "upscale", kind = "toggle",
+      experimental = true,
       help = "Lowers the render scale by itself to hold the target frame rate. The client calls this a beta feature." },
     { cvar = "DynamicRenderScaleMin", label = "Dynamic floor", group = "upscale", kind = "slider",
       min = 0.3334, max = 1, step = 0.01, format = "percent",
@@ -131,6 +135,7 @@ Catalog.KNOBS = {
 
     -- HDR
     { cvar = "HDROutput", label = "HDR output", group = "hdr", kind = "toggle", restart = "gx",
+      experimental = true,
       help = "Sends an HDR picture when the monitor and the render settings allow it." },
     { cvar = "useHDRBrightness", label = "Override brightness", group = "hdr", kind = "toggle",
       help = "Uses the brightness below in place of the level the monitor reports." },
@@ -175,7 +180,7 @@ Catalog.KNOBS = {
       min = 1, max = 4, step = 1, help = "How many distance bands shadows are split into." },
     { cvar = "shadowBlendCascades", label = "Blend cascades", group = "shadow", kind = "toggle",
       help = "Hides the seam between shadow bands." },
-    { cvar = "shadowRt", label = "Ray traced shadows", group = "shadow", kind = "choice",
+    { cvar = "shadowRt", label = "Ray traced shadows", group = "shadow", kind = "choice", experimental = true,
       choices = { { 0, "Off" }, { 1, "Fair" }, { 2, "Medium" }, { 3, "High" } },
       help = "Ray traced shadows, where the graphics card supports them." },
     { cvar = "SSAO", label = "Ambient occlusion", group = "shadow", kind = "choice",
@@ -253,9 +258,10 @@ Catalog.KNOBS = {
     { cvar = "ffxNether", label = "Nether effect", group = "effects", kind = "toggle",
       help = "The full-screen effect in the nether." },
     { cvar = "vrsValar", label = "Variable rate shading", group = "effects", kind = "choice",
+      experimental = true,
       choices = { { 0, "Off" }, { 1, "Standard" }, { 2, "Aggressive" } },
       help = "Shades flat parts of the picture at lower detail to save GPU time." },
-    { cvar = "vrsValarAlwaysOn", label = "Variable rate shading always on", group = "effects", kind = "toggle",
+    { cvar = "vrsValarAlwaysOn", label = "VRS always on", group = "effects", kind = "toggle", experimental = true,
       help = "Uses variable rate shading even when the GPU is not the limit." },
     { cvar = "physicsLevel", label = "Physics interaction", group = "effects", kind = "choice",
       choices = { { 0, "None" }, { 1, "Player only" }, { 2, "Player and NPCs" } }, restart = "client",

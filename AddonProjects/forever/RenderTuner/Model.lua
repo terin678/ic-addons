@@ -23,6 +23,7 @@ the way out.
     Model.Find(knobs, text), Model.Group(groups, text), Model.FindPreset(presets, text)
     Model.Preset(preset, limits, fsr) -> target
     Model.PresetOf(scale, presets, limits) -> preset or nil
+    Model.Label(knob), Model.WARNING
     Model.Line(knob, live, saved), Model.Status(...), Model.Brief(...)
 ]]
 
@@ -231,8 +232,25 @@ end
 -- Lines of text
 --------------------------------------------------------------------------------
 
+-- A knob's name as it is shown, with the mark an experimental one carries.
+function Model.Label(knob)
+    if knob.experimental then return knob.label .. " |cffff8040experimental|r" end
+    return knob.label
+end
+
+Model.WARNING = {
+    title = "Before you tune",
+    body = "Some of these settings can crash the game.\n\n"
+        .. "Anything marked |cffff8040experimental|r can crash your game, or leave it unable to draw the world. "
+        .. "They depend on your graphics card and its driver, and the client itself calls some of them beta features.\n\n"
+        .. "Save a set that works before you try one: Revert returns to it. "
+        .. "If the game will not start afterwards, delete WTF\\Config.wtf in the game folder and it starts with default settings.",
+    skip = "Do not show this again",
+    go = "I understand",
+}
+
 function Model.Line(knob, live, saved)
-    local text = string.format("  %s |cff888888%s|r: %s", knob.label, knob.cvar, Model.Format(knob, live))
+    local text = string.format("  %s |cff888888%s|r: %s", Model.Label(knob), knob.cvar, Model.Format(knob, live))
     if saved ~= nil and live ~= nil and not Model.Same(live, saved) then
         text = text .. string.format("  |cffffcc00saved: %s|r", Model.Format(knob, saved))
     end

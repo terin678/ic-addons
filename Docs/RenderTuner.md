@@ -3,7 +3,7 @@
 A graphics tuner for WoW Forever: upscaling presets, a control for every graphics console
 variable worth having, and a way to go back to what you had.
 
-**Version 0.2.0 has the floating panel and the commands.** The page in the game's Options
+**Version 0.2.1 has the floating panel and the commands.** The page in the game's Options
 window and the side-by-side comparison come next.
 
 ## What the client can and cannot do
@@ -26,6 +26,30 @@ does, and it does not look the same.
 Extract into `_classic_beta_\Interface\AddOns` so you get `AddOns\RenderTuner\RenderTuner.toc`.
 RenderTuner needs **ICKit**, which goes beside it (`AddOns\ICKit`). Restart the client after
 installing; a `/reload` does not pick up a new addon.
+
+## Some settings can crash the game
+
+Settings marked **experimental** can crash the game or leave it unable to draw the world.
+They depend on your graphics card and its driver, and the client itself calls some of them
+beta features. The ones marked so far:
+
+| Setting | Why |
+| --- | --- |
+| Dynamic render scale | The client's own help text calls it a beta feature |
+| HDR output | Depends on the monitor and the render format, and restarts the graphics engine |
+| Ray traced shadows | Needs a graphics card and driver that support ray tracing |
+| Variable rate shading, VRS always on | Needs hardware support, and changes how the picture is shaded |
+
+The mark shows beside the setting's name in the panel, in its tooltip and in `/tuner list`.
+
+The first time you open the panel in a session, a warning says this and waits for
+**I understand**. Tick **Do not show this again** and it stays away for good.
+
+**Save a set that works before trying one**, so Revert has somewhere to return to. If the
+game will not start afterwards, delete `WTF\Config.wtf` in the game folder
+(`_classic_beta_\WTF\Config.wtf`): the client starts with default settings and writes a new
+one. That file holds machine-wide settings only, such as graphics and sound, not your
+characters, keybinds or addons' data.
 
 ## The panel
 

@@ -119,7 +119,7 @@ Four things, in order:
    | `/mfd test` (MarkedForDeath) | 438 |
    | `/ickit test` (ICKit, the Forever kit) | 38 |
    | `/sticky test` (Stickies, Forever) | 19 |
-   | `/tuner test` (RenderTuner, Forever) | 18 |
+   | `/tuner test` (RenderTuner, Forever) | 19 |
 
    Any decision worth arguing about belongs in a pure function with a case here, and a case
    that asserts an ordering must have that ordering worked out rather than assumed.

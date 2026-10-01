@@ -127,6 +127,7 @@ T.Case("Catalog: every knob is whole, and no variable is offered twice", functio
         T.True(KINDS[knob.kind], name .. " has a kind")
         T.True(knob.format == nil or FORMATS[knob.format], name .. " has a known format")
         T.True(knob.restart == nil or RESTARTS[knob.restart], name .. " has a known restart")
+        T.True(knob.experimental == nil or knob.experimental == true, name .. " is experimental or says nothing")
         if knob.kind == "slider" then
             T.True(type(knob.min) == "number" and type(knob.max) == "number" and knob.min < knob.max,
                 name .. " has a range")
@@ -296,6 +297,21 @@ T.Case("Model.Preset: upscaling presets set FSR, native leaves the filter alone"
     T.Eq(Model.PresetOf(nil, Catalog.PRESETS, limits), nil, "nor is no scale")
 end)
 
+T.Case("Model.Label, WARNING: an experimental knob says so wherever it is named", function()
+    local risky = { cvar = "X", label = "Ray traced shadows", kind = "toggle", experimental = true }
+    T.Eq(Model.Label(risky), "Ray traced shadows |cffff8040experimental|r", "the mark follows the name")
+    T.Eq(Model.Label(TOGGLE), "Tog", "a plain knob is only its name")
+    T.True(Model.Line(risky, 1, 1):find("experimental", 1, true), "in a listing too")
+    T.True(Model.WARNING.body:find("experimental", 1, true), "the warning names the mark")
+    T.True(Model.WARNING.body:find("WTF\\Config.wtf", 1, true), "and the way back when the game will not start")
+
+    local marked = 0
+    for _, knob in ipairs(Catalog.KNOBS) do
+        if knob.experimental then marked = marked + 1 end
+    end
+    T.True(marked >= 1, "the catalogue marks at least the client's own beta feature")
+end)
+
 T.Case("Model.Line, Status: lines of text", function()
     T.True(Model.Line(SLIDER, 0.67, 0.67):find("Slide |cff888888S|r: 67%", 1, true), "label, variable, value")
     T.Eq(Model.Line(SLIDER, 0.67, 0.67):find("saved", 1, true), nil, "nothing more when it is as saved")
@@ -350,12 +366,14 @@ if IC_HEADLESS then
         }
         GetMinRenderScale = function() return 0.33333334326744 end
         GetMaxRenderScale = function() return 2 end
-        ns.db = { settings = { debug = false, upscale = { last = "quality" } } }
+        -- The warning has been dismissed for good, except in the case that is about it.
+        ns.db = { settings = { debug = false, upscale = { last = "quality" }, skipWarning = true } }
         ns.cdb = { panel = { group = "upscale" } }
 
         local ok, err = pcall(body, cvars, sets, SlashCmdList.RENDERTUNER)
 
         if ns.Panel.IsShown() then ns.Panel.Toggle() end
+        ns.Panel.ResetWarning()
         C_CVar, GetMinRenderScale, GetMaxRenderScale = real.C_CVar, real.min, real.max
         ns.db, ns.cdb = real.db, real.cdb
         ns.pendingRestart = nil
@@ -475,6 +493,43 @@ if IC_HEADLESS then
 
             run("")
             T.Eq(ns.Panel.IsShown(), false, "the bare command closes it again")
+        end)
+    end)
+
+    T.Case("Panel: the warning comes first, once a session, until its box is ticked", function()
+        WithClient(function(cvars, sets, run)
+            ns.Baseline()
+            ns.db.settings.skipWarning = false
+            ns.Panel.ResetWarning()
+
+            run("")
+            local notice = ns.Panel.Notice()
+            T.True(notice ~= nil and notice:IsShown(), "the first open shows the warning")
+            T.Eq(ns.Panel.IsShown(), false, "and not the panel")
+
+            notice.go:GetScript("OnClick")(notice.go)
+            T.Eq(notice:IsShown(), false, "understood: the warning goes")
+            T.True(ns.Panel.IsShown(), "and the panel opens")
+            T.Eq(ns.db.settings.skipWarning, false, "with the box unticked, nothing is remembered for next time")
+
+            run("")
+            run("")
+            T.True(ns.Panel.IsShown(), "it is not shown twice in a session")
+            run("")
+
+            -- A new session: it comes back, and this time the box is ticked.
+            ns.Panel.ResetWarning()
+            run("")
+            T.True(notice:IsShown(), "the next session warns again")
+            notice.skip:SetChecked(true)
+            notice.go:GetScript("OnClick")(notice.go)
+            T.Eq(ns.db.settings.skipWarning, true, "ticked: never again")
+
+            run("")
+            ns.Panel.ResetWarning()
+            run("")
+            T.Eq(notice:IsShown(), false, "not even in a new session")
+            T.True(ns.Panel.IsShown(), "the panel opens straight away")
         end)
     end)
 end

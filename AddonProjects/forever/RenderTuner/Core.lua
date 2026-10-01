@@ -29,7 +29,7 @@ Nothing here runs while the game is idle: the addon acts on a command, a click o
 drag, and at login.
 ]]
 
-local VERSION = "0.2.0"
+local VERSION = "0.2.1"
 
 local Util = LibStub("LibICUtil-1.0")
 local Test = LibStub("LibICTest-1.0")
@@ -67,6 +67,9 @@ Store.Register(addonName, {
             debug = false,
             -- The preset that "on" returns to.
             upscale = { last = "quality" },
+            -- The warning about experimental settings is shown before the panel, once a
+            -- session, until its box is ticked.
+            skipWarning = false,
         },
     },
     -- Where the panel sits, and the group it was last showing.

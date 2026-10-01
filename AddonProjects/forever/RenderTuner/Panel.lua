@@ -31,20 +31,22 @@ local Model = ns.Model
 local Panel = {}
 ns.Panel = Panel
 
-local WIDTH = 580
+local WIDTH = 640
 local PAD = 8
 local BAR_H = 24
 local BUTTON_H = 22
 local GROUP_W = 160
 local GROUP_H = 22
 local ROW_H = 24
-local LABEL_W = 170
+local LABEL_W = 230
 local ROWS_X = PAD + GROUP_W + PAD
 local CONTROL_W = WIDTH - ROWS_X - LABEL_W - PAD
 -- Bar, presets, actions, and the gaps between them.
 local TOP = BAR_H + PAD + BUTTON_H + PAD + BUTTON_H + PAD + 4
 
 local frame
+local notice                -- the warning shown before the panel
+local warned = false        -- whether it has been seen this session
 local rows = {}             -- cvar -> row
 local groupButtons = {}     -- group key -> button
 local presetButtons = {}    -- preset key -> button
@@ -71,6 +73,9 @@ local function RowTip(tip, row)
     local live, saved = ns.Apply.Live()[knob.cvar], ns.db.saved[knob.cvar]
     tip:AddLine(knob.label)
     tip:AddLine(knob.help, 1, 1, 1, true)
+    if knob.experimental then
+        tip:AddLine("Experimental: this one can crash the game. Save a set that works first.", 1, 0.5, 0.25, true)
+    end
     tip:AddLine(" ")
     tip:AddDoubleLine("Console variable", knob.cvar, 0.7, 0.7, 0.7, 1, 1, 1)
     tip:AddDoubleLine("Now", Model.Format(knob, live), 0.7, 0.7, 0.7, 1, 1, 1)
@@ -103,7 +108,7 @@ local function BuildRow(knob)
     row:SetSize(LABEL_W + CONTROL_W, ROW_H)
     row.knob = knob
 
-    row.name = W.Button(row, knob.label, LABEL_W - 6, ROW_H - 4, {
+    row.name = W.Button(row, Model.Label(knob), LABEL_W - 6, ROW_H - 4, {
         kind = "flat", justify = "LEFT", font = "body", textRole = "text",
         onClick = function() RowMenu(row) end,
     })
@@ -323,20 +328,86 @@ function Panel.IsShown()
     return frame ~= nil and frame:IsShown() == true
 end
 
-function Panel.Toggle()
+local function Open()
     if not frame then
         frame = Build()
         local place = Place()
-        W.SetPlace(frame, place and place.x or 0.55, place and place.y or 0.18)
-        frame:Show()
-    elseif frame:IsShown() then
+        W.SetPlace(frame, place and place.x or 0.5, place and place.y or 0.18)
+    end
+    frame:Show()
+    Panel.Refresh()
+end
+
+--------------------------------------------------------------------------------
+-- The warning
+--------------------------------------------------------------------------------
+
+local NOTICE_W, NOTICE_H = 440, 232
+
+local function BuildNotice()
+    local words = Model.WARNING
+    local n = W.Panel(UIParent, { name = "RenderTunerNotice", width = NOTICE_W, height = NOTICE_H, strata = "DIALOG" })
+    n:SetPoint("CENTER", UIParent, "CENTER", 0, 60)
+    n:EnableMouse(true)
+
+    local title = W.Label(n, words.title, { font = "title", color = "accent" })
+    title:SetPoint("TOPLEFT", n, "TOPLEFT", 14, -12)
+
+    local body = W.Label(n, words.body, { wrap = true })
+    body:SetPoint("TOPLEFT", n, "TOPLEFT", 14, -36)
+    body:SetWidth(NOTICE_W - 28)
+    body:SetJustifyV("TOP")
+
+    n.skip = W.CheckBox(n, { size = 16 })
+    n.skip:SetPoint("BOTTOMLEFT", n, "BOTTOMLEFT", 14, 14)
+    local skipText = W.Label(n, words.skip, { color = "textDim" })
+    skipText:SetPoint("LEFT", n.skip, "RIGHT", 8, 0)
+
+    n.go = W.Button(n, words.go, 120, 24, {
+        kind = "accent",
+        onClick = function()
+            warned = true
+            if n.skip:GetChecked() then ns.db.settings.skipWarning = true end
+            n:Hide()
+            Open()
+        end,
+    })
+    n.go:SetPoint("BOTTOMRIGHT", n, "BOTTOMRIGHT", -14, 12)
+    return n
+end
+
+-- The warning comes before the panel the first time it is opened in a session, until
+-- the player ticks the box that says not to.
+local function NeedsWarning()
+    return warned ~= true and ns.db.settings.skipWarning ~= true
+end
+
+function Panel.Notice()
+    return notice
+end
+
+function Panel.Toggle()
+    if frame and frame:IsShown() then
         frame:Hide()
         return false
-    else
-        frame:Show()
     end
-    Panel.Refresh()
+    if notice and notice:IsShown() then
+        notice:Hide()
+        return false
+    end
+    if NeedsWarning() then
+        notice = notice or BuildNotice()
+        notice:Show()
+        return false
+    end
+    Open()
     return true
+end
+
+-- For the cases: forget that the warning was seen.
+function Panel.ResetWarning()
+    warned = false
+    if notice then notice:Hide() end
 end
 
 -- For the cases: how many rows have been made, and how many are showing.
