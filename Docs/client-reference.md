@@ -23,8 +23,8 @@ client installs as `_classic_beta_` and runs as `WowB.exe`; `.build.info` lists 
 `wow_classic_beta` at 1.60.1.70124. There is no exported Blizzard interface source on
 disk, so nothing below the first list is confirmed yet.
 
-Confirmed by running our own addon (ICKit) on it: nothing yet. This list grows as
-`/ickit` and, from the next kit version, `/ickit probe` report back.
+Confirmed by running our own addon (ICKit) on it: nothing yet. This list grows as the
+`/ickit probe` report comes back; it is saved to `ICKitDB.probe`.
 
 Seen in another addon that loads on this client (OlympusMute, `## Interface: 16001`),
 so likely but not yet checked by us: `SLASH_*` with `SlashCmdList`, `ADDON_LOADED` and
