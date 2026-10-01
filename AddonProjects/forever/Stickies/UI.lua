@@ -214,10 +214,7 @@ local function CreateSticky()
     s.bar = W.Panel(s, { role = "raised", edge = false, height = BAR_H })
     s.bar:SetPoint("TOPLEFT", s, "TOPLEFT", 1, -1)
     s.bar:SetPoint("TOPRIGHT", s, "TOPRIGHT", -1, -1)
-    W.DragHandle(s.bar, s)
-    s.bar:SetScript("OnMouseUp", function(_, button)
-        if button == "RightButton" then OpenMenu(s) end
-    end)
+    W.DragHandle(s.bar, s, { onRightClick = function() OpenMenu(s) end })
     W.Tooltip(s.bar, function(tip)
         local note, scope = NoteOf(s)
         if not note then return end

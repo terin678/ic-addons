@@ -493,6 +493,44 @@ T.Case("Widgets: each one builds, keeps its state, and repaints", function()
     T.Eq(box:GetChecked(), false, "and a repaint changes no state")
 end)
 
+T.Case("Widgets: a move starts on the press and ends on the release", function()
+    -- Not on the client's drag event, which waits for the pointer to travel and then
+    -- makes the frame jump the distance it missed.
+    local drops = 0
+    local p = W.Panel(nil, { width = 120, height = 60, movable = true, onMoved = function() drops = drops + 1 end })
+    p:Hide()
+    local down, up = p:GetScript("OnMouseDown"), p:GetScript("OnMouseUp")
+
+    down(p, "RightButton")
+    T.Eq(p.icMoving, false, "the right button moves nothing")
+    down(p, "LeftButton")
+    T.Eq(p.icMoving, true, "the left button starts the move at once")
+    up(p, "RightButton")
+    T.Eq(p.icMoving, true, "releasing another button does not end it")
+    up(p, "LeftButton")
+    T.Eq(p.icMoving, false, "releasing the left one does")
+    T.Eq(drops, 1, "and the panel says it was dropped, once")
+    up(p, "LeftButton")
+    T.Eq(drops, 1, "a release with no move in progress says nothing")
+
+    p:SetLocked(true)
+    down(p, "LeftButton")
+    T.Eq(p.icMoving, false, "a pinned panel does not start")
+
+    -- A title bar drags its panel and passes a right-click on
+    p:SetLocked(false)
+    local clicked = 0
+    local bar = W.Panel(p, { role = "raised", edge = false, height = 20 })
+    W.DragHandle(bar, p, { onRightClick = function() clicked = clicked + 1 end })
+    bar:GetScript("OnMouseDown")(bar, "LeftButton")
+    T.Eq(p.icMoving, true, "pressing the handle moves the panel")
+    bar:GetScript("OnMouseUp")(bar, "RightButton")
+    T.Eq(clicked, 1, "a right-click on the handle reaches the addon")
+    T.Eq(p.icMoving, true, "without ending the move")
+    bar:GetScript("OnMouseUp")(bar, "LeftButton")
+    T.Eq(drops, 2, "and the release drops it")
+end)
+
 --------------------------------------------------------------------------------
 -- The addon itself
 --------------------------------------------------------------------------------

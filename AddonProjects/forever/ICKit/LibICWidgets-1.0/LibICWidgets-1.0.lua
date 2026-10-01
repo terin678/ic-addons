@@ -139,11 +139,22 @@ end
 -- Panel
 --------------------------------------------------------------------------------
 
+--[[
+A move starts on the press and ends on the release. The client's own drag event
+(RegisterForDrag, OnDragStart) is not used: it fires only once the pointer has travelled
+the drag threshold, so the frame sits still and then jumps the distance it missed.
+]]
 local function StartDrag(panel)
-    if panel.icLocked ~= true then panel:StartMoving() end
+    if panel.icLocked == true or panel.icMoving == true then return end
+    panel.icMoving = true
+    -- A tooltip belonging to the thing being dragged would trail the pointer.
+    if GameTooltip then GameTooltip:Hide() end
+    panel:StartMoving()
 end
 
 local function StopDrag(panel)
+    if panel.icMoving ~= true then return end
+    panel.icMoving = false
     panel:StopMovingOrSizing()
     -- The client would otherwise remember the position itself, in its layout cache,
     -- and fight the one the addon saves.
@@ -169,6 +180,7 @@ function W.Panel(parent, opts)
     p.icRole = opts.role or "ground"
     p.icEdge = opts.edge ~= false
     p.icLocked = false
+    p.icMoving = false
     p.icOnMoved = opts.onMoved or false
 
     function p:SetLocked(on)
@@ -179,9 +191,14 @@ function W.Panel(parent, opts)
         p:SetMovable(true)
         p:EnableMouse(true)
         p:SetClampedToScreen(true)
-        p:RegisterForDrag("LeftButton")
-        p:SetScript("OnDragStart", StartDrag)
-        p:SetScript("OnDragStop", StopDrag)
+        p:SetScript("OnMouseDown", function(self, button)
+            if button == "LeftButton" then StartDrag(self) end
+        end)
+        p:SetScript("OnMouseUp", function(self, button)
+            if button == "LeftButton" then StopDrag(self) end
+        end)
+        -- Hidden in the middle of a move: let go, or it follows the pointer when shown.
+        p:SetScript("OnHide", StopDrag)
     end
 
     Track(p, function(self, theme)
@@ -190,12 +207,22 @@ function W.Panel(parent, opts)
     return p
 end
 
--- A child that drags its panel: a title bar, usually.
-function W.DragHandle(handle, panel)
+-- A child that drags its panel: a title bar, usually. It owns the handle's mouse
+-- scripts, so a right-click is asked for here: opts.onRightClick(handle).
+function W.DragHandle(handle, panel, opts)
+    opts = opts or {}
+    handle.icOnRightClick = opts.onRightClick or false
     handle:EnableMouse(true)
-    handle:RegisterForDrag("LeftButton")
-    handle:SetScript("OnDragStart", function() StartDrag(panel) end)
-    handle:SetScript("OnDragStop", function() StopDrag(panel) end)
+    handle:SetScript("OnMouseDown", function(_, button)
+        if button == "LeftButton" then StartDrag(panel) end
+    end)
+    handle:SetScript("OnMouseUp", function(self, button)
+        if button == "LeftButton" then
+            StopDrag(panel)
+        elseif button == "RightButton" and self.icOnRightClick then
+            self.icOnRightClick(self)
+        end
+    end)
 end
 
 --------------------------------------------------------------------------------
@@ -436,13 +463,16 @@ end
 
 -- builder(GameTooltip, frame) adds the lines; nil takes the tooltip off again. Hooks
 -- rather than replaces the frame's own hover scripts, so a button keeps its highlight.
-function W.Tooltip(frame, builder)
+-- The tooltip sits at the pointer by default. An anchor on the frame's own edge
+-- ("ANCHOR_RIGHT") puts it a title bar's width away from where the player is looking.
+function W.Tooltip(frame, builder, anchor)
     frame.icTip = builder or false
+    frame.icTipAnchor = anchor or "ANCHOR_CURSOR_RIGHT"
     if frame.icTipHooked == true then return end
     frame.icTipHooked = true
     frame:HookScript("OnEnter", function(self)
         if not self.icTip then return end
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetOwner(self, self.icTipAnchor)
         self.icTip(GameTooltip, self)
         GameTooltip:Show()
     end)

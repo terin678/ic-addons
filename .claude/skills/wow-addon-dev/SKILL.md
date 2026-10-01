@@ -117,7 +117,7 @@ Four things, in order:
    | `/jam test` (JamminWithJam) | 17 |
    | `/ast test` (AuctionatorSellingTweaks) | 4 |
    | `/mfd test` (MarkedForDeath) | 438 |
-   | `/ickit test` (ICKit, the Forever kit) | 33 |
+   | `/ickit test` (ICKit, the Forever kit) | 34 |
    | `/sticky test` (Stickies, Forever) | 15 |
 
    Any decision worth arguing about belongs in a pure function with a case here, and a case

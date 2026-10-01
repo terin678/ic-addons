@@ -241,16 +241,20 @@ Blizzard frame template, repaints when the theme changes, and runs no `OnUpdate`
 | Call | What you get |
 | --- | --- |
 | `W.Panel(parent, opts)` | A filled, edged frame. `opts`: `width`, `height`, `strata`, `role` (`ground`, `raised`, `field`), `edge = false`, `movable = true` with `onMoved(panel)`. `panel:SetLocked(true)` pins it. |
-| `W.DragHandle(handle, panel)` | Makes a child, a title bar usually, drag its panel. |
+| `W.DragHandle(handle, panel, opts)` | Makes a child, a title bar usually, drag its panel. It owns the handle's mouse scripts, so ask for a right-click here: `opts.onRightClick(handle)`. |
 | `W.Label(parent, text, opts)` | A font string. `opts`: `font` role, `color` role, `justify`, `wrap`. `label:SetRole(color)` recolours it. |
 | `W.Button(parent, text, w, h, opts)` | `opts.kind` is `normal`, `accent`, `danger` or `flat` (no fill until hovered); `opts.onClick`; `opts.justify = "LEFT"` with `opts.font` and `opts.textRole` for a row of a list. `b:SetLabel(text)`, `b:SetKind(kind)`, `b:SetTextRole(role)`. |
 | `W.CheckBox(parent, opts)` | `opts`: `size`, `checked`, `onClick(checked, box)`. `box:SetChecked(on)`, `box:GetChecked()`. A click calls `onClick`; `SetChecked` does not. |
 | `W.EditBox(parent, w, h, opts)` | One line. `opts`: `maxBytes`, `placeholder`, `onEnter(text, box)`, `onEscape(box)`, `onFocusLost(box)`. Escape always drops focus. |
-| `W.Tooltip(frame, builder)` | `builder(GameTooltip, frame)` adds the lines; nil removes it. It hooks, so a button keeps its hover highlight. |
+| `W.Tooltip(frame, builder, anchor)` | `builder(GameTooltip, frame)` adds the lines; nil removes it. It hooks, so a button keeps its hover highlight. The tooltip sits at the pointer (`ANCHOR_CURSOR_RIGHT`) unless `anchor` says otherwise. |
 | `W.Menu(owner, items)` | A context menu. Items: `{ title }`, `{ text, onClick }`, `{ text, checked = fn, onClick }`, `{ divider = true }`. |
 | `W.Confirm(text, onAccept)` | A yes/no dialog. |
 | `W.GetPlace(frame)` / `W.SetPlace(frame, fx, fy)` | Where a frame's top-left sits, as fractions of the screen. Save these, not pixels: they survive a change of resolution or interface scale. `SetPlace` holds the whole frame on screen. |
 | `W.Repaint()` | Redraws everything in the current theme. |
+
+A move starts on the press and ends on the release. The client's drag event is not used:
+it waits for the pointer to travel the drag threshold, and the frame then jumps the
+distance it missed.
 
 An edit box with focus takes every key, movement included. An addon that shows one drops
 its focus (`box:ClearFocus()`) when combat starts.
