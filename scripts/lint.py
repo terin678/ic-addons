@@ -248,15 +248,22 @@ TOC_SAVED = re.compile(r"^##\s*SavedVariables(PerCharacter)?:", re.M)
 # ours to change; see SKILL.md.
 NOT_OURS = {"CutMaster"}
 
+# The library addons, one per code base: ICLibs under the Anniversary set, ICKit under
+# the Forever one. Each records its libraries' MINORs in Docs/<name>.md.
+LIB_ADDONS = ("ICLibs", "ICKit")
 
-def check_libs(flavor_dir):
-    """Every LibIC* MINOR in the source is the one Docs/ICLibs.md records.
+# What boots an addon's saved variables: LibICCore's Attach, or the Forever store.
+CORE_LIBS = ("LibICCore-1.0", "LibICStore-1.0")
+
+
+def check_libs(flavor_dir, lib_addon="ICLibs"):
+    """Every LibIC* MINOR in the source is the one Docs/<library addon>.md records.
 
     SKILL.md says to bump the MINOR on an API change and record it in the doc; the doc
     was found a version behind, which is exactly the state that makes the rule useless.
     """
-    libs_dir = os.path.join(flavor_dir, "ICLibs")
-    doc = os.path.join(ROOT, "Docs", "ICLibs.md")
+    libs_dir = os.path.join(flavor_dir, lib_addon)
+    doc = os.path.join(ROOT, "Docs", lib_addon + ".md")
     if not os.path.isdir(libs_dir) or not os.path.exists(doc):
         return
     doc_src = io.open(doc, encoding="utf-8").read()
@@ -297,8 +304,10 @@ def check_core(addon_dir):
     if not os.path.exists(core):
         note(toc, 1, "declares saved variables but has no Core.lua to attach LibICCore in")
         return
-    if "LibICCore-1.0" not in io.open(core, encoding="utf-8").read():
-        note(core, 1, "declares saved variables but does not attach LibICCore-1.0")
+    src = io.open(core, encoding="utf-8").read()
+    if not any(lib in src for lib in CORE_LIBS):
+        note(core, 1, "declares saved variables but does not boot them through "
+             + " or ".join(CORE_LIBS))
 
 
 def main(argv):
@@ -308,8 +317,9 @@ def main(argv):
         flavor_dir = os.path.join(PROJECTS, flavor)
         if not os.path.isdir(flavor_dir):
             continue
-        if not wanted or "ICLibs" in wanted:
-            check_libs(flavor_dir)
+        for lib_addon in LIB_ADDONS:
+            if not wanted or lib_addon in wanted:
+                check_libs(flavor_dir, lib_addon)
         for addon in sorted(os.listdir(flavor_dir)):
             addon_dir = os.path.join(flavor_dir, addon)
             if not os.path.isdir(addon_dir):

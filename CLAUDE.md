@@ -4,7 +4,7 @@ Guild World of Warcraft addons. Read `CODING_STANDARDS.md` before changing any L
 
 ## Where things are
 
-- Addons: `AddonProjects/<flavor>/<AddonName>/`. Flavors: `era`, `anniversary`, `retail`.
+- Addons: `AddonProjects/<flavor>/<AddonName>/`. Flavors: `era`, `anniversary`, `retail`, `forever` (the table is `scripts/flavors.psd1`).
   The addon folder is exactly what ships.
 - User docs: `Docs/<AddonName>.md`. Update it whenever a command or tab changes.
 - Scripts: `scripts/new-addon.ps1` (scaffold from ICTemplate), `scripts/deploy.ps1`,
@@ -27,7 +27,7 @@ Guild World of Warcraft addons. Read `CODING_STANDARDS.md` before changing any L
 
 ## Rules that matter most
 
-- Interface versions: anniversary is 20506 (TBC). Verify against an installed addon on the
+- Interface versions: anniversary is 20506 (TBC), forever is 16001 (WoW Forever, client folder `_classic_beta_`). Verify against an installed addon on the
   client before changing; do not guess.
 - Client API calls that wait on the game must have timeouts and a cancel path. See the
   scan state machine in `MalexisAuctionWatcher/Scanning.lua` for the pattern.
@@ -67,3 +67,17 @@ state does it in an init function registered from the addon's `Core.lua`.
 
 Then deploy, `/reload`, run the commands, check BugSack. State plainly in the summary that
 in-game checks were not run when that is the case.
+
+## Forever (`AddonProjects/forever`, interface 16001)
+
+A separate code base from the Anniversary set, built bottom-up. Read
+`Docs/forever/VISION.md` before adding anything there.
+
+- The library addon is `ICKit`, not `ICLibs`. Do not copy LibICCore or LibICUI across;
+  lift a proven pure function into the right ICKit library when a layer needs it.
+- Layers depend downward only, and a library is added when an addon needs it.
+- No client API is used until it is confirmed on this client (the in-game probe or
+  exported source). Record what is confirmed in `Docs/client-reference.md`.
+- An addon keeps its case registry at `ns.Tests` (from `LibICTest-1.0`); run it with
+  `scripts/run-tests.ps1 -Flavor forever -Addon <Addon>`.
+- `scripts/new-addon.ps1` refuses this flavor until a Forever template exists.

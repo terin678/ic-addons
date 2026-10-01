@@ -15,11 +15,17 @@
   .\scripts\package.ps1 -Flavor anniversary -Addon MalexisAuctionWatcher -NoDeps -OutDir dist\curseforge
 #>
 param(
-    [Parameter(Mandatory = $true)][ValidateSet("era", "anniversary", "retail")][string]$Flavor,
+    [Parameter(Mandatory = $true)][string]$Flavor,
     [Parameter(Mandatory = $true)][string]$Addon,
     [switch]$NoDeps,
     [string]$OutDir
 )
+
+# Flavors live in one table, flavors.psd1: the game folder, the interface, what ships.
+$flavors = Import-PowerShellDataFile (Join-Path $PSScriptRoot "flavors.psd1")
+if (-not $flavors.ContainsKey($Flavor)) {
+    throw "Unknown flavor '$Flavor'. Known: $(($flavors.Keys | Sort-Object) -join ', ')"
+}
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $source = Join-Path $repoRoot "AddonProjects\$Flavor\$Addon"

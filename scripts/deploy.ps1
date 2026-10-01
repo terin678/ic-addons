@@ -7,13 +7,18 @@
   .\scripts\deploy.ps1 -Flavor anniversary -Addon MalexisAuctionWatcher -Copy   # copy instead of link
 #>
 param(
-    [Parameter(Mandatory = $true)][ValidateSet("era", "anniversary", "retail")][string]$Flavor,
+    [Parameter(Mandatory = $true)][string]$Flavor,
     [Parameter(Mandatory = $true)][string]$Addon,
     [string]$WowRoot = "D:\Program Files (x86)\World of Warcraft",
     [switch]$Copy
 )
 
-$flavorFolder = @{ era = "_classic_era_"; anniversary = "_anniversary_"; retail = "_retail_" }[$Flavor]
+# Flavors live in one table, flavors.psd1: the game folder, the interface, what ships.
+$flavors = Import-PowerShellDataFile (Join-Path $PSScriptRoot "flavors.psd1")
+if (-not $flavors.ContainsKey($Flavor)) {
+    throw "Unknown flavor '$Flavor'. Known: $(($flavors.Keys | Sort-Object) -join ', ')"
+}
+$flavorFolder = $flavors[$Flavor].Folder
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $source = Join-Path $repoRoot "AddonProjects\$Flavor\$Addon"
 $addonsDir = Join-Path $WowRoot "$flavorFolder\Interface\AddOns"

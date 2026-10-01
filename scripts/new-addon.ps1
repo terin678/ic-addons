@@ -34,7 +34,7 @@ param(
     # The guild heading in the in-game AddOns list. Anything else takes the new addon out
     # from under it, which is the one part of a rename nobody notices until they log in.
     [string]$Category = "Impulse Control",
-    [ValidateSet("era", "anniversary", "retail")][string]$Flavor = "anniversary",
+    [string]$Flavor = "anniversary",
     [string]$From = "ICTemplate",
     [string]$Version = "0.1.0",
     [switch]$Minimal,
@@ -44,6 +44,18 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
+
+# Flavors live in one table, flavors.psd1: the game folder, the interface, what ships.
+$flavors = Import-PowerShellDataFile (Join-Path $PSScriptRoot "flavors.psd1")
+if (-not $flavors.ContainsKey($Flavor)) {
+    throw "Unknown flavor '$Flavor'. Known: $(($flavors.Keys | Sort-Object) -join ', ')"
+}
+# The template is the flavor's own: its .toc, its library and its tokens differ between
+# code bases, so a flavor without one says so rather than copying another flavor's.
+if (-not $PSBoundParameters.ContainsKey("From")) { $From = $flavors[$Flavor].Template }
+if (-not $From) {
+    throw "Flavor '$Flavor' has no addon template yet (Template is empty in scripts\flavors.psd1). Build the addon by hand, or pass -From <AddonFolder>."
+}
 
 # Set-Content -Encoding UTF8 writes a byte order mark on PowerShell 5.1, and a BOM in
 # front of a .lua file is a parse error the client reports as a token it cannot

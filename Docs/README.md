@@ -13,6 +13,8 @@ maintainers.
 | [GuildRecruitment.md](GuildRecruitment.md) | One recruitment message the raid leaders set and every officer sends, kept in step across the guild, with a log of who barked when |
 | [ICTemplate.md](ICTemplate.md) | The worked example: a live gallery of every LibICUI widget, and the folder you copy to start a new addon |
 | [JamminWithJam.md](JamminWithJam.md) | Guild soundboard: chat triggers a sound in the Discord voice channel via a companion bot |
+| [ICKit.md](ICKit.md) | The shared kit under the WoW Forever addons: pure helpers and the case runner so far, one layer at a time |
+| [forever/VISION.md](forever/VISION.md) | Why the Forever addons start fresh, the rules they are built by, and the order things arrive in |
 | [client-reference.md](client-reference.md) | Interface versions, client folders, and API notes per flavor |
 
 Guides first, shared references last. When you add an addon, add its guide here and link it

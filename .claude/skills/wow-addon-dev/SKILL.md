@@ -8,7 +8,7 @@ description: Work on a World of Warcraft addon in this repo - edit Lua under Add
 ## Before editing
 
 1. Read `CODING_STANDARDS.md` and the addon's guide in `Docs/<Addon>.md`.
-2. Find the addon at `AddonProjects/<flavor>/<Addon>/`. Flavors: `era`, `anniversary`,
+2. Find the addon at `AddonProjects/<flavor>/<Addon>/`. Flavors: `era`, `anniversary`, `forever`,
    `retail`. Interface versions are in `Docs/client-reference.md`.
 3. Check whether the game folder already links to the repo:
    `Get-Item "<WowRoot>\<flavorFolder>\Interface\AddOns\<Addon>" -Force` shows a
@@ -32,13 +32,13 @@ Code more than one addon needs lives in the library addon
 third-party ones (LibStub, CallbackHandler, LibDataBroker, LibDBIcon) loaded once there
 so no addon bundles a copy:
 
-- `LibICCore-1.0` (MINOR 1) is the plumbing. One `Core:Attach(ns, opts)` in `Core.lua`
+- `LibICCore-1.0` (MINOR 3) is the plumbing. One `Core:Attach(ns, opts)` in `Core.lua`
   installs Print, the saved-variable bootstrap and its load check, Util, Log, the test
   harness, the slash dispatcher and reset; `Core:MinimapButton`, `Core:Probe` and
   `Core:Bindings` do the rest. Every addon with saved variables attaches, and `lint.py`
   fails one that does not.
 - `LibICTradeSkill-1.0` (MINOR 2) reads a profession window into a book.
-- `LibICUI-1.0` (MINOR 7) is the window, tab, list and widget toolkit in the guild
+- `LibICUI-1.0` (MINOR 8) is the window, tab, list and widget toolkit in the guild
   palette, and carries the brand itself. Four addons depend on it.
 
 Addons list `## Dependencies: ICLibs` in their TOC and fetch a library with
@@ -105,7 +105,7 @@ Four things, in order:
    `ns.Tests.Run()`. A file that calls the client at file scope fails here by name,
    which is the standard being enforced; a case that needs real widgets returns early
    on `IC_HEADLESS`. Runs in a second; use it before every `/reload`.
-3. The same cases in game. Eight addons carry a `Tests.lua`, loaded last:
+3. The same cases in game. Nine addons carry a `Tests.lua`, loaded last:
 
    | Command | Cases |
    | --- | --- |
@@ -117,6 +117,7 @@ Four things, in order:
    | `/jam test` (JamminWithJam) | 17 |
    | `/ast test` (AuctionatorSellingTweaks) | 4 |
    | `/mfd test` (MarkedForDeath) | 438 |
+   | `/ickit test` (ICKit, the Forever kit) | 12 |
 
    Any decision worth arguing about belongs in a pure function with a case here, and a case
    that asserts an ordering must have that ordering worked out rather than assumed.
@@ -141,3 +142,20 @@ fail loudly in chat over ones that fail silently.
    once the in-game checklist in the PR template is done. Never squash: each commit
    here is written to stand on its own so a single change can be found and reverted
    on its own, and a squash throws that away.
+
+## Forever addons
+
+`AddonProjects/forever` targets WoW Forever (interface 16001, client folder
+`_classic_beta_`; `scripts/flavors.psd1` holds the mapping). It is a separate code base
+built bottom-up on the library addon `ICKit`, not on ICLibs. Read
+`Docs/forever/VISION.md` first, then `Docs/ICKit.md` for what exists.
+
+- Everything above about branches, versions in three places, `.toc` restarts and lint
+  applies unchanged. ICKit's library MINORs are recorded in `Docs/ICKit.md`.
+- Do not port an Anniversary addon or copy LibICCore/LibICUI. Add the layer the work
+  needs to ICKit, with cases, then compose.
+- Use no client API that has not been confirmed on this client. Confirmed facts go in
+  `Docs/client-reference.md` under the forever section.
+- Run cases with `scripts/run-tests.ps1 -Flavor forever -Addon <Addon>`; the harness
+  loads the addon's `## Dependencies` first and stubs the 16001 build.
+- Deploy with `scripts/deploy.ps1 -Flavor forever -Addon <Addon>`.

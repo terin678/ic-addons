@@ -16,6 +16,7 @@ ic-addons/
     era/                 Classic Era (interface 115xx)
     anniversary/         TBC Anniversary (interface 20506)
     retail/              Retail (interface 12xxxx)
+    forever/             WoW Forever (interface 16001; the beta client folder is _classic_beta_)
   scripts/               Scaffold, deploy, package (PowerShell) and lint (Python)
   .claude/skills/        Claude Code skills for working in this repo
   CODING_STANDARDS.md    Lua and addon conventions everyone follows here
@@ -113,6 +114,7 @@ request. Development happens on branches:
 | anniversary | [ICTemplate](AddonProjects/anniversary/ICTemplate) | The worked example: every LibICUI widget on screen beside the source it was built from. Copy it to start a new addon. Guide: [Docs/ICTemplate.md](Docs/ICTemplate.md) |
 | anniversary | [GuildRecruitment](AddonProjects/anniversary/GuildRecruitment) | One recruitment message the raid leaders set and every officer sends, kept in step across the guild, with a log of who barked when. Guide: [Docs/GuildRecruitment.md](Docs/GuildRecruitment.md) |
 | anniversary | [JamminWithJam](AddonProjects/anniversary/JamminWithJam) | Guild soundboard: chat triggers a sound in the Discord voice channel via a companion bot. Guide: [Docs/JamminWithJam.md](Docs/JamminWithJam.md) |
+| forever | [ICKit](AddonProjects/forever/ICKit) | The shared kit under the WoW Forever addons: small libraries added one layer at a time. Guide: [Docs/ICKit.md](Docs/ICKit.md). Start with [Docs/forever/VISION.md](Docs/forever/VISION.md) |
 
 ## Client paths on the maintainer's machine
 
@@ -121,5 +123,6 @@ request. Development happens on branches:
 | era | `D:\Program Files (x86)\World of Warcraft\_classic_era_\Interface\AddOns` |
 | anniversary | `D:\Program Files (x86)\World of Warcraft\_anniversary_\Interface\AddOns` |
 | retail | `D:\Program Files (x86)\World of Warcraft\_retail_\Interface\AddOns` |
+| forever | `D:\Program Files (x86)\World of Warcraft\_classic_beta_\Interface\AddOns` |
 
 Override with `-WowRoot` on the scripts if your install is elsewhere.
