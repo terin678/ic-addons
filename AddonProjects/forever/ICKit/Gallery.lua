@@ -90,12 +90,12 @@ local function Build()
     })
     edit:SetPoint("TOPLEFT", p, "TOPLEFT", 12, -100)
 
-    local menu = W.Button(p, "Theme...", 86, 22, {
+    local themeButton = W.Button(p, "Theme...", 86, 22, {
         onClick = function(self)
             if not W.Menu(self, ThemeItems()) then ns.Print("this client has no context menu.") end
         end,
     })
-    menu:SetPoint("TOPLEFT", p, "TOPLEFT", 12, -134)
+    themeButton:SetPoint("TOPLEFT", p, "TOPLEFT", 12, -134)
 
     local confirm = W.Button(p, "Confirm...", 86, 22, {
         onClick = function()
@@ -103,7 +103,7 @@ local function Build()
                 function() ns.Print("confirmed.") end)
         end,
     })
-    confirm:SetPoint("LEFT", menu, "RIGHT", 9, 0)
+    confirm:SetPoint("LEFT", themeButton, "RIGHT", 9, 0)
 
     local foot = W.Label(p, "Drag the title bar. The position is kept per character.", { font = "small", color = "textDim" })
     foot:SetPoint("BOTTOMLEFT", p, "BOTTOMLEFT", 12, 10)
