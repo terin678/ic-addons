@@ -279,7 +279,7 @@ T.Case("Model.Find, Group, FindPreset: what the user typed", function()
         "an ambiguous start finds nothing")
 
     T.Eq(Model.FindPreset(Catalog.PRESETS, "perf").key, "performance", "a preset by the start of its key")
-    T.Eq(Model.FindPreset(Catalog.PRESETS, "Ultra Performance").key, "ultra", "by its label")
+    T.Eq(Model.FindPreset(Catalog.PRESETS, "POTATO").key, "potato", "whatever the case")
     T.Eq(Model.FindPreset(Catalog.PRESETS, "dlss"), nil, "there is no such thing")
 end)
 
@@ -293,7 +293,7 @@ T.Case("Model.Preset: upscaling presets set FSR, native leaves the filter alone"
     T.Eq(native.RenderScale, 1, "full scale")
     T.Eq(native.ResampleQuality, nil, "and the filter untouched")
 
-    T.Eq(Model.Preset({ key = "ultra", scale = 0.3334 }, Model.Limits(0.5, 2), 3).RenderScale, 0.5,
+    T.Eq(Model.Preset({ key = "potato", scale = 0.3334 }, Model.Limits(0.5, 2), 3).RenderScale, 0.5,
         "a preset under the client's floor sits on the floor")
     T.Eq(Model.PresetOf(0.8, Catalog.PRESETS, limits), nil, "a scale set by hand is no preset")
     T.Eq(Model.PresetOf(nil, Catalog.PRESETS, limits), nil, "nor is no scale")

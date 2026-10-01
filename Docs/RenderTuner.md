@@ -91,7 +91,7 @@ each change rebuilds what the client draws into. Every other slider is live.
 | `quality` | 67% | FSR 1.0 |
 | `balanced` | 58% | FSR 1.0 |
 | `performance` | 50% | FSR 1.0 |
-| `ultra` | 33% (the client's floor) | FSR 1.0 |
+| `potato` | 33% (the client's floor) | FSR 1.0 |
 
 `/tuner preset quality` uses one; the start of a name is enough (`/tuner preset perf`).
 `/tuner off` goes to native and `/tuner on` returns to the last upscaling preset you used.

@@ -53,14 +53,16 @@ Catalog.GROUPS = {
 
 -- The upscaling presets. Each sets the render scale; the ones below 100% also switch the
 -- resample filter to FSR 1.0. Sharpening is left where the user put it, and so is
--- everything else: these are presets for upscaling, not for overall quality. `short` is
+-- everything else: these are presets for upscaling, not for overall quality. The lowest
+-- is the client's floor and is named for how it looks, not after DLSS's "Ultra
+-- Performance", which promised more than a third of the pixels can give. `short` is
 -- the name on a button too narrow for the label.
 Catalog.PRESETS = {
     { key = "native", label = "Native", scale = 1 },
     { key = "quality", label = "Quality", scale = 0.67 },
     { key = "balanced", label = "Balanced", scale = 0.58 },
     { key = "performance", label = "Performance", scale = 0.5 },
-    { key = "ultra", label = "Ultra Performance", short = "Ultra", scale = 0.3334 },
+    { key = "potato", label = "Potato", scale = 0.3334 },
 }
 Catalog.FSR = 3
 

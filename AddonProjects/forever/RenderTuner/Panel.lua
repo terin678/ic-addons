@@ -6,7 +6,7 @@ view behind it.
 
     +----------------------------------------------------------------+
     | RenderTuner                       67% Quality, 2 unsaved     x |   drag the bar
-    | Upscaling: [Native] [Quality] [Balanced] [Performance] [Ultra] |   presets for the render scale
+    | Upscaling: [Native] [Quality] [Balanced] [Performance] [Potato]|   presets for the render scale
     | [Save] [Revert] [More...]                  [Restart graphics]  |
     | Upscaling         | Render scale      <---o------->  67%       |
     | Anti-aliasing (1) | Resample filter   [ FSR 1.0      v ]       |
