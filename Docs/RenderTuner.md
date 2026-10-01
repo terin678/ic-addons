@@ -1,10 +1,10 @@
 # RenderTuner
 
 A graphics tuner for WoW Forever: upscaling presets, a control for every graphics console
-variable, and a way to compare the saved settings with the ones being tried.
+variable worth having, and a way to go back to what you had.
 
-**Version 0.0.1 only asks the client questions.** It changes no setting. The presets, the
-panel and the options page are built on what it finds.
+**Version 0.1.0 is commands only.** The floating panel, the page in the game's Options
+window and the side-by-side comparison are built on top of it and come next.
 
 ## What the client can and cannot do
 
@@ -13,16 +13,9 @@ binary holds none of them and no NVIDIA upscaler library ships with the game. Th
 videos of Forever use outside tools that inject into the game; an addon cannot do that, and
 this one does not try.
 
-What the client does have, all driven by console variables an addon may set:
-
-| Area | Console variables |
-| --- | --- |
-| Upscaling | `RenderScale`, `ResampleQuality` (point, bilinear, bicubic, FSR 1.0), `ResampleSharpness`, `ResampleAlwaysSharpen` |
-| Dynamic resolution | `DynamicRenderScale`, `DynamicRenderScaleMin`, `targetFPS` |
-| Anti-aliasing | `ffxAntiAliasingMode` (FXAA, CMAA, CMAA2), `MSAAQuality`, `CMAA2Quality`, `CMAA2ExtraSharpness` |
-| Latency | `LowLatencyMode` (NVIDIA Reflex, Intel XeLL) |
-| HDR | `HDROutput`, `HDRBrightness`, `HDRPeakBrightness`, `HDRFactor` |
-| Colour | `Gamma`, `Brightness`, `Contrast` |
+What the client does have is a render scale with an FSR 1.0 upscale and a sharpening pass,
+image and multisample anti-aliasing, low latency modes, HDR and colour correction, all
+driven by console variables an addon may set. RenderTuner sets those and nothing else.
 
 FSR 1.0 is a spatial upscaler: it sharpens a lower-resolution frame and has no memory of
 earlier frames. A "Quality" preset built on it raises the frame rate the way a DLSS preset
@@ -34,40 +27,96 @@ Extract into `_classic_beta_\Interface\AddOns` so you get `AddOns\RenderTuner\Re
 RenderTuner needs **ICKit**, which goes beside it (`AddOns\ICKit`). Restart the client after
 installing; a `/reload` does not pick up a new addon.
 
+## Presets
+
+| Preset | Render scale | Resample filter |
+| --- | --- | --- |
+| `native` | 100% | left as it is |
+| `quality` | 67% | FSR 1.0 |
+| `balanced` | 58% | FSR 1.0 |
+| `performance` | 50% | FSR 1.0 |
+| `ultra` | 33% (the client's floor) | FSR 1.0 |
+
+`/tuner preset quality` uses one; the start of a name is enough (`/tuner preset perf`).
+`/tuner off` goes to native and `/tuner on` returns to the last upscaling preset you used.
+A preset does not touch the sharpening strength, so it stays where you set it.
+
+## Saved, trial and original
+
+The settings that are live in the game are the only copy that matters. RenderTuner keeps
+two sets to go back to:
+
+- **Saved** is what `/tuner save` last recorded. `/tuner revert` returns to it.
+- **Original** is what was live the first time RenderTuner ran. `/tuner restore` returns
+  to it, whatever you have saved since.
+
+Anything you change is a trial until you save it. Trial changes survive a `/reload` and a
+logout, because the client stores console variables itself; the login line tells you how
+many settings differ from the saved set.
+
 ## Commands
 
 `/tuner` or `/rendertuner`.
 
 | Command | What it does |
 | --- | --- |
-| `/tuner` | What has been asked so far |
-| `/tuner probe` | Lists every console variable the client has, with its value, default and help text, and saves the list |
-| `/tuner capture report` | Tries capturing the screen into a picture the way the report window does |
-| `/tuner capture photo` | Tries it the way the photo sharing window does |
-| `/tuner capture view split` | Shows the capture on the left half of the screen, lined up with the live picture |
-| `/tuner capture view full` | Shows the capture whole, at half size |
-| `/tuner capture clear` | Takes the capture off the screen |
+| `/tuner` | The render scale, its preset, and how many settings differ from saved |
+| `/tuner preset [name]` | Lists the presets, or uses one |
+| `/tuner on`, `/tuner off` | Upscale with the last preset used, or go back to native |
+| `/tuner list` | The groups, with how many settings each has and how many have changed |
+| `/tuner list <group>` | Every setting in a group with its value, and the saved value where it differs |
+| `/tuner list changed` | Only the settings that differ from saved |
+| `/tuner set <variable> <value>` | Sets one console variable from the catalogue |
+| `/tuner save` | Records the live settings as the saved set |
+| `/tuner revert` | Goes back to the saved set |
+| `/tuner defaults` | Sets everything to the client's defaults for this machine |
+| `/tuner restore` | Goes back to how things were before RenderTuner first ran |
+| `/tuner restart` | Restarts the graphics engine, for the few changes that need it |
 | `/tuner test` | Runs the built-in checks |
 
-## Why it captures the screen
+`/tuner set` takes the value as `/tuner list` shows it: a number for a slider or a choice
+(`/tuner set ffxAntiAliasingMode 4`), `on` or `off` for a toggle. A slider value is snapped
+to its step and kept inside its range; a choice that is not offered is refused, with the
+list of what is.
 
-The client draws the world once per frame with one set of console variables, so an addon
-cannot show two settings side by side live. A split view is still possible if the screen
-can be captured into a texture: switch to the saved settings for a moment, capture, switch
-back, and show the left part of the capture over the live picture. The left side is then a
+## The settings
+
+About ninety console variables in nine groups. A variable this client does not have, or
+will not let an addon set, is left out when the addon loads.
+
+| Group | `/tuner list` name | What is in it |
+| --- | --- | --- |
+| Upscaling | `upscale` | Render scale, resample filter, sharpening, dynamic render scale |
+| Anti-aliasing | `aa` | FXAA, CMAA, CMAA2 and its quality, multisampling |
+| Latency and frame rate | `frame` | Reflex and XeLL, vertical sync, triple buffering, frame rate limits and target |
+| Colour | `colour` | Gamma, brightness, contrast |
+| HDR | `hdr` | HDR output, brightness and peak overrides, HDR factor |
+| Quality levels | `quality` | The levels on the game's own graphics page |
+| Shadows and lighting | `shadow` | Shadow technique and resolution, ray traced shadows, ambient occlusion, fog, bloom |
+| World detail | `world` | Draw distances, level of detail, water, weather, texture filtering |
+| Effects | `effects` | Field of view, full-screen effects, variable rate shading, physics |
+
+Three things are left out on purpose: the client's second, raid-only copy of these
+variables; variables that take text, such as the graphics API and the adapter; and the
+engine's threading, streaming and debugging variables.
+
+When several settings change at once, the quality levels are set first. The client moves
+the variables beneath a level when the level changes, so they have to be set after it.
+
+## The comparison view (coming)
+
+The client draws the world once per frame with one set of console variables, so two
+settings cannot be shown side by side live. What works instead: switch to the saved
+settings for a moment, capture the world into a texture, switch back, and show the left
+part of that capture over the live picture, with a divider to drag. The left side is a
 still, right while the camera holds still.
 
-Two calls in the exported interface source might give that capture. Neither is proven for
-addons, which is what `/tuner capture` finds out. If neither works, the comparison is a
-full-screen flip between the two sets of settings instead.
+The capture was tested in 0.0.1 and works: it is sharp, lines up with the live picture and
+holds the world only, without the interface. `/tuner capture report` still shows it.
 
 ## Saved data
 
 | Table | Scope | Holds |
 | --- | --- | --- |
-| `RenderTunerDB` | account | `settings`, `probe` (the last `/tuner probe`), `capture` (what each capture attempt came to) |
+| `RenderTunerDB` | account | `saved`, `original`, `settings` (the last preset used), and for now `probe` and `capture` from the client questions |
 | `RenderTunerCharDB` | character | nothing yet |
-
-The probe list is large, a row for each of the client's console variables. It is there to
-be read off disk while the addon is being built and goes away once the catalogue of knobs
-is written.
