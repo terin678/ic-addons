@@ -188,6 +188,29 @@ T.Case("Notes.RemoveLine and MoveLine: at both ends", function()
     T.Eq(Notes.RemoveLine(note, 3), false, "nothing there now")
 end)
 
+T.Case("Notes.RowAt: the line under the pointer, or the nearest end", function()
+    T.Eq(Notes.RowAt(0, 18, 4), 1, "the top of the list is the first line")
+    T.Eq(Notes.RowAt(17.9, 18, 4), 1, "still the first, just above its bottom edge")
+    T.Eq(Notes.RowAt(18, 18, 4), 2, "the second starts where the first ends")
+    T.Eq(Notes.RowAt(60, 18, 4), 4, "the last")
+    T.Eq(Notes.RowAt(-30, 18, 4), 1, "above the list lands at the top")
+    T.Eq(Notes.RowAt(500, 18, 4), 4, "below it lands at the bottom")
+    T.Eq(Notes.RowAt(10, 18, 0), nil, "no lines, no line")
+    T.Eq(Notes.RowAt(nil, 18, 3), 1, "a pointer nobody could find is the top")
+end)
+
+T.Case("Notes.TabTarget: down the lines, into the add box, and round again", function()
+    T.Eq(Notes.TabTarget(1, 3, false), 2, "Tab goes down a line")
+    T.Eq(Notes.TabTarget(3, 3, false), 4, "from the last line into the add box")
+    T.Eq(Notes.TabTarget(4, 3, false), 1, "and from the add box back to the top")
+    T.Eq(Notes.TabTarget(2, 3, true), 1, "Shift-Tab goes up a line")
+    T.Eq(Notes.TabTarget(1, 3, true), 4, "from the first line round to the add box")
+    T.Eq(Notes.TabTarget(4, 3, true), 3, "and from the add box up to the last line")
+    T.Eq(Notes.TabTarget(0, 3, false), 1, "the title is before the first line")
+    T.Eq(Notes.TabTarget(0, 3, true), 4, "and after the add box, going backwards")
+    T.Eq(Notes.TabTarget(0, 0, false), 1, "a note with no lines has only the add box")
+end)
+
 T.Case("Notes.ClearDone: the finished lines go, the rest keep their order", function()
     local db, cdb = Book()
     local note = Notes.New(db, cdb, "n", "character", 0)
@@ -342,6 +365,25 @@ if IC_HEADLESS then
             local live, waiting = ns.UI.Counts()
             T.Eq(live, 2, "a panel each")
             T.True(cdb.view[a.id].x ~= nil, "and each was given a starting place")
+
+            -- Tab keeps what was typed and moves on; the last line hands over to the add box
+            local s = ns.UI.PanelOf(a.id)
+            local first = s.rows[1].text
+            first:GetScript("OnClick")(first)
+            T.Eq(s.editing, 1, "a click on a line edits it")
+            s.editor:SetText("flasks and oil")
+            s.editor:GetScript("OnTabPressed")(s.editor)
+            T.Eq(a.lines[1].text, "flasks and oil", "Tab keeps what was typed")
+            T.Eq(s.editing, 2, "and moves to the next line")
+            s.editor:GetScript("OnTabPressed")(s.editor)
+            T.Eq(s.editing, false, "Tab from the last line leaves for the add box")
+
+            -- A line picked up and put down where the pointer cannot be found stays put
+            first:GetScript("OnDragStart")(first)
+            T.Eq(s.dragFrom, 1, "a line is picked up")
+            first:GetScript("OnDragStop")(first)
+            T.Eq(s.dragFrom, false, "and put down")
+            T.Eq(Texts(a), "flasks and oil*|food", "with nothing moved")
 
             Notes.View(cdb, a.id).collapsed = true
             Notes.View(cdb, b.id).hidden = true

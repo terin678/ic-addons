@@ -240,6 +240,29 @@ function Notes.MoveLine(note, from, to)
     return Util.Move(note.lines, from, to)
 end
 
+--[[
+Which line a pointer is over, from how far below the top of the first line it is. Above
+the list is the first line and below it the last, so a line dragged past either end
+lands at that end. nil when there are no lines.
+]]
+function Notes.RowAt(offset, rowHeight, count)
+    if not count or count < 1 or not rowHeight or rowHeight <= 0 then return nil end
+    return Util.Clamp(math.floor((tonumber(offset) or 0) / rowHeight) + 1, 1, count)
+end
+
+--[[
+Where Tab goes inside a note. The stops are the lines, top to bottom, and then the box
+for adding one, which is stop count + 1; past either end it comes round again. The title
+counts as stop 0, so Tab from it reaches the first line and Shift-Tab the add box.
+]]
+function Notes.TabTarget(current, count, backwards)
+    local stops = count + 1
+    local target = (tonumber(current) or 0) + (backwards and -1 or 1)
+    if target < 1 then return stops end
+    if target > stops then return 1 end
+    return target
+end
+
 -- Drops every finished line, keeping the rest in order. Returns how many went.
 function Notes.ClearDone(note)
     local kept = {}

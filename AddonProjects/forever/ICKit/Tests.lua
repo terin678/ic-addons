@@ -531,6 +531,26 @@ T.Case("Widgets: a move starts on the press and ends on the release", function()
     T.Eq(drops, 2, "and the release drops it")
 end)
 
+T.Case("Widgets: Tab in an edit box and a drag on a button reach the addon", function()
+    local p = W.Panel(nil, { width = 120, height = 60 })
+    p:Hide()
+    local tabs = {}
+    local edit = W.EditBox(p, 100, 18, { onTab = function(_, backwards) tabs[#tabs + 1] = backwards end })
+    edit:GetScript("OnTabPressed")(edit)
+    T.Eq(#tabs, 1, "Tab is passed on")
+    T.Eq(type(tabs[1]), "boolean", "with whether Shift was held")
+
+    local events = {}
+    local row = W.Button(p, "a row", 80, 18, {
+        onDragStart = function() events[#events + 1] = "up" end,
+        onDragStop = function() events[#events + 1] = "down" end,
+    })
+    row:GetScript("OnDragStart")(row)
+    row:GetScript("OnDragStop")(row)
+    T.Eq(table.concat(events, ","), "up,down", "a button that asked hears a drag start and stop")
+    T.Eq(W.Button(p, "plain", 80, 18):GetScript("OnDragStart"), nil, "one that did not is not draggable")
+end)
+
 T.Case("Widgets: a minimap button's place is an angle round the rim", function()
     local x, y = W.MinimapOffset(0, 100)
     T.Near(x, 100, "due east")

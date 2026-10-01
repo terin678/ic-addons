@@ -291,6 +291,8 @@ opts = {
     justify = "LEFT",           -- the text hugs the left edge and is cut, not wrapped
     font = a font role,         -- "button" by default
     textRole = a colour role,   -- the text's own colour, whatever the kind says
+    onDragStart = fn(button),   -- picked up: the pointer moved while it was held
+    onDragStop = fn(button),    -- put down
 }
 "flat" has no fill or edge until hovered: for a small control inside a title bar, or a
 row of a list. b:SetLabel(text), b:SetKind(kind) and b:SetTextRole(role) change it afterwards.
@@ -338,6 +340,22 @@ function W.Button(parent, text, w, h, opts)
         RepaintButton(self, (Theme.Current()))
     end)
     if opts.onClick then b:SetScript("OnClick", opts.onClick) end
+
+    -- A button that can also be dragged, for a row that is picked up and put down. This
+    -- is the client's drag event on purpose: it waits for the pointer to move, which is
+    -- what keeps a press a click.
+    if opts.onDragStart or opts.onDragStop then
+        b.icOnDragStart = opts.onDragStart or false
+        b.icOnDragStop = opts.onDragStop or false
+        b:RegisterForDrag("LeftButton")
+        b:SetScript("OnDragStart", function(self)
+            if GameTooltip then GameTooltip:Hide() end
+            if self.icOnDragStart then self.icOnDragStart(self) end
+        end)
+        b:SetScript("OnDragStop", function(self)
+            if self.icOnDragStop then self.icOnDragStop(self) end
+        end)
+    end
 
     Track(b, RepaintButton)
     return b
@@ -398,6 +416,7 @@ opts = {
     onEnter = fn(text, box),        -- Enter; the box keeps focus unless you clear it
     onEscape = fn(box),             -- Escape, after focus is dropped
     onFocusLost = fn(box),
+    onTab = fn(box, backwards),     -- Tab, or Shift-Tab with backwards = true
 }
 Escape always drops focus. A box with focus takes every key, movement included, so an
 addon drops focus (box:ClearFocus()) when combat starts.
@@ -415,6 +434,7 @@ function W.EditBox(parent, w, h, opts)
     e.icOnEnter = opts.onEnter or false
     e.icOnEscape = opts.onEscape or false
     e.icOnFocusLost = opts.onFocusLost or false
+    e.icOnTab = opts.onTab or false
     e.icFocused = false
 
     e.placeholder = e:CreateFontString(nil, "OVERLAY", theme.fonts.body)
@@ -446,6 +466,12 @@ function W.EditBox(parent, w, h, opts)
         if self.icOnFocusLost then self.icOnFocusLost(self) end
     end)
     e:SetScript("OnTextChanged", SyncPlaceholder)
+    -- Tab, and Shift-Tab as backwards = true, for moving between the boxes of a list.
+    e:SetScript("OnTabPressed", function(self)
+        if self.icOnTab then
+            self.icOnTab(self, (IsShiftKeyDown and IsShiftKeyDown()) and true or false)
+        end
+    end)
     SyncPlaceholder(e)
 
     Track(e, function(self, current)

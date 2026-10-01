@@ -20,6 +20,8 @@ the instructions.
 | Tick a line off | Click its box. Click again to untick. |
 | Add a line | Type in the box at the bottom of the note and press Enter. The cursor stays there, so you can add several. |
 | Change a line | Click its text, edit, press Enter. Escape leaves it as it was. |
+| Go down or up the note | While editing, **Tab** keeps what you typed and moves to the next line; **Shift-Tab** to the one above. After the last line Tab reaches the add box, and from there it comes round to the top. |
+| Reorder the lines | Press on a line's text, drag it up or down, and let go. A coloured line shows where it will land. |
 | Remove a line | Click the **x** at the end of it. |
 | Move the note | Drag its title bar. |
 | Fold it away | Click **-** in the title bar; **+** opens it again. |

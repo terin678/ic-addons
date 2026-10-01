@@ -243,9 +243,9 @@ Blizzard frame template, repaints when the theme changes, and runs no `OnUpdate`
 | `W.Panel(parent, opts)` | A filled, edged frame. `opts`: `width`, `height`, `strata`, `role` (`ground`, `raised`, `field`), `edge = false`, `movable = true` with `onMoved(panel)`. `panel:SetLocked(true)` pins it. |
 | `W.DragHandle(handle, panel, opts)` | Makes a child, a title bar usually, drag its panel. It owns the handle's mouse scripts, so ask for a right-click here: `opts.onRightClick(handle)`. |
 | `W.Label(parent, text, opts)` | A font string. `opts`: `font` role, `color` role, `justify`, `wrap`. `label:SetRole(color)` recolours it. |
-| `W.Button(parent, text, w, h, opts)` | `opts.kind` is `normal`, `accent`, `danger` or `flat` (no fill until hovered); `opts.onClick`; `opts.justify = "LEFT"` with `opts.font` and `opts.textRole` for a row of a list. `b:SetLabel(text)`, `b:SetKind(kind)`, `b:SetTextRole(role)`. |
+| `W.Button(parent, text, w, h, opts)` | `opts.kind` is `normal`, `accent`, `danger` or `flat` (no fill until hovered); `opts.onClick`; `opts.justify = "LEFT"` with `opts.font` and `opts.textRole` for a row of a list; `opts.onDragStart(button)` and `opts.onDragStop(button)` for a row that is picked up and put down, while a plain press stays a click. `b:SetLabel(text)`, `b:SetKind(kind)`, `b:SetTextRole(role)`. |
 | `W.CheckBox(parent, opts)` | `opts`: `size`, `checked`, `onClick(checked, box)`. `box:SetChecked(on)`, `box:GetChecked()`. A click calls `onClick`; `SetChecked` does not. |
-| `W.EditBox(parent, w, h, opts)` | One line. `opts`: `maxBytes`, `placeholder`, `onEnter(text, box)`, `onEscape(box)`, `onFocusLost(box)`. Escape always drops focus. |
+| `W.EditBox(parent, w, h, opts)` | One line. `opts`: `maxBytes`, `placeholder`, `onEnter(text, box)`, `onEscape(box)`, `onFocusLost(box)`, `onTab(box, backwards)` for Tab and Shift-Tab. Escape always drops focus. |
 | `W.Tooltip(frame, builder, anchor)` | `builder(GameTooltip, frame)` adds the lines; nil removes it. It hooks, so a button keeps its hover highlight. The tooltip sits at the pointer (`ANCHOR_CURSOR_RIGHT`) unless `anchor` says otherwise. |
 | `W.Menu(owner, items)` | A context menu. Items: `{ title }`, `{ text, onClick }`, `{ text, checked = fn, onClick }`, `{ divider = true }`. |
 | `W.Confirm(text, onAccept)` | A yes/no dialog. |

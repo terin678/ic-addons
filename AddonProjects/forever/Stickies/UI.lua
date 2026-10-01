@@ -17,6 +17,7 @@ evening of ticking and adding creates no new frames. A note's place is this char
 kept as fractions of the screen (W.GetPlace), for shared notes as well as their own.
 ]]
 
+local Theme = LibStub("LibICTheme-1.0")
 local W = LibStub("LibICWidgets-1.0")
 
 local Notes = ns.Notes
@@ -115,6 +116,101 @@ local function Rename(s)
     if note then BeginEdit(s, "title", s.titleArea, note.title, Notes.LIMITS.title) end
 end
 
+--------------------------------------------------------------------------------
+-- Tab and Shift-Tab: down and up the note
+--------------------------------------------------------------------------------
+
+-- Puts the cursor at a stop: a line to edit, or the box for adding one.
+local function FocusStop(s, stop)
+    local note = NoteOf(s)
+    if not note then return end
+    if stop > #note.lines then
+        s.add:SetFocus()
+    else
+        EditLine(s, stop)
+    end
+end
+
+-- Tab while editing a line or the title: keep what was typed, move to the next stop.
+local function TabFromEditor(s, text, backwards)
+    local what = s.editing
+    CommitEdit(s, text)
+    local note = NoteOf(s)
+    if not note or what == false then return end
+    local current = (what == "title") and 0 or what
+    FocusStop(s, Notes.TabTarget(current, #note.lines, backwards))
+end
+
+-- Tab in the add box: anything typed becomes a line first, then on round the note.
+local function TabFromAdd(s, box, backwards)
+    local note = NoteOf(s)
+    if not note then return end
+    if (box:GetText() or ""):find("%S") then AddLine(s, box:GetText(), box) end
+    local count = #note.lines
+    if count == 0 then return end
+    box:ClearFocus()
+    FocusStop(s, Notes.TabTarget(count + 1, count, backwards))
+end
+
+--------------------------------------------------------------------------------
+-- Drag a line to another place in the note
+--------------------------------------------------------------------------------
+
+-- The line the pointer is over, or the nearest end of the list.
+local function PointerRow(s, count)
+    local _, y = GetCursorPosition()
+    local scale, top = s:GetEffectiveScale(), s:GetTop()
+    if type(y) ~= "number" or type(top) ~= "number" or type(scale) ~= "number" or scale <= 0 then return nil end
+    return Notes.RowAt(top - (BAR_H + PAD) - y / scale, ROW_H, count)
+end
+
+-- A line across the note where the dragged line would land: above the target when it is
+-- moving up, below it when moving down, nowhere when it would not move.
+local function ShowDrop(s, from, to)
+    if not to or to == from then
+        s.dropLine:Hide()
+        return
+    end
+    local edge = (to < from) and (to - 1) or to
+    local y = -(BAR_H + PAD + edge * ROW_H) + 1
+    s.dropLine:ClearAllPoints()
+    s.dropLine:SetPoint("TOPLEFT", s, "TOPLEFT", PAD, y)
+    s.dropLine:SetPoint("TOPRIGHT", s, "TOPRIGHT", -PAD, y)
+    s.dropLine:Show()
+end
+
+local function FollowDrag(s)
+    local note = NoteOf(s)
+    if note and s.dragFrom ~= false then ShowDrop(s, s.dragFrom, PointerRow(s, #note.lines)) end
+end
+
+local function BeginDrag(s, index)
+    local note = NoteOf(s)
+    if not note or #note.lines < 2 or not s.rows[index] then return end
+    CancelEdit(s)
+    s.dragFrom = index
+    s.rows[index].text:SetAlpha(0.4)
+    s.rows[index].box:SetAlpha(0.4)
+    local accent = Theme.Current().colors.accent
+    s.dropLine:SetColorTexture(accent.r, accent.g, accent.b, 1)
+    -- Runs only while a line is in the air.
+    s:SetScript("OnUpdate", FollowDrag)
+end
+
+local function EndDrag(s)
+    local from = s.dragFrom
+    if from == false then return end
+    s.dragFrom = false
+    s:SetScript("OnUpdate", nil)
+    s.dropLine:Hide()
+    local note = NoteOf(s)
+    if note then
+        local to = PointerRow(s, #note.lines)
+        if to then Notes.MoveLine(note, from, to) end
+    end
+    UI.Layout(s)
+end
+
 local function ToggleFold(s)
     local view = Notes.View(ns.cdb, s.noteId)
     CancelEdit(s)
@@ -210,6 +306,10 @@ local function CreateSticky()
     s.noteId = 0
     s.rows = {}
     s.editing = false
+    s.dragFrom = false
+    s.dropLine = s:CreateTexture(nil, "OVERLAY")
+    s.dropLine:SetHeight(2)
+    s.dropLine:Hide()
 
     s.bar = W.Panel(s, { role = "raised", edge = false, height = BAR_H })
     s.bar:SetPoint("TOPLEFT", s, "TOPLEFT", 1, -1)
@@ -244,12 +344,14 @@ local function CreateSticky()
         maxBytes = Notes.LIMITS.line,
         placeholder = "Add a line",
         onEnter = function(text, box) AddLine(s, text, box) end,
+        onTab = function(box, backwards) TabFromAdd(s, box, backwards) end,
     })
 
     s.editor = W.EditBox(s, 100, ROW_H, {
         onEnter = function(text) CommitEdit(s, text) end,
         onEscape = function() CancelEdit(s) end,
         onFocusLost = function() CancelEdit(s) end,
+        onTab = function(box, backwards) TabFromEditor(s, box:GetText() or "", backwards) end,
     })
     s.editor:SetFrameLevel((s:GetFrameLevel() or 0) + 10)
     s.editor:Hide()
@@ -273,13 +375,15 @@ local function Row(s, i)
     row.text = W.Button(s, "", 100, ROW_H, {
         kind = "flat", justify = "LEFT", font = "body", textRole = "text",
         onClick = function() EditLine(s, row.index) end,
+        onDragStart = function() BeginDrag(s, row.index) end,
+        onDragStop = function() EndDrag(s) end,
     })
     -- Two opposite corners, so its height is the row's and nothing else's.
     row.text:SetPoint("TOPLEFT", s, "TOPLEFT", PAD + 20, y)
     row.text:SetPoint("BOTTOMRIGHT", s, "TOPRIGHT", -22, y - ROW_H)
     W.Tooltip(row.text, function(tip)
         tip:AddLine(row.full, 1, 1, 1, true)
-        tip:AddLine("Click to change it", 0.6, 0.6, 0.6)
+        tip:AddLine("Click to change it. Drag it to another place.", 0.6, 0.6, 0.6)
     end)
 
     s.rows[i] = row
@@ -287,6 +391,9 @@ local function Row(s, i)
 end
 
 local function ShowRow(row, shown)
+    -- A row that was dimmed while it was being dragged comes back whole.
+    row.box:SetAlpha(1)
+    row.text:SetAlpha(1)
     if shown then
         row.box:Show()
         row.text:Show()
@@ -380,6 +487,11 @@ function UI.DropFocus()
         s.add:ClearFocus()
         s.editor:ClearFocus()
     end
+end
+
+-- A note's panel, for the cases.
+function UI.PanelOf(id)
+    return stickies[id]
 end
 
 -- How many panels are in use and how many are waiting, for the cases.
