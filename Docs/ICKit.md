@@ -17,7 +17,7 @@ the client after installing; a `/reload` does not pick up a new addon.
 
 ```
 /ickit                  the kit's version, the client build, and how often its saved tables have loaded
-/ickit theme [name]     the look of every addon on the kit; no name lists the themes
+/ickit theme [name]     the look of every addon on the kit; no name lists them, "default" goes back
 /ickit gallery          one of every widget, to look at
 /ickit probe            check what this client offers and save the answers
 /ickit profile [reset]  what the kit's handlers have cost: calls, time, memory
@@ -29,9 +29,11 @@ the client after installing; a `/reload` does not pick up a new addon.
 ### Themes
 
 Every addon built on the kit is drawn in one theme, chosen for the whole account:
-**Impulse Control** (the default: navy, gold and bone), **Plain** (charcoal with the game's
-own yellow) and **Paper** (dark ink on a yellow sticky note). `/ickit theme paper` switches,
-and everything on screen repaints at once. The start of a name is enough.
+**Forever** (the default: the game's own look, warm near-black panels, bronze edges and its
+gold), **Impulse Control** (the guild's navy, gold and bone, for members who want it) and
+**Paper** (dark ink on a yellow sticky note). `/ickit theme paper` switches, and everything
+on screen repaints at once. The start of a name is enough, and `/ickit theme default` goes
+back. Only a theme you picked is saved, so an account that never chose follows the default.
 
 `/ickit gallery` opens a small panel with one of every widget in the current theme. Drag it
 by its title bar; where you leave it is remembered per character.
@@ -208,7 +210,7 @@ whatever the selected theme says that is, so an addon never holds a colour of it
 
 | Call | What it does |
 | --- | --- |
-| `Theme.Register(name, def)` | Adds a theme. Any role `def` leaves out is filled from the default, so a role added later never leaves an older theme without it. `logo = false` says the theme has no mark. |
+| `Theme.Register(name, def)` | Adds a theme. Any role `def` leaves out is filled from the default, so a role added later never leaves an older theme without it. `def.logo` names a mark's texture; a theme without one has none. |
 | `Theme.Get(name)` | The theme, or nil. |
 | `Theme.Current()` | `theme, name`: the selected one, or the default. |
 | `Theme.Select(name)` | Selects it and returns whether the name is a theme. Listeners run only when it changed. |
@@ -223,8 +225,9 @@ whatever the selected theme says that is, so an addon never holds a colour of it
 `dangerHover`, `dangerText`, `button`, `buttonHover`, `buttonText`, `hover`, `selected`,
 `check`. Each is `{ r, g, b, a }`. Font roles: `body`, `title`, `small`, `button`.
 
-The kit itself saves the choice (`ICKitDB.settings.theme`) and applies it at load; an addon
-does not select a theme, it only draws in the current one.
+The kit itself saves a choice the player made (`ICKitDB.settings.theme`, absent until they
+pick) and applies it at load; an addon does not select a theme, it only draws in the
+current one. `Theme.DEFAULT` is "Forever".
 
 ## LibICWidgets-1.0
 

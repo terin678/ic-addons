@@ -25,7 +25,8 @@ the layers it needs exist.
    exported interface source confirms it exists on this client. What is confirmed is
    written to [client-reference.md](../client-reference.md).
 5. **General audience.** Neutral names, no guild assumptions in behaviour, and every
-   surface is themeable. The Impulse Control theme ships as the default beside a plain one.
+   surface is themeable. The default theme is the game's own look; the Impulse Control
+   theme ships beside it for guild members to switch to.
 6. **Data from day one.** Account and character tables, a schema number and migrations
    exist in the first version of every addon, so the second version never has to guess
    what the first one saved.

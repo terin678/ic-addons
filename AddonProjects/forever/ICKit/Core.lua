@@ -113,7 +113,9 @@ Store.Register(addonName, {
     charSchema = 1,
     -- loads counts how often each table has come back from disk: the proof, on a client
     -- nobody has tested, that both kinds of saved variable survive a reload and a relog.
-    defaults = { settings = { debug = false, theme = Theme.DEFAULT }, loads = 0 },
+    -- settings.theme is deliberately not defaulted: only a theme the player picked is
+    -- saved, so everyone who never chose follows the default wherever it goes.
+    defaults = { settings = { debug = false }, loads = 0 },
     charDefaults = { loads = 0 },
     onReady = Env.Wrap("ICKit saved variables", function(db, cdb, info)
         ns.db, ns.cdb, ns.loadInfo = db, cdb, info
@@ -121,16 +123,24 @@ Store.Register(addonName, {
         cdb.loads = cdb.loads + 1
         -- The theme is the account's, and every addon on the kit is drawn in it. A saved
         -- name that is no longer a theme leaves the default in place.
-        Theme.Select(db.settings.theme)
+        if db.settings.theme then Theme.Select(db.settings.theme) end
         Saw("ADDON_LOADED")
     end),
 })
 
--- Selects a theme and remembers it. Returns whether the name is a theme.
-function ns.SetTheme(name)
-    if not Theme.Select(name) then return false end
-    if ns.db then ns.db.settings.theme = name end
-    return true
+-- Selects a theme and remembers the choice. nil goes back to the default and forgets
+-- it. Returns the name now in use, or nil when the name is not a theme.
+-- `settings` is the kit's own saved settings unless a case hands in a table.
+function ns.SetTheme(name, settings)
+    settings = settings or (ns.db and ns.db.settings) or {}
+    if name == nil then
+        Theme.Select(Theme.DEFAULT)
+        settings.theme = nil
+        return Theme.DEFAULT
+    end
+    if not Theme.Select(name) then return nil end
+    settings.theme = name
+    return name
 end
 
 --------------------------------------------------------------------------------
@@ -139,7 +149,7 @@ end
 
 local HELP = {
     { "", "the kit's version, the client build, and how often the saved tables have loaded" },
-    { "theme [name]", "the look of every addon on the kit; no name lists them" },
+    { "theme [name | default]", "the look of every addon on the kit; no name lists them" },
     { "gallery", "one of every widget, to look at" },
     { "probe", "check what this client offers and save the answers" },
     { "profile [reset]", "what the kit's handlers have cost: calls, time, memory" },
@@ -167,10 +177,15 @@ COMMANDS.test = function()
 end
 
 COMMANDS.theme = function(rest)
-    if Util.Trim(rest) == "" then
+    local typed = Util.Trim(rest):lower()
+    if typed == "" then
         local _, current = Theme.Current()
-        out.Printf("the theme is %s. Available: %s. /ickit theme <name> changes it.",
-            current, table.concat(Theme.Names(), ", "))
+        out.Printf("the theme is %s%s. Available: %s. /ickit theme <name> changes it, /ickit theme default goes back.",
+            current, current == Theme.DEFAULT and " (the default)" or "", table.concat(Theme.Names(), ", "))
+        return
+    end
+    if typed == "default" then
+        out.Printf("the theme is back to the default, %s.", ns.SetTheme(nil))
         return
     end
     local name = Theme.Find(rest)

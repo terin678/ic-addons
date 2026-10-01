@@ -28,11 +28,11 @@ local MAJOR, MINOR = "LibICConsole-1.0", 1
 local Console = LibStub:NewLibrary(MAJOR, MINOR)
 if not Console then return end
 
--- opts.color is the tag's rrggbb (the theme gold by default); opts.debug() says whether
--- Debug lines print; opts.frame() returns the chat frame to write to.
+-- opts.color is the tag's rrggbb (the game's own gold by default); opts.debug() says
+-- whether Debug lines print; opts.frame() returns the chat frame to write to.
 function Console.New(prefix, opts)
     opts = opts or {}
-    local tag = "|cff" .. (opts.color or "df9c33") .. tostring(prefix) .. "|r: "
+    local tag = "|cff" .. (opts.color or "ffd100") .. tostring(prefix) .. "|r: "
     local out = {}
 
     -- Everything the addon says is prefixed, so a player can tell who is talking.

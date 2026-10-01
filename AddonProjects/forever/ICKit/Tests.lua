@@ -360,14 +360,15 @@ end)
 local Theme = LibStub("LibICTheme-1.0")
 
 T.Case("Theme.Register: a theme inherits every role it does not set", function()
-    local base = Theme.Get("Impulse Control")
-    local t = Theme.Register("Case Theme", { logo = false, colors = { accent = { r = 0, g = 1, b = 0 } } })
+    local base = Theme.Get(Theme.DEFAULT)
+    local t = Theme.Register("Case Theme", { colors = { accent = { r = 0, g = 1, b = 0 } } })
     T.Eq(t.colors.accent.g, 1, "its own accent")
     T.Eq(t.colors.accent.a, 1, "with the alpha filled in")
     T.Eq(t.colors.ground.r, base.colors.ground.r, "the ground it did not set is the default's")
     T.Eq(t.fonts.body, "GameFontHighlightSmall", "and so are the fonts")
-    T.Eq(t.logo, false, "a theme may say it has no mark")
-    T.True(base.logo:find("ICKit", 1, true), "the default's mark ships in the kit's own folder")
+    T.Eq(t.logo, false, "a theme has no mark unless it names one")
+    T.Eq(base.logo, false, "the default carries no guild's mark")
+    T.True(Theme.Get("Impulse Control").logo:find("ICKit", 1, true), "the guild theme's mark ships in the kit's own folder")
     t.colors.ground.r = 0.5
     T.True(base.colors.ground.r ~= 0.5, "and the colours are copies, not the default's own tables")
     Theme.themes["Case Theme"] = nil
@@ -375,7 +376,7 @@ end)
 
 T.Case("Theme.Select: listeners hear a change once, an unknown name is refused", function()
     local _, before = Theme.Current()
-    local other = (before == "Plain") and "Paper" or "Plain"
+    local other = (before == "Paper") and "Impulse Control" or "Paper"
     local heard = {}
     local stop = Theme.OnChange(function(_, name) heard[#heard + 1] = name end)
 
@@ -393,15 +394,40 @@ T.Case("Theme.Select: listeners hear a change once, an unknown name is refused",
 end)
 
 T.Case("Theme: the names, a name as typed, and a colour code", function()
-    T.Eq(table.concat(Theme.Names(), ","), "Impulse Control,Paper,Plain", "three ship, in order")
+    T.Eq(table.concat(Theme.Names(), ","), "Forever,Impulse Control,Paper", "three ship, in order")
     T.Eq(Theme.Find("paper"), "Paper", "case does not matter")
     T.Eq(Theme.Find("  IMPULSE control "), "Impulse Control", "nor do stray spaces")
     T.Eq(Theme.Find("imp"), "Impulse Control", "the start of one name is enough")
-    T.Eq(Theme.Find("p"), nil, "the start of two is not")
+    Theme.Register("Forest", {})
+    T.Eq(Theme.Find("for"), nil, "the start of two is not")
+    T.Eq(Theme.Find("forest"), "Forest", "though the whole of one still is")
+    Theme.themes["Forest"] = nil
     T.Eq(Theme.Find(""), nil, "nothing typed is no theme")
     T.Eq(Theme.Find("neon"), nil, "and neither is one that does not exist")
-    T.Eq(Theme.Hex({ r = 0.875, g = 0.612, b = 0.2 }), "|cffdf9c33", "the gold as a colour code")
-    T.Eq(Theme.DEFAULT, "Impulse Control", "the default is the guild's")
+    T.Eq(Theme.Hex({ r = 1, g = 0.82, b = 0 }), "|cffffd100", "the game's gold as a colour code")
+    T.Eq(Theme.DEFAULT, "Forever", "the default is the game's own look, not a guild's")
+    T.Eq(Theme.Get("Forever").colors.accent.g, 0.82, "with that gold as its accent")
+end)
+
+T.Case("Kit: a theme is saved only when it was chosen", function()
+    -- Against a table of its own, and the live theme put back before anything is
+    -- asserted, so a failure here cannot leave the player's theme changed.
+    local _, before = Theme.Current()
+    local settings = {}
+    local picked = ns.SetTheme("Paper", settings)
+    local savedAfterPick = settings.theme
+    local refused = ns.SetTheme("Neon", settings)
+    local savedAfterRefusal = settings.theme
+    local back = ns.SetTheme(nil, settings)
+    local savedAfterDefault = settings.theme
+    Theme.Select(before)
+
+    T.Eq(picked, "Paper", "a real theme is selected")
+    T.Eq(savedAfterPick, "Paper", "and remembered")
+    T.Eq(refused, nil, "an unknown one is refused")
+    T.Eq(savedAfterRefusal, "Paper", "leaving the choice alone")
+    T.Eq(back, Theme.DEFAULT, "no name goes back to the default")
+    T.Eq(savedAfterDefault, nil, "and forgets the choice, so a later default is followed")
 end)
 
 --------------------------------------------------------------------------------
