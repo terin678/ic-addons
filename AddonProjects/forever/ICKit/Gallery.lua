@@ -16,7 +16,7 @@ local W = LibStub("LibICWidgets-1.0")
 local Gallery = {}
 ns.Gallery = Gallery
 
-local WIDTH, HEIGHT = 300, 206
+local WIDTH, HEIGHT = 300, 262
 local frame
 
 local function TitleText()
@@ -104,6 +104,20 @@ local function Build()
         end,
     })
     confirm:SetPoint("LEFT", themeButton, "RIGHT", 9, 0)
+
+    -- A slider, and a choice picked from a menu
+    local slider = W.Slider(p, {
+        width = WIDTH - 24, min = 0.3334, max = 2, step = 0.01, value = 1,
+        format = function(value) return string.format("%d%%", math.floor(value * 100 + 0.5)) end,
+        onChange = function(value) ns.Debug("slider at " .. value) end,
+    })
+    slider:SetPoint("TOPLEFT", p, "TOPLEFT", 12, -166)
+
+    local choice = W.Choice(p, 140, 22, {
+        choices = { { 0, "None" }, { 1, "Low" }, { 2, "Medium" }, { 3, "High" } }, value = 2,
+        onChange = function(value) ns.Print("choice " .. value .. " picked.") end,
+    })
+    choice:SetPoint("TOPLEFT", p, "TOPLEFT", 12, -194)
 
     local foot = W.Label(p, "Drag the title bar. The position is kept per character.", { font = "small", color = "textDim" })
     foot:SetPoint("BOTTOMLEFT", p, "BOTTOMLEFT", 12, 10)

@@ -1,7 +1,8 @@
 --[[
 LibICWidgets-1.0
 Layer 2 of ICKit: themed frames. Only what an addon has needed so far, and each one is
-drawn from colour textures, so no widget depends on a Blizzard frame template.
+drawn from colour textures, so no widget depends on a Blizzard frame template. The slider
+is the exception: its bar is the client's own.
 
     local W = LibStub("LibICWidgets-1.0")
 
@@ -11,6 +12,8 @@ drawn from colour textures, so no widget depends on a Blizzard frame template.
     W.Button(parent, text, w, h, opts)  normal | accent | danger | flat
     W.CheckBox(parent, opts)            a tick box
     W.EditBox(parent, w, h, opts)       one line of text
+    W.Slider(parent, opts)              a number between two ends, its value beside it
+    W.Choice(parent, w, h, opts)        one of a short list, picked from a menu
     W.Tooltip(frame, builder)           builder(GameTooltip, frame) adds the lines
     W.Menu(owner, items)                a context menu from a list
     W.Confirm(text, onAccept)           a yes/no dialog
@@ -31,7 +34,7 @@ A field that is read before it is set is given a value at construction, always. 
 headless stub answers an unset field with a function, and "if not frame.x" would misread it.
 ]]
 
-local MAJOR, MINOR = "LibICWidgets-1.0", 1
+local MAJOR, MINOR = "LibICWidgets-1.0", 2
 local W = LibStub:NewLibrary(MAJOR, MINOR)
 if not W then return end
 
@@ -484,6 +487,216 @@ function W.EditBox(parent, w, h, opts)
 end
 
 --------------------------------------------------------------------------------
+-- Slider
+--------------------------------------------------------------------------------
+
+-- Pure. The value a slider reports for a raw position: a whole number of steps, except
+-- at the two ends, which are min and max themselves even when those are off the step.
+-- A render scale that runs from 0.3334 to 2 in steps of 0.01 reads 0.3334, 0.35, 0.36.
+function W.SliderValue(raw, min, max, step)
+    raw = tonumber(raw) or min
+    local snapped = math.floor(raw / step + 0.5) * step
+    local first = math.ceil(min / step - 0.0001) * step
+    local last = math.floor(max / step + 0.0001) * step
+    if snapped <= first + step * 0.0001 then return min end
+    if snapped >= last - step * 0.0001 then return max end
+    return snapped
+end
+
+-- The range the client's slider is given: the whole steps inside min and max.
+local function StepRange(min, max, step)
+    local first = math.ceil(min / step - 0.0001) * step
+    local last = math.floor(max / step + 0.0001) * step
+    if last <= first then return min, max end
+    return first, last
+end
+
+local function SliderText(s)
+    if s.icFormat then return s.icFormat(s.icValue) end
+    return tostring(s.icValue)
+end
+
+local function SliderSend(s)
+    if s.icOnChange and s.icValue ~= s.icSent then
+        s.icSent = s.icValue
+        s.icOnChange(s.icValue, s)
+    end
+end
+
+-- A plain slider drawn from colour textures, for a client without the template below.
+local function PlainSlider(parent)
+    local bar = CreateFrame("Slider", nil, parent)
+    bar:SetOrientation("HORIZONTAL")
+    bar:SetObeyStepOnDrag(true)
+    bar:EnableMouse(true)
+    bar.icTrack = bar:CreateTexture(nil, "BACKGROUND")
+    bar.icTrack:SetPoint("LEFT", bar, "LEFT", 0, 0)
+    bar.icTrack:SetPoint("RIGHT", bar, "RIGHT", 0, 0)
+    bar.icTrack:SetHeight(4)
+    bar.icThumb = bar:CreateTexture(nil, "ARTWORK")
+    bar.icThumb:SetSize(8, 16)
+    bar:SetThumbTexture(bar.icThumb)
+    Track(bar, function(self, theme)
+        local track, thumb = theme.colors.field, theme.colors.accent
+        self.icTrack:SetColorTexture(track.r, track.g, track.b, 1)
+        self.icThumb:SetColorTexture(thumb.r, thumb.g, thumb.b, 1)
+    end)
+    return bar
+end
+
+--[[
+A slider with its value written beside it. The bar is the client's own slider with its
+two steppers (MinimalSliderWithSteppersTemplate), the one widget here built on a Blizzard
+template: the modern control, with the client's sounds and narration. Its art is not
+themed; the value text is.
+
+opts = {
+    width = 220,                    -- the whole widget, value text included
+    valueWidth = 56,                -- the share of that the value text takes
+    min, max, step, value,
+    format = fn(value) -> text,     -- what the value reads as
+    live = true,                    -- false: onChange waits until the thumb is let go
+    onChange = fn(value, slider),   -- for a drag or a stepper click, not for SetValue
+}
+s:SetValue(v) moves it without calling onChange; s:GetValue(). Dragging is handled by the
+client's slider, so nothing here runs an OnUpdate.
+]]
+function W.Slider(parent, opts)
+    opts = opts or {}
+    local s = CreateFrame("Frame", nil, parent)
+    local valueWidth = opts.valueWidth or 56
+    s:SetSize(opts.width or 220, 20)
+    s.icMin, s.icMax = tonumber(opts.min) or 0, tonumber(opts.max) or 1
+    s.icStep = tonumber(opts.step) or 0.1
+    s.icValue = math.max(s.icMin, math.min(s.icMax, tonumber(opts.value) or s.icMin))
+    s.icSent = s.icValue
+    s.icFormat = opts.format or false
+    s.icOnChange = opts.onChange or false
+    s.icLive = opts.live ~= false
+    s.icHeld = false
+    s.icQuiet = false
+
+    local first, last = StepRange(s.icMin, s.icMax, s.icStep)
+    local steps = math.max(1, math.floor((last - first) / s.icStep + 0.5))
+
+    local made, bar = pcall(CreateFrame, "Frame", nil, s, "MinimalSliderWithSteppersTemplate")
+    local inner
+    if made and type(bar) == "table" and type(bar.Slider) == "table" and type(bar.Init) == "function" then
+        inner = bar.Slider
+        bar:Init(math.max(first, math.min(last, s.icValue)), first, last, steps)
+    else
+        bar = PlainSlider(s)
+        inner = bar
+        inner:SetMinMaxValues(first, last)
+        inner:SetValueStep(s.icStep)
+        inner:SetValue(math.max(first, math.min(last, s.icValue)))
+    end
+    bar:SetPoint("LEFT", s, "LEFT", 0, 0)
+    bar:SetPoint("RIGHT", s, "RIGHT", -valueWidth, 0)
+    bar:SetHeight(20)
+    s.bar, s.inner = bar, inner
+    s.icFirst, s.icLast = first, last
+
+    s.text = W.Label(s, "", { color = "text" })
+    s.text:SetPoint("LEFT", bar, "RIGHT", 6, 0)
+    s.text:SetPoint("RIGHT", s, "RIGHT", 0, 0)
+    s.text:SetText(SliderText(s))
+
+    inner:HookScript("OnValueChanged", function(_, raw)
+        if s.icQuiet == true then return end
+        s.icValue = W.SliderValue(raw, s.icMin, s.icMax, s.icStep)
+        s.text:SetText(SliderText(s))
+        if s.icLive == true or s.icHeld ~= true then SliderSend(s) end
+    end)
+    inner:HookScript("OnMouseDown", function() s.icHeld = true end)
+    inner:HookScript("OnMouseUp", function()
+        s.icHeld = false
+        SliderSend(s)
+    end)
+
+    function s:SetValue(value)
+        self.icValue = math.max(self.icMin, math.min(self.icMax, tonumber(value) or self.icMin))
+        self.icSent = self.icValue
+        self.icQuiet = true
+        self.inner:SetValue(math.max(self.icFirst, math.min(self.icLast, self.icValue)))
+        self.icQuiet = false
+        self.text:SetText(SliderText(self))
+    end
+
+    function s:GetValue()
+        return self.icValue
+    end
+
+    return s
+end
+
+--------------------------------------------------------------------------------
+-- Choice
+--------------------------------------------------------------------------------
+
+local function ChoiceLabel(c)
+    for _, choice in ipairs(c.icChoices) do
+        if choice[1] == c.icValue then return choice[2] end
+    end
+    return tostring(c.icValue)
+end
+
+--[[
+One of a short list: a button that shows the current choice and opens a menu of them all.
+
+opts = {
+    choices = { { value, label }, ... },
+    value,
+    onChange = fn(value, choice),   -- for a pick from the menu, not for SetValue
+}
+c:SetValue(v) and c:GetValue().
+]]
+function W.Choice(parent, w, h, opts)
+    opts = opts or {}
+    local c
+    c = W.Button(parent, "", w or 140, h or 20, {
+        justify = "LEFT",
+        onClick = function(self)
+            local items = {}
+            for _, choice in ipairs(self.icChoices) do
+                items[#items + 1] = {
+                    text = choice[2],
+                    radio = function() return self.icValue == choice[1] end,
+                    onClick = function()
+                        if self.icValue == choice[1] then return end
+                        self:SetValue(choice[1])
+                        if self.icOnChange then self.icOnChange(choice[1], self) end
+                    end,
+                }
+            end
+            W.Menu(self, items)
+        end,
+    })
+    c.icChoices = opts.choices or {}
+    c.icValue = opts.value
+    c.icOnChange = opts.onChange or false
+
+    -- Room on the right for the mark that says this opens a list.
+    c.label:ClearAllPoints()
+    c.label:SetPoint("LEFT", c, "LEFT", 4, 0)
+    c.label:SetPoint("RIGHT", c, "RIGHT", -16, 0)
+    c.mark = W.Label(c, "v", { font = "small", color = "textDim" })
+    c.mark:SetPoint("RIGHT", c, "RIGHT", -5, 0)
+
+    function c:SetValue(value)
+        self.icValue = value
+        self:SetLabel(ChoiceLabel(self))
+    end
+
+    function c:GetValue()
+        return self.icValue
+    end
+
+    c:SetLabel(ChoiceLabel(c))
+    return c
+end
+
+--------------------------------------------------------------------------------
 -- Tooltip, menu, confirm
 --------------------------------------------------------------------------------
 
@@ -512,6 +725,7 @@ A context menu at the pointer. items is a list of:
     { title = "Raid prep" }
     { text = "Rename", onClick = fn }
     { text = "Locked", checked = fn() -> bool, onClick = fn }
+    { text = "High", radio = fn() -> bool, onClick = fn }     one of several; the menu closes
     { divider = true }
 Returns false on a client without the modern menu, so the caller can say so.
 ]]
@@ -525,6 +739,11 @@ function W.Menu(owner, items)
                 root:CreateDivider()
             elseif item.checked then
                 root:CreateCheckbox(item.text, item.checked, item.onClick)
+            elseif item.radio then
+                root:CreateRadio(item.text, item.radio, function()
+                    if item.onClick then item.onClick() end
+                    return MenuResponse and MenuResponse.Close or nil
+                end)
             else
                 root:CreateButton(item.text, item.onClick)
             end

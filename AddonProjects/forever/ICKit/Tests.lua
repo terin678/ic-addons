@@ -493,6 +493,67 @@ T.Case("Widgets: each one builds, keeps its state, and repaints", function()
     T.Eq(box:GetChecked(), false, "and a repaint changes no state")
 end)
 
+T.Case("Widgets: a slider reports whole steps, and both of its ends", function()
+    T.Near(W.SliderValue(0.674, 0.3334, 2, 0.01), 0.67, "snapped to the step")
+    T.Near(W.SliderValue(0.35, 0.3334, 2, 0.01), 0.35, "a whole step inside the range")
+    T.Eq(W.SliderValue(0.34, 0.3334, 2, 0.01), 0.3334, "the first whole step is the floor itself, off the step or not")
+    T.Eq(W.SliderValue(0.1, 0.3334, 2, 0.01), 0.3334, "and so is anything under it")
+    T.Eq(W.SliderValue(2, 0.3334, 2, 0.01), 2, "the ceiling")
+    T.Eq(W.SliderValue(5.4, 0, 9, 1), 5, "whole numbers")
+    T.Eq(W.SliderValue(nil, 0, 9, 1), 0, "no position is the floor")
+end)
+
+T.Case("Widgets: a slider and a choice keep their value and report a change, not a SetValue", function()
+    local p = W.Panel(nil, { width = 240, height = 60 })
+    p:Hide()
+
+    local got = {}
+    local s = W.Slider(p, {
+        min = 0, max = 10, step = 1, value = 4,
+        format = function(v) return v .. " fps" end,
+        onChange = function(v) got[#got + 1] = v end,
+    })
+    T.Eq(s:GetValue(), 4, "a slider starts where it is told")
+    T.Eq(s.text:GetText(), "4 fps", "and writes its value beside it")
+    s:SetValue(7)
+    T.Eq(s:GetValue(), 7, "it moves when told")
+    T.Eq(s.text:GetText(), "7 fps", "the text follows")
+    T.Eq(#got, 0, "without calling the handler")
+    s.inner:GetScript("OnValueChanged")(s.inner, 8.2)
+    T.Eq(s:GetValue(), 8, "a drag is snapped to the step")
+    T.Eq(got[1], 8, "and reported")
+    s:SetValue(99)
+    T.Eq(s:GetValue(), 10, "a value past the end sits on the end")
+
+    -- One that waits for the thumb to be let go: for a change too heavy to make per step.
+    local late = {}
+    local w = W.Slider(p, { min = 0, max = 10, step = 1, value = 0, live = false,
+        onChange = function(v) late[#late + 1] = v end })
+    w.inner:GetScript("OnMouseDown")(w.inner)
+    w.inner:GetScript("OnValueChanged")(w.inner, 3)
+    w.inner:GetScript("OnValueChanged")(w.inner, 5)
+    T.Eq(w:GetValue(), 5, "it follows the drag")
+    T.Eq(#late, 0, "and says nothing while held")
+    w.inner:GetScript("OnMouseUp")(w.inner)
+    T.Eq(#late, 1, "one report on release")
+    T.Eq(late[1], 5, "of where it ended")
+    w.inner:GetScript("OnValueChanged")(w.inner, 6)
+    T.Eq(late[2], 6, "a stepper click, with nothing held, reports at once")
+
+    local picked
+    local c = W.Choice(p, 100, 20, {
+        choices = { { 0, "None" }, { 4, "CMAA2" } }, value = 4,
+        onChange = function(v) picked = v end,
+    })
+    T.Eq(c.label:GetText(), "CMAA2", "a choice shows the label of its value")
+    c:SetValue(0)
+    T.Eq(c:GetValue(), 0, "it changes when told")
+    T.Eq(c.label:GetText(), "None", "and the label follows")
+    T.Eq(picked, nil, "without calling the handler")
+    c:SetValue(9)
+    T.Eq(c.label:GetText(), "9", "a value with no label shows itself")
+end)
+
 T.Case("Widgets: a move starts on the press and ends on the release", function()
     -- Not on the client's drag event, which waits for the pointer to travel and then
     -- makes the frame jump the distance it missed.

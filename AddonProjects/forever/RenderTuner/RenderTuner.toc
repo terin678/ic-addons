@@ -1,8 +1,8 @@
 ## Interface: 16001
 ## Title: RenderTuner
-## Notes: Tunes the client's rendering: upscaling presets and a control for every graphics console variable. Presets and commands so far; the panel comes next.
+## Notes: Tunes the client's rendering: upscaling presets and a control for every graphics console variable. /tuner opens the panel.
 ## Author: Malexis
-## Version: 0.1.0
+## Version: 0.2.0
 ## IconTexture: Interface\Icons\INV_Misc_Spyglass_03
 ## Group: ICKit
 ## Category: Impulse Control
@@ -14,5 +14,7 @@ Core.lua
 Catalog.lua
 Model.lua
 Apply.lua
+Panel.lua
+Launcher.lua
 Probe.lua
 Tests.lua

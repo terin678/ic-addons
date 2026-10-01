@@ -19,14 +19,17 @@ addon keeps two copies to go back to and none that could disagree with the game:
     Catalog.lua   the knobs, as data
     Model.lua     every decision about values, pure                    (LibICUtil)
     Apply.lua     the only file that reads or sets a console variable  (LibICEnv)
+    Panel.lua     the floating panel: every knob as a control          (LibICWidgets, LibICTheme)
+    Launcher.lua  the way in from the addon list beside the minimap    (LibICWidgets)
     Probe.lua     what the client was asked while this was being built (LibICEnv)
     Core.lua      this file: saved tables, commands, login             (LibICStore, LibICConsole)
     Tests.lua     the cases                                            (LibICTest)
 
-Nothing here runs while the game is idle: the addon acts on a command and at login.
+Nothing here runs while the game is idle: the addon acts on a command, a click or a
+drag, and at login.
 ]]
 
-local VERSION = "0.1.0"
+local VERSION = "0.2.0"
 
 local Util = LibStub("LibICUtil-1.0")
 local Test = LibStub("LibICTest-1.0")
@@ -47,7 +50,7 @@ ns.Tests = Test.New({ print = out.Print })
 --------------------------------------------------------------------------------
 
 function ns.LoadLines(version, status)
-    return { string.format("v%s loaded: %s /tuner help lists commands.", version, status) }
+    return { string.format("v%s loaded: %s /tuner opens the panel.", version, status) }
 end
 
 --------------------------------------------------------------------------------
@@ -66,7 +69,8 @@ Store.Register(addonName, {
             upscale = { last = "quality" },
         },
     },
-    charDefaults = {},
+    -- Where the panel sits, and the group it was last showing.
+    charDefaults = { panel = { group = "upscale" } },
     onReady = Env.Wrap("RenderTuner saved variables", function(db, cdb, info)
         ns.db, ns.cdb, ns.loadInfo = db, cdb, info
     end),
@@ -102,23 +106,29 @@ function ns.StatusText()
     return ns.Model.Status(knob and ns.Model.Format(knob, scale) or "?", preset, #ns.Changes())
 end
 
--- Turns the live settings into `target`. Says what it did under the name `what`.
-function ns.ApplyTarget(target, what)
+local function RefreshPanel()
+    if ns.Panel then ns.Panel.Refresh() end
+end
+
+-- Turns the live settings into `target`. Says what it did under the name `what`, unless
+-- `quiet`: a slider being dragged would fill the chat. A refusal is always said.
+function ns.ApplyTarget(target, what, quiet)
     local plan = ns.Model.Plan(target, ns.Apply.Live(), ns.Apply.Knobs())
     if #plan == 0 then
-        out.Printf("%s: nothing to change.", what)
+        if not quiet then out.Printf("%s: nothing to change.", what) end
         return 0
     end
     local done, refused = ns.Apply.Run(plan)
-    out.Printf("%s: %d %s set.", what, done, Util.Plural(done, "variable"))
+    if not quiet then out.Printf("%s: %d %s set.", what, done, Util.Plural(done, "variable")) end
     if #refused > 0 then
         out.Print("|cffff4444the client refused:|r " .. table.concat(refused, ", "))
     end
     local need = ns.Model.Restart(plan)
     if need then
         ns.pendingRestart = need
-        out.Print(ns.Model.RestartHint(need))
+        if not quiet then out.Print(ns.Model.RestartHint(need)) end
     end
+    RefreshPanel()
     return done
 end
 
@@ -128,12 +138,52 @@ function ns.ApplyPreset(preset)
     ns.ApplyTarget(target, preset.label)
 end
 
+-- One knob, from a control in the panel. The value is the variable's own, not the
+-- reversed one a slider may show.
+function ns.SetKnob(knob, value)
+    local wanted = ns.Model.Clamp(knob, value)
+    if wanted == nil then return end
+    ns.ApplyTarget({ [knob.cvar] = wanted }, knob.label, true)
+end
+
+function ns.Save()
+    local changed = #ns.Changes()
+    ns.db.saved = ns.Apply.Live()
+    out.Printf("saved, with %d %s since the last save.", changed, Util.Plural(changed, "change"))
+    RefreshPanel()
+end
+
+function ns.Revert()
+    ns.ApplyTarget(ns.db.saved, "back to the saved set")
+end
+
+function ns.Defaults()
+    ns.ApplyTarget(ns.Apply.Defaults(), "the client's defaults")
+    out.Print("Revert undoes this; Save keeps it.")
+end
+
+function ns.Restore()
+    ns.ApplyTarget(ns.db.original, "back to before RenderTuner")
+end
+
+function ns.Restart()
+    if ns.pendingRestart == "client" then
+        out.Print("that change needs the whole game restarted, which an addon cannot do.")
+        return
+    end
+    out.Print("restarting the graphics engine.")
+    ns.Apply.Restart(ns.pendingRestart or "gx")
+    ns.pendingRestart = nil
+    RefreshPanel()
+end
+
 --------------------------------------------------------------------------------
 -- Commands
 --------------------------------------------------------------------------------
 
 local HELP = {
-    { "", "the render scale, and how many settings differ from the saved set" },
+    { "", "open or close the panel" },
+    { "status", "the render scale, and how many settings differ from the saved set" },
     { "preset [name]", "list the upscaling presets, or use one" },
     { "on | off", "upscale with the last preset used, or go back to native" },
     { "list [group | changed]", "the groups, the settings in one, or the ones that differ from saved" },
@@ -151,6 +201,11 @@ local HELP = {
 local COMMANDS = {}
 
 COMMANDS[""] = function()
+    if not Ready() then return end
+    ns.Panel.Toggle()
+end
+
+COMMANDS.status = function()
     if not Ready() then return end
     out.Print(ns.StatusText())
     if ns.pendingRestart then out.Print(ns.Model.RestartHint(ns.pendingRestart)) end
@@ -252,37 +307,13 @@ COMMANDS.set = function(rest)
     ns.ApplyTarget({ [knob.cvar] = wanted }, knob.label .. " " .. ns.Model.Format(knob, wanted))
 end
 
-COMMANDS.save = function()
-    if not Ready() then return end
-    local changed = #ns.Changes()
-    ns.db.saved = ns.Apply.Live()
-    out.Printf("saved, with %d %s since the last save.", changed, Util.Plural(changed, "change"))
-end
-
-COMMANDS.revert = function()
-    if not Ready() then return end
-    ns.ApplyTarget(ns.db.saved, "back to the saved set")
-end
-
-COMMANDS.defaults = function()
-    if not Ready() then return end
-    ns.ApplyTarget(ns.Apply.Defaults(), "the client's defaults")
-    out.Print("/tuner revert undoes this; /tuner save keeps it.")
-end
-
-COMMANDS.restore = function()
-    if not Ready() then return end
-    ns.ApplyTarget(ns.db.original, "back to before RenderTuner")
-end
-
-COMMANDS.restart = function()
-    if ns.pendingRestart == "client" then
-        out.Print("that change needs the whole game restarted, which an addon cannot do.")
-        return
+-- The commands that are also buttons in the panel.
+for word, action in pairs({ save = "Save", revert = "Revert", defaults = "Defaults", restore = "Restore",
+    restart = "Restart" }) do
+    COMMANDS[word] = function()
+        if not Ready() then return end
+        ns[action]()
     end
-    out.Print("restarting the graphics engine.")
-    ns.Apply.Restart(ns.pendingRestart or "gx")
-    ns.pendingRestart = nil
 end
 
 COMMANDS.probe = function()
@@ -329,6 +360,7 @@ frame:SetScript("OnEvent", Env.Wrap("RenderTuner events", function()
     -- login the client has loaded them.
     if ns.db then
         ns.Baseline()
+        if ns.Launcher then ns.Launcher.Create() end
         for _, line in ipairs(ns.LoadLines(VERSION, ns.StatusText())) do out.Print(line) end
     end
     if slashTaken then

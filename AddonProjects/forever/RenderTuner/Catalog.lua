@@ -17,6 +17,8 @@ the addon loads, so a row here is an offer, not a promise.
         choices             for a choice: { { value, label }, ... }
         format  how a slider's value reads: "percent" (a fraction), "percent100", "fps", "nits", or nil for the number
         reversed  the variable runs backwards: shown and set as max - value
+        settle  a slider that is applied when the thumb is let go, not on every step:
+                the change rebuilds the client's render targets
         restart   what a change needs before it shows: "gx", "window" or "client"
         rank    1 and 2 are set before the rest: they are Blizzard's quality levels, and
                 the client moves other variables when they change
@@ -64,7 +66,7 @@ end
 Catalog.KNOBS = {
     -- Upscaling
     { cvar = "RenderScale", label = "Render scale", group = "upscale", kind = "slider",
-      min = 0.3334, max = 2, step = 0.01, format = "percent",
+      min = 0.3334, max = 2, step = 0.01, format = "percent", settle = true,
       help = "The size the world is drawn at, as a share of the screen. Below 100% is upscaled, above is supersampled." },
     { cvar = "ResampleQuality", label = "Resample filter", group = "upscale", kind = "choice",
       choices = { { 0, "Point" }, { 1, "Bilinear" }, { 2, "Bicubic" }, { 3, "FSR 1.0" } },

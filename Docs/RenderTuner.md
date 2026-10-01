@@ -3,8 +3,8 @@
 A graphics tuner for WoW Forever: upscaling presets, a control for every graphics console
 variable worth having, and a way to go back to what you had.
 
-**Version 0.1.0 is commands only.** The floating panel, the page in the game's Options
-window and the side-by-side comparison are built on top of it and come next.
+**Version 0.2.0 has the floating panel and the commands.** The page in the game's Options
+window and the side-by-side comparison come next.
 
 ## What the client can and cannot do
 
@@ -26,6 +26,28 @@ does, and it does not look the same.
 Extract into `_classic_beta_\Interface\AddOns` so you get `AddOns\RenderTuner\RenderTuner.toc`.
 RenderTuner needs **ICKit**, which goes beside it (`AddOns\ICKit`). Restart the client after
 installing; a `/reload` does not pick up a new addon.
+
+## The panel
+
+`/tuner` opens it, and so does a left-click on RenderTuner in the addon list beside the
+minimap. A right-click there offers the presets without opening anything. Drag the panel
+by its title bar; Escape closes it. Its place is kept per character.
+
+- **Presets** run across the top. The one in use is highlighted.
+- **Save** keeps the settings as they are now. **Revert** puts everything back to the
+  saved set. **More...** has the client's defaults, the way back to before RenderTuner,
+  and a restart of the graphics engine.
+- **Groups** are down the left, and the rows on the right are the settings of the one
+  picked. A change takes effect as you make it, with the world in view behind the panel.
+- A setting that differs from the saved set is in the accent colour, and its group shows
+  a count. The title bar reads, for example, "67% Quality, 2 unsaved".
+- **Hover a setting's name** for what it does, its console variable, and its saved value.
+  **Click the name** to put that one setting back to its saved value or the client's default.
+- **Restart graphics** appears when a change needs the graphics engine restarted before
+  it shows.
+
+The render scale slider applies when you let go of it rather than on every step, because
+each change rebuilds what the client draws into. Every other slider is live.
 
 ## Presets
 
@@ -60,7 +82,8 @@ many settings differ from the saved set.
 
 | Command | What it does |
 | --- | --- |
-| `/tuner` | The render scale, its preset, and how many settings differ from saved |
+| `/tuner` | Opens or closes the panel |
+| `/tuner status` | The render scale, its preset, and how many settings differ from saved |
 | `/tuner preset [name]` | Lists the presets, or uses one |
 | `/tuner on`, `/tuner off` | Upscale with the last preset used, or go back to native |
 | `/tuner list` | The groups, with how many settings each has and how many have changed |

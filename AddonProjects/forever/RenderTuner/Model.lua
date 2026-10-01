@@ -23,7 +23,7 @@ the way out.
     Model.Find(knobs, text), Model.Group(groups, text), Model.FindPreset(presets, text)
     Model.Preset(preset, limits, fsr) -> target
     Model.PresetOf(scale, presets, limits) -> preset or nil
-    Model.Line(knob, live, saved), Model.Status(...)
+    Model.Line(knob, live, saved), Model.Status(...), Model.Brief(...)
 ]]
 
 local Util = LibStub("LibICUtil-1.0")
@@ -258,4 +258,12 @@ function Model.Status(scaleText, preset, changed)
     end
     return string.format("%s, %d %s from the saved set.", text, changed,
         changed == 1 and "setting differs" or "settings differ")
+end
+
+-- The same, short enough for a title bar: "67% Quality, 2 unsaved".
+function Model.Brief(scaleText, preset, changed)
+    local text = scaleText
+    if preset then text = text .. " " .. preset.label end
+    if changed > 0 then text = text .. string.format(", %d unsaved", changed) end
+    return text
 end

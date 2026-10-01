@@ -304,6 +304,8 @@ T.Case("Model.Line, Status: lines of text", function()
     T.Eq(Model.Status("67%", { label = "Quality" }, 0), "render scale 67% (Quality), everything as saved.", "settled")
     T.Eq(Model.Status("80%", nil, 1), "render scale 80%, 1 setting differs from the saved set.", "one change")
     T.Eq(Model.Status("80%", nil, 3), "render scale 80%, 3 settings differ from the saved set.", "several")
+    T.Eq(Model.Brief("67%", { label = "Quality" }, 0), "67% Quality", "short, for a title bar")
+    T.Eq(Model.Brief("80%", nil, 2), "80%, 2 unsaved", "with what is unsaved")
     T.True(Model.RestartHint("gx"):find("/tuner restart", 1, true), "a restart hint names the command")
     T.Eq(Model.RestartHint(nil), nil, "no need, no hint")
 end)
@@ -314,24 +316,24 @@ end)
 
 T.Case("LoadLines: the version and where things stand", function()
     T.Eq(ns.LoadLines("0.1.0", "render scale 67% (Quality), everything as saved.")[1],
-        "v0.1.0 loaded: render scale 67% (Quality), everything as saved. /tuner help lists commands.", "one line")
+        "v0.1.0 loaded: render scale 67% (Quality), everything as saved. /tuner opens the panel.", "one line")
 end)
 
 --------------------------------------------------------------------------------
--- The commands against a made-up client
+-- The commands and the panel against a made-up client
 --------------------------------------------------------------------------------
 
--- In game this would change the player's real settings, so it runs only under the
+-- In game these would change the player's real settings, so they run only under the
 -- harness. The client here is a table of console variables that answers the four calls
 -- Apply.lua makes.
 if IC_HEADLESS then
-    T.Case("Commands: presets, set, save, revert and restore against a made-up client", function()
+    local function WithClient(body)
         local cvars, sets = {}, {}
         for _, knob in ipairs(Catalog.KNOBS) do cvars[knob.cvar] = "1" end
         cvars.RenderScale, cvars.ResampleQuality, cvars.ResampleSharpness = "1", "2", "0.2"
         cvars.MSAAQuality = "3,0"
 
-        local real = { C_CVar = C_CVar, min = GetMinRenderScale, max = GetMaxRenderScale, db = ns.db }
+        local real = { C_CVar = C_CVar, min = GetMinRenderScale, max = GetMaxRenderScale, db = ns.db, cdb = ns.cdb }
         C_CVar = {
             GetCVar = function(name) return cvars[name] end,
             GetCVarDefault = function(name) return cvars[name] and "0" or nil end,
@@ -349,9 +351,19 @@ if IC_HEADLESS then
         GetMinRenderScale = function() return 0.33333334326744 end
         GetMaxRenderScale = function() return 2 end
         ns.db = { settings = { debug = false, upscale = { last = "quality" } } }
+        ns.cdb = { panel = { group = "upscale" } }
 
-        local run = SlashCmdList.RENDERTUNER
-        local ok, err = pcall(function()
+        local ok, err = pcall(body, cvars, sets, SlashCmdList.RENDERTUNER)
+
+        if ns.Panel.IsShown() then ns.Panel.Toggle() end
+        C_CVar, GetMinRenderScale, GetMaxRenderScale = real.C_CVar, real.min, real.max
+        ns.db, ns.cdb = real.db, real.cdb
+        ns.pendingRestart = nil
+        if not ok then error(err, 0) end
+    end
+
+    T.Case("Commands: presets, set, save, revert and restore against a made-up client", function()
+        WithClient(function(cvars, sets, run)
             local knobs = ns.Apply.Knobs()
             T.Eq(#knobs, #Catalog.KNOBS - 1, "the secure variable is not offered")
             T.Eq(Model.Find(knobs, "ffxNether"), nil, "by name")
@@ -405,14 +417,64 @@ if IC_HEADLESS then
             run("list upscale")
             run("list changed")
             run("preset")
-            run("")
+            run("status")
 
             run("defaults")
             T.Eq(cvars.Gamma, "0", "defaults come from the client")
         end)
+    end)
 
-        C_CVar, GetMinRenderScale, GetMaxRenderScale, ns.db = real.C_CVar, real.min, real.max, real.db
-        ns.pendingRestart = nil
-        if not ok then error(err, 0) end
+    T.Case("Panel: a row for each knob of the group in view, and a control sets its variable", function()
+        WithClient(function(cvars, sets, run)
+            ns.Baseline()
+            run("")
+            T.True(ns.Panel.IsShown(), "the bare command opens the panel")
+            local made, showing = ns.Panel.Counts()
+            T.Eq(showing, 6, "the upscaling group's six knobs")
+            T.Eq(made, 6, "and no row for a group not yet looked at")
+
+            -- A slider row: the control reports what the player reads, the variable gets its own.
+            local sharp = ns.Panel.Row("ResampleSharpness")
+            T.Near(sharp.control:GetValue(), 1.8, "a reversed knob shows from the other end")
+            sharp.control.inner:GetScript("OnValueChanged")(sharp.control.inner, 1.5)
+            T.Eq(cvars.ResampleSharpness, "0.5", "and sets the variable the right way round")
+            T.Eq(sharp.name.icTextRole, "accent", "a row that differs from saved is marked")
+
+            -- The render scale waits for the thumb to be let go.
+            local scale = ns.Panel.Row("RenderScale")
+            local before = #sets
+            scale.control.inner:GetScript("OnMouseDown")(scale.control.inner)
+            scale.control.inner:GetScript("OnValueChanged")(scale.control.inner, 0.8)
+            T.Eq(#sets, before, "nothing is set while it is held")
+            scale.control.inner:GetScript("OnMouseUp")(scale.control.inner)
+            T.Eq(cvars.RenderScale, "0.8", "it is set on release")
+
+            -- A toggle and a choice, in groups that are made when first shown.
+            ns.Panel.ShowGroup("frame")
+            T.Eq(ns.cdb.panel.group, "frame", "the group in view is remembered")
+            local vsync = ns.Panel.Row("vsync")
+            T.Eq(vsync.control:GetChecked(), true, "a toggle shows what is live")
+            vsync.control:GetScript("OnClick")(vsync.control)
+            T.Eq(cvars.vsync, "0", "a click sets it")
+            T.Eq(ns.pendingRestart, "window", "and what it needs is remembered")
+
+            ns.Panel.ShowGroup("aa")
+            local msaa = ns.Panel.Row("MSAAQuality")
+            T.Eq(msaa.control:GetValue(), 3, "a choice shows what is live, read as a number")
+            T.Eq(msaa.control.label:GetText(), "8x", "by its label")
+
+            -- Every group builds.
+            for _, group in ipairs(Catalog.GROUPS) do ns.Panel.ShowGroup(group.key) end
+            made = ns.Panel.Counts()
+            T.Eq(made, #ns.Apply.Knobs(), "a row for every knob once every group has been seen")
+
+            run("revert")
+            T.Eq(cvars.ResampleSharpness, "0.2", "revert from the command line reaches the same settings")
+            ns.Panel.ShowGroup("upscale")
+            T.Eq(ns.Panel.Row("ResampleSharpness").name.icTextRole, "text", "and the panel shows it")
+
+            run("")
+            T.Eq(ns.Panel.IsShown(), false, "the bare command closes it again")
+        end)
     end)
 end
