@@ -17,12 +17,24 @@ the client after installing; a `/reload` does not pick up a new addon.
 
 ```
 /ickit                  the kit's version, the client build, and how often its saved tables have loaded
+/ickit theme [name]     the look of every addon on the kit; no name lists the themes
+/ickit gallery          one of every widget, to look at
 /ickit probe            check what this client offers and save the answers
 /ickit profile [reset]  what the kit's handlers have cost: calls, time, memory
 /ickit test             run the built-in checks
 /ickit debug on|off     maintainer lines in chat
 /ickit help
 ```
+
+### Themes
+
+Every addon built on the kit is drawn in one theme, chosen for the whole account:
+**Impulse Control** (the default: navy, gold and bone), **Plain** (charcoal with the game's
+own yellow) and **Paper** (dark ink on a yellow sticky note). `/ickit theme paper` switches,
+and everything on screen repaints at once. The start of a name is enough.
+
+`/ickit gallery` opens a small panel with one of every widget in the current theme. Drag it
+by its title bar; where you leave it is remembered per character.
 
 ### The probe
 
@@ -50,8 +62,11 @@ should not. The counters cost two clock reads a call and need no console variabl
 | LibICEnv-1.0 | 1 | What this client offers (build, a feature probe) and what handlers cost (call and time counters, memory) |
 | LibICStore-1.0 | 1 | Saved variables: defaults, schema, migrations, and whether the file really loaded |
 | LibICConsole-1.0 | 1 | Prefixed printing and the slash-command dispatcher with its help |
+| LibICTheme-1.0 | 1 | The theme registry: colour and font roles, the selected theme, change listeners |
+| LibICWidgets-1.0 | 1 | Themed frames drawn from colour textures: panel, label, button, check box, edit box, tooltip, menu, confirm |
 
-The libraries never print. An addon decides what to say, in its own voice.
+The libraries never print. An addon decides what to say, in its own voice. Only
+LibICWidgets creates frames, apart from the store's one event frame.
 
 The MINOR goes up whenever a library's API changes. Bump it in the library source and in
 this table together; `scripts/lint.py` fails when the two disagree.
@@ -181,6 +196,64 @@ Console.Slash({
 
 A command is `fn(rest, cmd)`. The bare command is the `""` entry. A word with no entry
 prints the help.
+
+## LibICTheme-1.0
+
+```lua
+local Theme = LibStub("LibICTheme-1.0")
+```
+
+A theme is a table of named roles. A widget asks for `ground` or `accent` and draws
+whatever the selected theme says that is, so an addon never holds a colour of its own.
+
+| Call | What it does |
+| --- | --- |
+| `Theme.Register(name, def)` | Adds a theme. Any role `def` leaves out is filled from the default, so a role added later never leaves an older theme without it. `logo = false` says the theme has no mark. |
+| `Theme.Get(name)` | The theme, or nil. |
+| `Theme.Current()` | `theme, name`: the selected one, or the default. |
+| `Theme.Select(name)` | Selects it and returns whether the name is a theme. Listeners run only when it changed. |
+| `Theme.Find(text)` | A theme name from what a player typed: any case, or the start of exactly one name. |
+| `Theme.Names()` | The names, sorted. |
+| `Theme.OnChange(fn)` | `fn(theme, name)` on every change. Returns a function that stops the listening. |
+| `Theme.Hex(color)` | A `\|cffrrggbb` code. |
+
+`theme = { name, label, logo, colors, fonts }`. Colour roles: `ground` (a panel), `raised`
+(a title bar), `field` (somewhere to type or tick), `edge`, `text`, `textDim`,
+`textDisabled`, `done` (a finished line), `accent`, `accentHover`, `accentText`, `danger`,
+`dangerHover`, `dangerText`, `button`, `buttonHover`, `buttonText`, `hover`, `selected`,
+`check`. Each is `{ r, g, b, a }`. Font roles: `body`, `title`, `small`, `button`.
+
+The kit itself saves the choice (`ICKitDB.settings.theme`) and applies it at load; an addon
+does not select a theme, it only draws in the current one.
+
+## LibICWidgets-1.0
+
+```lua
+local W = LibStub("LibICWidgets-1.0")
+```
+
+Only what an addon has needed so far. Every widget is drawn from colour textures, uses no
+Blizzard frame template, repaints when the theme changes, and runs no `OnUpdate`.
+
+| Call | What you get |
+| --- | --- |
+| `W.Panel(parent, opts)` | A filled, edged frame. `opts`: `width`, `height`, `strata`, `role` (`ground`, `raised`, `field`), `edge = false`, `movable = true` with `onMoved(panel)`. `panel:SetLocked(true)` pins it. |
+| `W.DragHandle(handle, panel)` | Makes a child, a title bar usually, drag its panel. |
+| `W.Label(parent, text, opts)` | A font string. `opts`: `font` role, `color` role, `justify`, `wrap`. `label:SetRole(color)` recolours it. |
+| `W.Button(parent, text, w, h, opts)` | `opts.kind` is `normal`, `accent`, `danger` or `flat` (no fill until hovered); `opts.onClick`. `b:SetLabel(text)`, `b:SetKind(kind)`. |
+| `W.CheckBox(parent, opts)` | `opts`: `size`, `checked`, `onClick(checked, box)`. `box:SetChecked(on)`, `box:GetChecked()`. A click calls `onClick`; `SetChecked` does not. |
+| `W.EditBox(parent, w, h, opts)` | One line. `opts`: `maxBytes`, `placeholder`, `onEnter(text, box)`, `onEscape(box)`, `onFocusLost(box)`. Escape always drops focus. |
+| `W.Tooltip(frame, builder)` | `builder(GameTooltip, frame)` adds the lines; nil removes it. It hooks, so a button keeps its hover highlight. |
+| `W.Menu(owner, items)` | A context menu. Items: `{ title }`, `{ text, onClick }`, `{ text, checked = fn, onClick }`, `{ divider = true }`. |
+| `W.Confirm(text, onAccept)` | A yes/no dialog. |
+| `W.GetPlace(frame)` / `W.SetPlace(frame, fx, fy)` | Where a frame's top-left sits, as fractions of the screen. Save these, not pixels: they survive a change of resolution or interface scale. `SetPlace` holds the whole frame on screen. |
+| `W.Repaint()` | Redraws everything in the current theme. |
+
+An edit box with focus takes every key, movement included. An addon that shows one drops
+its focus (`box:ClearFocus()`) when combat starts.
+
+`Gallery.lua` in the kit is the worked example: a movable panel with a title bar that drags
+it, its place saved per character, a menu and a confirm.
 
 ## Running the cases
 

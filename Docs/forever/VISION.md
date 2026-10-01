@@ -43,8 +43,8 @@ the layers it needs exist.
 | 1 | `LibICEnv-1.0` | What this client offers: build, feature probe, CPU and memory | shipped in ICKit 0.2.0 |
 | 1 | `LibICStore-1.0` | Saved variables: defaults, schema, migrations, the load check | shipped in ICKit 0.2.0 |
 | 1 | `LibICConsole-1.0` | Printing and slash commands | shipped in ICKit 0.2.0 |
-| 1 | `LibICTheme-1.0` | The theme registry: palettes, fonts, textures, change callbacks | after the probe |
-| 2 | `LibICWidgets-1.0` | Themed frames: panel, button, check box, edit box, label | after the probe |
+| 1 | `LibICTheme-1.0` | The theme registry: colour and font roles, change listeners | shipped in ICKit 0.3.0 |
+| 2 | `LibICWidgets-1.0` | Themed frames: panel, label, button, check box, edit box, tooltip, menu, confirm | shipped in ICKit 0.3.0 |
 
 All of them live in one library addon, [ICKit](../ICKit.md). A library is added when an
 addon needs it and not before.
@@ -55,8 +55,9 @@ addon needs it and not before.
    knowing about it. *(done: ICKit 0.1.0)*
 2. **Layer 1 and the probe.** `/ickit probe` records what this client offers into the
    kit's saved variables, and `/ickit profile` reports CPU and memory. The findings decide
-   how the widgets are drawn. *(built: ICKit 0.2.0; the findings are still to come)*
+   how the widgets are drawn. *(done: ICKit 0.2.0; the findings are in [client-reference.md](../client-reference.md))*
 3. **Themes and widgets.** The smallest set the first addon needs, with a gallery command.
+   *(built: ICKit 0.3.0)*
 4. **Stickies.** The first addon: small draggable notes that stay on screen, each a title
    and a checklist. A note belongs to one character or to the whole account.
 5. **A Forever addon template,** cut from Stickies once it works, so the next addon starts

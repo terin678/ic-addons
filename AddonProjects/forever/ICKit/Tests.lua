@@ -354,6 +354,120 @@ T.Case("Console.Dispatcher: a known word runs its command, anything else prints 
 end)
 
 --------------------------------------------------------------------------------
+-- LibICTheme
+--------------------------------------------------------------------------------
+
+local Theme = LibStub("LibICTheme-1.0")
+
+T.Case("Theme.Register: a theme inherits every role it does not set", function()
+    local base = Theme.Get("Impulse Control")
+    local t = Theme.Register("Case Theme", { logo = false, colors = { accent = { r = 0, g = 1, b = 0 } } })
+    T.Eq(t.colors.accent.g, 1, "its own accent")
+    T.Eq(t.colors.accent.a, 1, "with the alpha filled in")
+    T.Eq(t.colors.ground.r, base.colors.ground.r, "the ground it did not set is the default's")
+    T.Eq(t.fonts.body, "GameFontHighlightSmall", "and so are the fonts")
+    T.Eq(t.logo, false, "a theme may say it has no mark")
+    T.True(base.logo:find("ICKit", 1, true), "the default's mark ships in the kit's own folder")
+    t.colors.ground.r = 0.5
+    T.True(base.colors.ground.r ~= 0.5, "and the colours are copies, not the default's own tables")
+    Theme.themes["Case Theme"] = nil
+end)
+
+T.Case("Theme.Select: listeners hear a change once, an unknown name is refused", function()
+    local _, before = Theme.Current()
+    local other = (before == "Plain") and "Paper" or "Plain"
+    local heard = {}
+    local stop = Theme.OnChange(function(_, name) heard[#heard + 1] = name end)
+
+    T.Eq(Theme.Select(other), true, "a real theme is selected")
+    T.Eq(heard[1], other, "and the listener is told which")
+    T.Eq(Theme.Select(other), true, "selecting it again is fine")
+    T.Eq(#heard, 1, "and silent: nothing changed")
+    T.Eq(Theme.Select("No Such Theme"), false, "an unknown name is refused")
+    T.Eq(select(2, Theme.Current()), other, "leaving the selection where it was")
+
+    stop()
+    Theme.Select(before)
+    T.Eq(#heard, 1, "a listener that stopped hears nothing more")
+    T.Eq(select(2, Theme.Current()), before, "and the theme is back as it was found")
+end)
+
+T.Case("Theme: the names, a name as typed, and a colour code", function()
+    T.Eq(table.concat(Theme.Names(), ","), "Impulse Control,Paper,Plain", "three ship, in order")
+    T.Eq(Theme.Find("paper"), "Paper", "case does not matter")
+    T.Eq(Theme.Find("  IMPULSE control "), "Impulse Control", "nor do stray spaces")
+    T.Eq(Theme.Find("imp"), "Impulse Control", "the start of one name is enough")
+    T.Eq(Theme.Find("p"), nil, "the start of two is not")
+    T.Eq(Theme.Find(""), nil, "nothing typed is no theme")
+    T.Eq(Theme.Find("neon"), nil, "and neither is one that does not exist")
+    T.Eq(Theme.Hex({ r = 0.875, g = 0.612, b = 0.2 }), "|cffdf9c33", "the gold as a colour code")
+    T.Eq(Theme.DEFAULT, "Impulse Control", "the default is the guild's")
+end)
+
+--------------------------------------------------------------------------------
+-- LibICWidgets
+--------------------------------------------------------------------------------
+
+local W = LibStub("LibICWidgets-1.0")
+
+T.Case("Widgets: a place is a fraction of the screen, held on it", function()
+    local fx, fy = W.ToFraction(480, 270, 1920, 1080)
+    T.Near(fx, 0.25, "a quarter in")
+    T.Near(fy, 0.25, "a quarter down")
+    fx, fy = W.ToFraction(100, 100, 0, 0)
+    T.Eq(fx, 0, "a screen with no size gives the corner")
+    T.Eq(fy, 0, "rather than a division by zero")
+
+    fx, fy = W.ClampFraction(0.95, -0.2, 0.1, 0.2)
+    T.Near(fx, 0.9, "pulled back so the right edge stays on")
+    T.Near(fy, 0, "and down from above the top")
+    fx, fy = W.ClampFraction(0.5, 0.9, 0.1, 0.2)
+    T.Near(fx, 0.5, "inside is left alone")
+    T.Near(fy, 0.8, "the bottom edge is held too")
+    fx, fy = W.ClampFraction(0.5, 0.5, 1.5, 1.5)
+    T.Eq(fx, 0, "a frame bigger than the screen sits at the corner")
+    T.Eq(fy, 0, "both ways")
+    fx, fy = W.ClampFraction(nil, "x", 0.1, 0.1)
+    T.Eq(fx, 0, "a place that was never saved is the corner")
+    T.Eq(fy, 0, "not an error")
+end)
+
+T.Case("Widgets: each one builds, keeps its state, and repaints", function()
+    local p = W.Panel(nil, { width = 120, height = 60, movable = true })
+    p:Hide()
+    T.Eq(p.icRole, "ground", "a panel is ground unless told otherwise")
+    p:SetLocked(true)
+    T.Eq(p.icLocked, true, "and can be pinned")
+
+    local label = W.Label(p, "a line")
+    label:SetRole("done")
+    T.Eq(label.icColor, "done", "a label changes role")
+
+    local b = W.Button(p, "ok", 60, 20, { kind = "accent" })
+    b:SetKind("danger")
+    T.Eq(b.icKind, "danger", "a button changes kind")
+
+    local clicks = {}
+    local box = W.CheckBox(p, { onClick = function(on) clicks[#clicks + 1] = on end })
+    T.Eq(box:GetChecked(), false, "a box starts unticked")
+    box:SetChecked(true)
+    T.Eq(box:GetChecked(), true, "ticks when told")
+    T.Eq(#clicks, 0, "without calling the click handler")
+    box:GetScript("OnClick")(box)
+    T.Eq(box:GetChecked(), false, "a click flips it")
+    T.Eq(clicks[1], false, "and says what it became")
+
+    local typed
+    local edit = W.EditBox(p, 100, 18, { maxBytes = 40, onEnter = function(text) typed = text end })
+    edit:SetText("raid prep")
+    edit:GetScript("OnEnterPressed")(edit)
+    T.Eq(typed, "raid prep", "Enter hands over what was typed")
+
+    W.Repaint()
+    T.Eq(box:GetChecked(), false, "and a repaint changes no state")
+end)
+
+--------------------------------------------------------------------------------
 -- The addon itself
 --------------------------------------------------------------------------------
 
