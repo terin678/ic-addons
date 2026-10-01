@@ -250,14 +250,23 @@ end
 
 local function RepaintButton(b, theme)
     local fill, text, edge = ButtonColors(theme, b.icKind, b.icHover == true)
+    -- A text role of its own outranks the kind's: a list row that is a button keeps the
+    -- colour of the thing it shows, hovered or not.
+    if b.icTextRole then text = theme.colors[b.icTextRole] or text end
     Paint(b, fill, edge)
     b.label:SetTextColor(text.r, text.g, text.b, text.a or 1)
 end
 
 --[[
-opts = { kind = "normal" | "accent" | "danger" | "flat", onClick = fn(button, mouseButton) }
-"flat" has no fill or edge until hovered: for a small control inside a title bar.
-b:SetLabel(text) and b:SetKind(kind) change it afterwards.
+opts = {
+    kind = "normal" | "accent" | "danger" | "flat",
+    onClick = fn(button, mouseButton),
+    justify = "LEFT",           -- the text hugs the left edge and is cut, not wrapped
+    font = a font role,         -- "button" by default
+    textRole = a colour role,   -- the text's own colour, whatever the kind says
+}
+"flat" has no fill or edge until hovered: for a small control inside a title bar, or a
+row of a list. b:SetLabel(text), b:SetKind(kind) and b:SetTextRole(role) change it afterwards.
 ]]
 function W.Button(parent, text, w, h, opts)
     opts = opts or {}
@@ -267,8 +276,16 @@ function W.Button(parent, text, w, h, opts)
     Skin(b)
     b.icKind = opts.kind or "normal"
     b.icHover = false
-    b.label = b:CreateFontString(nil, "OVERLAY", theme.fonts.button)
-    b.label:SetPoint("CENTER", b, "CENTER", 0, 0)
+    b.icTextRole = opts.textRole or false
+    b.label = b:CreateFontString(nil, "OVERLAY", theme.fonts[opts.font or "button"])
+    if opts.justify == "LEFT" then
+        b.label:SetPoint("LEFT", b, "LEFT", 4, 0)
+        b.label:SetPoint("RIGHT", b, "RIGHT", -4, 0)
+        b.label:SetJustifyH("LEFT")
+        b.label:SetWordWrap(false)
+    else
+        b.label:SetPoint("CENTER", b, "CENTER", 0, 0)
+    end
     b.label:SetText(text or "")
 
     function b:SetLabel(newText)
@@ -277,6 +294,11 @@ function W.Button(parent, text, w, h, opts)
 
     function b:SetKind(kind)
         self.icKind = kind or "normal"
+        RepaintButton(self, (Theme.Current()))
+    end
+
+    function b:SetTextRole(role)
+        self.icTextRole = role or false
         RepaintButton(self, (Theme.Current()))
     end
 
