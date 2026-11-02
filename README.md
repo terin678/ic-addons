@@ -115,6 +115,8 @@ request. Development happens on branches:
 | anniversary | [GuildRecruitment](AddonProjects/anniversary/GuildRecruitment) | One recruitment message the raid leaders set and every officer sends, kept in step across the guild, with a log of who barked when. Guide: [Docs/GuildRecruitment.md](Docs/GuildRecruitment.md) |
 | anniversary | [JamminWithJam](AddonProjects/anniversary/JamminWithJam) | Guild soundboard: chat triggers a sound in the Discord voice channel via a companion bot. Guide: [Docs/JamminWithJam.md](Docs/JamminWithJam.md) |
 | forever | [ICKit](AddonProjects/forever/ICKit) | The shared kit under the WoW Forever addons: small libraries added one layer at a time. Guide: [Docs/ICKit.md](Docs/ICKit.md). Start with [Docs/forever/VISION.md](Docs/forever/VISION.md) |
+| forever | [Stickies](AddonProjects/forever/Stickies) | Sticky notes that stay on screen: a title and a checklist, per character or shared across the account. Guide: [Docs/Stickies.md](Docs/Stickies.md) |
+| forever | [RenderTuner](AddonProjects/forever/RenderTuner) | Tunes the client's rendering: upscaling presets and a control for every graphics console variable. A floating panel with search, upscaling and quality presets, and commands so far. Guide: [Docs/RenderTuner.md](Docs/RenderTuner.md) |
 
 ## Client paths on the maintainer's machine
 

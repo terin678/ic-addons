@@ -74,6 +74,65 @@ The interface source is exported at `_classic_beta_\BlizzardInterfaceCode` (laun
 `-console`, then `ExportInterfaceFiles code` at the login screen; it cannot be run in
 game). Grep it before using an API the probe did not cover, and re-export after a patch.
 
+### Rendering and console variables on forever
+
+Found by `/tuner probe` and `/tuner capture` in RenderTuner (1.60.1, D3D12, RTX 4090).
+
+**There is no DLSS, DLAA, XeSS, or FSR 2 and later.** `WowB.exe` holds none of their
+strings and no upscaler library ships with the client. The only upscaler is FSR 1.0,
+`ResampleQuality` 3, used when `RenderScale` is under 1. Low latency is NVIDIA Reflex and
+Intel XeLL (`LowLatencyMode`), which do not add frames.
+
+**Listing console variables.** `ConsoleGetAllCommands()` is a global (there is no
+`C_Console`) and returns every command as `{ command, help, category, commandType }`. This
+client has 1,807 console variables; 186 are in category 1 (Graphics), and several that
+matter for graphics are in category 5 (Default) with no help text: `RenderScale`,
+`ffxAntiAliasingMode`, `MSAAQuality`, `vsync`, every `graphics*` quality level, `farclip`,
+the shadow variables. The category alone does not find "everything graphics".
+`C_CVar.GetCVarInfo(name)` returns value, default, two server-storage flags, then locked,
+secure and read-only; an addon may set a variable only when the last three are false. Of
+the Graphics category only `colorblindSimulator`, `colorblindWeaknessFactor` and `daltonize`
+are secure.
+
+**Values come back as text** and not always as one number: `MSAAQuality` reads `"3"` or
+`"3,0"` (level, coverage), `RenderScale` reads `"0.670000"`. Compare as numbers.
+`GetMinRenderScale()` is 0.33333334 and `GetMaxRenderScale()` is 2; a value written back
+with fewer digits than the floor is under it, so round the floor up.
+`MultiSampleAntiAliasingSupported()` returns triples of quality text, samples and coverage:
+`"1,0", 2, 2, "2,0", 4, 4, "3,0", 8, 8`. `AntiAliasingSupported()` returns three flags for
+FXAA, CMAA and CMAA2.
+
+**An addon can capture the world into a texture.** `C_ReportSystem.TakeReportScreenshot()`
+is not restricted. `REPORT_SCREENSHOT_READY` fires about 0.03 seconds later, and
+`C_ReportSystem.SetScreenshotPreviewTexture(texture)` then puts the capture on any
+texture, where `GetTexture()` reads `DrawInternalScreenshotCapture_0`. The capture is the
+world only, with no interface in it, covers the whole screen, and lines up with the live
+picture when the texture fills `UIParent`; shown on half the screen with
+`SetTexCoord(0, 0.5, 0, 1)` it was as sharp as the live half on a 3840 by 2160 screen. No
+sound plays and no Blizzard window opens. The photo-sharing twin of this
+(`C_PhotoSharing.TakePhoto`) does nothing here: `C_PhotoSharing.IsEnabled()` is false and
+`PhotoSharingFrame` does not exist.
+
+**What a machine supports.** `IsGraphicsCVarValueSupported(cvar, value)` is the check the
+game's graphics page greys its options out with. It returns 0 for a value that is fine and
+otherwise an index into a list of `VRN_*` global strings (`VRN_ILLEGAL`, `VRN_UNSUPPORTED`,
+`VRN_NEEDS_RT`, and so on; the order is at the top of
+`Blizzard_SettingsDefinitions_Shared/Graphics.lua`). Blizzard asks it only about
+`LowLatencyMode`, `textureFilteringMode`, `shadowrt`, `vrsValar` and `msaaAlphaTest`; what
+it answers for any other variable is not known, so do not ask. Ray traced shadows cannot
+be changed on this client at present. `IsGraphicsSettingValueSupported(cvar, value, raid)`
+is the twin for the `graphics*` quality levels.
+
+**Quality levels.** Setting a `graphics*` level (`graphicsShadowQuality`) does move the raw
+variables beneath it. Setting the overall `graphicsQuality` does not move the other
+levels: the graphics page does that in Lua, asking
+`GetGraphicsCVarValueForQualityLevel(cvar, level, raid)` for each one.
+
+**`DynamicRenderScale` has crashed this client.** Its own help text calls it a beta feature.
+
+`MinimalSliderTemplate`, `MinimalSliderWithSteppersTemplate` and the `OffScreenFrame` frame
+type can all be created. `RestartGx` and `UpdateWindow` are globals.
+
 ## APIs known to work on anniversary (20506)
 
 - `C_Container.GetContainerNumSlots` / `GetContainerItemInfo` (returns a table)

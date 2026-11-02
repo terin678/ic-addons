@@ -354,6 +354,347 @@ T.Case("Console.Dispatcher: a known word runs its command, anything else prints 
 end)
 
 --------------------------------------------------------------------------------
+-- LibICTheme
+--------------------------------------------------------------------------------
+
+local Theme = LibStub("LibICTheme-1.0")
+
+T.Case("Theme.Register: a theme inherits every role it does not set", function()
+    local base = Theme.Get(Theme.DEFAULT)
+    local t = Theme.Register("Case Theme", { colors = { accent = { r = 0, g = 1, b = 0 } } })
+    T.Eq(t.colors.accent.g, 1, "its own accent")
+    T.Eq(t.colors.accent.a, 1, "with the alpha filled in")
+    T.Eq(t.colors.ground.r, base.colors.ground.r, "the ground it did not set is the default's")
+    T.Eq(t.fonts.body, "GameFontHighlightSmall", "and so are the fonts")
+    T.Eq(t.logo, false, "a theme has no mark unless it names one")
+    T.Eq(base.logo, false, "the default carries no guild's mark")
+    T.True(Theme.Get("Impulse Control").logo:find("ICKit", 1, true), "the guild theme's mark ships in the kit's own folder")
+    t.colors.ground.r = 0.5
+    T.True(base.colors.ground.r ~= 0.5, "and the colours are copies, not the default's own tables")
+    Theme.themes["Case Theme"] = nil
+end)
+
+T.Case("Theme.Select: listeners hear a change once, an unknown name is refused", function()
+    local _, before = Theme.Current()
+    local other = (before == "Paper") and "Impulse Control" or "Paper"
+    local heard = {}
+    local stop = Theme.OnChange(function(_, name) heard[#heard + 1] = name end)
+
+    T.Eq(Theme.Select(other), true, "a real theme is selected")
+    T.Eq(heard[1], other, "and the listener is told which")
+    T.Eq(Theme.Select(other), true, "selecting it again is fine")
+    T.Eq(#heard, 1, "and silent: nothing changed")
+    T.Eq(Theme.Select("No Such Theme"), false, "an unknown name is refused")
+    T.Eq(select(2, Theme.Current()), other, "leaving the selection where it was")
+
+    stop()
+    Theme.Select(before)
+    T.Eq(#heard, 1, "a listener that stopped hears nothing more")
+    T.Eq(select(2, Theme.Current()), before, "and the theme is back as it was found")
+end)
+
+T.Case("Theme: the names, a name as typed, and a colour code", function()
+    T.Eq(table.concat(Theme.Names(), ","), "Forever,Impulse Control,Paper", "three ship, in order")
+    T.Eq(Theme.Find("paper"), "Paper", "case does not matter")
+    T.Eq(Theme.Find("  IMPULSE control "), "Impulse Control", "nor do stray spaces")
+    T.Eq(Theme.Find("imp"), "Impulse Control", "the start of one name is enough")
+    Theme.Register("Forest", {})
+    T.Eq(Theme.Find("for"), nil, "the start of two is not")
+    T.Eq(Theme.Find("forest"), "Forest", "though the whole of one still is")
+    Theme.themes["Forest"] = nil
+    T.Eq(Theme.Find(""), nil, "nothing typed is no theme")
+    T.Eq(Theme.Find("neon"), nil, "and neither is one that does not exist")
+    T.Eq(Theme.Hex({ r = 1, g = 0.82, b = 0 }), "|cffffd100", "the game's gold as a colour code")
+    T.Eq(Theme.DEFAULT, "Forever", "the default is the game's own look, not a guild's")
+    T.Eq(Theme.Get("Forever").colors.accent.g, 0.82, "with that gold as its accent")
+end)
+
+T.Case("Kit: a theme is saved only when it was chosen", function()
+    -- Against a table of its own, and the live theme put back before anything is
+    -- asserted, so a failure here cannot leave the player's theme changed.
+    local _, before = Theme.Current()
+    local settings = {}
+    local picked = ns.SetTheme("Paper", settings)
+    local savedAfterPick = settings.theme
+    local refused = ns.SetTheme("Neon", settings)
+    local savedAfterRefusal = settings.theme
+    local back = ns.SetTheme(nil, settings)
+    local savedAfterDefault = settings.theme
+    Theme.Select(before)
+
+    T.Eq(picked, "Paper", "a real theme is selected")
+    T.Eq(savedAfterPick, "Paper", "and remembered")
+    T.Eq(refused, nil, "an unknown one is refused")
+    T.Eq(savedAfterRefusal, "Paper", "leaving the choice alone")
+    T.Eq(back, Theme.DEFAULT, "no name goes back to the default")
+    T.Eq(savedAfterDefault, nil, "and forgets the choice, so a later default is followed")
+end)
+
+--------------------------------------------------------------------------------
+-- LibICWidgets
+--------------------------------------------------------------------------------
+
+local W = LibStub("LibICWidgets-1.0")
+
+T.Case("Widgets: a place is a fraction of the screen, held on it", function()
+    local fx, fy = W.ToFraction(480, 270, 1920, 1080)
+    T.Near(fx, 0.25, "a quarter in")
+    T.Near(fy, 0.25, "a quarter down")
+    fx, fy = W.ToFraction(100, 100, 0, 0)
+    T.Eq(fx, 0, "a screen with no size gives the corner")
+    T.Eq(fy, 0, "rather than a division by zero")
+
+    fx, fy = W.ClampFraction(0.95, -0.2, 0.1, 0.2)
+    T.Near(fx, 0.9, "pulled back so the right edge stays on")
+    T.Near(fy, 0, "and down from above the top")
+    fx, fy = W.ClampFraction(0.5, 0.9, 0.1, 0.2)
+    T.Near(fx, 0.5, "inside is left alone")
+    T.Near(fy, 0.8, "the bottom edge is held too")
+    fx, fy = W.ClampFraction(0.5, 0.5, 1.5, 1.5)
+    T.Eq(fx, 0, "a frame bigger than the screen sits at the corner")
+    T.Eq(fy, 0, "both ways")
+    fx, fy = W.ClampFraction(nil, "x", 0.1, 0.1)
+    T.Eq(fx, 0, "a place that was never saved is the corner")
+    T.Eq(fy, 0, "not an error")
+end)
+
+T.Case("Widgets: each one builds, keeps its state, and repaints", function()
+    local p = W.Panel(nil, { width = 120, height = 60, movable = true })
+    p:Hide()
+    T.Eq(p.icRole, "ground", "a panel is ground unless told otherwise")
+    p:SetLocked(true)
+    T.Eq(p.icLocked, true, "and can be pinned")
+
+    local label = W.Label(p, "a line")
+    label:SetRole("done")
+    T.Eq(label.icColor, "done", "a label changes role")
+
+    local b = W.Button(p, "ok", 60, 20, { kind = "accent" })
+    b:SetKind("danger")
+    T.Eq(b.icKind, "danger", "a button changes kind")
+
+    local clicks = {}
+    local box = W.CheckBox(p, { onClick = function(on) clicks[#clicks + 1] = on end })
+    T.Eq(box:GetChecked(), false, "a box starts unticked")
+    box:SetChecked(true)
+    T.Eq(box:GetChecked(), true, "ticks when told")
+    T.Eq(#clicks, 0, "without calling the click handler")
+    box:GetScript("OnClick")(box)
+    T.Eq(box:GetChecked(), false, "a click flips it")
+    T.Eq(clicks[1], false, "and says what it became")
+
+    local typed
+    local edit = W.EditBox(p, 100, 18, { maxBytes = 40, onEnter = function(text) typed = text end })
+    edit:SetText("raid prep")
+    edit:GetScript("OnEnterPressed")(edit)
+    T.Eq(typed, "raid prep", "Enter hands over what was typed")
+
+    W.Repaint()
+    T.Eq(box:GetChecked(), false, "and a repaint changes no state")
+end)
+
+T.Case("Widgets: a slider reports whole steps, and both of its ends", function()
+    T.Near(W.SliderValue(0.674, 0.3334, 2, 0.01), 0.67, "snapped to the step")
+    T.Near(W.SliderValue(0.35, 0.3334, 2, 0.01), 0.35, "a whole step inside the range")
+    T.Eq(W.SliderValue(0.34, 0.3334, 2, 0.01), 0.3334, "the first whole step is the floor itself, off the step or not")
+    T.Eq(W.SliderValue(0.1, 0.3334, 2, 0.01), 0.3334, "and so is anything under it")
+    T.Eq(W.SliderValue(2, 0.3334, 2, 0.01), 2, "the ceiling")
+    T.Eq(W.SliderValue(5.4, 0, 9, 1), 5, "whole numbers")
+    T.Eq(W.SliderValue(nil, 0, 9, 1), 0, "no position is the floor")
+end)
+
+T.Case("Widgets: a slider and a choice keep their value and report a change, not a SetValue", function()
+    local p = W.Panel(nil, { width = 240, height = 60 })
+    p:Hide()
+
+    local got = {}
+    local s = W.Slider(p, {
+        min = 0, max = 10, step = 1, value = 4,
+        format = function(v) return v .. " fps" end,
+        onChange = function(v) got[#got + 1] = v end,
+    })
+    T.Eq(s:GetValue(), 4, "a slider starts where it is told")
+    T.Eq(s.text:GetText(), "4 fps", "and writes its value beside it")
+    s:SetValue(7)
+    T.Eq(s:GetValue(), 7, "it moves when told")
+    T.Eq(s.text:GetText(), "7 fps", "the text follows")
+    T.Eq(#got, 0, "without calling the handler")
+    s.inner:GetScript("OnValueChanged")(s.inner, 8.2)
+    T.Eq(s:GetValue(), 8, "a drag is snapped to the step")
+    T.Eq(got[1], 8, "and reported")
+    s:SetValue(99)
+    T.Eq(s:GetValue(), 10, "a value past the end sits on the end")
+
+    -- One that waits for the thumb to be let go: for a change too heavy to make per step.
+    local late = {}
+    local w = W.Slider(p, { min = 0, max = 10, step = 1, value = 0, live = false,
+        onChange = function(v) late[#late + 1] = v end })
+    w.inner:GetScript("OnMouseDown")(w.inner)
+    w.inner:GetScript("OnValueChanged")(w.inner, 3)
+    w.inner:GetScript("OnValueChanged")(w.inner, 5)
+    T.Eq(w:GetValue(), 5, "it follows the drag")
+    T.Eq(#late, 0, "and says nothing while held")
+    w.inner:GetScript("OnMouseUp")(w.inner)
+    T.Eq(#late, 1, "one report on release")
+    T.Eq(late[1], 5, "of where it ended")
+    w.inner:GetScript("OnValueChanged")(w.inner, 6)
+    T.Eq(late[2], 6, "a stepper click, with nothing held, reports at once")
+
+    local picked
+    local c = W.Choice(p, 100, 20, {
+        choices = { { 0, "None" }, { 4, "CMAA2" } }, value = 4,
+        onChange = function(v) picked = v end,
+    })
+    T.Eq(c.label:GetText(), "CMAA2", "a choice shows the label of its value")
+    c:SetValue(0)
+    T.Eq(c:GetValue(), 0, "it changes when told")
+    T.Eq(c.label:GetText(), "None", "and the label follows")
+    T.Eq(picked, nil, "without calling the handler")
+    c:SetValue(9)
+    T.Eq(c.label:GetText(), "9", "a value with no label shows itself")
+end)
+
+T.Case("Widgets: a scroll view stays inside its content, and its bar shows only when needed", function()
+    local offset, range = W.ScrollClamp(50, 300, 100)
+    T.Eq(offset, 50, "an offset inside the range is kept")
+    T.Eq(range, 200, "the range is the content less the view")
+    T.Eq(W.ScrollClamp(-10, 300, 100), 0, "not above the top")
+    T.Eq(W.ScrollClamp(999, 300, 100), 200, "not past the bottom")
+    T.Eq(W.ScrollClamp(40, 80, 100), 0, "content that fits does not scroll")
+
+    local p = W.Panel(nil, { width = 240, height = 120 })
+    p:Hide()
+    local s = W.Scroll(p, 200, 100, { step = 24 })
+    s:SetContentHeight(300)
+    T.Eq(s.bar:IsShown(), true, "taller content shows the bar")
+    s:GetScript("OnMouseWheel")(s, -1)
+    T.Eq(s:GetOffset(), 24, "one notch down moves one step")
+    s:GetScript("OnMouseWheel")(s, 1)
+    s:GetScript("OnMouseWheel")(s, 1)
+    T.Eq(s:GetOffset(), 0, "and it stops at the top")
+    s:ScrollTo(999)
+    T.Eq(s:GetOffset(), 200, "and at the bottom")
+    s.bar:GetScript("OnValueChanged")(s.bar, 120)
+    T.Eq(s:GetOffset(), 120, "dragging the bar scrolls")
+    s:SetContentHeight(150)
+    T.Eq(s:GetOffset(), 50, "shorter content pulls the view back inside it")
+    s:SetContentHeight(60)
+    T.Eq(s.bar:IsShown(), false, "content that fits hides the bar")
+    T.Eq(s:GetOffset(), 0, "at the top")
+
+    local typed = {}
+    local edit = W.EditBox(p, 100, 18, { onChange = function(text) typed[#typed + 1] = text end })
+    edit:SetText("sha")
+    edit:GetScript("OnTextChanged")(edit, true)
+    T.Eq(typed[1], "sha", "an edit box reports what the player types")
+    edit:GetScript("OnTextChanged")(edit, false)
+    T.Eq(#typed, 1, "and not a change made for it")
+end)
+
+T.Case("Widgets: a move starts on the press and ends on the release", function()
+    -- Not on the client's drag event, which waits for the pointer to travel and then
+    -- makes the frame jump the distance it missed.
+    local drops = 0
+    local p = W.Panel(nil, { width = 120, height = 60, movable = true, onMoved = function() drops = drops + 1 end })
+    p:Hide()
+    local down, up = p:GetScript("OnMouseDown"), p:GetScript("OnMouseUp")
+
+    down(p, "RightButton")
+    T.Eq(p.icMoving, false, "the right button moves nothing")
+    down(p, "LeftButton")
+    T.Eq(p.icMoving, true, "the left button starts the move at once")
+    up(p, "RightButton")
+    T.Eq(p.icMoving, true, "releasing another button does not end it")
+    up(p, "LeftButton")
+    T.Eq(p.icMoving, false, "releasing the left one does")
+    T.Eq(drops, 1, "and the panel says it was dropped, once")
+    up(p, "LeftButton")
+    T.Eq(drops, 1, "a release with no move in progress says nothing")
+
+    p:SetLocked(true)
+    down(p, "LeftButton")
+    T.Eq(p.icMoving, false, "a pinned panel does not start")
+
+    -- A title bar drags its panel and passes a right-click on
+    p:SetLocked(false)
+    local clicked = 0
+    local bar = W.Panel(p, { role = "raised", edge = false, height = 20 })
+    W.DragHandle(bar, p, { onRightClick = function() clicked = clicked + 1 end })
+    bar:GetScript("OnMouseDown")(bar, "LeftButton")
+    T.Eq(p.icMoving, true, "pressing the handle moves the panel")
+    bar:GetScript("OnMouseUp")(bar, "RightButton")
+    T.Eq(clicked, 1, "a right-click on the handle reaches the addon")
+    T.Eq(p.icMoving, true, "without ending the move")
+    bar:GetScript("OnMouseUp")(bar, "LeftButton")
+    T.Eq(drops, 2, "and the release drops it")
+end)
+
+T.Case("Widgets: Tab in an edit box and a drag on a button reach the addon", function()
+    local p = W.Panel(nil, { width = 120, height = 60 })
+    p:Hide()
+    local tabs = {}
+    local edit = W.EditBox(p, 100, 18, { onTab = function(_, backwards) tabs[#tabs + 1] = backwards end })
+    edit:GetScript("OnTabPressed")(edit)
+    T.Eq(#tabs, 1, "Tab is passed on")
+    T.Eq(type(tabs[1]), "boolean", "with whether Shift was held")
+
+    local events = {}
+    local row = W.Button(p, "a row", 80, 18, {
+        onDragStart = function() events[#events + 1] = "up" end,
+        onDragStop = function() events[#events + 1] = "down" end,
+    })
+    row:GetScript("OnDragStart")(row)
+    row:GetScript("OnDragStop")(row)
+    T.Eq(table.concat(events, ","), "up,down", "a button that asked hears a drag start and stop")
+    T.Eq(W.Button(p, "plain", 80, 18):GetScript("OnDragStart"), nil, "one that did not is not draggable")
+end)
+
+T.Case("Widgets: a minimap button's place is an angle round the rim", function()
+    local x, y = W.MinimapOffset(0, 100)
+    T.Near(x, 100, "due east")
+    T.Near(y, 0, "on the centre line")
+    x, y = W.MinimapOffset(90, 100)
+    T.Near(x, 0, "due north")
+    T.Near(y, 100, "is straight up")
+    x, y = W.MinimapOffset(180, 50)
+    T.Near(x, -50, "and west is negative")
+
+    T.Near(W.MinimapAngle(10, 0, 0, 0), 0, "a pointer east of the centre")
+    T.Near(W.MinimapAngle(0, 10, 0, 0), 90, "north")
+    T.Near(W.MinimapAngle(-10, 0, 0, 0), 180, "west")
+    T.Near(W.MinimapAngle(0, -10, 0, 0), 270, "south is 270, never negative")
+    T.Near(W.MinimapAngle(110, 50, 100, 50), 0, "measured from wherever the minimap is")
+
+    x, y = W.MinimapOffset(215, 104)
+    T.Near(W.MinimapAngle(x, y, 0, 0), 215, "an angle survives the trip to a place and back")
+end)
+
+-- In game these would put a button on the player's minimap every time the cases ran.
+if IC_HEADLESS then
+    T.Case("Widgets: a minimap button keeps its angle and reports a click and a move", function()
+        local clicked, moved
+        local b = W.MinimapButton({
+            icon = "Interface\\Icons\\INV_Misc_Note_02", angle = 400,
+            onClick = function(_, mouseButton) clicked = mouseButton end,
+            onMoved = function(angle) moved = angle end,
+        })
+        T.Eq(b.icAngle, 40, "an angle wraps into one turn")
+        b:SetAngle(-90)
+        T.Eq(b.icAngle, 270, "and a negative one too")
+        b:GetScript("OnClick")(b, "RightButton")
+        T.Eq(clicked, "RightButton", "a click says which button")
+        b:GetScript("OnDragStop")(b)
+        T.Eq(moved, nil, "a drop with no drag in progress says nothing")
+        b:GetScript("OnDragStart")(b)
+        T.Eq(b.icDragging, true, "dragging starts on the client's drag event, so a press stays a click")
+        b:GetScript("OnDragStop")(b)
+        T.Eq(b.icDragging, false, "and ends when dropped")
+        T.Eq(moved, 270, "reporting where it was left")
+        T.Eq(W.Compartment({ text = "Case" }), false, "a client with no addon compartment says so")
+    end)
+end
+
+--------------------------------------------------------------------------------
 -- The addon itself
 --------------------------------------------------------------------------------
 

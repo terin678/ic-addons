@@ -21,17 +21,22 @@ the layers it needs exist.
    Nothing reaches up, and a library never knows which addon is using it.
 3. **Pure logic is separate from frames.** A model function takes its tables as arguments
    and returns a result, so it has a headless case. Frames only draw what the model says.
-4. **Client facts are probed, never assumed.** No API is used until the in-game probe or
+4. **Modern first.** Where the client offers a current mechanism and a legacy one, use
+   the current one: the Addon Compartment, `MenuUtil`, the Settings panel, the `C_`
+   namespaces. On this client the new path is the one most likely to exist and to keep
+   working. A legacy extra beside it is fine when players expect it.
+5. **Client facts are probed, never assumed.** No API is used until the in-game probe or
    exported interface source confirms it exists on this client. What is confirmed is
    written to [client-reference.md](../client-reference.md).
-5. **General audience.** Neutral names, no guild assumptions in behaviour, and every
-   surface is themeable. The Impulse Control theme ships as the default beside a plain one.
-6. **Data from day one.** Account and character tables, a schema number and migrations
+6. **General audience.** Neutral names, no guild assumptions in behaviour, and every
+   surface is themeable. The default theme is the game's own look; the Impulse Control
+   theme ships beside it for guild members to switch to.
+7. **Data from day one.** Account and character tables, a schema number and migrations
    exist in the first version of every addon, so the second version never has to guess
    what the first one saved.
-7. **Idle means zero work.** No `OnUpdate` when idle, no polling. Profiling is part of the
+8. **Idle means zero work.** No `OnUpdate` when idle, no polling. Profiling is part of the
    kit, so "is this addon costing frames" is one command rather than an investigation.
-8. **No ports until the layer below exists.** A port arrives as a composition of layers
+9. **No ports until the layer below exists.** A port arrives as a composition of layers
    that are already proven, not as a copy of an Anniversary folder.
 
 ## The layers
@@ -43,8 +48,8 @@ the layers it needs exist.
 | 1 | `LibICEnv-1.0` | What this client offers: build, feature probe, CPU and memory | shipped in ICKit 0.2.0 |
 | 1 | `LibICStore-1.0` | Saved variables: defaults, schema, migrations, the load check | shipped in ICKit 0.2.0 |
 | 1 | `LibICConsole-1.0` | Printing and slash commands | shipped in ICKit 0.2.0 |
-| 1 | `LibICTheme-1.0` | The theme registry: palettes, fonts, textures, change callbacks | after the probe |
-| 2 | `LibICWidgets-1.0` | Themed frames: panel, button, check box, edit box, label | after the probe |
+| 1 | `LibICTheme-1.0` | The theme registry: colour and font roles, change listeners | shipped in ICKit 0.3.0 |
+| 2 | `LibICWidgets-1.0` | Themed frames: panel, label, button, check box, edit box, tooltip, menu, confirm | shipped in ICKit 0.3.0 |
 
 All of them live in one library addon, [ICKit](../ICKit.md). A library is added when an
 addon needs it and not before.
@@ -55,10 +60,12 @@ addon needs it and not before.
    knowing about it. *(done: ICKit 0.1.0)*
 2. **Layer 1 and the probe.** `/ickit probe` records what this client offers into the
    kit's saved variables, and `/ickit profile` reports CPU and memory. The findings decide
-   how the widgets are drawn. *(built: ICKit 0.2.0; the findings are still to come)*
+   how the widgets are drawn. *(done: ICKit 0.2.0; the findings are in [client-reference.md](../client-reference.md))*
 3. **Themes and widgets.** The smallest set the first addon needs, with a gallery command.
+   *(built: ICKit 0.3.0)*
 4. **Stickies.** The first addon: small draggable notes that stay on screen, each a title
    and a checklist. A note belongs to one character or to the whole account.
+   *(built: Stickies 0.1.0)*
 5. **A Forever addon template,** cut from Stickies once it works, so the next addon starts
    from something real.
 

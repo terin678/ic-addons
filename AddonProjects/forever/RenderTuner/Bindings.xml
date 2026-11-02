@@ -1,0 +1,5 @@
+<Bindings>
+    <Binding name="RENDERTUNER_TOGGLE" header="RENDERTUNER" category="ADDONS" description="Open or close the RenderTuner panel">
+        RenderTuner_Toggle()
+    </Binding>
+</Bindings>

@@ -17,12 +17,26 @@ the client after installing; a `/reload` does not pick up a new addon.
 
 ```
 /ickit                  the kit's version, the client build, and how often its saved tables have loaded
+/ickit theme [name]     the look of every addon on the kit; no name lists them, "default" goes back
+/ickit gallery          one of every widget, to look at
 /ickit probe            check what this client offers and save the answers
 /ickit profile [reset]  what the kit's handlers have cost: calls, time, memory
 /ickit test             run the built-in checks
 /ickit debug on|off     maintainer lines in chat
 /ickit help
 ```
+
+### Themes
+
+Every addon built on the kit is drawn in one theme, chosen for the whole account:
+**Forever** (the default: the game's own look, warm near-black panels, bronze edges and its
+gold), **Impulse Control** (the guild's navy, gold and bone, for members who want it) and
+**Paper** (dark ink on a yellow sticky note). `/ickit theme paper` switches, and everything
+on screen repaints at once. The start of a name is enough, and `/ickit theme default` goes
+back. Only a theme you picked is saved, so an account that never chose follows the default.
+
+`/ickit gallery` opens a small panel with one of every widget in the current theme. Drag it
+by its title bar; where you leave it is remembered per character.
 
 ### The probe
 
@@ -50,8 +64,11 @@ should not. The counters cost two clock reads a call and need no console variabl
 | LibICEnv-1.0 | 1 | What this client offers (build, a feature probe) and what handlers cost (call and time counters, memory) |
 | LibICStore-1.0 | 1 | Saved variables: defaults, schema, migrations, and whether the file really loaded |
 | LibICConsole-1.0 | 1 | Prefixed printing and the slash-command dispatcher with its help |
+| LibICTheme-1.0 | 1 | The theme registry: colour and font roles, the selected theme, change listeners |
+| LibICWidgets-1.0 | 2 | Themed frames drawn from colour textures: panel, label, button, check box, edit box, slider, choice, scroll, tooltip, menu, confirm |
 
-The libraries never print. An addon decides what to say, in its own voice.
+The libraries never print. An addon decides what to say, in its own voice. Only
+LibICWidgets creates frames, apart from the store's one event frame.
 
 The MINOR goes up whenever a library's API changes. Bump it in the library source and in
 this table together; `scripts/lint.py` fails when the two disagree.
@@ -181,6 +198,77 @@ Console.Slash({
 
 A command is `fn(rest, cmd)`. The bare command is the `""` entry. A word with no entry
 prints the help.
+
+## LibICTheme-1.0
+
+```lua
+local Theme = LibStub("LibICTheme-1.0")
+```
+
+A theme is a table of named roles. A widget asks for `ground` or `accent` and draws
+whatever the selected theme says that is, so an addon never holds a colour of its own.
+
+| Call | What it does |
+| --- | --- |
+| `Theme.Register(name, def)` | Adds a theme. Any role `def` leaves out is filled from the default, so a role added later never leaves an older theme without it. `def.logo` names a mark's texture; a theme without one has none. |
+| `Theme.Get(name)` | The theme, or nil. |
+| `Theme.Current()` | `theme, name`: the selected one, or the default. |
+| `Theme.Select(name)` | Selects it and returns whether the name is a theme. Listeners run only when it changed. |
+| `Theme.Find(text)` | A theme name from what a player typed: any case, or the start of exactly one name. |
+| `Theme.Names()` | The names, sorted. |
+| `Theme.OnChange(fn)` | `fn(theme, name)` on every change. Returns a function that stops the listening. |
+| `Theme.Hex(color)` | A `\|cffrrggbb` code. |
+
+`theme = { name, label, logo, colors, fonts }`. Colour roles: `ground` (a panel), `raised`
+(a title bar), `field` (somewhere to type or tick), `edge`, `text`, `textDim`,
+`textDisabled`, `done` (a finished line), `accent`, `accentHover`, `accentText`, `danger`,
+`dangerHover`, `dangerText`, `button`, `buttonHover`, `buttonText`, `hover`, `selected`,
+`check`. Each is `{ r, g, b, a }`. Font roles: `body`, `title`, `small`, `button`.
+
+The kit itself saves a choice the player made (`ICKitDB.settings.theme`, absent until they
+pick) and applies it at load; an addon does not select a theme, it only draws in the
+current one. `Theme.DEFAULT` is "Forever".
+
+## LibICWidgets-1.0
+
+```lua
+local W = LibStub("LibICWidgets-1.0")
+```
+
+Only what an addon has needed so far. Every widget is drawn from colour textures, uses no
+Blizzard frame template, repaints when the theme changes, and runs no `OnUpdate`.
+
+| Call | What you get |
+| --- | --- |
+| `W.Panel(parent, opts)` | A filled, edged frame. `opts`: `width`, `height`, `strata`, `role` (`ground`, `raised`, `field`), `edge = false`, `movable = true` with `onMoved(panel)`. `panel:SetLocked(true)` pins it. |
+| `W.DragHandle(handle, panel, opts)` | Makes a child, a title bar usually, drag its panel. It owns the handle's mouse scripts, so ask for a right-click here: `opts.onRightClick(handle)`. |
+| `W.Label(parent, text, opts)` | A font string. `opts`: `font` role, `color` role, `justify`, `wrap`. `label:SetRole(color)` recolours it. |
+| `W.Button(parent, text, w, h, opts)` | `opts.kind` is `normal`, `accent`, `danger` or `flat` (no fill until hovered); `opts.onClick`; `opts.justify = "LEFT"` with `opts.font` and `opts.textRole` for a row of a list; `opts.onDragStart(button)` and `opts.onDragStop(button)` for a row that is picked up and put down, while a plain press stays a click. `b:SetLabel(text)`, `b:SetKind(kind)`, `b:SetTextRole(role)`. |
+| `W.CheckBox(parent, opts)` | `opts`: `size`, `checked`, `onClick(checked, box)`. `box:SetChecked(on)`, `box:GetChecked()`. A click calls `onClick`; `SetChecked` does not. |
+| `W.EditBox(parent, w, h, opts)` | One line. `opts`: `maxBytes`, `placeholder`, `onEnter(text, box)`, `onEscape(box)`, `onFocusLost(box)`, `onTab(box, backwards)` for Tab and Shift-Tab. Escape always drops focus. |
+| `W.Tooltip(frame, builder, anchor)` | `builder(GameTooltip, frame)` adds the lines; nil removes it. It hooks, so a button keeps its hover highlight. The tooltip sits at the pointer (`ANCHOR_CURSOR_RIGHT`) unless `anchor` says otherwise. |
+| `W.Slider(parent, opts)` | A number between two ends with its value written beside it. `opts`: `width`, `valueWidth`, `min`, `max`, `step`, `value`, `format(value)`, `live` (false waits for the thumb to be let go), `onChange(value, slider)`. `s:SetValue(v)` moves it without calling `onChange`; `s:GetValue()`. The bar is the client's `MinimalSliderWithSteppersTemplate`, so its art is not themed. `W.SliderValue(raw, min, max, step)` is the pure half: whole steps, with both ends reachable. |
+| `W.Choice(parent, w, h, opts)` | One of a short list: a button showing the current choice that opens a menu of them all. `opts`: `choices` as `{ { value, label }, ... }`, `value`, `onChange(value, choice)`, `disabled(value)` returning a reason to grey a choice out. `c:SetValue(v)`, `c:GetValue()`. |
+| `W.Scroll(parent, w, h, opts)` | A window onto content taller than itself: parent rows to `s.content`, call `s:SetContentHeight(h)` when they change. The mouse wheel and a thin bar scroll it; the bar hides when everything fits. `opts.step` is one wheel notch. `s:ScrollTo(offset)`, `s:GetOffset()`. `W.ScrollClamp(offset, contentH, viewH)` is the pure half. |
+| `W.Menu(owner, items)` | A context menu. Items: `{ title }`, `{ text, onClick }`, `{ text, checked = fn, onClick }`, `{ text, radio = fn, onClick }` (one of several; picking closes the menu), `{ divider = true }`. An item may carry `disabled = true` or `disabled = "the reason"`. |
+| `W.Confirm(text, onAccept)` | A yes/no dialog. |
+| `W.Compartment(opts)` | An entry in the client's Addon Compartment, the list of addons beside the minimap: the modern way onto the minimap, costing no frame. `opts`: `text`, `icon`, `onClick(mouseButton)`, `tooltip`. Returns false on a client without one. |
+| `W.MinimapButton(opts)` | A round button on the minimap's rim in the client's own art, for one-click access. `opts`: `icon`, `angle` (degrees; 0 east, 90 north), `onClick(button, mouseButton)`, `onMoved(angle)`, `tooltip`. Drag it round the rim; `button:SetAngle(degrees)`. |
+| `W.GetPlace(frame)` / `W.SetPlace(frame, fx, fy)` | Where a frame's top-left sits, as fractions of the screen. Save these, not pixels: they survive a change of resolution or interface scale. `SetPlace` holds the whole frame on screen. |
+| `W.Repaint()` | Redraws everything in the current theme. |
+
+Offer the compartment entry always and the rim button as an extra a player can hide: the
+compartment is the client's own mechanism, the rim button is what many players look for.
+
+A move starts on the press and ends on the release. The client's drag event is not used:
+it waits for the pointer to travel the drag threshold, and the frame then jumps the
+distance it missed.
+
+An edit box with focus takes every key, movement included. An addon that shows one drops
+its focus (`box:ClearFocus()`) when combat starts.
+
+`Gallery.lua` in the kit is the worked example: a movable panel with a title bar that drags
+it, its place saved per character, a menu and a confirm.
 
 ## Running the cases
 
