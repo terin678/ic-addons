@@ -52,7 +52,6 @@ local listeners = {}
 local wanted = {}                  -- [key] = true while something wants live events
 local isLive = false
 local pending = false
-local chat
 local lastCalloutAt = -CALLOUT_GAP
 
 -- A client function, called guarded: nil when it is missing or throws.
@@ -332,16 +331,21 @@ local function Callout()
         ns.Print("nothing to call out.")
         return
     end
-    if not chat then
-        chat = LibStub("LibICChat-1.0").New({ ttl = 10 })
+    -- Lane D's chat path: the announce channel, Raid Lead only, refused (never held) in a
+    -- chat lockdown, and written to the log either way.
+    local say = ns.DeathWatch and ns.DeathWatch.SayLines
+    if type(say) ~= "function" then
+        ns.Print("|cffff4444callout not sent:|r the chat path is not loaded.")
+        return
     end
-    lastCalloutAt = now
-    for _, line in ipairs(lines) do
-        local plan = chat:Say({ text = "[MFD] " .. line, channels = { "RAID", "PARTY" }, pressed = true })
-        if plan.action == "refuse" then
-            ns.Printf("|cffff4444callout not sent:|r %s.", tostring(plan.reason))
-            return
-        end
+    for i, line in ipairs(lines) do lines[i] = "[MFD] " .. line end
+    local ok, plan = pcall(say, lines, "callout")
+    if not ok then
+        ns.Printf("|cffff4444callout not sent:|r %s", tostring(plan))
+    elseif type(plan) == "table" and plan.action ~= "send" then
+        ns.Printf("|cffff4444callout not sent:|r %s.", tostring(plan.reason))
+    else
+        lastCalloutAt = now
     end
 end
 
