@@ -268,14 +268,16 @@ function Report.ParseNames(text)
 end
 
 -- The macro MarkedForDeath would write for a pack: target each name, mark it only if it
--- has no mark yet. Icons run down from `firstIcon`, skipping none.
-function Report.MarkMacro(names, firstIcon)
+-- has no mark yet. Icons run down from `firstIcon`, skipping none. `exact` and `mark` are
+-- the client's own words for /targetexact and /tm.
+function Report.MarkMacro(names, firstIcon, exact, mark)
+    exact, mark = exact or "/targetexact", mark or "/tm"
     local lines = {}
     for i, name in ipairs(names or {}) do
         local icon = (firstIcon or 8) - (i - 1)
         if icon < 1 then break end
-        lines[#lines + 1] = "/targetexact " .. name
-        lines[#lines + 1] = "/tm ~" .. icon
+        lines[#lines + 1] = exact .. " " .. name
+        lines[#lines + 1] = mark .. " ~" .. icon
     end
     return table.concat(lines, "\n")
 end
@@ -283,8 +285,8 @@ end
 -- A macro at least `length` characters long whose last line is `tail`: everything before
 -- it clears the player's own mark, which is harmless, so whether the tail ran says whether
 -- a macro that long runs to its end.
-function Report.LongMacro(length, tail)
-    local filler = "/tm [@player] 0\n"
+function Report.LongMacro(length, tail, filler)
+    filler = filler or "/tm [@player] 0\n"
     local parts = {}
     local size = #tail
     while size < length do

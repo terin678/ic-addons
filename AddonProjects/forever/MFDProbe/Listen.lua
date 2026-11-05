@@ -22,7 +22,8 @@ ns.Listen = Listen
 -- What is asked for. A name the client does not know fails to register, and that failure
 -- is a finding: the event does not exist here.
 Listen.EVENTS = {
-    "COMBAT_LOG_EVENT_UNFILTERED", "COMBAT_LOG_EVENT",
+    -- COMBAT_LOG_EVENT_UNFILTERED is not asked for: registering it is forbidden here and
+    -- opens the blocked-action dialog (client-reference.md).
     "UNIT_DIED", "UNIT_DESTROYED", "PARTY_KILL", "UNIT_FLAGS", "UNIT_HEALTH", "UNIT_AURA",
     "PLAYER_DEAD", "NAME_PLATE_UNIT_ADDED", "NAME_PLATE_UNIT_REMOVED", "RAID_TARGET_UPDATE",
     "ENCOUNTER_START", "ENCOUNTER_END", "BOSS_KILL", "INSTANCE_ENCOUNTER_ENGAGE_UNIT",

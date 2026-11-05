@@ -169,6 +169,8 @@ T.Case("ParseNames and MarkMacro: a typed list becomes the pack macro", function
         "skull down")
     T.Eq(Report.MarkMacro({ "a", "b", "c" }, 2), "/targetexact a\n/tm ~2\n/targetexact b\n/tm ~1", "stops at star")
     T.Eq(Report.MarkMacro({}, 8), "", "no names, no macro")
+    T.Eq(Report.MarkMacro({ "a" }, 8, "/zielgenau", "/zm"), "/zielgenau a\n/zm ~8", "the client's own words")
+    T.Eq(Report.LongMacro(10, "/zm 2", "/zm 0\n"), "/zm 0\n/zm 2", "the client's own filler")
 end)
 
 T.Case("LongMacro: past the length, ending on the tail", function()
@@ -197,6 +199,7 @@ T.Case("Checks.Run: every check runs on a client that has almost nothing", funct
     T.True(table.concat(lines, " "):find("snippet could not be attached", 1, true),
         "a client with no secure handlers says the snippet is missing")
     T.True(#ns.Buttons.Show({})[2] > 0, "and say something with no names")
+    T.True(ns.Buttons.BindKeys(true)[1]:find("could not be bound", 1, true), "no binding calls: said, not thrown")
     ns.Buttons.Hide()
     ns.Listen.Stop()
     ns.db.runs[#ns.db.runs] = nil

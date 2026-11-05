@@ -223,6 +223,7 @@ local HELP = {
     { "report [text]", "what each check came to, out of combat and in it; text keeps matching ids" },
     { "buttons [name, name]", "out of combat: show the marking buttons, built for these mobs or the ones in view" },
     { "buttons hide", "out of combat: put the marking buttons away" },
+    { "keys [off]", "out of combat: CTRL-1 to CTRL-0 press the marking buttons, so the pointer can stay on a mob" },
     { "capture", "the instance, encounter, npc and aura ids read so far" },
     { "runs", "every run kept, with where it was taken" },
     { "chat on | off", "whether runs send chat lines to the group" },
@@ -296,6 +297,15 @@ COMMANDS.buttons = function(rest)
         return
     end
     for _, line in ipairs(ns.Buttons.Show(ns.Report.ParseNames(rest))) do out.Print(line) end
+end
+
+COMMANDS.keys = function(rest)
+    if not Ready() then return end
+    if ns.InCombat() then
+        out.Print("keys can only be bound or put back out of combat.")
+        return
+    end
+    for _, line in ipairs(ns.Buttons.BindKeys(Util.Trim(rest):lower() ~= "off")) do out.Print(line) end
 end
 
 COMMANDS.capture = function()

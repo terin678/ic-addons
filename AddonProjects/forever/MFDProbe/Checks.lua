@@ -23,8 +23,7 @@ ns.Checks = Checks
 -- 1 star, 2 circle, 3 diamond, 4 triangle, 6 square.
 Checks.ICONS = { target = 1, mouseover = 2, plate = 3, plate2 = 4, player = 6 }
 
--- Seconds before a set raid mark is read back, an echo is given up on, an inspect is.
-local MARK_READBACK = 1.0
+-- Seconds before an echo is given up on, an inspect is.
 local ECHO_WAIT = 4
 local INSPECT_WAIT = 5
 
@@ -178,7 +177,15 @@ Checks.PRESENCE = {
     "C_Item.GetWeaponEnchantInfo", "GetWeaponEnchantInfo", "UnitDetailedThreatSituation",
 }
 
+-- How this client spells the slash commands a marking macro needs.
+Checks.SLASH = { "SLASH_TARGET_MARKER1", "SLASH_TARGET_MARKER2", "SLASH_TARGET_EXACT1", "SLASH_CLICK1",
+    "SLASH_CLEAR_WORLD_MARKER1" }
+
 local function CheckPresence(run)
+    for _, name in ipairs(Checks.SLASH) do
+        local word = _G[name]
+        Note(run, "slash." .. name, type(word) == "string" and "ok" or "absent", tostring(word))
+    end
     for _, row in ipairs(LibStub("LibICEnv-1.0").Probe(Checks.PRESENCE)) do
         Note(run, "has." .. row.path, row.present and "ok" or "absent", row.kind)
     end
@@ -310,47 +317,25 @@ function Checks.IconTexture()
     return iconHolder.icon
 end
 
--- Reads the mark a unit carries, and draws it. With `trySet`, also sets one from Lua and
--- reads it back: the recon says the client forbids that, and each refusal opens a dialog,
--- so it is tried only on typed runs and only on the target and the player.
-local function SetMark(run, unit, label, trySet)
+-- Reads the mark a unit carries, and draws it. Setting one from Lua is no longer tried:
+-- SetRaidTarget is forbidden to addons here (client-reference.md), and each refusal opens
+-- the blocked-action dialog.
+local function SetMark(run, unit, label)
     local icon = Checks.ICONS[label]
     if not icon then return end
     local before = ns.Call(GetRaidTargetIndex, unit)
     ns.AddRow(run, "mark." .. label .. ".GetRaidTargetIndex", before)
     -- Whether an icon texture can be drawn from what came back, secret or not: the
     -- assignment panel draws the icon a mob carries.
-    if before.ok and before.n > 0 then
+    -- A nil (no mark) is left out: the client's own code rejects it.
+    local index = before.ok and before.values[1]
+    if before.ok and (ns.IsSecret(index) or type(index) == "number") then
         Add(run, "mark." .. label .. ".SetRaidTargetIconTexture", SetRaidTargetIconTexture, Checks.IconTexture(),
             before.values[1])
     end
-    if not trySet then return end
-    local set = ns.Call(SetRaidTarget, unit, icon)
-    ns.AddRow(run, "mark." .. label .. ".SetRaidTarget", set)
-    if not set.ok then return end
-    local previous = before.ok and before.values[1]
-    C_Timer.After(MARK_READBACK, function()
-        local after = ns.Call(GetRaidTargetIndex, unit)
-        local v = after.ok and after.values[1]
-        if not after.ok then
-            ns.AddRow(run, "mark." .. label .. ".readback", after)
-        elseif ns.IsSecret(v) then
-            Note(run, "mark." .. label .. ".readback", "secret", "<secret>")
-        elseif v == icon then
-            Note(run, "mark." .. label .. ".readback", "ok", "took: " .. tostring(v))
-        else
-            Note(run, "mark." .. label .. ".readback", "refused", "did not take: reads " .. tostring(v))
-        end
-        -- Put back what was there, when it could be read; otherwise clear what was set.
-        local back = (not ns.IsSecret(previous) and type(previous) == "number") and previous or 0
-        if v == icon or ns.IsSecret(v) then
-            ns.AddRow(run, "mark." .. label .. ".restore", ns.Call(SetRaidTarget, unit, back))
-        end
-    end)
 end
 
 local function CheckUnits(run)
-    local typed = run.trigger == "command"
     local hostile = Checks.HostileUnits()
     Note(run, "units.hostileSeen", "ok", tostring(#hostile))
     for _, entry in ipairs(hostile) do
@@ -362,9 +347,9 @@ local function CheckUnits(run)
         CaptureAuras(entry.unit, "HARMFUL")
         local guid, name = Plain(UnitGUID, entry.unit), Plain(UnitName, entry.unit)
         ns.Collect("npcs", ns.Report.NpcId(guid, ns.IsSecret), name)
-        SetMark(run, entry.unit, entry.label, typed and entry.label == "target")
+        SetMark(run, entry.unit, entry.label)
     end
-    SetMark(run, "player", "player", typed)
+    SetMark(run, "player", "player")
 
     local members = Checks.Members()
     Note(run, "units.membersSeen", "ok", tostring(#members))
@@ -412,13 +397,8 @@ local function CheckMeter(run)
 end
 
 local function CheckCombatLog(run)
+    -- Registering the combat log is settled (forbidden) and not asked again.
     Add(run, "cleu.CombatLogGetCurrentEventInfo.outsideEvent", CombatLogGetCurrentEventInfo)
-    -- Registration on a frame of its own, apart from the listening window, so the answer
-    -- is had even when no window is open.
-    local scratch = CreateFrame("Frame")
-    local reg = ns.Call(scratch.RegisterEvent, scratch, "COMBAT_LOG_EVENT_UNFILTERED")
-    ns.AddRow(run, "cleu.register", reg)
-    if reg.ok then pcall(scratch.UnregisterEvent, scratch, "COMBAT_LOG_EVENT_UNFILTERED") end
 end
 
 --------------------------------------------------------------------------------
