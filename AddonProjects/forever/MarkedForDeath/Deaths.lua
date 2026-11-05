@@ -12,6 +12,7 @@ Owned by lane D (deaths and chat). Spec section 6.
     Deaths.Wants(kind, cfg, fight)  whether this fight calls deaths of kind, and why not
     Deaths.Fight(encounterID, name, lookup)   the fight an ENCOUNTER_START names
     Deaths.Edge(was, is)            true only for an alive-to-dead change
+    Deaths.BossRows(list)           the deaths tab's boss list from Data_Instances
     Deaths.Decide(event, state)     the plan: say | queue | local | skip, with the reason
     Deaths.Record(called, plan)     spend that person's call for the fight
     Deaths.Line(plan, ttl)          the LibICChat line a say or queue plan sends
@@ -138,6 +139,27 @@ function Deaths.Fight(encounterID, eventName, lookup)
     local name = id and lookup and lookup(id) or nil
     if not name and type(eventName) == "string" and eventName ~= "" then name = eventName end
     return { boss = true, encounterID = id, name = name or "an unknown boss" }
+end
+
+-- The bosses the deaths tab lists: every encounter in the instance list (Data_Instances'
+-- shape: [instanceID] = { name, encounters = { [encounterID] = boss } }), sorted by
+-- instance then boss. Returns { { encounterID, boss, instance }, ... }.
+function Deaths.BossRows(list)
+    local rows = {}
+    for instanceID, entry in pairs(list or {}) do
+        if type(entry) == "table" and type(entry.encounters) == "table" then
+            local instance = entry.name or ("instance " .. tostring(instanceID))
+            for encounterID, boss in pairs(entry.encounters) do
+                rows[#rows + 1] = { encounterID = encounterID, boss = tostring(boss), instance = instance }
+            end
+        end
+    end
+    table.sort(rows, function(a, b)
+        if a.instance ~= b.instance then return a.instance < b.instance end
+        if a.boss ~= b.boss then return a.boss < b.boss end
+        return a.encounterID < b.encounterID
+    end)
+    return rows
 end
 
 -- An alive-to-dead change. A first reading (was nil) is not a death: somebody already

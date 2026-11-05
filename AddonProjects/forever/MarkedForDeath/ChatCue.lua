@@ -8,8 +8,9 @@ Owned by lane D (deaths and chat). Spec sections 4 and 12.
 
     ChatCue.Matches(text, word)     whole word, any case; pure
     ChatCue.Allow(state, now)       at most one sound per MIN_GAP seconds; pure, mutates state
+    ChatCue.Sound(value)            what the sound setting names; nil when unset (no default)
 
-The frame half registers the chat events only while the cue is on with a word set (idle
+The frame half registers the chat events only while the cue is on with a word and a sound (idle
 means zero work), and stays quiet for a message the client hands over as a secret value:
 it cannot be read, so it cannot be matched. It returns early on IC_HEADLESS.
 ]]
@@ -56,19 +57,28 @@ local function Settings()
     return ns.db and ns.db.settings or nil
 end
 
--- Plays the cue: settings.cue.sound as a sound kit id (a number) or a file path, else the
--- client's ready check sound. Every call guarded: a client without one plays nothing.
+-- What settings.cue.sound names: { kind = "kit", id } for a sound kit id (a number, or
+-- digits), { kind = "file", path } for a file path, nil for nothing set. There is no
+-- default: the player picks the sound. Pure.
+function ChatCue.Sound(value)
+    local id = tonumber(value)
+    if id then return { kind = "kit", id = id } end
+    if type(value) ~= "string" then return nil end
+    value = value:match("^%s*(.-)%s*$")
+    if value == "" then return nil end
+    return { kind = "file", path = value }
+end
+
+-- Plays settings.cue.sound. Every call guarded: a client without one plays nothing.
 function ChatCue.Play()
     local s = Settings()
-    local sound = s and s.cue and s.cue.sound
-    local id = tonumber(sound)
-    if type(sound) == "string" and sound ~= "" and not id and type(PlaySoundFile) == "function" then
-        pcall(PlaySoundFile, sound, "Master")
-        return
+    local sound = ChatCue.Sound(s and s.cue and s.cue.sound)
+    if not sound then return end
+    if sound.kind == "kit" and type(PlaySound) == "function" then
+        pcall(PlaySound, sound.id, "Master")
+    elseif sound.kind == "file" and type(PlaySoundFile) == "function" then
+        pcall(PlaySoundFile, sound.path, "Master")
     end
-    if type(PlaySound) ~= "function" then return end
-    if not id and type(SOUNDKIT) == "table" then id = SOUNDKIT.READY_CHECK end
-    if id then pcall(PlaySound, id, "Master") end
 end
 
 local function OnChat(_, text)
@@ -88,6 +98,7 @@ function ChatCue.Sync()
     local s = Settings()
     local want = s ~= nil and s.enabled ~= false and type(s.cue) == "table" and s.cue.enabled == true
         and type(s.cue.word) == "string" and s.cue.word:match("%w") ~= nil
+        and ChatCue.Sound(s.cue.sound) ~= nil
     if want == listening then return end
     listening = want
     for _, event in ipairs(ChatCue.EVENTS) do

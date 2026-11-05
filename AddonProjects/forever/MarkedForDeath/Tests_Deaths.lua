@@ -139,6 +139,20 @@ T.Case("Deaths.Fight: the id from data, then the event's name, then unknown", fu
     T.Eq(Deaths.Decide(Death("G-TANK"), s).action, "say", "an unknown boss takes the tank default")
 end)
 
+T.Case("Deaths.BossRows: every encounter, by instance then boss", function()
+    local rows = Deaths.BossRows({
+        [2999] = { name = "Ruins of Lordaeron", encounters = { [3411] = "Viktor the Vile", [3354] = "Rath'mael" } },
+        [2970] = { kind = "unknown", encounters = { [3479] = "Min'loth the Serpent" } },
+        [36] = { name = "The Deadmines" },
+    })
+    T.Eq(#rows, 3, "instances without encounters list nothing")
+    T.Eq(rows[1].boss, "Rath'mael", "Ruins first, its bosses by name")
+    T.Eq(rows[2].encounterID, 3411, "then Viktor")
+    T.Eq(rows[3].instance, "instance 2970", "an unnamed instance by id, sorted last")
+    T.Eq(#Deaths.BossRows(nil), 0, "no list")
+    T.True(#Deaths.BossRows(ns.Instances.list) > 0, "the bundled data has bosses")
+end)
+
 --------------------------------------------------------------------------------
 -- Once per person per fight
 --------------------------------------------------------------------------------
@@ -309,4 +323,12 @@ T.Case("ChatCue.Allow: one sound per gap", function()
     T.True(ChatCue.Allow(s, 10), "the first")
     T.Eq(ChatCue.Allow(s, 12), false, "too soon")
     T.True(ChatCue.Allow(s, 10 + ChatCue.MIN_GAP), "after the gap")
+end)
+
+T.Case("ChatCue.Sound: a kit id, a file, or nothing (no default)", function()
+    T.Eq(ChatCue.Sound(8959).id, 8959, "a number is a sound kit id")
+    T.Eq(ChatCue.Sound(" 8959 ").kind, "kit", "digits too")
+    T.Eq(ChatCue.Sound("Interface/AddOns/X/cue.ogg").kind, "file", "a path is a file")
+    T.Eq(ChatCue.Sound(""), nil, "empty plays nothing")
+    T.Eq(ChatCue.Sound(nil), nil, "unset plays nothing")
 end)
