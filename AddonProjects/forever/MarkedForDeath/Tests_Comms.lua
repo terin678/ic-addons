@@ -591,6 +591,8 @@ end)
 
 T.Case("Comms: the public functions answer safely before comms start (headless)", function()
     T.Eq(Comms.IsLead(), false, "not the lead before anything is known")
+    T.Eq(Comms.Known(), false, "and says it does not know yet")
+    T.Eq(Lead.IsMe(), nil, "so Lead.IsMe is nil, and DeathWatch's own fallback decides")
     T.True(type(Comms.Lead()) == "table", "a lead result exists")
     local rules = Comms.ActiveRules("i:999999")
     T.True(type(rules) == "table", "active rules is a table")

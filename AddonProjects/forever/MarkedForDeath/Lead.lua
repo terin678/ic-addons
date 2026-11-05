@@ -26,6 +26,8 @@ win an argument with another:
     Lead.Accept(current, incoming)  whether an incoming designation replaces mine
     Lead.Parse(rest, members)       what /mfd lead was asked: show, clear or set a name
     Lead.Describe(result)           one line for chat
+    Lead.IsMe()                     whether this client is the Raid Lead, or nil while comms
+                                    has no answer yet (DeathWatch then uses its own fallback)
 ]]
 
 ns.Lead = ns.Lead or {}
@@ -213,6 +215,15 @@ function Lead.Parse(rest, members)
     end
     local name = text:gsub("(%S)(%S*)", function(first, restOf) return string.upper(first) .. lower(restOf) end)
     return { action = "set", name = name, inGroup = false }
+end
+
+-- The question DeathWatch asks with no tables in hand. Comms holds the answer it worked
+-- out from the roster; before that (at load, headless) this says nil, not false, so the
+-- caller's fallback decides rather than everyone staying quiet.
+function Lead.IsMe()
+    local comms = ns.Comms
+    if type(comms) ~= "table" or type(comms.Known) ~= "function" or not comms.Known() then return nil end
+    return comms.IsLead() == true
 end
 
 local MODE_TEXT = {

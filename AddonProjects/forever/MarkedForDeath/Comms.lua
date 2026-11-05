@@ -31,6 +31,7 @@ Public, for other lanes:
 
     ns.Comms.Lead()                 the Lead.Resolve result in force
     ns.Comms.IsLead()               whether this client is the Raid Lead (death calls, announce)
+    ns.Comms.Known()                whether IsLead is an answer yet (false before the roster is read)
     ns.Comms.Me()                   the player's full name, as the merge's sources name it
     ns.Comms.ActiveRules(key)       merged rule set for an instance key, and { [ruleKey] = owner }
     ns.Comms.RulesChanged()         call after editing the saved rules; re-advertises them
@@ -443,6 +444,7 @@ local wasGrouped = false
 local warnedNewer = false
 local status = { why = "not started" }
 local ConsiderAll           -- defined below; Recompute needs it
+local known = false         -- whether lead was worked out from a real roster yet
 
 local function Now()
     local ok, t = pcall(GetTime)
@@ -518,6 +520,7 @@ local function Recompute()
     })
     local changed = result.name ~= lead.name or result.mode ~= lead.mode
     lead = result
+    known = true
     if changed then
         Write("lead", Lead.Describe(result))
         if result.reason ~= "" and snapshot.kind ~= "solo" then ns.Print(AMBER .. result.reason .. "." .. CLOSE) end
@@ -857,6 +860,8 @@ end
 
 function Comms.Lead() return lead end
 function Comms.IsLead() return lead.isMe == true end
+-- Whether IsLead is an answer yet: false until the roster has been read once.
+function Comms.Known() return known end
 -- The player's full name as the merge and the sources map name them.
 function Comms.Me() return MyId() or "you" end
 
