@@ -475,6 +475,91 @@ T.Case("Restrict.Changed: only what an addon acts on counts", function()
         true, "a different kind on is")
 end)
 
+-- Stands a fake client in for the calls Restrict.Read makes; returns the knobs and a
+-- function that puts the real globals back.
+local function FakeRestrictClient()
+    local saved = { Enum = Enum, C_RestrictedActions = C_RestrictedActions, C_ChatInfo = C_ChatInfo,
+        InCombatLockdown = InCombatLockdown }
+    local client = { states = { [0] = 0, [1] = 0, [2] = 0 }, lockdown = false, chat = false }
+    _G.Enum = { AddOnRestrictionType = { Combat = 0, Chat = 1, Encounter = 2 } }
+    _G.C_RestrictedActions = {
+        GetAddOnRestrictionState = function(kind) return client.states[kind] end,
+    }
+    _G.C_ChatInfo = { InChatMessagingLockdown = function() return client.chat end }
+    _G.InCombatLockdown = function() return client.lockdown end
+    return client, function()
+        for k, v in pairs(saved) do _G[k] = v end
+    end
+end
+
+T.Case("Restrict.Read: the client's answers, in the shape State takes", function()
+    -- Headless only: in game, writing Enum and the C_ tables would taint them.
+    if not IC_HEADLESS then return end
+    local client, restore = FakeRestrictClient()
+    local r = Restrict.Read()
+    T.Eq(r.states.Combat, 0, "each kind by its name")
+    T.Eq(r.lockdown, false, "lockdown")
+    T.Eq(r.chatLockdown, false, "chat lockdown")
+    T.Eq(Restrict.InCombat(), false, "not in combat")
+    client.states[0], client.lockdown, client.chat = 2, true, true
+    T.Eq(Restrict.InCombat(), true, "in combat")
+    T.Eq(Restrict.ChatLocked(), true, "chat locked")
+    T.Eq(Restrict.Active("Combat"), true, "Combat on")
+    T.Eq(Restrict.Active("Encounter"), false, "Encounter off")
+    _G.C_RestrictedActions = { IsAddOnRestrictionActive = function(kind) return kind == 2 end }
+    T.Eq(Restrict.Read().states.Encounter, 2, "a client with only the yes-or-no call still answers")
+    T.Eq(Restrict.Read().states.Combat, 0, "and off reads as 0")
+    _G.C_RestrictedActions = { GetAddOnRestrictionState = function() error("nope") end }
+    T.Eq(Restrict.Read().states.Combat, nil, "a call that fails is no answer")
+    _G.C_RestrictedActions, _G.Enum, _G.C_ChatInfo, _G.InCombatLockdown = nil, nil, nil, nil
+    r = Restrict.Read()
+    T.Eq(next(r.states), nil, "a client without restrictions has none")
+    T.Eq(Restrict.State(r).restricted, false, "and nothing is restricted")
+    restore()
+end)
+
+T.Case("Restrict.OnChange: told at each change, with the regen event first", function()
+    -- Headless only: in game, writing Enum and the C_ tables would taint them.
+    if not IC_HEADLESS then return end
+    local client, restore = FakeRestrictClient()
+    local seen = {}
+    local stop = Restrict.OnChange(function(s, previous) seen[#seen + 1] = { s = s, previous = previous } end)
+    local frame = Restrict.frame
+    T.True(frame and frame:IsEventRegistered("ADDON_RESTRICTION_STATE_CHANGED"), "listens for the restriction event")
+    T.True(frame:IsEventRegistered("PLAYER_REGEN_DISABLED") and frame:IsEventRegistered("PLAYER_REGEN_ENABLED"),
+        "and the regen pair")
+    local fire = frame:GetScript("OnEvent")
+    T.Eq(#seen, 0, "nothing is said at the start")
+
+    fire(frame, "PLAYER_REGEN_DISABLED")
+    T.Eq(#seen, 1, "combat starts at the regen event")
+    T.Eq(seen[1].s.combat and seen[1].s.secure, true, "secure frames lock at once")
+    T.Eq(seen[1].previous.combat, false, "and the State before is handed in")
+
+    client.states[0], client.lockdown = 1, true
+    fire(frame, "ADDON_RESTRICTION_STATE_CHANGED", 0, 1)
+    T.Eq(#seen, 2, "the Combat restriction arriving is a change")
+    T.True(seen[2].s.active.Combat, "it is listed")
+    client.states[0] = 2
+    fire(frame, "ADDON_RESTRICTION_STATE_CHANGED", 0, 2)
+    T.Eq(#seen, 2, "1 to 2 is not")
+
+    client.states[0], client.lockdown = 0, false
+    fire(frame, "ADDON_RESTRICTION_STATE_CHANGED", 0, 0)
+    T.Eq(#seen, 3, "the restriction ending is a change")
+    T.Eq(seen[3].s.active.Combat, nil, "it is no longer listed")
+    T.Eq(seen[3].s.combat and seen[3].s.secure, true, "but combat holds while the regen window is open")
+    fire(frame, "PLAYER_REGEN_ENABLED")
+    T.Eq(#seen, 4, "the regen end is a change")
+    T.Eq(seen[4].s.combat or seen[4].s.secure, false, "and everything opens")
+
+    stop()
+    fire(frame, "PLAYER_REGEN_DISABLED")
+    T.Eq(#seen, 4, "a stopped listener hears nothing")
+    fire(frame, "PLAYER_REGEN_ENABLED")
+    restore()
+end)
+
 --------------------------------------------------------------------------------
 -- LibICStore
 --------------------------------------------------------------------------------

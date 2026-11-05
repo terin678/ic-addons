@@ -187,8 +187,10 @@ if s.secure then return "not while " .. s.reason end
 
 On Forever the client hides some values from addons (secret values: comparing or doing
 arithmetic on one throws) and switches some actions off while a restriction is active.
-This library is where an addon asks. `State` is the pure half: it takes what the client
-said and decides. The half that reads the client and reports changes is not in yet.
+This library is where an addon asks. `State` and `Changed` are the pure half: they take
+what the client said and decide. `Read`, `Now` and `OnChange` ask the client, using only
+what the in-game probe confirmed; every call is guarded, so a client without one reads as
+that restriction off.
 
 | Call | Returns |
 | --- | --- |
@@ -196,6 +198,16 @@ said and decides. The half that reads the client and reports changes is not in y
 | `Restrict.Readable(v, fallback)` | `v` when it can be read, else `fallback` (nil by default). `false` is a readable value. |
 | `Restrict.State(reading)` | The decision, below. |
 | `Restrict.Changed(a, b)` | Whether two States differ in a flag or in which restrictions are on. A first reading (`a` nil) always differs. |
+| `Restrict.Read()` | The reading below, from the client now: each kind from `C_RestrictedActions.GetAddOnRestrictionState` (or `IsAddOnRestrictionActive` as 2 or 0), `InCombatLockdown()`, `C_ChatInfo.InChatMessagingLockdown()`, and whether the regen window is open. |
+| `Restrict.Now()` | `State(Read())`. |
+| `Restrict.InCombat()`, `ChatLocked()`, `Active(kind)` | Booleans from `Now()`: `combat`, `chat`, and whether that kind is on. |
+| `Restrict.OnChange(fn)` | `fn(state, previous)` every time the State changes in a flag or in which restrictions are on. Not called for the State at the time of the call; read `Now()` for that. Returns a function that stops the listening. |
+
+The first `OnChange` makes the library's one event frame, listening for
+`ADDON_RESTRICTION_STATE_CHANGED` and `PLAYER_REGEN_DISABLED` / `ENABLED`; its handler is
+wrapped, so `/ickit profile` shows it as "ICKit restrictions". The regen window only opens
+while that frame is listening, so an addon that cares about the first seconds of combat
+subscribes at load.
 
 `reading` is what the client said, every field optional: `states` maps each
 `Enum.AddOnRestrictionType` name (`Combat`, `Chat`, `Encounter`, `Map`, `ChallengeMode`,

@@ -13,8 +13,15 @@ An addon asks here before it reads a value or acts, and gets a plain answer with
     Restrict.State(reading)         -> { combat, chat, secure, restricted, active, unknown, reason }
     Restrict.Changed(a, b)          -> whether two States differ in anything an addon acts on
 
-State is the pure half: it takes what the client said and decides. The half that asks the
-client and listens for changes is added once the in-game probe has confirmed it.
+    Restrict.Read()                 -> the reading State takes, from the client now
+    Restrict.Now()                  -> State(Read())
+    Restrict.InCombat(), ChatLocked(), Active(kind)   -> booleans, from Now()
+    Restrict.OnChange(fn)           -> fn(state, previous) on every change; returns a stop function
+
+State and Changed are the pure half: they take what the client said and decide. Read,
+Now and OnChange ask the client, using only what the in-game probe confirmed (see
+"Combat restrictions and secret values" in Docs/client-reference.md). Each call is
+guarded, so a client without one of them reads as that restriction off.
 ]]
 
 local MAJOR, MINOR = "LibICRestrict-1.0", 1
@@ -134,4 +141,119 @@ function Restrict.Changed(a, b)
         if a[flag] ~= b[flag] then return true end
     end
     return not SameSet(a.active or {}, b.active or {})
+end
+
+--------------------------------------------------------------------------------
+-- The client
+--------------------------------------------------------------------------------
+
+local STATE_ON = 2  -- what a restriction reads as when only IsAddOnRestrictionActive answers
+
+-- Events that can change the State. The restriction event fires with (type, state) when a
+-- restriction starts and ends; the regen pair marks combat seconds before it does.
+local EVENTS = { "ADDON_RESTRICTION_STATE_CHANGED", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED" }
+
+Restrict.listeners = Restrict.listeners or {}
+local listeners = Restrict.listeners
+local regenDisabled = false
+local last
+
+-- fn(...) under pcall, its first return when that reads plainly, else nil.
+local function Ask(fn, ...)
+    if type(fn) ~= "function" then return nil end
+    local ok, value = pcall(fn, ...)
+    if not ok then return nil end
+    return value
+end
+
+-- The restriction state of one kind: GetAddOnRestrictionState's number, or STATE_ON / 0
+-- from IsAddOnRestrictionActive, or nil when the client says neither.
+local function KindState(api, value)
+    local state = Ask(api.GetAddOnRestrictionState, value)
+    if state ~= nil then return state end
+    local on = Ask(api.IsAddOnRestrictionActive, value)
+    if on == nil or Env.IsSecret(on) then return on end
+    return on == true and STATE_ON or INACTIVE
+end
+
+-- What the client says now, in the shape State takes. Values pass through as the client
+-- gave them; State decides what a secret or a missing answer means.
+function Restrict.Read()
+    local states = {}
+    local kinds = type(Enum) == "table" and Enum.AddOnRestrictionType
+    local api = type(C_RestrictedActions) == "table" and C_RestrictedActions
+    if type(kinds) == "table" and api then
+        for name, value in pairs(kinds) do
+            states[name] = KindState(api, value)
+        end
+    end
+    local chat = type(C_ChatInfo) == "table" and C_ChatInfo.InChatMessagingLockdown
+    return {
+        states = states,
+        lockdown = Ask(InCombatLockdown),
+        regenDisabled = regenDisabled,
+        chatLockdown = Ask(chat),
+    }
+end
+
+function Restrict.Now()
+    return Restrict.State(Restrict.Read())
+end
+
+function Restrict.InCombat()
+    return Restrict.Now().combat
+end
+
+function Restrict.ChatLocked()
+    return Restrict.Now().chat
+end
+
+-- kind: an Enum.AddOnRestrictionType name, "Combat" for example.
+function Restrict.Active(kind)
+    return Restrict.Now().active[kind] == true
+end
+
+-- Runs on every event in EVENTS: notes the regen window, reads the client, and tells each
+-- listener when the State changed. A listener added or removed during the round waits
+-- for the next one.
+local function OnEvent(_, event)
+    if event == "PLAYER_REGEN_DISABLED" then
+        regenDisabled = true
+    elseif event == "PLAYER_REGEN_ENABLED" then
+        regenDisabled = false
+    end
+    local now = Restrict.Now()
+    if not Restrict.Changed(last, now) then return end
+    local previous = last
+    last = now
+    local round = {}
+    for i, fn in ipairs(listeners) do round[i] = fn end
+    for _, fn in ipairs(round) do fn(now, previous) end
+end
+
+-- The one event frame, made at the first OnChange so a file that only reads costs nothing.
+local function Listen()
+    if Restrict.frame then return end
+    local frame = CreateFrame("Frame")
+    for _, event in ipairs(EVENTS) do frame:RegisterEvent(event) end
+    frame:SetScript("OnEvent", Env.Wrap("ICKit restrictions", OnEvent))
+    Restrict.frame = frame
+    last = Restrict.Now()
+end
+
+-- fn(state, previous) whenever the State changes in a flag or in which restrictions are
+-- on. Nothing is called for the State at the time of the call: read Restrict.Now() for
+-- that. Returns a function that stops the listening.
+function Restrict.OnChange(fn)
+    assert(type(fn) == "function", "LibICRestrict: OnChange needs a function")
+    Listen()
+    listeners[#listeners + 1] = fn
+    return function()
+        for i, other in ipairs(listeners) do
+            if other == fn then
+                table.remove(listeners, i)
+                return
+            end
+        end
+    end
 end
