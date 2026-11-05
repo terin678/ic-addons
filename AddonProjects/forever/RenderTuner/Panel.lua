@@ -360,9 +360,11 @@ local function Strip(p, y, label, presets, into, onClick, tooltip)
     end
 end
 
-local EXTREME_WARNING = "Extreme is Ultra with the experimental extras on: HDR output and a 16-bit "
-    .. "float render format.\n\nBoth can crash the game, or leave it unable to draw the world. "
-    .. "Save a set that works first.\n\nTurn it on?"
+local EXTREME_WARNING = "Extreme is Ultra and then every setting beyond the quality levels turned all the way "
+    .. "up: how far everything is drawn, shadows and light, water and particles, 8x multisampling, a "
+    .. "32-bit float render format, HDR output and ray traced shadows, where this machine has them.\n\n"
+    .. "It is heavy, and some of it can crash the game or leave it unable to draw the world. "
+    .. "Save a set that works first. Choosing a lower level puts it all back as it was.\n\nTurn it on?"
 
 local function Build()
     local p = W.Panel(UIParent, {
@@ -440,7 +442,7 @@ local function Build()
         end
         -- Extreme turns on things that can crash the game: it is asked about, once it is off.
         local live = ns.Apply.Live()
-        if preset.experimental and Model.LevelOf(live.graphicsQuality, Catalog.LEVELS, live) ~= preset then
+        if preset.experimental and Model.LevelOf(live.graphicsQuality, Catalog.LEVELS, live, ns.Refused) ~= preset then
             W.Confirm(EXTREME_WARNING, Go)
         else
             Go()
@@ -450,10 +452,11 @@ local function Build()
         tip:AddLine(string.format("Sets the game's overall quality to level %d of 10, and the levels beneath it.",
             preset.level + 1), 1, 1, 1, true)
         if preset.experimental then
-            tip:AddLine("Also turns on HDR output and a 16-bit float render format. Both are experimental "
-                .. "and can crash the game.", 1, 0.5, 0.25, true)
+            tip:AddLine("Also turns every setting beyond the levels all the way up: draw distances, shadow "
+                .. "cascades and light range, water and particles, 8x multisampling, a 32-bit float render "
+                .. "format, HDR output, ray traced shadows. Experimental: it can crash the game.", 1, 0.5, 0.25, true)
         else
-            tip:AddLine("Leaves upscaling alone. Puts the HDR extras of Extreme back, if it set them.",
+            tip:AddLine("Leaves upscaling alone. Puts the extras of Extreme back as they were, if it set them.",
                 0.7, 0.7, 0.7, true)
         end
     end)
@@ -738,7 +741,7 @@ function Panel.Refresh()
         presetButtons[each.key]:SetKind(each == preset and "accent" or "normal")
         presetButtons[each.key]:SetLabel(Model.PresetLabel(each, limits))
     end
-    local level = Model.LevelOf(live.graphicsQuality, Catalog.LEVELS, live)
+    local level = Model.LevelOf(live.graphicsQuality, Catalog.LEVELS, live, ns.Refused)
     for _, each in ipairs(Catalog.LEVELS) do
         local b = levelButtons[each.key]
         b:SetKind(each == level and "accent" or "normal")

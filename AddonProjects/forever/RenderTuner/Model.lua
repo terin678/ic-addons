@@ -394,15 +394,31 @@ function Model.RangeText(knob)
     return "on or off"
 end
 
+-- What a quality preset's extras (`also`) come to on this machine: { cvar = value } for
+-- those the client will take, and the list of cvars it will not. `refused(cvar, value)`
+-- says why not, or nothing; a machine without ray tracing is refused ray traced shadows.
+function Model.AlsoWanted(preset, refused)
+    local wanted, left = {}, {}
+    for cvar, value in pairs(preset.also or {}) do
+        if refused and refused(cvar, value) then
+            left[#left + 1] = cvar
+        else
+            wanted[cvar] = value
+        end
+    end
+    table.sort(left)
+    return wanted, left
+end
+
 -- Whether every extra setting a quality preset turns on (`also`) is what it asks for in
--- `live`. A setting the client does not have is not held against it, but one that is
--- missing from all of them means there is nothing to say the preset is in force.
-function Model.AlsoHeld(preset, live)
+-- `live`. A setting the client does not have, or will not take (`refused`, as above), is
+-- not held against it, but a preset none of whose settings can be seen is not in force.
+function Model.AlsoHeld(preset, live, refused)
     if not preset.also or not live then return false end
     local seen = 0
     for cvar, want in pairs(preset.also) do
         local have = live[cvar]
-        if have ~= nil then
+        if have ~= nil and not (refused and refused(cvar, want)) then
             if not Model.Same(want, have) then return false end
             seen = seen + 1
         end
@@ -413,10 +429,10 @@ end
 -- The overall quality preset the settings are at, or nil for a level in between. Presets
 -- that turn extra settings on share the level they build on, so they are tried first and
 -- count only while `live` holds those settings; without `live` they are skipped.
-function Model.LevelOf(level, levels, live)
+function Model.LevelOf(level, levels, live, refused)
     for index = #levels, 1, -1 do
         local preset = levels[index]
-        if Model.Same(preset.level, level) and (not preset.also or Model.AlsoHeld(preset, live)) then
+        if Model.Same(preset.level, level) and (not preset.also or Model.AlsoHeld(preset, live, refused)) then
             return preset
         end
     end

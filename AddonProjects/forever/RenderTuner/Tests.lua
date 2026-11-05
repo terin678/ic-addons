@@ -176,7 +176,37 @@ T.Case("Catalog: the quality levels come twice, for the world and for raids, eac
     T.Eq(extreme.level, Catalog.LEVELS[#Catalog.LEVELS - 1].level, "at Ultra's level")
     T.True(extreme.experimental == true, "marked experimental")
     T.Eq(extreme.also.HDROutput, 1, "HDR output")
-    T.Eq(extreme.also.RenderFormat, 2, "a 16-bit float render format")
+    T.Eq(extreme.also.RenderFormat, 3, "a 32-bit float render format, not the 16-bit the client starts at")
+end)
+
+T.Case("Catalog: Extreme turns real knobs to the heavy end of their own range", function()
+    local extreme = Catalog.LEVELS[#Catalog.LEVELS]
+    local byCvar = {}
+    for _, knob in ipairs(Catalog.KNOBS) do byCvar[knob.cvar] = knob end
+    -- Where more is lighter: these run toward their minimum, or off, as they get heavier.
+    local lighter = { lodObjectCullSize = true, lodObjectMinSize = true, reflectionDownscale = true,
+        worldBaseMip = true, terrainMipLevel = true, componentTextureLevel = true, unitClutter = true,
+        vrsValar = true, vrsValarAlwaysOn = true }
+    local count = 0
+    for cvar, value in pairs(extreme.also) do
+        count = count + 1
+        local knob = byCvar[cvar]
+        T.True(knob ~= nil, cvar .. " is a knob of the catalogue")
+        T.True(knob.group ~= "upscale" and not knob.raid, cvar .. " is neither the render scale's nor the raid set's")
+        T.True(knob.rank == nil, cvar .. " is not one of the levels, which Extreme leaves to Ultra")
+        if knob.kind == "slider" then
+            T.Eq(value, lighter[cvar] and knob.min or knob.max, cvar .. " at its heavy end")
+        elseif knob.kind == "toggle" then
+            T.Eq(value, lighter[cvar] and 0 or 1, cvar .. " at its heavy end")
+        else
+            local top = knob.choices[1][1]
+            for _, choice in ipairs(knob.choices) do
+                if lighter[cvar] then top = math.min(top, choice[1]) else top = math.max(top, choice[1]) end
+            end
+            T.Eq(value, top, cvar .. " at its heavy end")
+        end
+    end
+    T.True(count >= 40, "it reaches well beyond the two it began with")
 end)
 
 T.Case("Catalog: every group is in a cluster, and the presets run from least to most", function()
@@ -330,17 +360,33 @@ end)
 
 T.Case("Model.LevelOf, AlsoHeld: Extreme is Ultra with its extras held, and only then", function()
     local extreme = Catalog.LEVELS[#Catalog.LEVELS]
-    local held = { HDROutput = 1, RenderFormat = 2 }
+    local function Held() local t = {} for k, v in pairs(extreme.also) do t[k] = v end return t end
+    local held = Held()
     T.Eq(Model.LevelOf(9, Catalog.LEVELS).key, "ultra", "without the settings to ask, Ultra")
     T.Eq(Model.LevelOf(9, Catalog.LEVELS, {}).key, "ultra", "and with none of the extras to be seen")
     T.Eq(Model.LevelOf(9, Catalog.LEVELS, held), extreme, "level 10 with the extras on is Extreme")
-    T.Eq(Model.LevelOf(9, Catalog.LEVELS, { HDROutput = 1, RenderFormat = 0 }).key, "ultra",
-        "one extra missing, Ultra")
+    local off = Held()
+    off.farclip = 7000
+    T.Eq(Model.LevelOf(9, Catalog.LEVELS, off).key, "ultra", "one extra off, Ultra")
     T.Eq(Model.LevelOf(6, Catalog.LEVELS, held).key, "high", "the extras alone make no level Extreme")
     T.True(Model.AlsoHeld(extreme, held), "held")
     T.Eq(Model.AlsoHeld(extreme, { HDROutput = 1 }), true, "a setting this client lacks is not held against it")
     T.Eq(Model.AlsoHeld(extreme, {}), false, "none to see is nothing held")
     T.Eq(Model.AlsoHeld(Catalog.LEVELS[1], held), false, "a preset with no extras holds none")
+
+    -- A machine that cannot do ray traced shadows is not held to them.
+    local noRt = function(cvar) return cvar == "shadowRt" and "needs ray tracing" or nil end
+    local without = Held()
+    without.shadowRt = 0
+    T.Eq(Model.AlsoHeld(extreme, without), false, "off, where the card could have them: not Extreme")
+    T.Eq(Model.AlsoHeld(extreme, without, noRt), true, "off, where it cannot: as far as it goes")
+    T.Eq(Model.LevelOf(9, Catalog.LEVELS, without, noRt), extreme, "and Extreme lights")
+
+    local wanted, left = Model.AlsoWanted(extreme, noRt)
+    T.Eq(wanted.shadowRt, nil, "the refused one is not asked for")
+    T.Eq(wanted.farclip, 10000, "the rest are")
+    T.Eq(table.concat(left, ","), "shadowRt", "and it is named")
+    T.Eq(next(select(2, Model.AlsoWanted(extreme))), nil, "with nothing refused, nothing is left out")
 end)
 
 T.Case("Model.PresetLabel, ParseTyped: the words on a button and the number a player types", function()
@@ -812,13 +858,19 @@ if IC_HEADLESS then
             ns.Baseline()
             run("")
             local button = ns.Panel.Level("extreme")
-            cvars.HDROutput, cvars.RenderFormat = "0", "0"
+            -- Where the client's first run left things: well short of the ceilings.
+            cvars.HDROutput, cvars.RenderFormat, cvars.farclip, cvars.shadowNumCascades = "0", "2", "7000", "3"
+            cvars.MSAAQuality = "0"
             button:GetScript("OnClick")(button)
             T.Eq(#asked, 1, "Extreme is asked about")
             T.Eq(cvars.HDROutput, "0", "and nothing is set until the answer")
             asked[1].yes()
             T.Eq(cvars.HDROutput, "1", "yes: HDR output on")
-            T.Eq(cvars.RenderFormat, "2", "and the 16-bit float format")
+            T.Eq(cvars.RenderFormat, "3", "the 32-bit float format, past the 16-bit it began at")
+            T.Eq(cvars.farclip, "10000", "the draw distance at its ceiling")
+            T.Eq(cvars.shadowNumCascades, "4", "the fourth shadow cascade")
+            T.Eq(cvars.MSAAQuality, "3", "8x multisampling")
+            T.Eq(cvars.shadowRt, "1", "ray traced shadows, which this machine cannot do, left alone")
             T.Eq(cvars.graphicsQuality, "9", "on top of level 10")
             T.Eq(ns.Panel.Level("extreme").icKind, "accent", "Extreme is the one lit")
             T.Eq(ns.Panel.Level("ultra").icKind, "normal", "and Ultra is not")
@@ -829,9 +881,22 @@ if IC_HEADLESS then
 
             local ultra = ns.Panel.Level("ultra")
             ultra:GetScript("OnClick")(ultra)
-            T.Eq(cvars.HDROutput, "0", "Ultra puts HDR back to the client's default")
-            T.Eq(cvars.RenderFormat, "0", "and the render format")
+            T.Eq(cvars.HDROutput, "0", "Ultra puts HDR back as it was")
+            T.Eq(cvars.RenderFormat, "2", "and the render format")
+            T.Eq(cvars.farclip, "7000", "and the draw distance")
+            T.Eq(cvars.shadowNumCascades, "3", "and the cascades")
+            T.Eq(cvars.MSAAQuality, "0", "and the multisampling")
+            T.Eq(ns.db.settings.beforeExtras, nil, "the note of what they were is spent")
             T.Eq(ns.Panel.Level("ultra").icKind, "accent", "Ultra is lit again")
+
+            -- A player's own change to one of them means Extreme is no longer in force, so
+            -- a lower level leaves the extras to the player.
+            button:GetScript("OnClick")(button)
+            asked[#asked].yes()
+            cvars.farclip = "8000"
+            local high = ns.Panel.Level("high")
+            high:GetScript("OnClick")(high)
+            T.Eq(cvars.MSAAQuality, "3", "tuned by hand, the extras stay")
         end)
     end)
 

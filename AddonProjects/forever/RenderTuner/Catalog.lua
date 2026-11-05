@@ -90,10 +90,23 @@ Catalog.FSR = 3
 -- sets that level and the levels beneath it, and leaves upscaling alone. `level` is the
 -- variable's value, which counts from 0.
 --
--- Extreme is the game's top level and then some: `also` is a short list of experimental
--- settings it turns on, with the value each is given. It asks first, wherever it is
--- chosen from, because those are the ones that can crash the game. A 16-bit float render
--- format is what HDR needs; 32-bit costs memory and shows nothing more.
+-- Extreme is Ultra and then everything the quality levels do not reach, turned all the way
+-- up. The game's ten levels move only the dozen or so variables the graphics page lists;
+-- the rest (how far each kind of thing is drawn, shadow cascades and light range, 8x
+-- multisampling, the render format) are left where the machine's first run put them, and
+-- the client defaults are well short of their ceilings: view distance 7000 of 10000,
+-- three shadow cascades of four, a light range of 2048 of 4096, and a 16-bit float render
+-- format when 32-bit exists. `also` is that list, with the value each is given, and every
+-- number in it is the top of the knob's own range below.
+--
+-- Not in it, on purpose: the render scale (the upscaling row owns it), and anything that
+-- is a matter of taste rather than of quality: bloom, the field of view, the glow and
+-- the other full-screen effects, the ambient-occlusion tuning, the frame rate limits.
+--
+-- It asks first, wherever it is chosen from, because a few of these are the ones that
+-- can crash the game, and ray traced shadows need hardware that not every machine has;
+-- what the client refuses is left alone and said so. Choosing a lower level hands the
+-- list back as it was before Extreme.
 Catalog.LEVELS = {
     { key = "low", label = "Low", level = 0 },
     { key = "fair", label = "Fair", level = 2 },
@@ -101,7 +114,28 @@ Catalog.LEVELS = {
     { key = "high", label = "High", level = 6 },
     { key = "ultra", label = "Ultra", level = 9 },
     { key = "extreme", label = "Extreme", level = 9, experimental = true,
-      also = { HDROutput = 1, RenderFormat = 2 } },
+      also = {
+          -- The picture's precision and sharpness: 32-bit float, HDR out, every kind of
+          -- anti-aliasing at once, the filtering and texture detail at full.
+          RenderFormat = 3, HDROutput = 1,
+          ffxAntiAliasingMode = 4, CMAA2Quality = 3, MSAAQuality = 3, MSAAAlphaTest = 1,
+          textureFilteringMode = 5, worldBaseMip = 0, terrainMipLevel = 0, componentTextureLevel = 0,
+          useHighResTextures = 1,
+          -- Shadows and light.
+          shadowMode = 4, shadowSoft = 1, shadowNumCascades = 4, shadowBlendCascades = 1,
+          entityShadowFadeScale = 100, shadowRt = 3,
+          SSAO = 4, volumeFogLevel = 4, maxLightDist = 4096,
+          -- How far everything is drawn, and in how much detail.
+          farclip = 10000, horizonClip = 10000, terrainLodDist = 650, wmoLodDist = 650,
+          wmoDoodadDist = 2000, doodadLodScale = 200, entityLodDist = 30,
+          lodObjectCullSize = 10, lodObjectCullDist = 100, lodObjectMinSize = 0, lodObjectFadeScale = 200,
+          groundEffectFade = 500,
+          -- Water, weather, particles and crowds.
+          waterDetail = 3, pbrLiquidDetail = 2, rippleDetail = 2, reflectionMode = 3, reflectionDownscale = 0,
+          weatherDensity = 3, particleDensity = 100, particleMTDensity = 100, unitClutter = 0,
+          -- Nothing shaded down to save time, and everything that can move, moving.
+          vrsValar = 0, vrsValarAlwaysOn = 0, physicsLevel = 2,
+      } },
 }
 
 local OFF_LOW_MED_HIGH_ULTRA = { { 0, "Off" }, { 1, "Low" }, { 2, "Medium" }, { 3, "High" }, { 4, "Ultra" } }
@@ -216,7 +250,7 @@ Catalog.KNOBS = {
     { cvar = "RenderFormat", label = "Render format", group = "hdr", kind = "choice", restart = "gx",
       experimental = true,
       choices = { { 0, "8-bit" }, { 1, "10-bit" }, { 2, "16-bit float" }, { 3, "32-bit float" } },
-      help = "The precision the world is drawn at. HDR and smooth gradients need 16-bit float; lower saves memory." },
+      help = "The precision the world is drawn at. 16-bit float is the client's own choice and what HDR needs; 32-bit float is the most precise and the heaviest." },
 
     -- Quality levels: Blizzard's own, set before the variables beneath them.
     { cvar = "graphicsQuality", label = "Overall quality", group = "quality", kind = "slider",

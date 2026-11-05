@@ -82,9 +82,9 @@ use in each is highlighted.
   shows the share of the screen's pixels it draws. "Quality" and "Performance" here are the
   names DLSS uses for render scales; they do not touch the quality levels.
 - **Quality** sets the game's overall quality level, and the levels beneath it, and leaves
-  upscaling alone. **Extreme**, at the right in orange, is Ultra and then some: it also
-  turns on the experimental HDR output and a 16-bit float render format, after asking.
-  Choosing a lower level puts those two back to the client's defaults.
+  upscaling alone. **Extreme**, at the right in orange, is Ultra and then everything the
+  quality levels do not reach, turned all the way up (see below), after asking. Choosing a
+  lower level puts those settings back as they were before Extreme.
 
 Clicking a preset brings the group it changes into view, so you see what it did. The two
 rows are independent: Potato upscaling with Ultra quality is a combination you can make.
@@ -151,11 +151,40 @@ A preset does not touch the sharpening strength, so it stays where you set it.
 | `good` | 5 |
 | `high` | 7 |
 | `ultra` | 10 |
-| `extreme` | 10, and HDR output on with a 16-bit float render format (experimental) |
+| `extreme` | 10, and about fifty settings beyond the levels at the top of their ranges (experimental) |
 
 `/tuner quality high` uses one. Each sets the overall level and asks the client what every
 level beneath it should be at that level, which is what the slider on the game's own
 graphics page does.
+
+**What Extreme means.** The game's ten levels move only the dozen or so variables its
+graphics page lists. Everything else is left where the client's first run put it, well short
+of the ceiling: view distance 7000 of 10000, three shadow cascades of four, a light range of
+2048 of 4096, a 16-bit float render format when a 32-bit one exists, and no multisampling.
+Extreme is Ultra, then each of these at the top of its own range:
+
+- **The picture:** 32-bit float render format, HDR output, 8x multisampling with CMAA2 at
+  Ultra, 16x anisotropic filtering, full-resolution textures.
+- **Shadows and light:** the best shadow technique, four cascades, shadows on every creature
+  out to the limit, ray traced shadows, Ultra ambient occlusion, the finest volumetric fog,
+  a light range of 4096.
+- **Distance and detail:** draw distance and horizon at 10000, terrain and building detail
+  at 650, props at twice the usual range, creature detail at 30, nothing dropped for being
+  small, grass out to 500.
+- **Water, weather, particles:** every water, ripple and reflection setting at its best,
+  reflections at full resolution, full particle density, crowds never thinned.
+- **Nothing shaded down:** variable rate shading off, and cloth and foliage moving on every
+  character.
+
+It leaves out what is taste rather than quality (bloom, field of view, the glow and other
+full-screen effects, the ambient-occlusion tuning, frame rate limits), the render scale
+(the upscaling row owns it), and the raid profile.
+
+It asks first, because HDR output, the 32-bit format and ray traced shadows can crash the
+game. A setting the client will not take on your machine, such as ray traced shadows without
+ray tracing, is left alone and named. Before it changes anything it notes what each setting
+was; choosing a lower level puts them back as they were, exactly. If you tune one of them
+by hand after Extreme, the button no longer lights, and a lower level leaves them to you.
 
 ## Saved, trial and original
 

@@ -161,49 +161,72 @@ function ns.SetKnob(knob, value)
     ns.ApplyTarget(target, knob.label, true)
 end
 
--- What the extras of a quality preset are set to by choosing `preset`, as { cvar = value },
--- or nil. A preset with extras turns them on. Any other preset hands them back to the
--- client's defaults, but only while they are what such a preset left them at, so a
--- player's own HDR is not switched off by choosing High.
-local function Extras(preset, live)
-    if preset.also then return preset.also end
-    local given
+-- Whether the client will not take a value, for the extras: ray traced shadows on a card
+-- without ray tracing, or a multisample level the card lacks.
+local function Refused(cvar, value)
+    return ns.Apply.Unsupported(cvar, value)
+end
+ns.Refused = Refused
+
+-- The preset with extras that the settings are holding now, or nil.
+local function HeldExtras(live)
     for _, other in ipairs(ns.Catalog.LEVELS) do
-        if other.also and ns.Model.AlsoHeld(other, live) then
-            local defaults = ns.Apply.Defaults()
-            given = given or {}
-            for cvar in pairs(other.also) do given[cvar] = defaults[cvar] end
-        end
+        if other.also and ns.Model.AlsoHeld(other, live, Refused) then return other end
     end
-    return given
 end
 
 -- An overall quality preset: the game's master level, and the levels beneath it.
+--
+-- A preset with extras (Extreme) sets the level first, so the client works out the levels
+-- beneath it, and then the extras on top, noting what each was before in
+-- settings.beforeExtras. Any other preset, chosen while the extras are what Extreme left
+-- them at, puts them back as they were noted, or at the client's defaults for any that were
+-- not, and then sets its level. A player's own tuning, which makes the extras differ from
+-- Extreme, is left alone: choosing High does not switch off their HDR.
 function ns.ApplyLevel(preset)
     local knob = ns.Model.Find(ns.Apply.Knobs(), "graphicsQuality")
     if not knob then
         out.Print("this client has no overall quality level.")
         return
     end
-    local extras = Extras(preset, ns.Apply.Live())
-    ns.SetKnob(knob, preset.level)
+    local live = ns.Apply.Live()
+    local held = HeldExtras(live)
     local line = string.format("%s quality: level %s, and the levels beneath it", preset.label,
         ns.Model.Format(knob, preset.level))
-    if extras then
-        ns.ApplyTarget(extras, preset.label .. " extras", true)
-        local names = {}
-        for cvar in pairs(extras) do
-            local extra = ns.Model.Find(ns.Apply.Knobs(), cvar)
-            if extra then
-                names[#names + 1] = preset.also and (extra.label .. " " .. ns.Model.Format(extra, extras[cvar]))
-                    or extra.label
+
+    if preset.also then
+        local wanted, left = ns.Model.AlsoWanted(preset, Refused)
+        if not held then
+            local before = {}
+            for cvar in pairs(wanted) do before[cvar] = live[cvar] end
+            ns.db.settings.beforeExtras = before
+        end
+        ns.SetKnob(knob, preset.level)
+        ns.ApplyTarget(wanted, preset.label .. " extras", true)
+        local count = 0
+        for _ in pairs(wanted) do count = count + 1 end
+        line = line .. string.format("; and %d more %s turned all the way up", count, Util.Plural(count, "setting"))
+        if #left > 0 then
+            local labels = {}
+            for _, cvar in ipairs(left) do
+                local extra = ns.Model.Find(ns.Apply.Knobs(), cvar)
+                labels[#labels + 1] = extra and extra.label or cvar
             end
+            line = line .. "; this machine cannot do: " .. table.concat(labels, ", ")
         end
-        table.sort(names)
-        if #names > 0 then
-            line = line .. (preset.also and "; and turned on: " or "; back to the client's defaults: ")
-                .. table.concat(names, ", ")
+    else
+        if held then
+            local back = {}
+            local defaults = ns.Apply.Defaults()
+            local before = ns.db.settings.beforeExtras or {}
+            for cvar in pairs(held.also) do
+                if before[cvar] ~= nil then back[cvar] = before[cvar] else back[cvar] = defaults[cvar] end
+            end
+            ns.db.settings.beforeExtras = nil
+            ns.ApplyTarget(back, held.label .. " extras", true)
+            line = line .. string.format("; and %s put back as they were", held.label)
         end
+        ns.SetKnob(knob, preset.level)
     end
     out.Print(line .. ".")
 end
@@ -305,10 +328,10 @@ COMMANDS.quality = function(rest)
     if not Ready() then return end
     if Util.Trim(rest) == "" then
         local live = ns.Apply.Live()
-        local now = ns.Model.LevelOf(live.graphicsQuality, ns.Catalog.LEVELS, live)
+        local now = ns.Model.LevelOf(live.graphicsQuality, ns.Catalog.LEVELS, live, ns.Refused)
         for _, preset in ipairs(ns.Catalog.LEVELS) do
             out.Printf("  %s%s: level %d of 10%s", preset.key, preset == now and " |cff00ff00(in use)|r" or "",
-                preset.level + 1, preset.also and ", with HDR and a 16-bit float render format (experimental)" or "")
+                preset.level + 1, preset.also and ", and every setting beyond the levels turned all the way up (experimental)" or "")
         end
         return
     end
