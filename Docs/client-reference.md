@@ -158,7 +158,12 @@ party members and of the player. Compare or do arithmetic on them and the client
 `UnitCanAttack`, `UnitIsDead`, `UnitIsUnit`, `UnitThreatSituation` on targets and hostile
 nameplates. `C_Secrets.ShouldUnitIdentityBeSecret(unit)` is false for them. Plain too, on
 party members: `UnitClass`, `UnitName` (the two-part name), `UnitGroupRolesAssigned`,
-`GetPartyAssignment("MAINTANK", unit)`, `UnitIsDeadOrGhost`, `CanInspect`.
+`GetPartyAssignment("MAINTANK", unit)`, `UnitIsDeadOrGhost`, `CanInspect`,
+`UnitIsConnected` and `UnitGUID`. The group itself read plainly too: `IsInGroup()` true,
+`GetNumGroupMembers()` 2, `UnitIsGroupLeader("player")` true. `IsInRaid()`,
+`UnitIsGroupAssistant("player")` and `IsEveryoneAssistant()` did not read true, but that
+run filed a false and a secret alike, so whether they are plain is not yet shown. Raid
+behaviour is open.
 `GetRaidTargetIndex` reads plainly (nil on an unmarked unit) in and out of combat.
 
 **Auras.** `C_UnitAuras.GetAuraDataByIndex` returns full tables out of combat (player,

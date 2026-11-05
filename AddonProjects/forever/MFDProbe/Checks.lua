@@ -203,6 +203,13 @@ local function CheckRestrictions(run)
     end
     Add(run, "chat.C_ChatInfo.InChatMessagingLockdown", C_ChatInfo and C_ChatInfo.InChatMessagingLockdown)
     Add(run, "combat.InCombatLockdown", InCombatLockdown)
+    -- The group, as rows: the run's header cannot tell a false from a secret.
+    Add(run, "group.IsInRaid", IsInRaid)
+    Add(run, "group.IsInGroup", IsInGroup)
+    Add(run, "group.GetNumGroupMembers", GetNumGroupMembers)
+    Add(run, "group.UnitIsGroupLeader", UnitIsGroupLeader, "player")
+    Add(run, "group.UnitIsGroupAssistant", UnitIsGroupAssistant, "player")
+    Add(run, "group.IsEveryoneAssistant", IsEveryoneAssistant)
     Add(run, "encounter.C_InstanceEncounter.IsEncounterInProgress",
         C_InstanceEncounter and C_InstanceEncounter.IsEncounterInProgress)
     Add(run, "encounter.IsEncounterInProgress", IsEncounterInProgress)
