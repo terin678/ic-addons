@@ -64,7 +64,9 @@ should not. The counters cost two clock reads a call and need no console variabl
 | LibICJSON-1.0 | 1 | JSON text to and from tables, sorted and indented for people to read. Calls nothing in the game client |
 | LibICEnv-1.0 | 2 | What this client offers (build, a feature probe, secret values) and what handlers cost (call and time counters, memory) |
 | LibICRestrict-1.0 | 1 | What the client will not let an addon do or read right now: secret values, and combat, encounter and chat restrictions with a reason |
-| LibICGroup-1.0 | 1 | Who is in the group: a roster snapshot of plain values, every field checked for secrets, and whether the player may mark |
+| LibICGroup-1.0 | 2 | Who is in the group: a roster snapshot of plain values, every field checked for secrets, and whether the player may mark |
+| LibICChat-1.0 | 1 | Lines said in chat: decided before they go (send, hold until chat unlocks, or refuse with a reason), with a per-channel budget |
+| LibICComm-1.0 | 1 | Addon messages between players on the same addon: tables in, tables out, framed to fit, own echo dropped, a version hello, and a queue through lockdowns |
 | LibICStore-1.0 | 1 | Saved variables: defaults, schema, migrations, and whether the file really loaded |
 | LibICConsole-1.0 | 1 | Prefixed printing and the slash-command dispatcher with its help |
 | LibICTheme-1.0 | 1 | The theme registry: colour and font roles, the selected theme, change listeners |
@@ -250,7 +252,7 @@ field is checked, and the snapshot is kept: a pull reads the snapshot, not the c
 | `Group.Read()` | The reading, from the client now: `IsInRaid`, `IsInGroup`, `GetNumGroupMembers`, `IsEveryoneAssistant`, `UnitGUID("player")`, and for each unit (`player` and `party1..4`, or `raid1..40`) `UnitGUID`, `UnitName`'s two returns, `UnitClass`, `UnitGroupRolesAssigned`, `GetPartyAssignment("MAINTANK")`, `UnitIsGroupLeader`, `UnitIsGroupAssistant`, `UnitIsConnected` and `UnitIsDeadOrGhost`. Every call is guarded; one that is missing or raises is no answer. |
 | `Group.Now()` | `Snapshot(Read())`. |
 
-The roster: `kind` (`solo`, `party` or `raid`), `size`, `members` in unit order, `byGuid`,
+The roster: `kind` (`solo`, `party` or `raid`), `kindKnown`, `size`, `members` in unit order, `byGuid`,
 `me` (the player, found by guid), `leader`, `everyoneAssist`, `canMark` and `unknown` (how
 many fields came back unreadable).
 
@@ -261,11 +263,100 @@ for showing), `class` (the token, `MAGE`) and `classLocal` (as the client shows 
 
 Nothing is guessed. A field the client hid is nil and named in `unknown`, so read a nil as
 "not known", not as "no". A rank that cannot be read is nil, and then `canMark` is nil in a
-raid. `canMark` is the game's rule for raid target icons: always alone or in a party, in a
+raid. `IsInRaid`, `UnitIsGroupAssistant` and `IsEveryoneAssistant` are not yet proven to
+answer plainly, so: when `IsInRaid` cannot be read and nothing proves a raid (raid unit
+tokens, or more members than a party holds), `kind` says `party` with `kindKnown = false`
+and `canMark` is nil unless the player leads or assists; and in a raid, or a group that may
+be one, a missing assist answer leaves the rank unknown rather than "member". `canMark` is the game's rule for raid target icons: always alone or in a party, in a
 raid only as leader or assist or when everyone is assist. Raid units are read the same way
 as party ones, but the probe has only seen a party so far.
 
 There is no change event yet: call `Group.Now()` when you need a roster, out of combat.
+
+## LibICChat-1.0
+
+```lua
+local Chat = LibStub("LibICChat-1.0")
+local chat = Chat.New({ ttl = 10, onDrop = function(entry, reason) out.Debug("dropped: %s", reason) end })
+
+-- A death call: wait for chat to unlock, up to ten seconds.
+chat:Say({ text = "Healer down", channels = { "RAID_WARNING", "RAID" }, whenLocked = "queue" })
+
+-- A pre-pull line: after the pull it is wrong, so never hold it.
+local plan = chat:Say({ text = "Pull in 10", channel = "RAID" })
+if plan.action == "refuse" then button:SetLabel(plan.reason) end
+```
+
+On Forever chat can be locked, and RAID, RAID_WARNING and INSTANCE_CHAT each have their own
+rules, so every line is decided before it goes. The answer is a plan: `action` is `send`,
+`queue` (held until it can go or its time runs out) or `refuse`, with the `channel` it uses
+or would use, the cleaned `text`, and a `reason` in words.
+
+A line: `text` (line breaks become spaces, cut to 255 bytes), `channels` (a list; the first
+the group allows wins) or `channel`, `whenLocked = "queue"` to hold it rather than refuse,
+`ttl` (seconds a held line lives; the sender's by default), and `pressed = true` when a key
+press or click sent it.
+
+| Call | What it does |
+| --- | --- |
+| `Chat.New(opts)` | A sender with its own queue and record of what it sent. `opts`: `ttl` (10), `maxQueue` (20), `budget` (`{ [channel] = { lines, seconds } }`, `"*"` for the rest), `instance` (`"follow"` trusts the client's chat lock; `"locked"` treats every instance as locked), `onSend(plan)`, `onDrop(entry, reason)`. |
+| `sender:Say(line)` | Decides and acts: sends, holds, or refuses. Returns the plan. |
+| `sender:Flush()` | Sends what may go now and drops what expired. It runs by itself when the restriction state changes, and once a second while a line is held, in case chat unlocks without the restriction event. |
+| `sender:Queue()` | Held lines, oldest first: `{ line, expires, plan }`. |
+| `sender.stop()` | Stops it listening for restriction changes. |
+| `Chat.Decide(line, state)` | The plan, pure. `state`: `now`, `chat` (locked), `inInstance`, `instance`, `group` (`solo`, `party`, `raid`, or `group` for one that may be a raid, where RAID and RAID_WARNING are refused and PARTY still goes), `lead` (leader or assist in a raid; nil when unreadable), `instanceGroup`, `sent`, `budget`. |
+| `Chat.Flush(queue, state)` | `{ send, dropped, keep }`, pure: each held line decided again in order, counting this round's sends against the budget. A dropped entry says why (`expired`, or the refusal). |
+| `Chat.Budget(channel, state)` | 0 when a line may go now, else the seconds until one may. |
+
+What each channel needs: PARTY a party or raid; RAID a raid; RAID_WARNING a raid and lead
+or assist; INSTANCE_CHAT an instance group; SAY and YELL a key press (from a timer in combat
+the probe saw SAY sent but never arrive). Over budget a line is held (when it may be) or
+refused; the default is 2 raid warnings and 4 lines on any other channel per 10 seconds.
+
+The sender reads the chat lock from LibICRestrict, the group from LibICGroup, the instance
+type from `GetInstanceInfo`, and sends with `SendChatMessage`. Whether an instance locks
+chat during trash, a boss or not at all is not known yet; `instance = "locked"` is the
+setting for a client found to lock without saying so.
+
+## LibICComm-1.0
+
+```lua
+local Comm = LibStub("LibICComm-1.0")
+local comm = Comm.New("MarkedForDeath", { version = VERSION, onDrop = function(entry, reason) end })
+
+comm:On("plan", function(msg, from, channel) ApplyPlan(msg.plan) end)
+comm:Send({ t = "plan", plan = plan })      -- to the whole group
+comm:Hello()                                -- peers answer with their versions
+```
+
+A message is a table with a type in `t`. It goes out as compact JSON (LibICJSON), cut into
+frames that fit one addon message, and arrives whole on every other client in the group.
+`Send` adds `f`, the player's guid; the copy the client loops back to you carries your own
+guid and is dropped, so a handler only ever sees other players.
+
+| Call | What it does |
+| --- | --- |
+| `Comm.New(prefix, opts)` | A sender for one prefix (1 to 16 characters): registers it and listens for `CHAT_MSG_ADDON` at once. `opts`: `version` (said in a hello), `ttl` (30 seconds a waiting message lives), `maxQueue` (50), `budget` (`{ frames, seconds }`, 8 per 10 by default), `raid` (`"follow"`, the default, or `"off"` to send nothing in a raid), `onDrop(entry, reason)`. |
+| `comm:Send(msg, channel)` | Sends to the group (or `channel`). Returns `{ action = "send" \| "queue" \| "refuse", channel, reason }`. |
+| `comm:On(t, fn)` | `fn(msg, from, channel)` for each message of type `t` from another player. `from` is the sender as the client names them ("First Second" on Forever). |
+| `comm:Hello()` | Says this version. Every peer that hears it records it and answers once (not again within a minute), so both sides learn each other. |
+| `comm:Peers()` | `{ [guid] = { name, version, at } }` from hellos heard. |
+| `comm:Queue()` | Messages waiting, oldest first. |
+| `comm.stop()` | Stops it trying the queue on restriction changes. |
+| `Comm.Frame(text, n)` | The frames for message id `n`, pure: `S` and a two-character id for one frame, else `F`, `M`... `L`. |
+| `Comm.Assemble(buffers, from, frame, now)` | The whole text when this frame completes one, else nil, pure. Senders and ids never mix; a frame with no first is dropped, and a partial older than 30 seconds is forgotten. |
+| `Comm.Channel(state)` | The group's channel, or `nil, reason`, pure: INSTANCE_CHAT in an instance group, RAID in a raid (unless `raid = "off"`), PARTY in a party; a group that may be a raid is refused. |
+| `Comm.Result(name)` | What a `SendAddonMessage` result means, pure: `sent`, `retry` (throttled), `hold` (`AddOnMessageLockdown`) or `drop`, with a reason. |
+| `Comm.Newer(a, b)` | Whether version `a` is newer than `b`, part by part as numbers. |
+
+A frame the client will not take now waits: `retry` and `hold` keep it queued, tried again
+on every restriction change and once a second, until it goes or its time runs out, when
+`onDrop` hears the last reason. A `drop` result reports it at once. Results are read by
+name from the client's `Enum.SendAddonMessageResult`.
+
+From the probe, open world: PARTY returns 0 and loops back, in combat too; INSTANCE_CHAT
+outside an instance group returns 5 (`NotInGroup`). Whether a raid carries addon messages
+out of combat is not known yet, which is what `raid = "off"` is for.
 
 ## LibICStore-1.0
 
