@@ -8,11 +8,14 @@ Owned by lane H (ops). Pure half first (ShouldLog, Decide, WhenToCheck, Command,
 StatusLines), each with a case in Tests_Ops.lua; the client half runs only from the
 OnReady hook at the bottom and returns early on IC_HEADLESS.
 
-Off by default, and on purpose. LoggingCombat(true) works from Lua on this client, but in
-the open world the file it opened stayed at 0 bytes through a pull and a reload (probe of
-2026-11-05, PENDING-PROBE P12). So the schema's switch is on while its instance list is
-empty: nothing is logged until a player lists an instance with /mfd combatlog here, and
-the status line says the file may come out empty until P12 settles inside an instance.
+Off by default, and on purpose. LoggingCombat(true) works from Lua on this client and the
+file is written, but late: on the probe of 2026-11-05 it read 0 bytes through a pull and a
+reload, then held the fight a few minutes later (Docs/client-reference.md, "The combat
+log"). So the schema's switch is on while its instance list is empty: nothing is logged
+until a player lists an instance with /mfd combatlog here, and the status line says the
+file fills late. LoggingCombat() with no argument reads a plain boolean, in combat too
+(probe rows log.LoggingCombat.read); View() hands that and the session state to the
+settings tab.
 
 Never registers the combat log event (CLEU): on this client the registration itself is
 ADDON_ACTION_FORBIDDEN. Nothing here reads the log; it only opens and closes the file.
@@ -34,9 +37,10 @@ local CombatLog = ns.CombatLog
 CombatLog.SETTLE_SECONDS = 2   -- seconds after a zone event before asking where we are
 CombatLog.OPEN_WORLD = "open"  -- the instance key outside any instance (spec 7.1)
 
--- The P12 caveat, shown with the status until an instance pass says the file fills.
-CombatLog.CAVEAT = "The client wrote an empty log file in the open world; whether it "
-    .. "fills inside an instance is still being checked."
+-- Shown with the status while anything is listed: an empty file right after a pull is
+-- normal on this client, not a failure.
+CombatLog.CAVEAT = "The client writes the log file late: it can stay empty through a pull "
+    .. "and fill a few minutes later, so upload it after the session."
 
 -- Events that start the settle timer. Both confirmed on this client by Stickies and the
 -- probe (zone changes, loading screens).
@@ -230,6 +234,24 @@ local function IsLogging()
     return on and true or false
 end
 
+--[[
+What only the client half knows, for a status view: the settings tab (lane G) merges it
+into the view it passes to StatusLines.
+    isLogging  the client's answer, or nil when it will not say
+    isOurs     whether this addon opened (or adopted) the running log
+    waiting    a check was refused in combat and runs again when it ends
+read, for a test, stands in for the client read; it defaults to IsLogging.
+]]
+function CombatLog.View(read)
+    local isLogging = (read or IsLogging)()
+    if isLogging ~= nil then isLogging = isLogging == true end
+    return {
+        isLogging = isLogging,
+        isOurs = CombatLog.isOurs == true,
+        waiting = CombatLog.waiting == true,
+    }
+end
+
 -- Switches the file. Returns true when the client took the call.
 local function Switch(on)
     local ok = pcall(LoggingCombat, on)
@@ -324,11 +346,10 @@ function CombatLog.Sync()
 end
 
 local function PrintStatus()
-    local key, name = Where()
-    for _, line in ipairs(CombatLog.StatusLines({
-        settings = Settings(), key = key, name = name, isLogging = IsLogging(),
-        isOurs = CombatLog.isOurs, waiting = CombatLog.waiting,
-    })) do
+    local view = CombatLog.View()
+    view.settings = Settings()
+    view.key, view.name = Where()
+    for _, line in ipairs(CombatLog.StatusLines(view)) do
         ns.Print(line)
     end
 end
