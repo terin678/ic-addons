@@ -55,7 +55,49 @@ A new install starts with this plan, with no players pinned:
 
 ## Raid check
 
-*To come (lane C).*
+| Command | What it does |
+| --- | --- |
+| `/mfd check` | Opens or closes the grid: one row per member, one cell per buff or consumable |
+| `/mfd check missing` | Prints who is missing what, for you only |
+| `/mfd check callout` | Says who is missing what in raid (or party) chat, one line per fix, at most four lines, once per 10 seconds |
+| `/mfd check auras` | Lists your own buffs with their spell ids and what the check took each one for |
+| `/mfd check board` | Opens or closes the buff board: a small window listing only the members missing something |
+| `/mfd check ready` | Starts the game's ready check (group leader or assistant) |
+
+**When it reads.** On Forever the client hides auras in combat, so the check reads everyone
+only out of combat: when you press Scan or run a command, on every ready check, and, while
+the grid or board is open, whenever a buff or the group changes. When combat starts it
+reads once more (the lock arrives a few seconds after the pull) and then shows that read,
+with its age, until combat ends. Nothing is read or thrown away in combat. A closed grid
+listens to nothing but the ready check.
+
+**On a ready check** everyone's check reads the group. The grid opens by itself only for the
+group's leader and assistants, so twenty four other screens stay clear.
+
+**The columns.** Int, Mark, Fort, Spirit and SProt (the class buffs), Bless (the blessings a
+member carries, one expected per paladin present), Flask, Food, Dur (durability) and Ver
+(the addon version). Colours: green has it, red missing, grey could not be read, amber an
+older version, dim nothing expected.
+
+- A buff nobody present can cast is never missing. Divine Spirit counts only once somebody
+  in the group is seen wearing it, since it is a talent and talents cannot be inspected
+  here. Shadow Protection is shown and never called out.
+- Flask: a flask, or any two elixirs. One elixir is called out as the other half ("Guardian
+  elixir" after a battle one), or "Second elixir" when its kind is not known.
+- **Grey is never red.** A member out of sight or offline, a buff the client hid, or an
+  aura list that came back empty is "could not be read", never "missing", and a callout
+  never names anyone for a grey cell. Hover a row for the reason.
+- Durability is your own for now. Other members' durability and versions arrive with the
+  addon's comms; until then those cells are grey.
+
+Buffs are matched by spell id. A flask, elixir or food whose id the addon does not know yet
+still counts, matched by its name or icon, and `/mfd check auras` lists it under "matched by
+name only" so its id can be added (capture mode records it too).
+
+**For the maintainer.** `Data_Auras.lua` lists every id with its source: EllesmereUI's
+Forever buff families and consumables, VuhDo's Forever flavor, the client's hotfix cache,
+the probe, or `classic` for a classic-era id not yet seen on Forever. The `classic` ones
+(Gift of Arthas, Greater Agility and a few more) wait on capture.
 
 ## Death calls and chat
 
