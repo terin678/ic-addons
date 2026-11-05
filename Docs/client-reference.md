@@ -133,6 +133,90 @@ levels: the graphics page does that in Lua, asking
 `MinimalSliderTemplate`, `MinimalSliderWithSteppersTemplate` and the `OffScreenFrame` frame
 type can all be created. `RestartGx` and `UpdateWindow` are globals.
 
+### Combat restrictions and secret values on forever
+
+Found by MFDProbe on 2026-11-05, **in the open world only**, in a party of two with the
+player as leader. Every row of the probe is in `MFDProbeDB` (account saved variables).
+Nothing here says how an instance behaves; that is still open.
+
+**When the restriction starts.** `Enum.AddOnRestrictionType` has `Combat`, `Chat`,
+`Encounter`, `Map`, `ChallengeMode` and `PvPMatch`. Out of combat every one reads
+inactive, state 0. In open-world combat only `Combat` is active (state 2).
+`InChatMessagingLockdown()` stayed false in and out of combat. At `PLAYER_REGEN_DISABLED`
+itself, `InCombatLockdown()` was still false and `Combat` was not yet active; three
+seconds later both were. `ADDON_RESTRICTION_STATE_CHANGED` fires with
+`(type, state)`, for example `0, 1` then `0, 0`.
+
+**Secret everywhere, even out of combat:** `UnitHealth` and `UnitHealthMax` of mobs, of
+party members and of the player. Compare or do arithmetic on them and the client throws.
+
+**Plain in the open world, in combat too:** `UnitGUID` (the npc id parses from it),
+`UnitName`, `UnitClassification`, `UnitCreatureType`, `UnitLevel`, `UnitIsEnemy`,
+`UnitCanAttack`, `UnitIsDead`, `UnitIsUnit`, `UnitThreatSituation` on targets and hostile
+nameplates. `C_Secrets.ShouldUnitIdentityBeSecret(unit)` is false for them. Plain too, on
+party members: `UnitClass`, `UnitName` (the two-part name), `UnitGroupRolesAssigned`,
+`GetPartyAssignment("MAINTANK", unit)`, `UnitIsDeadOrGhost`, `CanInspect`.
+`GetRaidTargetIndex` reads plainly (nil on an unmarked unit) in and out of combat.
+
+**Auras.** `C_UnitAuras.GetAuraDataByIndex` returns full tables out of combat (player,
+party member, mob; spell id, name, source, expiry). In combat it **throws** "Auras cannot
+be accessed when secret while tainted". `GetAuraDataBySpellName(unit, name, "HELPFUL")`
+returns a table or nil out of combat, and returns **nothing at all** in combat.
+`C_Secrets.ShouldAurasBeSecret()` and `ShouldCooldownsBeSecret()` are false out of combat
+and true in it. `ShouldSpellAuraBeSecret(id)` follows the same rule for every raid buff,
+Freezing Trap and Well Fed id tried. `GetSpellAuraSecrecy(id)` is 2 for all of them.
+`ShouldUnitThreatValuesBeSecret` needs a unit argument. Spell ids seen: Power Word:
+Fortitude 1244, Arcane Intellect 1459, Frostbolt 205, Well Fed 1248688.
+
+**Raid marks.** `SetRaidTarget(unit, i)` from addon Lua raises
+`ADDON_ACTION_FORBIDDEN` "UNKNOWN()" and sets nothing, even out of combat.
+`SetRaidTargetIconTexture(texture, nil)` throws (Blizzard's TargetFrame.lua:700 rejects
+the nil), so pass it only a number.
+
+**The combat log.** `COMBAT_LOG_EVENT_UNFILTERED` cannot be registered: `RegisterEvent`
+returns false and the client raises `ADDON_ACTION_FORBIDDEN` "UNKNOWN()".
+`CombatLogGetCurrentEventInfo` does not exist, and `UNIT_DESTROYED` is an unknown event.
+What does fire, with plain GUIDs in open-world combat: `UNIT_DIED(guid)`,
+`PARTY_KILL(attackerGuid, targetGuid)`, `NAME_PLATE_UNIT_ADDED/REMOVED` (and
+`UnitIsDead` on the removed plate reads true), `UNIT_AURA`, `UNIT_FLAGS`, `UNIT_HEALTH`.
+`LoggingCombat(true)` works from Lua, but the `WoWCombatLog-*.txt` it opened stayed at 0
+bytes through a pull and a `/reload`.
+
+**The damage meter.** `C_DamageMeter.IsDamageMeterAvailable()` is true.
+`GetCombatSessionFromType(Enum.DamageMeterSessionType.Current, Enum.DamageMeterType.X)`
+returns `{ combatSources, durationSeconds, maxAmount, totalAmount }`. Out of combat
+everything is plain except `specIconID`. In combat `totalAmount`, `durationSeconds`, and
+each source's `name`, `sourceGUID`, amounts and `deathTimeSeconds` are secret;
+`classFilename` and `isLocalPlayer` stay plain. A `Deaths` session exists.
+
+**Chat and messages, open-world party.** `SendChatMessage` (the global exists) to PARTY
+reaches the group and comes back as `CHAT_MSG_PARTY_LEADER`, in combat too. SAY came back
+from a typed command; from a timer in combat it did not. RAID, RAID_WARNING and
+INSTANCE_CHAT in a party answer "You are not in a raid group".
+`C_ChatInfo.SendAddonMessage` to PARTY returns 0 and loops back in and out of combat; to
+INSTANCE_CHAT outside an instance group it returns 5. Nobody answered a `LibDRBLT`
+durability request. `RaidNotice_AddMessage(RaidWarningFrame, ...)` shows, in and out of
+combat.
+
+**Inspect and talents.** `NotifyInspect` then `INSPECT_READY` answers in and out of
+combat, and `GetInspectSpecialization` returns an id (1482 for a mage).
+`GetTalentTabInfo` and `GetNumTalentTabs` do not exist.
+
+**Absent globals:** `GetSpellInfo`, `UnitAura`, `UnitBuff`, `UnitDebuff`,
+`GetTalentTabInfo`, `GetNumTalentTabs`, `CombatLogGetCurrentEventInfo`.
+
+**Secure buttons.** A `SecureActionButtonTemplate` button can be created in combat.
+Setting its attributes and click registration in combat raised `ADDON_ACTION_BLOCKED`
+once. A
+`SecureHandlerWrapScript` pre-body ran in combat and rewrote its own button's `macrotext`.
+No secure `/tm` macro was seen to place a mark in this run: `[@player]` targets, a 300
+character macro and a `/click` chain all left nothing, and no `RAID_TARGET_UPDATE` fired.
+Whether that is `/tm` itself or how the probe clicked is still open. `[@mouseover]` cannot
+work from a mouse click on a panel button, because the pointer is on the button.
+
+`GetInventoryItemDurability(slot)` returns current, max (nothing for an empty slot).
+Instance id is `select(8, GetInstanceInfo())`, 0 in Eastern Kingdoms.
+
 ## APIs known to work on anniversary (20506)
 
 - `C_Container.GetContainerNumSlots` / `GetContainerItemInfo` (returns a table)
