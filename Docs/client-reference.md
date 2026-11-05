@@ -187,8 +187,12 @@ returns false and the client raises `ADDON_ACTION_FORBIDDEN` "UNKNOWN()".
 What does fire, with plain GUIDs in open-world combat: `UNIT_DIED(guid)`,
 `PARTY_KILL(attackerGuid, targetGuid)`, `NAME_PLATE_UNIT_ADDED/REMOVED` (and
 `UnitIsDead` on the removed plate reads true), `UNIT_AURA`, `UNIT_FLAGS`, `UNIT_HEALTH`.
-`LoggingCombat(true)` works from Lua, but the `WoWCombatLog-*.txt` it opened stayed at 0
-bytes through a pull and a `/reload`.
+`LoggingCombat(true)` works from Lua and the file is written, but late: the
+`WoWCombatLog-*.txt` it opened read 0 bytes through a pull and a `/reload`, then held
+45 KB a few minutes later (lines from 11:07 to 11:08, file time 11:12). It is the full
+retail format (`COMBAT_LOG_VERSION,22`, `ADVANCED_LOG_ENABLED,0`, `BUILD_VERSION,1.60.1`)
+with plain player and creature GUIDs and names. An addon cannot read it; it is for
+upload tools after the session.
 
 **The damage meter.** `C_DamageMeter.IsDamageMeterAvailable()` is true.
 `GetCombatSessionFromType(Enum.DamageMeterSessionType.Current, Enum.DamageMeterType.X)`
