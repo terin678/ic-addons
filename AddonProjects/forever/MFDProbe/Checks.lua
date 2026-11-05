@@ -137,10 +137,13 @@ function Checks.Context()
     ctx.instanceType = not ns.IsSecret(instanceType) and instanceType or nil
     local info = ns.Call(GetInstanceInfo)
     if info.ok then
-        local name, _, difficulty = info.values[1], info.values[2], info.values[3]
+        local name, _, difficulty, instanceId = info.values[1], info.values[2], info.values[3], info.values[8]
         if not ns.IsSecret(name) then ctx.instanceName = name end
         if not ns.IsSecret(difficulty) then ctx.difficulty = difficulty end
+        if not ns.IsSecret(instanceId) then ctx.instanceId = instanceId end
+        ns.Collect("instances", instanceId, name)
     end
+    ctx.chatLockdown = Plain(C_ChatInfo and C_ChatInfo.InChatMessagingLockdown)
     if Plain(IsInRaid) then
         ctx.group = "raid"
     elseif Plain(IsInGroup) then
@@ -163,6 +166,24 @@ end
 -- Light checks
 --------------------------------------------------------------------------------
 
+-- Whether each of these is there at all. Presence only: nothing is called.
+Checks.PRESENCE = {
+    "SendChatMessage", "C_ChatInfo.SendChatMessage", "C_ChatInfo.InChatMessagingLockdown",
+    "GetSpellInfo", "C_Spell.GetSpellInfo", "UnitAura", "UnitBuff", "UnitDebuff",
+    "C_UnitAuras.GetAuraDataByIndex", "C_UnitAuras.GetAuraDataBySpellName", "C_UnitAuras.GetPlayerAuraBySpellID",
+    "GetTalentTabInfo", "GetNumTalentTabs", "C_ClassTalents", "C_Traits", "GetPartyAssignment",
+    "GetRaidRosterInfo", "PlaySoundFile", "SetRaidTarget", "GetRaidTargetIndex", "SetRaidTargetIconTexture",
+    "IsRaidMarkerActive", "CombatLogGetCurrentEventInfo", "C_CombatLog", "C_DeathRecap.GetRecapEvents",
+    "C_PartyInfo.DoCountdown", "DoReadyCheck", "C_Secrets.ShouldSpellAuraBeSecret", "C_Secrets.GetSpellAuraSecrecy",
+    "C_Item.GetWeaponEnchantInfo", "GetWeaponEnchantInfo", "UnitDetailedThreatSituation",
+}
+
+local function CheckPresence(run)
+    for _, row in ipairs(LibStub("LibICEnv-1.0").Probe(Checks.PRESENCE)) do
+        Note(run, "has." .. row.path, row.present and "ok" or "absent", row.kind)
+    end
+end
+
 local function CheckRestrictions(run)
     local ra = C_RestrictedActions or {}
     for _, kind in ipairs(Checks.Restrictions()) do
@@ -173,6 +194,7 @@ local function CheckRestrictions(run)
     for _, name in ipairs({ "ShouldAurasBeSecret", "ShouldCooldownsBeSecret", "ShouldUnitThreatValuesBeSecret" }) do
         Add(run, "secrets." .. name, secrets[name])
     end
+    Add(run, "chat.C_ChatInfo.InChatMessagingLockdown", C_ChatInfo and C_ChatInfo.InChatMessagingLockdown)
     Add(run, "combat.InCombatLockdown", InCombatLockdown)
     Add(run, "encounter.C_InstanceEncounter.IsEncounterInProgress",
         C_InstanceEncounter and C_InstanceEncounter.IsEncounterInProgress)
@@ -233,11 +255,76 @@ local function CheckAuras(run, unit, label, filter)
     end
 end
 
-local function SetMark(run, unit, label)
+-- Buffs a raid check looks for by name, as the Forever raid frames do it.
+Checks.BUFF_NAMES = { "Power Word: Fortitude", "Arcane Intellect", "Mark of the Wild", "Blessing of Kings",
+    "Blessing of Might", "Well Fed" }
+
+-- Spell ids whose aura secrecy decides the raid check and the crowd control calls: the
+-- top rank and the first rank of each raid buff, Freezing Trap's effect, Well Fed.
+Checks.SPELL_IDS = {
+    { "Fortitude", 1243 }, { "Fortitude", 10938 }, { "ArcaneIntellect", 1459 }, { "ArcaneIntellect", 10157 },
+    { "MarkOfTheWild", 1126 }, { "MarkOfTheWild", 9885 }, { "BlessingOfKings", 20217 },
+    { "BlessingOfMight", 19740 }, { "BlessingOfMight", 25291 }, { "FreezingTrap", 3355 },
+    { "FreezingTrap", 14309 }, { "WellFed", 19705 }, { "WellFed", 24799 },
+}
+
+local function CheckBuffsByName(run, unit, label)
+    local byName = C_UnitAuras and C_UnitAuras.GetAuraDataBySpellName
+    for _, name in ipairs(Checks.BUFF_NAMES) do
+        Add(run, "aurabyname." .. label .. "." .. name:gsub("[^%a]", ""), byName, unit, name, "HELPFUL")
+    end
+end
+
+local function CheckSpellSecrecy(run)
+    local secrets = C_Secrets or {}
+    for _, spell in ipairs(Checks.SPELL_IDS) do
+        local id = "spellsecret." .. spell[1] .. "." .. spell[2]
+        Add(run, id .. ".ShouldSpellAuraBeSecret", secrets.ShouldSpellAuraBeSecret, spell[2])
+        Add(run, id .. ".GetSpellAuraSecrecy", secrets.GetSpellAuraSecrecy, spell[2])
+    end
+    Add(run, "spellsecret.FreezingTrap.player.GetPlayerAuraBySpellID",
+        C_UnitAuras and C_UnitAuras.GetPlayerAuraBySpellID, 3355)
+end
+
+-- Every aura id and name on a unit that reads plainly, into the capture table.
+local function CaptureAuras(unit, filter)
+    local get = C_UnitAuras and C_UnitAuras.GetAuraDataByIndex
+    for i = 1, 40 do
+        local call = ns.Call(get, unit, i, filter)
+        local aura = call.ok and call.values[1]
+        if type(aura) ~= "table" or ns.IsSecretTable(aura) then return end
+        local id, name
+        pcall(function() id, name = aura.spellId, aura.name end)
+        ns.Collect("auras", id, name)
+    end
+end
+
+local iconHolder
+-- A hidden texture to draw raid icons on, made the first time it is needed.
+function Checks.IconTexture()
+    if not iconHolder then
+        iconHolder = CreateFrame("Frame", nil, UIParent)
+        iconHolder:Hide()
+        iconHolder.icon = iconHolder:CreateTexture(nil, "ARTWORK")
+    end
+    return iconHolder.icon
+end
+
+-- Reads the mark a unit carries, and draws it. With `trySet`, also sets one from Lua and
+-- reads it back: the recon says the client forbids that, and each refusal opens a dialog,
+-- so it is tried only on typed runs and only on the target and the player.
+local function SetMark(run, unit, label, trySet)
     local icon = Checks.ICONS[label]
     if not icon then return end
     local before = ns.Call(GetRaidTargetIndex, unit)
     ns.AddRow(run, "mark." .. label .. ".GetRaidTargetIndex", before)
+    -- Whether an icon texture can be drawn from what came back, secret or not: the
+    -- assignment panel draws the icon a mob carries.
+    if before.ok and before.n > 0 then
+        Add(run, "mark." .. label .. ".SetRaidTargetIconTexture", SetRaidTargetIconTexture, Checks.IconTexture(),
+            before.values[1])
+    end
+    if not trySet then return end
     local set = ns.Call(SetRaidTarget, unit, icon)
     ns.AddRow(run, "mark." .. label .. ".SetRaidTarget", set)
     if not set.ok then return end
@@ -263,6 +350,7 @@ local function SetMark(run, unit, label)
 end
 
 local function CheckUnits(run)
+    local typed = run.trigger == "command"
     local hostile = Checks.HostileUnits()
     Note(run, "units.hostileSeen", "ok", tostring(#hostile))
     for _, entry in ipairs(hostile) do
@@ -271,9 +359,12 @@ local function CheckUnits(run)
             Add(run, "unit." .. label .. "." .. read[1], read[2], entry.unit)
         end
         CheckAuras(run, entry.unit, label, "HARMFUL")
-        SetMark(run, entry.unit, entry.label)
+        CaptureAuras(entry.unit, "HARMFUL")
+        local guid, name = Plain(UnitGUID, entry.unit), Plain(UnitName, entry.unit)
+        ns.Collect("npcs", ns.Report.NpcId(guid, ns.IsSecret), name)
+        SetMark(run, entry.unit, entry.label, typed and entry.label == "target")
     end
-    SetMark(run, "player", "player")
+    SetMark(run, "player", "player", typed)
 
     local members = Checks.Members()
     Note(run, "units.membersSeen", "ok", tostring(#members))
@@ -282,8 +373,12 @@ local function CheckUnits(run)
             Add(run, "member." .. read[1], read[2], unit)
         end
         CheckAuras(run, unit, "member", "HELPFUL")
+        CheckBuffsByName(run, unit, "member")
     end
     CheckAuras(run, "player", "player", "HELPFUL")
+    CheckBuffsByName(run, "player", "player")
+    CaptureAuras("player", "HELPFUL")
+    CheckSpellSecrecy(run)
 end
 
 local function CheckMeter(run)
@@ -362,10 +457,15 @@ local function CheckChat(run)
     ns.Listen.On("CHAT_MSG_SYSTEM", OnSystem)
     ns.Listen.Ensure(run, ECHO_WAIT + 1)
 
+    -- The global where there is one, the namespaced call otherwise; which was used is a row.
+    local send = type(SendChatMessage) == "function" and SendChatMessage
+        or (C_ChatInfo and C_ChatInfo.SendChatMessage)
+    Note(run, "chat.sender", send and "ok" or "absent",
+        send == SendChatMessage and "SendChatMessage" or "C_ChatInfo.SendChatMessage")
     for _, channel in ipairs(Checks.CHANNELS) do
         local tag = string.format("MFDProbe %d.%s", run.id, channel)
         sent[channel] = { tag = tag }
-        Add(run, "chat." .. channel .. ".send", SendChatMessage,
+        Add(run, "chat." .. channel .. ".send", send,
             string.format("%s: chat test (%s)", tag, ns.InCombat() and "in combat" or "out of combat"), channel)
     end
     C_Timer.After(ECHO_WAIT, function()
@@ -469,9 +569,34 @@ local function CheckLogging(run)
     pcall(LoggingCombat, false)
 end
 
+-- The LibDurability prefix: an "R" asks everyone who runs it (inside BigWigs, DBM and MRT
+-- on other clients) to answer with their durability.
+local DURABILITY_PREFIX = "LibDRBLT"
+
 local function CheckDurability(run)
     Add(run, "durability.head", GetInventoryItemDurability, 1)
     Add(run, "durability.chest", GetInventoryItemDurability, 5)
+
+    local ci = C_ChatInfo or {}
+    local channel = Plain(IsInRaid) and "RAID" or (Plain(IsInGroup) and "PARTY")
+    if not channel then
+        Note(run, "durability.LibDRBLT.request", "none", "not in a group")
+        return
+    end
+    Add(run, "durability.LibDRBLT.register", ci.RegisterAddonMessagePrefix, DURABILITY_PREFIX)
+    local answers = 0
+    local function OnAddon(_, prefix, text)
+        if ns.IsSecret(prefix) or prefix ~= DURABILITY_PREFIX then return end
+        if ns.IsSecret(text) or text ~= "R" then answers = answers + 1 end
+    end
+    ns.Listen.On("CHAT_MSG_ADDON", OnAddon)
+    ns.Listen.Ensure(run, ECHO_WAIT + 1)
+    Add(run, "durability.LibDRBLT.request", ci.SendAddonMessage, DURABILITY_PREFIX, "R", channel)
+    C_Timer.After(ECHO_WAIT, function()
+        ns.Listen.Off("CHAT_MSG_ADDON", OnAddon)
+        Note(run, "durability.LibDRBLT.answers", answers > 0 and "ok" or "none",
+            string.format("%d in %ds", answers, ECHO_WAIT))
+    end)
 end
 
 local function CheckSecureButton(run)
@@ -501,7 +626,7 @@ function Checks.NewRun(phase, trigger)
 end
 
 local LIGHT = { CheckRestrictions, CheckUnits, CheckMeter, CheckCombatLog }
-local HEAVY = { CheckChat, CheckAddonMessages, CheckInspect, CheckLogging, CheckDurability, CheckSecureButton }
+local HEAVY = { CheckPresence, CheckChat, CheckAddonMessages, CheckInspect, CheckLogging, CheckDurability, CheckSecureButton }
 
 -- One pass. Each check is fenced off, so one that throws loses its own rows and nothing
 -- else.

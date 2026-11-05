@@ -2,7 +2,7 @@
 ## Title: MFD Probe
 ## Notes: Asks the client what MarkedForDeath needs, in and out of combat, and saves the answers. /mfdp help lists commands.
 ## Author: Malexis
-## Version: 0.1.0
+## Version: 0.2.0
 ## IconTexture: Interface\Icons\INV_Misc_Spyglass_02
 ## Group: ICKit
 ## Category: Impulse Control
@@ -13,4 +13,5 @@ Core.lua
 Report.lua
 Listen.lua
 Checks.lua
+Buttons.lua
 Tests.lua

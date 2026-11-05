@@ -109,6 +109,7 @@ function Report.ContextLabel(ctx)
     if ctx.instanceType and ctx.instanceType ~= "none" then
         local where = ctx.instanceType .. " instance"
         if ctx.instanceName and ctx.instanceName ~= "" then where = where .. " " .. ctx.instanceName end
+        if ctx.instanceId then where = where .. " (" .. tostring(ctx.instanceId) .. ")" end
         parts[#parts + 1] = where
     else
         parts[#parts + 1] = "open world"
@@ -120,6 +121,7 @@ function Report.ContextLabel(ctx)
     elseif ctx.group then
         parts[#parts + 1] = "not leader or assist"
     end
+    if ctx.chatLockdown then parts[#parts + 1] = "chat lockdown" end
     if ctx.restricted and #ctx.restricted > 0 then
         parts[#parts + 1] = "restrictions on: " .. table.concat(ctx.restricted, " ")
     end
@@ -232,6 +234,65 @@ function Report.Shape(t, isSecret, isSecretTable, maxKeys)
         fields[#fields + 1] = { key = tostring(k), text = vText, secret = vSecret }
     end
     return fields
+end
+
+-- The npc id inside a creature GUID ("Creature-0-1-2-3-<npc>-<spawn>"), or nil for a
+-- player, a pet with no npc, a secret or anything else.
+function Report.NpcId(guid, isSecret)
+    if isSecret and isSecret(guid) then return nil end
+    if type(guid) ~= "string" then return nil end
+    local kind, npc = guid:match("^(%a+)%-%d+%-%d+%-%d+%-%d+%-(%d+)%-")
+    if kind ~= "Creature" and kind ~= "Vehicle" and kind ~= "Pet" then return nil end
+    return tonumber(npc)
+end
+
+-- Files `name` under `id` in capture[kind] when both are plain, and says whether it was
+-- new. capture is { instances = {}, encounters = {}, npcs = {}, auras = {} }.
+function Report.Collect(capture, kind, id, name, isSecret)
+    if isSecret and (isSecret(id) or isSecret(name)) then return false end
+    if type(id) ~= "number" or not capture[kind] then return false end
+    local text = type(name) == "string" and name or tostring(name)
+    if capture[kind][id] == text then return false end
+    capture[kind][id] = text
+    return true
+end
+
+-- "Defias Pillager, Defias Evoker" -> { "Defias Pillager", "Defias Evoker" }.
+function Report.ParseNames(text)
+    local names = {}
+    for piece in tostring(text or ""):gmatch("[^,]+") do
+        local name = piece:gsub("^%s+", ""):gsub("%s+$", "")
+        if name ~= "" then names[#names + 1] = name end
+    end
+    return names
+end
+
+-- The macro MarkedForDeath would write for a pack: target each name, mark it only if it
+-- has no mark yet. Icons run down from `firstIcon`, skipping none.
+function Report.MarkMacro(names, firstIcon)
+    local lines = {}
+    for i, name in ipairs(names or {}) do
+        local icon = (firstIcon or 8) - (i - 1)
+        if icon < 1 then break end
+        lines[#lines + 1] = "/targetexact " .. name
+        lines[#lines + 1] = "/tm ~" .. icon
+    end
+    return table.concat(lines, "\n")
+end
+
+-- A macro at least `length` characters long whose last line is `tail`: everything before
+-- it clears the player's own mark, which is harmless, so whether the tail ran says whether
+-- a macro that long runs to its end.
+function Report.LongMacro(length, tail)
+    local filler = "/tm [@player] 0\n"
+    local parts = {}
+    local size = #tail
+    while size < length do
+        parts[#parts + 1] = filler
+        size = size + #filler
+    end
+    parts[#parts + 1] = tail
+    return table.concat(parts)
 end
 
 -- Keeps the newest `keep` runs, oldest first, in a new list.

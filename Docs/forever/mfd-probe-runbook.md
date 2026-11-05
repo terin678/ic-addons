@@ -2,7 +2,7 @@
 
 MFDProbe asks the Forever client each thing MarkedForDeath needs (raid marks, mob and
 group reads, the combat log, auras, inspect, chat, addon messages, combat logging,
-durability, secure buttons, encounter and ready check events, the damage meter) and
+durability, secure marking buttons, encounter and ready check events, the damage meter) and
 records whether it worked, was hidden as a secret value, or was refused, out of combat and
 in combat. It is a throwaway addon: once its answers are in
 [client-reference.md](../client-reference.md) it goes.
@@ -11,30 +11,44 @@ It is deployed to `_forever_\Interface\AddOns\MFDProbe`, with `ICKit` beside it,
 
 ## Heads up for the group
 
-Runs set raid marks for a second and put them back (star on your target, circle on your
-mouseover, diamond and triangle on two hostile nameplates, square on yourself), and the
-`now` run and one run in each pull send a test line to PARTY, RAID, INSTANCE_CHAT,
-RAID_WARNING and SAY. Tell the group first. `/mfdp chat off` leaves chat out, but the chat
-answers are part of what we need. A popup saying the addon was blocked from an action is
-expected and is itself a result; close it.
+Typed runs (`/mfdp now`) try to set a raid mark from addon code on your target and on
+yourself. The client is expected to refuse this, and each refusal opens a popup saying the
+addon was blocked from an action. That popup is a result: close it. The marking buttons
+(step 5) do set real marks on mobs (skull, cross, square and down by name, skull and cross
+by mouseover and first nameplate, the moon on you) and `Clear all` removes every mark.
+`/mfdp now` and one run in each pull send a test line to PARTY, RAID, INSTANCE_CHAT,
+RAID_WARNING and SAY, and ask the group's addons for durability. Tell the group first.
+`/mfdp chat off` leaves the chat lines out, but those answers are part of what we need.
 
 ## Steps
 
 1. **Restart the client.** A new `.toc` is only read at start. Make sure `MFD Probe` and
-   `ICKit` are ticked on the AddOns screen. At login it says `MFDProbe: v0.1.0 loaded`.
-2. **Solo, out of combat.** Target a hostile mob, keep the mouse over another one, and
-   type `/mfdp now`. Wait 6 seconds for its summary.
-3. **In a dungeon group, out of combat, inside the instance.** Same again: target a mob in
-   a pack, hover another, `/mfdp now`. Best done as party leader, then once more after
-   passing lead to someone else (or before you take it).
-4. **Pull a pack.** Just before the pull, `/mfdp arm`. It runs on its own at 0, 3 and 8
-   seconds into combat and 2 seconds after. During the fight, also type `/mfdp now` once
-   (this is the keypress case, which some chat channels need). Kill the pack; it says
-   `pull captured` about 10 seconds after combat ends.
-5. **A boss, if you get to one.** `/mfdp arm` before the pull, the same as step 4.
-6. **A ready check (optional).** As leader, `/mfdp readycheck`, and have the group answer.
-7. `/mfdp report` prints what each check came to, out of combat and in combat. Then
-   **`/reload`** (or log out) so the results are written to disk.
+   `ICKit` are ticked on the AddOns screen. At login it says `MFDProbe: v0.2.0 loaded`.
+2. **Open world, solo, out of combat.** Target a hostile mob, keep the mouse over another
+   one, and type `/mfdp now`. Wait 6 seconds for its summary.
+3. **Open world, in combat.** `/mfdp arm`, pull that mob, and type `/mfdp now` once while
+   fighting. It says `pull captured` about 10 seconds after combat ends.
+4. **In a dungeon group, inside the instance, out of combat.** Target a mob in a pack,
+   hover another, `/mfdp now`. Once as party leader, then once more not as leader.
+5. **The marking buttons, inside the instance, out of combat.** Type `/mfdp buttons`. A
+   small panel appears near the top of the screen. If the instance hides mob names, it
+   says so: then type the names you see on the nameplates instead, for example
+   `/mfdp buttons Defias Pillager, Defias Evoker`. With a pack in view and the mouse over
+   one of its mobs, click each button once, waiting a second between clicks:
+   `Mark by name`, `Conditionals`, `Long macro`, then `Clear all`. Each click says
+   `click ... recorded`.
+6. **Pull that pack with the buttons up.** `/mfdp arm` just before the pull. In combat,
+   click `Mark by name`, `Conditionals` and `Long macro`, and type `/mfdp now` once. After
+   the fight, click `Clear all`, then `/mfdp buttons hide`.
+7. **A boss, if you get to one.** `/mfdp arm` before the pull. Arming leaves combat
+   logging on until the pull is captured, so the log file can be checked afterwards.
+8. **A raid instance, if you are in one** (Onyxia's Lair, or any raid map). Out of combat
+   and away from a boss: `/mfdp now`, then `/mfdp arm` before a trash pull. This answers
+   whether chat is locked for the whole raid map or only during an encounter.
+9. **A ready check (optional).** As leader, `/mfdp readycheck`, and have the group answer.
+10. `/mfdp report` prints what each check came to, out of combat and in combat, and
+    `/mfdp capture` the instance, encounter, npc and aura ids read. Then **`/reload`** (or
+    log out) so the results are written to disk.
 
 If anything throws a Lua error, BugSack has it; mention it.
 
@@ -56,6 +70,9 @@ a few payloads.
 | `/mfdp disarm` | stop waiting for a pull |
 | `/mfdp listen [seconds]` | hear events for a while, 60 by default |
 | `/mfdp readycheck` | start a ready check and listen 45 seconds |
+| `/mfdp buttons [name, name]` | out of combat: the four marking buttons, for these mobs or the ones in view |
+| `/mfdp buttons hide` | out of combat: put them away |
+| `/mfdp capture` | the instance, encounter, npc and aura ids read so far |
 | `/mfdp report [text]` | each check out of and in combat; text keeps ids containing it |
 | `/mfdp runs` | every run kept, with where it was taken |
 | `/mfdp chat on \| off` | whether runs send chat lines |

@@ -60,6 +60,9 @@ T.Case("ContextLabel: solo, party leader, raid assist, restrictions", function()
     T.Eq(Report.ContextLabel({ combat = true, group = "party", size = 5, instanceType = "party",
         instanceName = "Deadmines", leader = true }),
         "in combat, party of 5, party instance Deadmines, leader", "a dungeon pull")
+    T.Eq(Report.ContextLabel({ group = "raid", size = 10, instanceType = "raid", instanceName = "Onyxia's Lair",
+        instanceId = 249, chatLockdown = true, leader = true }),
+        "out of combat, raid of 10, raid instance Onyxia's Lair (249), leader, chat lockdown", "id and lockdown")
     T.Eq(Report.ContextLabel({ group = "raid", size = 20, instanceType = "raid", assist = true,
         restricted = { "Combat", "Encounter" } }),
         "out of combat, raid of 20, raid instance, assist, restrictions on: Combat Encounter", "a raid")
@@ -138,6 +141,44 @@ T.Case("Trim: newest kept, oldest first", function()
     T.Eq(#Report.Trim(nil, 3), 0, "nothing")
 end)
 
+T.Case("NpcId: creatures only, and never a secret", function()
+    T.Eq(Report.NpcId("Creature-0-5250-36-1234-10184-00001A2B3C", IsSecret), 10184, "Onyxia's id")
+    T.Eq(Report.NpcId("Vehicle-0-1-2-3-555-0000", IsSecret), 555, "a vehicle carries one too")
+    T.Eq(Report.NpcId("Player-5250-0ABCDEF1", IsSecret), nil, "a player has none")
+    T.Eq(Report.NpcId(SECRET, IsSecret), nil, "a secret is left alone")
+    T.Eq(Report.NpcId(nil, IsSecret), nil, "nothing")
+end)
+
+T.Case("Collect: files plain ids, says whether new, refuses secrets", function()
+    local capture = { npcs = {}, encounters = {} }
+    T.Eq(Report.Collect(capture, "npcs", 10184, "Onyxia", IsSecret), true, "new")
+    T.Eq(Report.Collect(capture, "npcs", 10184, "Onyxia", IsSecret), false, "the same again")
+    T.Eq(capture.npcs[10184], "Onyxia", "filed")
+    T.Eq(Report.Collect(capture, "npcs", 1, SECRET, IsSecret), false, "a secret name")
+    T.Eq(Report.Collect(capture, "npcs", SECRET, "x", IsSecret), false, "a secret id")
+    T.Eq(Report.Collect(capture, "npcs", nil, "x", IsSecret), false, "no id")
+    T.Eq(Report.Collect(capture, "auras", 1, "x", IsSecret), false, "a kind the table lacks")
+    T.Eq(next(capture.encounters), nil, "nothing filed elsewhere")
+end)
+
+T.Case("ParseNames and MarkMacro: a typed list becomes the pack macro", function()
+    local names = Report.ParseNames(" Defias Pillager,Defias Evoker , ,Mine Rat ")
+    T.Eq(table.concat(names, "|"), "Defias Pillager|Defias Evoker|Mine Rat", "trimmed, blanks dropped")
+    T.Eq(Report.MarkMacro(names, 8),
+        "/targetexact Defias Pillager\n/tm ~8\n/targetexact Defias Evoker\n/tm ~7\n/targetexact Mine Rat\n/tm ~6",
+        "skull down")
+    T.Eq(Report.MarkMacro({ "a", "b", "c" }, 2), "/targetexact a\n/tm ~2\n/targetexact b\n/tm ~1", "stops at star")
+    T.Eq(Report.MarkMacro({}, 8), "", "no names, no macro")
+end)
+
+T.Case("LongMacro: past the length, ending on the tail", function()
+    local text = Report.LongMacro(300, "/tm [@player] 5")
+    T.True(#text >= 300, "long enough: " .. #text)
+    T.True(#text < 300 + 16, "not much longer")
+    T.Eq(text:sub(-15), "/tm [@player] 5", "the tail is last")
+    T.Eq(Report.LongMacro(5, "/tm 1"), "/tm 1", "already long enough")
+end)
+
 -- Headless only: in game this would set marks and send chat. Every check runs against
 -- the stub client, where most functions are missing, and none may throw.
 T.Case("Checks.Run: every check runs on a client that has almost nothing", function()
@@ -151,6 +192,10 @@ T.Case("Checks.Run: every check runs on a client that has almost nothing", funct
         T.True(row.id ~= "probe.fault", "no check threw: " .. tostring(row.v))
     end
     T.True(#run.rows > 20, "rows were written")
+    local lines = ns.Buttons.Show({ "Mine Rat" })
+    T.True(lines[2]:find("Mine Rat", 1, true), "the buttons build and name the mob")
+    T.True(#ns.Buttons.Show({})[2] > 0, "and say something with no names")
+    ns.Buttons.Hide()
     ns.Listen.Stop()
     ns.db.runs[#ns.db.runs] = nil
     T.Eq(#ns.db.runs, before, "the run is taken back out")

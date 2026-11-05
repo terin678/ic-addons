@@ -18,7 +18,7 @@ chat and inspects, and is thrown away once its answers are in Docs/client-refere
 Idle costs nothing: no event is registered until a command opens a window or arms a pull.
 ]]
 
-local VERSION = "0.1.0"
+local VERSION = "0.2.0"
 
 local Test = LibStub("LibICTest-1.0")
 local Env = LibStub("LibICEnv-1.0")
@@ -86,6 +86,12 @@ function ns.AddRow(run, id, call)
     return row
 end
 
+-- Files an id worth keeping (an npc, an encounter, an instance, an aura) when it is plain.
+function ns.Collect(kind, id, name)
+    if not ns.db then return end
+    ns.Report.Collect(ns.db.capture, kind, id, name, ns.IsSecret)
+end
+
 local currentRun
 function ns.SetCurrentRun(run) currentRun = run end
 function ns.CurrentRun() return currentRun end
@@ -100,6 +106,8 @@ Store.Register(addonName, {
     defaults = {
         nextId = 1,
         runs = {},
+        -- Ids read wherever they were plain: id -> name, kept across runs.
+        capture = { instances = {}, encounters = {}, npcs = {}, auras = {} },
         settings = { debug = false, chat = true },
     },
     onReady = Env.Wrap("MFDProbe saved variables", function(db, _, info)
@@ -127,6 +135,12 @@ local function Disarm(reason)
     frame:UnregisterEvent("PLAYER_REGEN_DISABLED")
     frame:UnregisterEvent("PLAYER_REGEN_ENABLED")
     ns.Listen.Stop()
+    -- Logging is put back off only if arming switched it on.
+    if pull.loggingWasOff then
+        pull.loggingWasOff = nil
+        local run = pull.listenRun
+        if run then ns.AddRow(run, "log.armed.off", ns.Call(LoggingCombat, false)) end
+    end
     if reason then out.Print(reason) end
 end
 ns.Disarm = Disarm
@@ -145,6 +159,14 @@ local function Arm()
     pull.token = token
     pull.listenRun = ns.Checks.NewRun("pull events", "auto")
     ns.Listen.Ensure(pull.listenRun, ARM_LIMIT)
+    -- Combat logging stays on through the pull, so whether the client writes a log file
+    -- inside an instance can be read off disk afterwards.
+    local read = ns.Call(LoggingCombat)
+    ns.AddRow(pull.listenRun, "log.armed.read", read)
+    if read.ok and read.values[1] == false then
+        pull.loggingWasOff = true
+        ns.AddRow(pull.listenRun, "log.armed.on", ns.Call(LoggingCombat, true))
+    end
     frame:RegisterEvent("PLAYER_REGEN_DISABLED")
     out.Printf("armed for the next pull: runs at %s seconds into combat and %ds after it, then disarms. "
         .. "Waits %d minutes at most.", "0, 3 and 8", AFTER_RUN, ARM_LIMIT / 60)
@@ -199,6 +221,9 @@ local HELP = {
     { "listen [seconds]", "hear events for a while (a ready check, a boss), 60 by default" },
     { "readycheck", "start a ready check and listen for its events" },
     { "report [text]", "what each check came to, out of combat and in it; text keeps matching ids" },
+    { "buttons [name, name]", "out of combat: show the marking buttons, built for these mobs or the ones in view" },
+    { "buttons hide", "out of combat: put the marking buttons away" },
+    { "capture", "the instance, encounter, npc and aura ids read so far" },
     { "runs", "every run kept, with where it was taken" },
     { "chat on | off", "whether runs send chat lines to the group" },
     { "clear", "forget every run" },
@@ -257,6 +282,30 @@ COMMANDS.report = function(rest)
     out.Printf("%d %s kept. Each check, out of combat and in combat:", #runs, Util.Plural(#runs, "run"))
     for _, line in ipairs(ns.Report.MatrixLines(ns.Report.Matrix(runs), filter)) do out.Print(line) end
     for _, line in ipairs(ns.Report.RunLines(runs[#runs])) do out.Print(line) end
+end
+
+COMMANDS.buttons = function(rest)
+    if not Ready() then return end
+    if ns.InCombat() then
+        out.Print("the buttons can only be built or put away out of combat.")
+        return
+    end
+    if Util.Trim(rest):lower() == "hide" then
+        ns.Buttons.Hide()
+        out.Print("the marking buttons are put away.")
+        return
+    end
+    for _, line in ipairs(ns.Buttons.Show(ns.Report.ParseNames(rest))) do out.Print(line) end
+end
+
+COMMANDS.capture = function()
+    if not Ready() then return end
+    for _, kind in ipairs({ "instances", "encounters", "npcs", "auras" }) do
+        local list = ns.db.capture[kind]
+        local parts = {}
+        for _, id in ipairs(Util.SortedKeys(list)) do parts[#parts + 1] = string.format("%s %s", tostring(id), list[id]) end
+        out.Printf("%s (%d): %s", kind, #parts, #parts > 0 and table.concat(parts, "; ") or "none yet")
+    end
 end
 
 COMMANDS.runs = function()

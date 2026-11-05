@@ -46,8 +46,14 @@ local CLEU_KEEP = { UNIT_DIED = true, UNIT_DESTROYED = true, PARTY_KILL = true, 
     SPELL_AURA_REMOVED = true, SPELL_CAST_SUCCESS = true }
 
 -- Events whose first argument is a unit: the unit is asked about inside the handler too.
-local UNIT_EVENTS = { UNIT_FLAGS = true, UNIT_HEALTH = true, UNIT_AURA = true, UNIT_DIED = true,
+local UNIT_EVENTS = { UNIT_FLAGS = true, UNIT_HEALTH = true, UNIT_AURA = true,
     NAME_PLATE_UNIT_REMOVED = true, NAME_PLATE_UNIT_ADDED = true }
+
+-- Events whose payloads are the finding, so more of them are kept.
+local SAMPLES_FOR = { ADDON_RESTRICTION_STATE_CHANGED = 20, ENCOUNTER_START = 10, ENCOUNTER_END = 10,
+    BOSS_KILL = 5, UNIT_DIED = 10, UNIT_DESTROYED = 5, PARTY_KILL = 10, INSTANCE_ENCOUNTER_ENGAGE_UNIT = 5 }
+-- Deaths written as rows per run; the rest are only counted.
+local DEATH_ROWS = 20
 -- Rows of that kind kept per event per combat state.
 local UNIT_ROWS = 2
 
@@ -77,7 +83,7 @@ local function Count(name, ...)
         run.events[name] = entry
     end
     entry.count = entry.count + 1
-    if #entry.samples < SAMPLES then
+    if #entry.samples < (SAMPLES_FOR[name] or SAMPLES) then
         entry.samples[#entry.samples + 1] = string.format("%s%s", ns.InCombat() and "[combat] " or "", Describe(...))
     end
 end
@@ -122,11 +128,40 @@ local function OnUnitEvent(event, unit)
     end
     -- A raid member's event says little about a hostile mob; keep both kinds apart.
     local kind = unit:find("^nameplate") and "plate" or (unit:find("^party") or unit:find("^raid")) and "member"
-        or unit
+        or (unit == "player" or unit == "target" or unit == "mouseover" or unit == "focus") and unit or "other"
     unitRows[key] = (unitRows[key] or 0) + 1
     ns.AddRow(run, "evunit." .. event .. "." .. kind .. ".UnitIsDead", ns.Call(UnitIsDead, unit))
     ns.AddRow(run, "evunit." .. event .. "." .. kind .. ".UnitGUID", ns.Call(UnitGUID, unit))
     ns.AddRow(run, "evunit." .. event .. "." .. kind .. ".UnitHealth", ns.Call(UnitHealth, unit))
+end
+
+-- A death: the GUID it carries, the npc id inside it when plain, and whether a group
+-- member with that GUID reads as dead.
+local function OnDeath(event, ...)
+    local run = window.run
+    run.deathRows = (run.deathRows or 0) + 1
+    if run.deathRows > DEATH_ROWS then return end
+    local guids = event == "PARTY_KILL" and { (select(2, ...)) } or { (...) }
+    for _, guid in ipairs(guids) do
+        local secret = IsSecret(guid)
+        run.rows[#run.rows + 1] = { id = "death." .. event .. ".guid", outcome = secret and "secret" or "ok",
+            v = (ns.Report.Describe(guid, IsSecret)), combat = ns.InCombat() }
+        if not secret and type(guid) == "string" then
+            local npc = ns.Report.NpcId(guid, IsSecret)
+            if npc and ns.db and ns.db.capture.npcs[npc] == nil then ns.Collect("npcs", npc, "(seen dying)") end
+            for _, unit in ipairs(ns.Checks.Members()) do
+                local call = ns.Call(UnitGUID, unit)
+                if call.ok and not IsSecret(call.values[1]) and call.values[1] == guid then
+                    ns.AddRow(run, "death.member.UnitIsDead", ns.Call(UnitIsDead, unit))
+                    ns.AddRow(run, "death.member.UnitIsDeadOrGhost", ns.Call(UnitIsDeadOrGhost, unit))
+                end
+            end
+        end
+    end
+end
+
+local function OnEncounter(event, encounterId, encounterName)
+    if event == "ENCOUNTER_START" then ns.Collect("encounters", encounterId, encounterName) end
 end
 
 local function OnEvent(_, event, ...)
@@ -144,6 +179,8 @@ local function OnEvent(_, event, ...)
     else
         Count(event, ...)
         if UNIT_EVENTS[event] then OnUnitEvent(event, ...) end
+        if event == "UNIT_DIED" or event == "UNIT_DESTROYED" or event == "PARTY_KILL" then OnDeath(event, ...) end
+        if event == "ENCOUNTER_START" or event == "ENCOUNTER_END" then OnEncounter(event, ...) end
     end
     local list = hooks[event]
     if list then
