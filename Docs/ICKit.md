@@ -64,7 +64,7 @@ should not. The counters cost two clock reads a call and need no console variabl
 | LibICJSON-1.0 | 1 | JSON text to and from tables, sorted and indented for people to read. Calls nothing in the game client |
 | LibICEnv-1.0 | 2 | What this client offers (build, a feature probe, secret values) and what handlers cost (call and time counters, memory) |
 | LibICRestrict-1.0 | 1 | What the client will not let an addon do or read right now: secret values, and combat, encounter and chat restrictions with a reason |
-| LibICGroup-1.0 | 1 | Who is in the group: a roster snapshot of plain values, every field checked for secrets, and whether the player may mark |
+| LibICGroup-1.0 | 2 | Who is in the group: a roster snapshot of plain values, every field checked for secrets, and whether the player may mark |
 | LibICChat-1.0 | 1 | Lines said in chat: decided before they go (send, hold until chat unlocks, or refuse with a reason), with a per-channel budget |
 | LibICStore-1.0 | 1 | Saved variables: defaults, schema, migrations, and whether the file really loaded |
 | LibICConsole-1.0 | 1 | Prefixed printing and the slash-command dispatcher with its help |
@@ -251,7 +251,7 @@ field is checked, and the snapshot is kept: a pull reads the snapshot, not the c
 | `Group.Read()` | The reading, from the client now: `IsInRaid`, `IsInGroup`, `GetNumGroupMembers`, `IsEveryoneAssistant`, `UnitGUID("player")`, and for each unit (`player` and `party1..4`, or `raid1..40`) `UnitGUID`, `UnitName`'s two returns, `UnitClass`, `UnitGroupRolesAssigned`, `GetPartyAssignment("MAINTANK")`, `UnitIsGroupLeader`, `UnitIsGroupAssistant`, `UnitIsConnected` and `UnitIsDeadOrGhost`. Every call is guarded; one that is missing or raises is no answer. |
 | `Group.Now()` | `Snapshot(Read())`. |
 
-The roster: `kind` (`solo`, `party` or `raid`), `size`, `members` in unit order, `byGuid`,
+The roster: `kind` (`solo`, `party` or `raid`), `kindKnown`, `size`, `members` in unit order, `byGuid`,
 `me` (the player, found by guid), `leader`, `everyoneAssist`, `canMark` and `unknown` (how
 many fields came back unreadable).
 
@@ -262,7 +262,11 @@ for showing), `class` (the token, `MAGE`) and `classLocal` (as the client shows 
 
 Nothing is guessed. A field the client hid is nil and named in `unknown`, so read a nil as
 "not known", not as "no". A rank that cannot be read is nil, and then `canMark` is nil in a
-raid. `canMark` is the game's rule for raid target icons: always alone or in a party, in a
+raid. `IsInRaid`, `UnitIsGroupAssistant` and `IsEveryoneAssistant` are not yet proven to
+answer plainly, so: when `IsInRaid` cannot be read and nothing proves a raid (raid unit
+tokens, or more members than a party holds), `kind` says `party` with `kindKnown = false`
+and `canMark` is nil unless the player leads or assists; and in a raid, or a group that may
+be one, a missing assist answer leaves the rank unknown rather than "member". `canMark` is the game's rule for raid target icons: always alone or in a party, in a
 raid only as leader or assist or when everyone is assist. Raid units are read the same way
 as party ones, but the probe has only seen a party so far.
 
@@ -299,7 +303,7 @@ press or click sent it.
 | `sender:Flush()` | Sends what may go now and drops what expired. It runs by itself when the restriction state changes, and once a second while a line is held, in case chat unlocks without the restriction event. |
 | `sender:Queue()` | Held lines, oldest first: `{ line, expires, plan }`. |
 | `sender.stop()` | Stops it listening for restriction changes. |
-| `Chat.Decide(line, state)` | The plan, pure. `state`: `now`, `chat` (locked), `inInstance`, `instance`, `group` (`solo`, `party`, `raid`), `lead` (leader or assist in a raid; nil when unreadable), `instanceGroup`, `sent`, `budget`. |
+| `Chat.Decide(line, state)` | The plan, pure. `state`: `now`, `chat` (locked), `inInstance`, `instance`, `group` (`solo`, `party`, `raid`, or `group` for one that may be a raid, where RAID and RAID_WARNING are refused and PARTY still goes), `lead` (leader or assist in a raid; nil when unreadable), `instanceGroup`, `sent`, `budget`. |
 | `Chat.Flush(queue, state)` | `{ send, dropped, keep }`, pure: each held line decided again in order, counting this round's sends against the budget. A dropped entry says why (`expired`, or the refusal). |
 | `Chat.Budget(channel, state)` | 0 when a line may go now, else the seconds until one may. |
 
