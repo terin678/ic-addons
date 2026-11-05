@@ -214,6 +214,20 @@ function ns.ApplyLevel(preset)
             end
             line = line .. "; this machine cannot do: " .. table.concat(labels, ", ")
         end
+        -- What the client did not keep, said at once: the client may round or reset a value.
+        local after, odd = ns.Apply.Live(), {}
+        if after.graphicsQuality ~= nil and not ns.Model.Same(after.graphicsQuality, preset.level) then
+            odd[#odd + 1] = "graphicsQuality is " .. tostring(after.graphicsQuality)
+        end
+        for cvar, want in pairs(wanted) do
+            if after[cvar] ~= nil and not ns.Model.Same(want, after[cvar]) then
+                odd[#odd + 1] = string.format("%s is %s, not %s", cvar, tostring(after[cvar]), tostring(want))
+            end
+        end
+        table.sort(odd)
+        if #odd > 0 then
+            line = line .. "; |cffff8040the client did not keep: " .. table.concat(odd, "; ") .. "|r"
+        end
     else
         if held then
             local back = {}
