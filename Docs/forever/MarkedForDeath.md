@@ -94,6 +94,49 @@ past that the one seen longest ago is dropped.
 differently wins and is reported); add `--write` to apply them, then review the diff.
 Buffs and casts are printed for `Data_Auras.lua`, which is edited by hand.
 
+## Raid Lead and sharing
+
+| Command | What it does |
+| --- | --- |
+| `/mfd lead` | Says who the Raid Lead is, how they were chosen, and who is designated |
+| `/mfd lead <name>` | Designates the Raid Lead. One name is enough when only one player has it; "Ann Smith" picks between two Anns. Group leader or assistant only (anyone when alone) |
+| `/mfd lead clear` | Drops the designation, so the addon users elect one |
+| `/mfd peers` | Who in the group runs Marked For Death and which version, whether addon messages are going out, the Raid Lead, and how many rules were merged from whom |
+| `/mfd sync` | Says hello to the group again and re-asks for rules, if something looks out of step |
+| `/mfd durability` | Asks the group for durability and lists the answers after three seconds |
+
+**The Raid Lead** is the one player whose client says the raid's lines: the pre-pull
+announce and the death calls. Marking does not need them: anyone with lead or assist
+presses the same button. Every client works out the same Raid Lead on its own:
+
+1. A designated Raid Lead who is in the group and online. The designation is remembered
+   across nights and sent to every addon user when it changes; if two people set one, the
+   later wins everywhere.
+2. Otherwise the players heard running Marked For Death elect one: the group leader, then
+   an assistant, then the name that sorts first.
+3. If addon messages are not getting through (raids are still being checked on this
+   client), the group leader.
+
+The Raid Lead is only worked out again out of combat, so it never changes mid-pull.
+
+**Rules from other people.** In a group, the addon users' rules for the instance you are
+in are merged: where two players have a rule for the same mob, the Raid Lead's wins, and
+anyone else's fills the gaps in name order, so every client ends up with the same set.
+Merging never touches your saved rules; it lasts the session, and nobody else's rules can
+change what you wrote. Rules travel only out of combat, in the same share format as a
+file, and one bad rule refuses the whole message (it says whose and why). A very large
+rule set is not sent; share it as a file instead.
+
+**The published plan.** The Raid Lead's client sends its assignments out of combat, so
+every assignment panel in the raid shows the same seats, owners and mobs.
+
+**Durability.** `/mfd durability` asks in LibDurability's format, which BigWigs, DBM and
+other addons answer, and every Marked For Death client answers it too. Your own is always
+listed.
+
+If addon messages do not go out, `/mfd peers` says why in amber, and each client plans
+from its own rules.
+
 ## Other addons and combat logging
 
 | Command | What it does |
