@@ -903,6 +903,138 @@ T.Case("Chat.New: a sender holds a locked line and sends it when the lock lifts"
 end)
 
 --------------------------------------------------------------------------------
+-- LibICComm
+--------------------------------------------------------------------------------
+
+local Comm = LibStub("LibICComm-1.0")
+
+T.Case("Comm.Frame and Assemble: a message of any length comes back whole", function()
+    local frames = Comm.Frame("short", 5)
+    T.Eq(#frames, 1, "a short message is one frame")
+    T.Eq(frames[1], "S05short", "kind, two-digit id, then the text")
+    T.Eq(Comm.Assemble({}, "A", frames[1], 0), "short", "and reads back at once")
+    local long = string.rep("abcdefghij", 60)
+    frames = Comm.Frame(long, 37)
+    T.Eq(#frames, 3, "600 bytes is three frames")
+    T.Eq(frames[1]:sub(1, 3), "F11", "first, id 37 in base 36")
+    T.Eq(frames[2]:sub(1, 1), "M", "middle")
+    T.Eq(frames[3]:sub(1, 1), "L", "last")
+    for _, f in ipairs(frames) do T.True(#f <= 255, "every frame fits one message") end
+    local buffers = {}
+    local other = Comm.Frame(string.rep("z", 300), 1)
+    T.Eq(Comm.Assemble(buffers, "A", frames[1], 0), nil, "a first frame waits")
+    T.Eq(Comm.Assemble(buffers, "B", other[1], 0), nil, "another sender's first frame waits beside it")
+    T.Eq(Comm.Assemble(buffers, "A", frames[2], 1), nil, "a middle frame waits")
+    T.Eq(Comm.Assemble(buffers, "B", other[2], 1), string.rep("z", 300), "B's finishes")
+    T.Eq(Comm.Assemble(buffers, "A", frames[3], 2), long, "and so does A's, unmixed")
+    T.Eq(next(buffers), nil, "nothing left over")
+    T.Eq(Comm.Assemble(buffers, "A", frames[3], 3), nil, "a last frame with no first is dropped")
+    Comm.Assemble(buffers, "A", frames[1], 10)
+    T.Eq(Comm.Assemble(buffers, "A", frames[2], 50), nil, "a partial older than thirty seconds is dropped")
+    T.Eq(next(buffers), nil, "and forgotten")
+    T.Eq(Comm.Assemble({}, "A", "S0", 0), nil, "a frame too short to have a header is ignored")
+end)
+
+T.Case("Comm.Channel, Result and Newer", function()
+    T.Eq(Comm.Channel({ group = "party" }), "PARTY", "a party")
+    T.Eq(Comm.Channel({ group = "raid" }), "RAID", "a raid")
+    T.Eq(Comm.Channel({ group = "party", instanceGroup = true }), "INSTANCE_CHAT", "an instance group first")
+    local ch, why = Comm.Channel({ group = "raid", raid = "off" })
+    T.Eq(ch, nil, "raids can be switched off")
+    T.Eq(why, "addon messages are off in raids", "and say so")
+    T.Eq(select(2, Comm.Channel({ group = "group" })), "cannot tell whether this is a raid", "a maybe-raid")
+    T.Eq(select(2, Comm.Channel({ group = "solo" })), "not in a group", "alone")
+    T.Eq(Comm.Result("Success"), "sent", "success")
+    T.Eq(Comm.Result("AddOnMessageLockdown"), "hold", "lockdown holds")
+    T.Eq(Comm.Result("ChannelThrottle"), "retry", "throttle retries")
+    local verdict, reason = Comm.Result("NotInGroup")
+    T.Eq(verdict, "drop", "not in a group drops")
+    T.Eq(reason, "not in a group for that channel", "with why")
+    T.Eq(select(2, Comm.Result("Mystery")), "the client said Mystery", "an unknown result is dropped by name")
+    T.Eq(Comm.Newer("1.2.10", "1.2.9"), true, "parts compare as numbers")
+    T.Eq(Comm.Newer("1.2.0", "1.2"), false, "a missing part is zero")
+    T.Eq(Comm.Newer("0.2.0", "0.10.0"), false, "older is not newer")
+    T.Eq(Comm.Newer("1.0.0", nil), true, "anything beats no version")
+    T.Eq(Comm.Newer(nil, "1.0.0"), false, "and no version beats nothing")
+end)
+
+T.Case("Comm.New: send, loop back, receive, hold through a lockdown", function()
+    -- Headless only: in game, writing these globals would taint them.
+    if not IC_HEADLESS then return end
+    local saved = { C_ChatInfo = C_ChatInfo, GetTime = GetTime, C_Timer = C_Timer, UnitGUID = UnitGUID }
+    local savedGroup = Group.Now
+    local clock, wire, timers, result = 100, {}, {}, 0
+    _G.GetTime = function() return clock end
+    _G.UnitGUID = function() return "G-me" end
+    _G.C_Timer = { After = function(_, fn) timers[#timers + 1] = fn end }
+    _G.C_ChatInfo = {
+        RegisterAddonMessagePrefix = function() return true end,
+        SendAddonMessage = function(prefix, text, channel)
+            if result == 0 then wire[#wire + 1] = { prefix, text, channel } end
+            return result
+        end,
+    }
+    Group.Now = function() return { kind = "party", kindKnown = true } end
+
+    local drops = {}
+    local mine = Comm.New("ICKitCase", { version = "1.0.0", onDrop = function(_, reason) drops[#drops + 1] = reason end })
+    local theirs = Comm.New("ICKitCase", { version = "1.1.0" })
+    theirs.me = "G-them"
+    local got = {}
+    theirs:On("plan", function(msg, from) got[#got + 1] = { msg = msg, from = from } end)
+    mine:On("plan", function() got[#got + 1] = "echo" end)
+    T.Eq(mine.frame:IsEventRegistered("CHAT_MSG_ADDON"), true, "listens for addon messages")
+
+    local plan = mine:Send({ t = "plan", note = string.rep("x", 400) })
+    T.Eq(plan.action, "send", "sent at once")
+    T.Eq(plan.channel, "PARTY", "to the party")
+    T.Eq(#wire, 2, "as two frames")
+    for _, w in ipairs(wire) do
+        mine:Receive(w[1], w[2], w[3], "Mal Exis")
+        theirs:Receive(w[1], w[2], w[3], "Mal Exis")
+    end
+    T.Eq(#got, 1, "the looped-back copy is dropped")
+    T.Eq(got[1].msg.note, string.rep("x", 400), "the other client gets it whole")
+    T.Eq(got[1].from, "Mal Exis", "from the sender")
+    theirs:Receive("SomeoneElse", wire[1][2], "PARTY", "Mal Exis")
+    T.Eq(#got, 1, "another prefix is ignored")
+
+    wire = {}
+    mine:Hello()
+    theirs:Receive(wire[1][1], wire[1][2], wire[1][3], "Mal Exis")
+    T.Eq(theirs:Peers()["G-me"].version, "1.0.0", "a hello is recorded with its version")
+    T.Eq(#wire, 2, "and answered once")
+    mine:Receive(wire[2][1], wire[2][2], wire[2][3], "Solo Siphyr")
+    T.Eq(mine:Peers()["G-them"].version, "1.1.0", "the answer is recorded too")
+    T.Eq(#wire, 2, "and not answered back")
+    theirs:Receive(wire[1][1], wire[1][2], wire[1][3], "Mal Exis")
+    T.Eq(#wire, 2, "a second hello within a minute is not answered again")
+
+    result = 11
+    plan = mine:Send({ t = "plan" })
+    T.Eq(plan.action, "queue", "a lockdown holds the message")
+    T.Eq(plan.reason, "addon messages are locked down", "and says why")
+    result = 0
+    timers[#timers]()
+    T.Eq(#mine:Queue(), 0, "the next try sends it")
+    T.Eq(#wire, 3, "on the wire")
+    result = 5
+    T.Eq(mine:Send({ t = "plan" }).action, "refuse", "a refusal from the client")
+    T.Eq(drops[1], "not in a group for that channel", "is reported")
+    result = 11
+    mine:Send({ t = "plan" })
+    clock = 140
+    timers[#timers]()
+    T.Eq(drops[2], "addon messages are locked down", "a lockdown that outlasts the ttl drops with its reason")
+    T.Eq(mine:Send({ x = 1 }).reason, "a message needs a type, msg.t", "a message without a type is refused")
+
+    mine.stop()
+    theirs.stop()
+    Group.Now = savedGroup
+    for k, v in pairs(saved) do _G[k] = v end
+end)
+
+--------------------------------------------------------------------------------
 -- LibICStore
 --------------------------------------------------------------------------------
 

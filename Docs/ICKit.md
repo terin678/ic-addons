@@ -66,6 +66,7 @@ should not. The counters cost two clock reads a call and need no console variabl
 | LibICRestrict-1.0 | 1 | What the client will not let an addon do or read right now: secret values, and combat, encounter and chat restrictions with a reason |
 | LibICGroup-1.0 | 2 | Who is in the group: a roster snapshot of plain values, every field checked for secrets, and whether the player may mark |
 | LibICChat-1.0 | 1 | Lines said in chat: decided before they go (send, hold until chat unlocks, or refuse with a reason), with a per-channel budget |
+| LibICComm-1.0 | 1 | Addon messages between players on the same addon: tables in, tables out, framed to fit, own echo dropped, a version hello, and a queue through lockdowns |
 | LibICStore-1.0 | 1 | Saved variables: defaults, schema, migrations, and whether the file really loaded |
 | LibICConsole-1.0 | 1 | Prefixed printing and the slash-command dispatcher with its help |
 | LibICTheme-1.0 | 1 | The theme registry: colour and font roles, the selected theme, change listeners |
@@ -316,6 +317,46 @@ The sender reads the chat lock from LibICRestrict, the group from LibICGroup, th
 type from `GetInstanceInfo`, and sends with `SendChatMessage`. Whether an instance locks
 chat during trash, a boss or not at all is not known yet; `instance = "locked"` is the
 setting for a client found to lock without saying so.
+
+## LibICComm-1.0
+
+```lua
+local Comm = LibStub("LibICComm-1.0")
+local comm = Comm.New("MarkedForDeath", { version = VERSION, onDrop = function(entry, reason) end })
+
+comm:On("plan", function(msg, from, channel) ApplyPlan(msg.plan) end)
+comm:Send({ t = "plan", plan = plan })      -- to the whole group
+comm:Hello()                                -- peers answer with their versions
+```
+
+A message is a table with a type in `t`. It goes out as compact JSON (LibICJSON), cut into
+frames that fit one addon message, and arrives whole on every other client in the group.
+`Send` adds `f`, the player's guid; the copy the client loops back to you carries your own
+guid and is dropped, so a handler only ever sees other players.
+
+| Call | What it does |
+| --- | --- |
+| `Comm.New(prefix, opts)` | A sender for one prefix (1 to 16 characters): registers it and listens for `CHAT_MSG_ADDON` at once. `opts`: `version` (said in a hello), `ttl` (30 seconds a waiting message lives), `maxQueue` (50), `budget` (`{ frames, seconds }`, 8 per 10 by default), `raid` (`"follow"`, the default, or `"off"` to send nothing in a raid), `onDrop(entry, reason)`. |
+| `comm:Send(msg, channel)` | Sends to the group (or `channel`). Returns `{ action = "send" \| "queue" \| "refuse", channel, reason }`. |
+| `comm:On(t, fn)` | `fn(msg, from, channel)` for each message of type `t` from another player. `from` is the sender as the client names them ("First Second" on Forever). |
+| `comm:Hello()` | Says this version. Every peer that hears it records it and answers once (not again within a minute), so both sides learn each other. |
+| `comm:Peers()` | `{ [guid] = { name, version, at } }` from hellos heard. |
+| `comm:Queue()` | Messages waiting, oldest first. |
+| `comm.stop()` | Stops it trying the queue on restriction changes. |
+| `Comm.Frame(text, n)` | The frames for message id `n`, pure: `S` and a two-character id for one frame, else `F`, `M`... `L`. |
+| `Comm.Assemble(buffers, from, frame, now)` | The whole text when this frame completes one, else nil, pure. Senders and ids never mix; a frame with no first is dropped, and a partial older than 30 seconds is forgotten. |
+| `Comm.Channel(state)` | The group's channel, or `nil, reason`, pure: INSTANCE_CHAT in an instance group, RAID in a raid (unless `raid = "off"`), PARTY in a party; a group that may be a raid is refused. |
+| `Comm.Result(name)` | What a `SendAddonMessage` result means, pure: `sent`, `retry` (throttled), `hold` (`AddOnMessageLockdown`) or `drop`, with a reason. |
+| `Comm.Newer(a, b)` | Whether version `a` is newer than `b`, part by part as numbers. |
+
+A frame the client will not take now waits: `retry` and `hold` keep it queued, tried again
+on every restriction change and once a second, until it goes or its time runs out, when
+`onDrop` hears the last reason. A `drop` result reports it at once. Results are read by
+name from the client's `Enum.SendAddonMessageResult`.
+
+From the probe, open world: PARTY returns 0 and loops back, in combat too; INSTANCE_CHAT
+outside an instance group returns 5 (`NotInGroup`). Whether a raid carries addon messages
+out of combat is not known yet, which is what `raid = "off"` is for.
 
 ## LibICStore-1.0
 
