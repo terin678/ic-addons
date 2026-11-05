@@ -343,6 +343,34 @@ T.Case("Capture.Export and Read: round-trips, same text twice", function()
     end
 end)
 
+--------------------------------------------------------------------------------
+-- CaptureWatch: the export box
+--------------------------------------------------------------------------------
+
+-- Headless only: in game it would put the box on screen in the middle of /mfd selftest.
+T.Case("CaptureWatch.ShowCopy: holds the export, undoes typing, no focus in combat", function()
+    if not IC_HEADLESS then return end
+    local panel = ns.CaptureWatch.ShowCopy('{"a":1}', false)
+    local box = panel.box
+    T.Eq(box:GetText(), '{"a":1}', "the export is in the box")
+    box:SetText('{"a":1}x')
+    box:GetScript("OnTextChanged")(box, true)
+    T.Eq(box:GetText(), '{"a":1}', "a key the player pressed is undone")
+    box:SetText("set by code")
+    box:GetScript("OnTextChanged")(box, false)
+    T.Eq(box:GetText(), "set by code", "a change made by code is not")
+
+    local focused = 0
+    box.SetFocus = function() focused = focused + 1 end
+    T.Eq(ns.CaptureWatch.ShowCopy("second", true), panel, "the same panel, reused")
+    T.Eq(box:GetText(), "second", "new text")
+    T.Eq(focused, 0, "in combat it shows without focus")
+    ns.CaptureWatch.ShowCopy("third", false)
+    T.Eq(focused, 1, "out of combat it takes focus")
+    box.SetFocus = nil
+    panel:GetScript("OnHide")(panel)
+end)
+
 T.Case("Capture.Read: refuses other JSON, a newer format and garbage; skips bad rows", function()
     T.Eq(Capture.Read(""), nil, "empty")
     T.Eq(Capture.Read(nil), nil, "nil")

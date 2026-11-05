@@ -185,7 +185,7 @@ local function Start()
         local ok = pcall(ns.Events.On, event, KEY, HANDLERS[event])
         if not ok then
             pcall(ns.Events.Off, event, KEY)
-            ns.Printf("|cffff9900capture cannot listen to %s on this client.|r", event)
+            ns.Printf("|cffff4444capture cannot listen to %s on this client.|r", event)
         end
     end
     ReadInstance()
@@ -206,8 +206,18 @@ end
 -- The export box
 --------------------------------------------------------------------------------
 
+local COPY_KEY = "captureCopy"   -- the copy box's key on the shared event frame
+
+-- A box with focus takes every key, movement included, so focus goes when combat starts.
+local function DropCopyFocus()
+    if copyBox then copyBox.box:ClearFocus() end
+end
+
 -- One movable panel with the export text selected, ready for Ctrl+C. Built on first use.
-local function ShowCopy(text)
+-- The box is read-only: a key the player presses puts the export back, so a stray one
+-- cannot corrupt the JSON. It holds the whole line, however long (no letter or byte cap).
+-- inCombat is for the cases; nil asks the client. In combat the box shows without focus.
+local function ShowCopy(text, inCombat)
     if not copyBox then
         local panel = W.Panel(UIParent, { name = COPY_FRAME, width = 460, height = 96,
             strata = "DIALOG", movable = true, role = "raised" })
@@ -217,19 +227,36 @@ local function ShowCopy(text)
         title:SetPoint("TOPLEFT", panel, "TOPLEFT", 10, -10)
         local box = W.EditBox(panel, 440, 22, {
             onEscape = function() panel:Hide() end,
+            onChange = function(_, self)
+                -- Only the player's own typing lands here; put the export back.
+                self:SetText(panel.icText or "")
+                self:HighlightText()
+            end,
         })
+        box:SetMaxLetters(0)
+        box:SetMaxBytes(0)
         box:SetPoint("TOPLEFT", panel, "TOPLEFT", 10, -32)
         local close = W.Button(panel, "Close", 80, 22, { onClick = function() panel:Hide() end })
         close:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -10, 10)
+        -- HookScript keeps the panel's own OnHide, which ends a drag.
+        panel:HookScript("OnHide", function() ns.Events.Off("PLAYER_REGEN_DISABLED", COPY_KEY) end)
         panel.box = box
         tinsert(UISpecialFrames, COPY_FRAME)
         copyBox = panel
     end
+    if inCombat == nil then inCombat = InCombat() end
+    copyBox.icText = text
     copyBox.box:SetText(text)
     copyBox:Show()
-    copyBox.box:SetFocus()
-    copyBox.box:HighlightText()
+    ns.Events.On("PLAYER_REGEN_DISABLED", COPY_KEY, DropCopyFocus)
+    if not inCombat then
+        copyBox.box:SetFocus()
+        copyBox.box:HighlightText()
+    end
+    return copyBox
 end
+
+Watch.ShowCopy = ShowCopy
 
 --------------------------------------------------------------------------------
 -- The command
