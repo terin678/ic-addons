@@ -59,7 +59,61 @@ A new install starts with this plan, with no players pinned:
 
 ## Death calls and chat
 
-*To come (lane D).*
+When a tank or a healer dies, the Raid Lead's client says so: "Tank Tankard has died" as a
+raid warning (raid chat without lead or assist, party chat in a party), plus the same line
+across the Raid Lead's own screen with the raid warning sound. Nobody else's client says
+anything, so the raid hears it once.
+
+**Who counts.** A tank is anyone with the tank role icon or Set Main Tank (a raid marks
+tanks both ways and they do not overlap), a healer anyone with the healer icon, and each
+kind has an "Also counts" box for names the roster does not mark. Who counts is read out
+of combat, at the pull, and kept for the fight.
+
+**Where.** Each kind has its own switches and never reads the other's:
+
+| Setting | What it does |
+| --- | --- |
+| Call tank / healer deaths | The kind on or off. Tanks start on, healers off. |
+| On trash | Calls deaths outside a boss encounter. Tanks yes, healers no by default. |
+| Boss ticks | One per boss in the list on the Deaths tab. A boss nobody touched is called for tanks and not for healers. |
+| Right now | Per boss (the two above decide), Everywhere (every death of that kind) or Nowhere (none, ticks kept). For a change in the middle of a raid night. |
+
+The boss comes from the encounter the client starts. If the client hides which encounter
+it is, the fight still counts as a boss, with each kind's untouched-boss default.
+
+**Once per person per fight.** The same person is never called twice in one fight; a tank
+and a healer going down are both called. A pull starts everybody over. Ending combat does
+not, so the Raid Lead dying and being battle-rezzed cannot call somebody twice.
+
+**When chat is locked.** The line waits for chat to unlock for "Held lines wait" seconds
+(10 by default) and is dropped if it does not; the alert on the Raid Lead's screen shows at
+once either way. `/mfd log held` lists every line that was not sent and why, and every
+tank or healer death that was not called and why.
+
+**Announce.** The Announce button on the Deaths tab and `/mfd announce` post the seat plan
+the current instance follows, Skull first, each crowd control seat with the player who
+holds it: `Skull>Kill 1 | ... | Moon>Sheep 1 Frosty | Star>Sheep 2 (nobody)`. Only the Raid
+Lead posts. It is refused, not held, while chat is locked, since a pre-pull line after the
+pull is wrong. `/mfd announce off` (or the "Announce allowed" box) keeps it quiet until
+switched back on.
+
+**Chat cue.** A sound when one chosen word or phrase is said in party, raid or instance
+chat, whole word, any case, at most once every 4 seconds. Off by default with no word and
+no sound: on the Deaths tab, tick it, type the word, and give a sound kit id (a number) or
+a sound file path. Nothing plays until all three are set. A message the client keeps
+secret cannot be read, so it plays nothing.
+
+| Command | What it does |
+| --- | --- |
+| `/mfd deaths` | Says how tank and healer calls are set |
+| `/mfd deaths tank\|healer on\|off\|auto` | Sets that kind's Right now: everywhere, nowhere, or per boss |
+| `/mfd deaths test` | Shows a death call on your screen only, with its sound |
+| `/mfd announce` | Posts the seat plan to the group now |
+| `/mfd announce on\|off` | Allows or stops the announce |
+
+Not yet confirmed in a raid instance (the in-game probe ran in the open world): whether
+chat is locked on raid maps outside encounters, whether a raid warning sends, and whether
+the screen alert shows during an encounter.
 
 ## Capture mode
 
