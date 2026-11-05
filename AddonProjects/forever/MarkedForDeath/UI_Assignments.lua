@@ -346,6 +346,8 @@ local function BuildFloat()
     hit:SetPoint("TOPLEFT", controls.floatSource, "TOPLEFT", 0, 2)
     hit:SetPoint("BOTTOMRIGHT", controls.floatSource, "BOTTOMRIGHT", 0, -2)
     SourceTip(hit, controls.floatSource)
+    -- The strip still drags the panel, as it did before it had a tooltip.
+    W.DragHandle(hit, p)
 
     controls.floatList = W.List(p, FLOAT_W - 16, listH, {
         columns = COLUMNS, tooltip = RowTip, rowHeight = ROW_H, empty = "Nothing to mark here",

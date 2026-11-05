@@ -497,6 +497,9 @@ local function Build()
     end)
     frame:HookScript("OnHide", function() Listen(false) end)
 
+    -- The "off" colour is baked into text: repaint it in the new theme's red.
+    Theme.OnChange(function() UI.Refresh() end)
+
     W.SetPlace(frame, saved.fx or 0.25, saved.fy or 0.15)
     if type(UISpecialFrames) == "table" then UISpecialFrames[#UISpecialFrames + 1] = UI.NAME end
 end
