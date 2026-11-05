@@ -61,6 +61,7 @@ should not. The counters cost two clock reads a call and need no console variabl
 | LibStub | — | Standard library loader |
 | LibICUtil-1.0 | 1 | Pure helpers for text, tables and lists. Calls nothing in the game client |
 | LibICTest-1.0 | 1 | The case runner behind every addon's `test` command, headless and in game |
+| LibICJSON-1.0 | 1 | JSON text to and from tables, sorted and indented for people to read. Calls nothing in the game client |
 | LibICEnv-1.0 | 2 | What this client offers (build, a feature probe, secret values) and what handlers cost (call and time counters, memory) |
 | LibICStore-1.0 | 1 | Saved variables: defaults, schema, migrations, and whether the file really loaded |
 | LibICConsole-1.0 | 1 | Prefixed printing and the slash-command dispatcher with its help |
@@ -119,6 +120,31 @@ local passed, failed = T.Run()
 An addon keeps its registry at `ns.Tests`; that is where the headless harness looks. A
 registry knows nothing about saved variables or windows: model functions take their tables
 as arguments, so a case builds its own input.
+
+## LibICJSON-1.0
+
+```lua
+local JSON = LibStub("LibICJSON-1.0")
+
+local text, why = JSON.Encode(rules)          -- indented, keys sorted
+local line = JSON.Encode(rules, { compact = true })
+local back, why = JSON.Decode(pasted)
+```
+
+For anything a player copies out of the game and back in: a shared rule set, a capture
+export, a backup. Two encodes of one table are byte for byte the same, so two exports can
+be compared line by line.
+
+| Call | Returns |
+| --- | --- |
+| `JSON.Encode(value, opts)` | The JSON text, or `nil, reason` when something in it has no JSON form: a function, infinity or NaN, a key that is neither text nor a number, a table that contains itself. `opts.compact = true` writes one line; `opts.indent` is one level of indent (two spaces by default). Never raises. |
+| `JSON.Decode(text)` | The value, or `nil, reason` saying what was wrong and at which character. Never raises, so pasted text that is not JSON gets a message rather than a Lua error. |
+
+How tables map: keys exactly `1..n` make a list; every other table, the empty one
+included, is an object. A number key is written as text and comes back as text. Whole
+numbers have no fraction (`22890`, not `22890.0`). `null` reads as nil, so a null in a
+list leaves a hole at its index. `\u` escapes come back as UTF-8, surrogate pairs
+included; a raw tab inside a string, which a text editor can leave, is kept.
 
 ## LibICEnv-1.0
 

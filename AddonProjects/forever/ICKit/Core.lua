@@ -8,6 +8,7 @@ it (Docs/forever/VISION.md has the rules and the order):
 
     layer 0   LibICUtil-1.0     pure helpers
               LibICTest-1.0     the case runner
+              LibICJSON-1.0     JSON text to and from tables
     layer 1   LibICEnv-1.0      what this client offers, and what the addons cost it
               LibICStore-1.0    saved variables
               LibICConsole-1.0  printing and slash commands
@@ -23,7 +24,7 @@ says, it says here.
     Tests.lua     the kit's own cases
 ]]
 
-local VERSION = "0.6.0"
+local VERSION = "0.7.0"
 
 local Util = LibStub("LibICUtil-1.0")
 local Test = LibStub("LibICTest-1.0")
