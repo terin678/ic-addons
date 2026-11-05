@@ -38,8 +38,9 @@ Dillon's decisions this design follows:
 
 One change against the Anniversary defaults: Anniversary ships Sheep 1 pinned to
 `Grimmtusk`. VISION principle 6 (general audience, no guild assumptions) says the Forever
-addon ships with no pins. The icons and jobs are unchanged. **Open for Dillon** (through the
-coordinator): keep that rule, or ship the pin as before.
+addon ships with no pins. The icons and jobs are unchanged. **Decided 2026-11-05 by the
+MFD Forever coordinator:** ship with no pin; principle 6 wins. A raid pins its own players
+on the Roles tab.
 
 ## 2. What Forever allows, in one table
 
