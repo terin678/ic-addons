@@ -142,7 +142,10 @@ Nothing here says how an instance behaves; that is still open.
 **When the restriction starts.** `Enum.AddOnRestrictionType` has `Combat`, `Chat`,
 `Encounter`, `Map`, `ChallengeMode` and `PvPMatch`. Out of combat every one reads
 inactive, state 0. In open-world combat only `Combat` is active (state 2).
-`InChatMessagingLockdown()` stayed false in and out of combat. At `PLAYER_REGEN_DISABLED`
+`InChatMessagingLockdown()` stayed false in and out of combat. The state is read with
+`C_RestrictedActions.GetAddOnRestrictionState(Enum.AddOnRestrictionType.X)` and
+`C_RestrictedActions.IsAddOnRestrictionActive(Enum.AddOnRestrictionType.X)`, both present
+and answering on this client (ICKit's `LibICRestrict-1.0` reads them). At `PLAYER_REGEN_DISABLED`
 itself, `InCombatLockdown()` was still false and `Combat` was not yet active; three
 seconds later both were. `ADDON_RESTRICTION_STATE_CHANGED` fires with
 `(type, state)`, for example `0, 1` then `0, 0`.
