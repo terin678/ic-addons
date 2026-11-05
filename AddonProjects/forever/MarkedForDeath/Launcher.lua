@@ -21,6 +21,7 @@ ns.Launcher = ns.Launcher or {}
 local Launcher = ns.Launcher
 
 local W = LibStub("LibICWidgets-1.0")
+local Theme = LibStub("LibICTheme-1.0")
 
 Launcher.ICON = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_8"
 
@@ -76,7 +77,10 @@ end
 
 local function Tip(tip)
     tip:AddLine("Marked For Death")
-    if not ns.UI.IsEnabled() then tip:AddLine("Off: /mfd on turns it back on.", 1, 0.33, 0.33) end
+    if not ns.UI.IsEnabled() then
+        local bad = Theme.Current().colors.bad
+        tip:AddLine("Off: /mfd on turns it back on.", bad.r, bad.g, bad.b)
+    end
     tip:AddLine("Click: the window", 1, 1, 1)
     tip:AddLine("Right-click: menu", 1, 1, 1)
 end
@@ -128,7 +132,8 @@ ns.OnReady("launcher", function()
     W.Compartment({
         text = "Marked For Death",
         icon = Launcher.ICON,
-        onClick = function(mouseButton) Launcher.Click(mouseButton, nil) end,
+        -- The menu needs an owner to sit by; the compartment's own frame, else the screen.
+        onClick = function(mouseButton) Launcher.Click(mouseButton, AddonCompartmentFrame or UIParent) end,
         tooltip = Tip,
     })
     if type(W.MinimapButton) == "function" then

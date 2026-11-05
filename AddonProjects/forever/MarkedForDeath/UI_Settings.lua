@@ -142,6 +142,7 @@ local function Check(text, onClick, title, ...)
 end
 
 -- n fixed single-line slots; Fill writes { text, role } pairs into them and hides the rest.
+-- A line cut at the edge is read in full on hover.
 local function Slots(n, x)
     local slots = {}
     for i = 1, n do
@@ -150,6 +151,12 @@ local function Slots(n, x)
         l:SetPoint("RIGHT", content, "RIGHT", -4, 0)
         l:SetWordWrap(false)
         if l.SetMaxLines then l:SetMaxLines(1) end
+        local hit = CreateFrame("Frame", nil, content)
+        hit:SetPoint("TOPLEFT", l, "TOPLEFT", 0, 2)
+        hit:SetPoint("BOTTOMRIGHT", l, "BOTTOMRIGHT", 0, -2)
+        hit:EnableMouse(true)
+        W.Tooltip(hit, function(tip) tip:AddLine(l.icFull or "", 1, 1, 1, true) end)
+        l.hit = hit
         slots[i] = l
     end
     y = y + n * LINE + 4
@@ -162,10 +169,14 @@ local function Fill(slots, pairsList)
         if p then
             slot:SetText(p[1])
             slot:SetRole(p[2] or "text")
+            slot.icFull = p[1]
             slot:Show()
+            slot.hit:Show()
         else
             slot:SetText("")
+            slot.icFull = nil
             slot:Hide()
+            slot.hit:Hide()
         end
     end
 end
@@ -237,8 +248,8 @@ local function Build()
     -- Raid Lead
     Heading("Raid Lead")
     controls.lead = Slots(1)
-    local hint = W.Label(content, "The Raid Lead's client says the pre-pull and death lines. /mfd lead <name> sets one,"
-        .. " /mfd lead clear drops it.", { color = "textDim" })
+    local hint = W.Label(content, "The Raid Lead says the pre-pull and death lines: /mfd lead <name>, or clear.",
+        { color = "textDim" })
     hint:SetPoint("TOPLEFT", content, "TOPLEFT", 4, -y)
     hint:SetPoint("RIGHT", content, "RIGHT", -4, 0)
     hint:SetWordWrap(false)

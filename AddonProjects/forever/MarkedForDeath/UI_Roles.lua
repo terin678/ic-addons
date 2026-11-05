@@ -162,7 +162,7 @@ local PIN_WORDS = {
 -- record: one Seats.Resolve record, or nil for a seat with no job. Returns text, role.
 function UIRoles.OwnerText(record)
     if not record then return "no job", "textDim" end
-    if record.owner == true then return "anyone: no class needed", "good" end
+    if record.owner == true then return "anyone: no class needed", "textDim" end
     local pinNote = record.pin and PIN_WORDS[record.pinState]
     if type(record.owner) == "string" then
         if record.pinState == "held" then return record.owner .. " (pinned)", "good" end
@@ -281,10 +281,12 @@ local function BuildHeader()
         { "Kept", X_RES - 8, "Never lent to an extra kill target, even when nobody holds it." },
         { "Owner right now", X_OWNER, "Who holds the seat with the group as it is, read out of combat." },
     }
-    for _, col in ipairs(cols) do
+    for i, col in ipairs(cols) do
         local cell = CreateFrame("Frame", nil, header)
         cell:SetPoint("TOPLEFT", header, "TOPLEFT", col[2], 0)
-        cell:SetSize(90, 20)
+        -- As wide as the gap to the next heading, so two hover areas never overlap.
+        local nextX = cols[i + 1] and cols[i + 1][2] or (col[2] + 180)
+        cell:SetSize(math.max(20, nextX - col[2] - 4), 20)
         local l = W.Label(cell, col[1], { font = "small", color = "textDim" })
         l:SetPoint("LEFT", cell, "LEFT", 0, 0)
         cell:EnableMouse(true)
@@ -375,7 +377,12 @@ function UIRoles.Refresh()
         local seat = plan[row.iconIndex]
         local record = resolved.byIcon[row.iconIndex]
         row.seat:SetText(seat and Seats.Label(seat) or "no job")
-        row.job:SetValue(seat and seat.intent or nil)
+        if seat then
+            row.job:SetValue(seat.intent)
+        else
+            row.job.icValue = nil
+            row.job:SetLabel("no job")
+        end
         row.up:SetEnabled(seat ~= nil)
         row.down:SetEnabled(seat ~= nil)
         if not row.pin:HasFocus() then row.pin:SetText(seat and seat.pin or "") end

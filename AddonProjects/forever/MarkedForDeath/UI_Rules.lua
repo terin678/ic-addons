@@ -253,24 +253,24 @@ function UIRules.NpcFromGuid(guid)
     return tonumber(id)
 end
 
--- view = { key, label, items, selected, legacy }. Returns text.
+-- view = { key, label, items, selected, legacy }. Returns text and its colour role.
 function UIRules.Note(view)
     view = view or {}
     if view.legacy then
-        return "|cffffcc66From an Anniversary file, not a Forever instance.|r Stand in the instance they are for "
-            .. "and press Move here."
+        return "From an Anniversary file, not a Forever instance. Stand in the instance they are for "
+            .. "and press Move here.", "warn"
     end
     local total, theirs = #(view.items or {}), 0
     for _, item in ipairs(view.items or {}) do
         if not item.mine then theirs = theirs + 1 end
     end
     if total == 0 then
-        return "No rules for " .. tostring(view.label) .. " yet: add a mob above or paste a list."
+        return "No rules for " .. tostring(view.label) .. " yet: add a mob above or paste a list.", "textDim"
     end
     local text = total .. " " .. Util.Plural(total, "rule") .. ", top first"
-    if theirs > 0 then text = text .. "; |cffffcc66" .. theirs .. " from the group|r (yours win)" end
+    if theirs > 0 then text = text .. "; " .. theirs .. " from the group in amber (yours win)" end
     if (view.selected or 0) > 0 then text = text .. "; " .. view.selected .. " chosen" end
-    return text .. "."
+    return text .. ".", "textDim"
 end
 
 --------------------------------------------------------------------------------
@@ -631,7 +631,9 @@ local function BuildTop(width)
     controls.bulkJob = W.Choice(page, 96, 22, {
         choices = {},
         onChange = function(value, c)
-            c:SetValue(nil)
+            -- A picker that acts, not one that holds a value: back to its own name at once.
+            c.icValue = nil
+            c:SetLabel("Set job")
             EditChosen(function(set, keys, n)
                 local changed = UIRules.Apply(set, keys, "intent", value)
                 Say(string.format("%d of %d set to %s.", changed, n, CC.INTENTS[value].label))
@@ -644,7 +646,8 @@ local function BuildTop(width)
     controls.bulkFallback = W.Choice(page, 104, 22, {
         choices = FallbackChoices(),
         onChange = function(value, c)
-            c:SetValue(nil)
+            c.icValue = nil
+            c:SetLabel("Set else")
             EditChosen(function(set, keys, n)
                 local changed, refused = UIRules.Apply(set, keys, "fallback", value)
                 Say(string.format("%d of %d changed%s.", changed, n,
@@ -739,7 +742,7 @@ local function BuildList(width, height)
             { key = "mob", label = "Mob", tip = "As the game shows it; an npc id alone cannot be targeted by name",
                 text = function(item)
                     if item.rule.name then return item.rule.name, item.mine and "text" or "warn" end
-                    return "npc " .. tostring(item.rule.npcID) .. " (no name yet)", "warn"
+                    return "npc " .. tostring(item.rule.npcID) .. " (no name yet)", "textDim"
                 end },
             { key = "job", label = "Job", width = 84, text = function(item) return JobText(item.rule) end },
             { key = "fallback", label = "Else", width = 70, tip = "The job taken when no seat of its own is free",
@@ -827,7 +830,9 @@ function UIRules.Refresh()
     local n = Count(chosen)
     controls.chosen:SetText(n > 0 and (n .. " chosen") or "Choose:")
     controls.list:SetItems(items)
-    controls.note:SetText(UIRules.Note({ key = key, label = Label(key), items = items, selected = n, legacy = legacy }))
+    local note, noteRole = UIRules.Note({ key = key, label = Label(key), items = items, selected = n, legacy = legacy })
+    controls.note:SetText(note)
+    controls.note:SetRole(noteRole or "textDim")
 end
 
 local function Fit(w, h)

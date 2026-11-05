@@ -76,7 +76,7 @@ view = {
     preview     steps worked out here
     unmet       crowd control rules the preview could not seat (a count)
 }
-Returns steps, text, role.
+Returns steps, text, role, and the time the published plan was sent (for a tooltip).
 ]]
 function UIA.Source(view)
     view = view or {}
@@ -86,7 +86,7 @@ function UIA.Source(view)
     local pub = view.published
     if type(pub) == "table" and type(pub.steps) == "table" and pub.from ~= nil and pub.from ~= view.me then
         local age = (view.now and pub.at) and (", " .. ns.UI.Age(view.now - pub.at) .. " ago") or ""
-        return pub.steps, "The Raid Lead's plan, from " .. tostring(pub.from) .. age .. ".", "good"
+        return pub.steps, "The Raid Lead's plan, from " .. tostring(pub.from) .. age .. ".", "good", pub.at
     end
     local text = "A preview from the rules here: Mark pack is not built yet."
     if (view.unmet or 0) > 0 then
@@ -145,11 +145,11 @@ local function Current()
         if ok then published = pub end
         me = ns.Comms.Me and ns.Comms.Me() or nil
     end
-    local steps, text, role = UIA.Source({
+    local steps, text, role, at = UIA.Source({
         provided = provided, providedText = providedText, published = published, me = me, now = time(),
         preview = preview, unmet = #(alloc.unmet or {}),
     })
-    return UIA.Rows(steps), text, role
+    return UIA.Rows(steps), text, role, at
 end
 
 local COLUMNS = {
@@ -161,7 +161,7 @@ local COLUMNS = {
 }
 
 local function RowTip(tip, item)
-    tip:AddLine(item.iconName .. ": " .. item.mob)
+    tip:AddLine(tostring(item.iconName or "?") .. ": " .. tostring(item.mob))
     tip:AddLine(item.seat ~= "" and item.seat or "no seat", 1, 1, 1)
     tip:AddLine("Held by " .. item.who, 1, 1, 1)
 end
@@ -200,14 +200,24 @@ function UIA.MarkingChanged()
 end
 
 local function Paint(list, source)
-    local rows, text, role = Current()
+    local rows, text, role, at = Current()
     list:SetItems(rows)
     source:SetText(text)
     source:SetRole(role)
+    source.icFull, source.icAt = text, at
+end
+
+-- The source line's full words, and the exact time a published plan was sent.
+local function SourceTip(holder, label)
+    holder:EnableMouse(true)
+    W.Tooltip(holder, function(tip)
+        tip:AddLine(label.icFull or "")
+        if label.icAt then tip:AddLine("Sent at " .. date("%H:%M:%S", label.icAt), 1, 1, 1) end
+    end)
 end
 
 function UIA.Refresh()
-    if page and page:IsShown() then Paint(controls.list, controls.source) end
+    if page and page:IsVisible() then Paint(controls.list, controls.source) end
     if controls.float and controls.float:IsShown() then Paint(controls.floatList, controls.floatSource) end
 end
 
@@ -257,6 +267,10 @@ local function BuildTab(parent)
     controls.source:SetPoint("RIGHT", page, "RIGHT", 0, 0)
     controls.source:SetWordWrap(false)
     if controls.source.SetMaxLines then controls.source:SetMaxLines(1) end
+    local hit = CreateFrame("Frame", nil, page)
+    hit:SetPoint("TOPLEFT", controls.source, "TOPLEFT", 0, 2)
+    hit:SetPoint("BOTTOMRIGHT", controls.source, "BOTTOMRIGHT", 0, -2)
+    SourceTip(hit, controls.source)
 
     controls.list = W.List(page, width, math.max(60, height - TOP_LIST), {
         columns = COLUMNS, tooltip = RowTip, empty = "Nothing to mark: no rules here, or no seats with an owner",
@@ -328,18 +342,23 @@ local function BuildFloat()
     controls.floatSource:SetPoint("RIGHT", p, "RIGHT", -8, 0)
     controls.floatSource:SetWordWrap(false)
     if controls.floatSource.SetMaxLines then controls.floatSource:SetMaxLines(1) end
+    local hit = CreateFrame("Frame", nil, p)
+    hit:SetPoint("TOPLEFT", controls.floatSource, "TOPLEFT", 0, 2)
+    hit:SetPoint("BOTTOMRIGHT", controls.floatSource, "BOTTOMRIGHT", 0, -2)
+    SourceTip(hit, controls.floatSource)
 
     controls.floatList = W.List(p, FLOAT_W - 16, listH, {
         columns = COLUMNS, tooltip = RowTip, rowHeight = ROW_H, empty = "Nothing to mark here",
     })
     controls.floatList:SetPoint("TOPLEFT", p, "TOPLEFT", 8, -(FLOAT_TITLE + 22))
 
-    p:SetScript("OnShow", function()
+    -- Hooked, not set: the panel's own OnHide ends a drag that a close interrupted.
+    p:HookScript("OnShow", function()
         FloatEvents(true)
         UIA.Refresh()
         if C_Timer and C_Timer.NewTicker then ticker = C_Timer.NewTicker(AGE_TICK, UIA.Refresh) end
     end)
-    p:SetScript("OnHide", function()
+    p:HookScript("OnHide", function()
         FloatEvents(false)
         if ticker then
             ticker:Cancel()

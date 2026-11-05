@@ -279,6 +279,63 @@ not written, and why), `say`, `death`, `lead`, `logging`, `conflict`, `capture` 
 saved settings, so after a reload or logout it can also be read in
 `SavedVariables\MarkedForDeath.lua`.
 
+## The window
+
+| Command | What it does |
+| --- | --- |
+| `/mfd window` | Opens or closes the window, on the tab you had last |
+| `/mfd window rules` | Opens it on one tab: `assign`, `roles`, `rules`, `check`, `deaths`, `settings` |
+| `/mfd assign` | Shows or hides the small floating assignment panel |
+| `/mfd off`, `/mfd on` | Turns death calls, the chat cue and marking off or back on; rules, roles and settings are kept |
+| `/mfd minimap [on\|off]` | Shows or hides the minimap button |
+
+Click **Marked For Death** in the addon list beside the minimap (or the skull button on the
+minimap's rim) to open the window; right-click either for a menu. Drag the window by its
+title bar and resize it from the bottom-right corner; its place, size and tab are kept per
+character. The **Turn off** button in the title bar is the same as `/mfd off`, and the
+title says "(off)" while it is. The line along the bottom says where you are, how many
+rules apply there, and who the Raid Lead is. Escape closes the window.
+
+**Assignments** shows which icon goes on which mob and who holds the seat. Until the Mark
+pack button exists it is a preview worked out from the rules and seats where you are
+(amber). In a group, the Raid Lead's published plan replaces the preview so every panel
+agrees. **Float** (or `/mfd assign`) puts the same list in a small panel to keep up through
+a pull; it comes back after a reload if you left it open. **Announce** posts the plan, as
+on the Deaths tab.
+
+**Roles** is the seat plan. **Plan for** picks the default or an instance; looking at an
+instance changes nothing, and its first edit gives it a plan of its own (**Use default**
+puts it back). Each row is an icon's seat: its **Job**, **^** and **v** to swap it with the
+next seat of the same job (Kill 1 and Kill 2), a **Pinned player** who gets the seat when
+present (saved when you press Enter or click away), **Kept** so a spare crowd control icon
+is never lent to an extra kill target, and the **Owner right now**: green for a holder,
+amber when a pinned player cannot take it and someone else does, red when nobody in the
+group can do the job.
+
+**Rules** is the kill order for one instance. **Rules for** follows where you are, or picks
+an instance so a raid can be planned from a city; the choice is kept. Type a mob's name
+(exactly as the game shows it) or npc id and press **Add**, or **Add target** for what you
+have targeted where the game lets addons read it. Click rows to choose them (a `+` marks
+them), then **Set job**, **Set else** (the job taken when no seat of its own is free),
+**max** (copies marked at once; type a number and press Enter, or Enter on an empty box to
+clear it), **Up**, **Down** or **Delete**. Right-click one of your rules to change its job.
+In a group, rules other addon users hold for mobs you have not ruled show in amber with
+their name; yours always win, and **Keep a copy** makes one yours. **Paste list** takes a
+whole kill order (one mob per line, best first, `= sheep` for a job). **Share** gives every
+rule you have as a file to copy, and **Load file** reads one: matches are updated and
+nothing is deleted. Rules read from an Anniversary file sit under their old zone name until
+you stand in the instance they belong to and press **Move here**.
+
+**Raid check** opens the raid check grid (`/mfd check`) until the grid moves into the tab.
+**Deaths** holds the death call and chat cue settings.
+
+**Settings** has the on switch, debug lines and the minimap button; the Raid Lead; a summary
+of the death calls with a button to their tab; combat logging (allowed, **List this
+instance** or **Unlist**, the list and the status, as `/mfd combatlog` shows it); other
+addons doing the same jobs (as `/mfd conflicts`); and **Why marking might not work**, the
+reasons a Mark pack press would not do what you expect, most fundamental first (red stops
+it, amber stops part of it).
+
 ## Saved settings
 
 Account-wide settings are in `MarkedForDeathDB`, per-character ones (window places, the bar)

@@ -95,6 +95,8 @@ T.Case("UI.KeyLabel and FooterText: how instance keys read", function()
     local off = UI.FooterText({ enabled = false, key = "i:189", names = NAMES, rules = 1, lead = "Raid Lead: Ann" })
     T.True(off:find("Off", 1, true) and off:find("1 rule", 1, true) and off:find("Ann", 1, true), "all of it when off")
     T.Eq(UI.FooterText({ key = "open" }):find("Off", 1, true), nil, "no Off when on")
+    T.True(UI.FooterText({ enabled = false, badHex = "|cffabcdef" }):find("|cffabcdefOff|r", 1, true),
+        "Off in the colour handed in")
 end)
 
 T.Case("UI.AddTab: a tab without a key, label or build is refused before it is kept", function()
@@ -167,7 +169,7 @@ end)
 T.Case("UIRoles.OwnerText: every owner and pin state has its words and colour", function()
     local function Text(record) return table.concat({ UIRoles.OwnerText(record) }, "|") end
     T.Eq(Text(nil), "no job|textDim", "no seat")
-    T.Eq(Text({ owner = true }):match("|(%a+)$"), "good", "a kill seat is anyone's")
+    T.Eq(Text({ owner = true }):match("|(%a+)$"), "textDim", "a kill seat is anyone's, grey as on Assignments")
     T.Eq(Text({ owner = "Ann", pin = "Ann", pinState = "held" }), "Ann (pinned)|good", "pin held")
     T.Eq(Text({ owner = "Bob", pin = "Ann", pinState = "offline" }), "Bob; Ann is offline|warn", "pin offline, Bob has it")
     T.Eq(Text({ owner = false, pin = "Ann", pinState = "wrong class" }), "nobody: Ann cannot do this job|bad",
@@ -311,7 +313,10 @@ T.Case("UIRules.Note: counts, the group's share, the choice, and the leftover wa
     T.True(note:find("3 rules", 1, true) and note:find("1 from the group", 1, true) and note:find("2 chosen", 1, true),
         "all three counts")
     T.True(UIRules.Note({ label = "Deadmines", items = {} }):find("No rules for Deadmines", 1, true), "empty")
-    T.True(UIRules.Note({ legacy = true }):find("Move here", 1, true), "a leftover says how to move it")
+    local legacy, role = UIRules.Note({ legacy = true })
+    T.True(legacy:find("Move here", 1, true), "a leftover says how to move it")
+    T.Eq(role, "warn", "in the theme's amber, not a colour code")
+    T.Eq(legacy:find("|c", 1, true), nil, "no literal colour in the text")
 end)
 
 --------------------------------------------------------------------------------
@@ -353,6 +358,7 @@ T.Case("UIAssignments.Source: lane B first, then someone else's published plan, 
     steps, text = UIA.Source({ preview = preview, published = pub, me = "Bob", now = 220 })
     T.Eq(steps, pub.steps, "the Raid Lead's plan")
     T.True(text:find("Ann, 2m ago", 1, true), "who and how long ago")
+    T.Eq(select(4, UIA.Source({ published = pub, me = "Bob", now = 220 })), 100, "the send time, for the tooltip")
     steps = UIA.Source({ preview = preview, published = pub, me = "Ann" })
     T.Eq(steps, preview, "my own published plan is not shown back to me")
     local provided = { { icon = 1 } }

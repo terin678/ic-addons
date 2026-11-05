@@ -57,6 +57,7 @@ local UI = ns.UI
 
 local W = LibStub("LibICWidgets-1.0")
 local Restrict = LibStub("LibICRestrict-1.0")
+local Theme = LibStub("LibICTheme-1.0")
 
 UI.NAME = "MarkedForDeathMain"   -- named for UISpecialFrames, so Escape closes it
 UI.DEFAULT_W, UI.DEFAULT_H = 720, 540   -- px
@@ -151,11 +152,12 @@ function UI.KeyLabel(key, names)
 end
 
 -- The footer: where the player is, how many rules apply there, and the switch when off.
--- view = { enabled, key, names, rules, lead }. Returns text (colour codes included).
+-- view = { enabled, key, names, rules, lead, badHex }. badHex is the theme's red as a
+-- colour code. Returns text (colour codes included).
 function UI.FooterText(view)
     view = view or {}
     local parts = {}
-    if view.enabled == false then parts[#parts + 1] = "|cffff5555Off|r (/mfd on)" end
+    if view.enabled == false then parts[#parts + 1] = (view.badHex or "") .. "Off|r (/mfd on)" end
     parts[#parts + 1] = "Here: " .. UI.KeyLabel(view.key or "open", view.names)
     if view.rules then parts[#parts + 1] = view.rules .. (view.rules == 1 and " rule" or " rules") end
     if view.lead then parts[#parts + 1] = view.lead end
@@ -361,12 +363,17 @@ end
 
 local controls = {}
 
+-- The theme's red as a colour code, so "off" reads on every theme.
+local function BadHex()
+    return Theme.Hex(Theme.Current().colors.bad)
+end
+
 local function PaintSwitch()
     if not frame then return end
     local on = UI.IsEnabled()
-    controls.title:SetText(on and "Marked For Death" or "Marked For Death  |cffff5555(off)|r")
+    controls.title:SetText(on and "Marked For Death" or ("Marked For Death  " .. BadHex() .. "(off)|r"))
     controls.switch:SetLabel(on and "Turn off" or "Turn on")
-    controls.switch:SetKind(on and "danger" or "accent")
+    controls.switch:SetKind(on and "normal" or "accent")
 end
 
 local function PaintFooter()
@@ -387,7 +394,7 @@ local function PaintFooter()
     end
     controls.footer:SetText(UI.FooterText({
         enabled = UI.IsEnabled(), key = key, names = ns.Instances and ns.Instances.list,
-        rules = count, lead = lead,
+        rules = count, lead = lead, badHex = BadHex(),
     }))
 end
 
@@ -447,7 +454,7 @@ local function Build()
     -- The switch sits in the title bar, not on a tab: the moment you want it you do not
     -- want to go looking for it.
     controls.switch = W.Button(bar, "Turn off", 80, 18, {
-        kind = "danger",
+        kind = "normal",
         onClick = function() UI.SetEnabled(not UI.IsEnabled()) end,
     })
     controls.switch:SetPoint("RIGHT", close, "LEFT", -6, 0)
@@ -481,13 +488,14 @@ local function Build()
         end,
     })
 
-    frame:SetScript("OnShow", function()
+    -- Hooked, not set: the panel's own OnHide ends a drag that a close interrupted.
+    frame:HookScript("OnShow", function()
         Listen(true)
         UI.ReadRoster()
         PaintSwitch()
         PaintFooter()
     end)
-    frame:SetScript("OnHide", function() Listen(false) end)
+    frame:HookScript("OnHide", function() Listen(false) end)
 
     W.SetPlace(frame, saved.fx or 0.25, saved.fy or 0.15)
     if type(UISpecialFrames) == "table" then UISpecialFrames[#UISpecialFrames + 1] = UI.NAME end
