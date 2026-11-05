@@ -3,8 +3,9 @@
 The one place to tune WoW Forever's graphics: upscaling and quality presets, a live control
 for about 140 console variables, search, and a way back to what you had.
 
-**Version 0.3.0 has the floating panel and the commands.** The page in the game's Options
-window and the side-by-side comparison come next.
+**Version 0.4.0 has the floating panel and the commands**, an Extreme quality preset with
+the experimental extras, and a panel that can get out of the way of the world it tunes. The
+page in the game's Options window and the side-by-side comparison come next.
 
 ## What the client can and cannot do
 
@@ -59,18 +60,31 @@ characters, keybinds or addons' data.
 `/tuner` opens it. So does a left-click on RenderTuner in the addon list beside the
 minimap, and a key you bind under Options, Keybindings. A right-click in the addon list
 offers the upscaling presets without opening anything. Drag the panel by its title bar;
-Escape closes it. Its place is kept per character.
+Escape closes it. Its place is kept per character, and it starts toward the left edge, so
+the middle of the screen stays clear.
 
 **The title bar** shows the frame rate, measured twice a second while the panel is open, and
 where things stand: "67% Quality, 2 unsaved".
 
-**Two rows of presets** run across the top, and the one in use in each is highlighted.
+**Getting out of the way.** The panel sits over the world you are tuning, so it can step aside:
 
-- **Upscaling** sets the render scale and the resample filter and nothing else. "Quality"
-  and "Performance" here are the names DLSS uses for render scales; they do not touch the
-  quality levels.
+- **Peek**, in the title bar, makes the panel nearly clear for as long as you hold the
+  button. **Hold to see the world behind the panel** is also a key binding, under Options,
+  Keybindings, AddOns: hold the key, look, let go.
+- **Compact** folds the panel to the title bar and the two rows of presets. **Expand**
+  brings it back. Which one you left it in is kept per character.
+- **While a slider is held** the panel goes half clear, so you see what the thumb is doing.
+
+**Two rows of presets** run across the top, from least to most, left to right. The one in
+use in each is highlighted.
+
+- **Upscaling** sets the render scale and the resample filter and nothing else. Each button
+  shows the share of the screen's pixels it draws. "Quality" and "Performance" here are the
+  names DLSS uses for render scales; they do not touch the quality levels.
 - **Quality** sets the game's overall quality level, and the levels beneath it, and leaves
-  upscaling alone.
+  upscaling alone. **Extreme**, at the right in orange, is Ultra and then some: it also
+  turns on the experimental HDR output and a 16-bit float render format, after asking.
+  Choosing a lower level puts those two back to the client's defaults.
 
 Clicking a preset brings the group it changes into view, so you see what it did. The two
 rows are independent: Potato upscaling with Ultra quality is a combination you can make.
@@ -82,10 +96,16 @@ restart of the graphics engine.
 **The search box** finds settings by name, by console variable, by what their help says or
 by group, across every group at once: type `shadow` or `fps`. Escape clears it.
 
-**Down the left** are the groups. **Changed**, at the top, lists everything that differs
+**Down the left** are the groups, in three clusters: Picture, Detail and Advanced. Advanced
+is folded away until you open it (the line saying `Advanced +`), and says how many of its
+settings changed while it is shut. **Changed**, at the top, lists everything that differs
 from the saved set, whatever group it is in. A group with changes shows a count.
 
 **The rows on the right** are the settings in view, and they scroll with the mouse wheel.
+The line under them says what the setting under the pointer does.
+
+- **Click a slider's number** to type a value instead of dragging: `67` for 67%, a level
+  from 1, nits or frames as they read. Enter sets it; Escape or clicking away drops it.
 
 - A change takes effect as you make it, with the world in view behind the panel.
 - A setting that differs from saved is in the accent colour and gains an **undo** at the
@@ -112,11 +132,11 @@ each change rebuilds what the client draws into. Every other slider is live.
 
 | Preset | Render scale | Resample filter |
 | --- | --- | --- |
-| `native` | 100% | left as it is |
-| `quality` | 67% | FSR 1.0 |
-| `balanced` | 58% | FSR 1.0 |
-| `performance` | 50% | FSR 1.0 |
 | `potato` | 33% (the client's floor) | FSR 1.0 |
+| `performance` | 50% | FSR 1.0 |
+| `balanced` | 58% | FSR 1.0 |
+| `quality` | 67% | FSR 1.0 |
+| `native` | 100% | left as it is |
 
 `/tuner preset quality` uses one; the start of a name is enough (`/tuner preset perf`).
 `/tuner off` goes to native and `/tuner on` returns to the last upscaling preset you used.
@@ -131,6 +151,7 @@ A preset does not touch the sharpening strength, so it stays where you set it.
 | `good` | 5 |
 | `high` | 7 |
 | `ultra` | 10 |
+| `extreme` | 10, and HDR output on with a 16-bit float render format (experimental) |
 
 `/tuner quality high` uses one. Each sets the overall level and asks the client what every
 level beneath it should be at that level, which is what the slider on the game's own
@@ -176,7 +197,9 @@ many settings differ from the saved set.
 to its step and kept inside its range; a choice that is not offered is refused, with the
 list of what is. A quality level is counted from 1, as the game shows it.
 
-A key can be bound to opening the panel under Options, Keybindings.
+Two keys can be bound under Options, Keybindings, AddOns: one opens and closes the panel,
+the other is Peek, held to see the world behind it. A new key binding needs a full client
+restart to appear.
 
 ## The settings
 

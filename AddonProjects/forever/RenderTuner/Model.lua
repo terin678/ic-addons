@@ -29,7 +29,11 @@ the way out.
     Model.AsksFirst(knob, value)           -> whether a change to this value is confirmed first
     Model.Line(knob, live, saved), Model.Status(...), Model.Brief(...)
     Model.Matches(knob, text, groupLabel), Model.View(knobs, view, live, saved, groups)
-    Model.RangeText(knob), Model.LevelOf(level, levels)
+    Model.RangeText(knob)
+    Model.LevelOf(level, levels, live)     -> the quality preset the settings are at, or nil
+    Model.AlsoHeld(preset, live)           -> whether the extras a preset turns on are on
+    Model.PresetLabel(preset, limits)      -> "Quality 67%", the text of an upscaling button
+    Model.ParseTyped(knob, text)           -> the variable's value for what a player typed, or nil
 ]]
 
 local Util = LibStub("LibICUtil-1.0")
@@ -390,10 +394,50 @@ function Model.RangeText(knob)
     return "on or off"
 end
 
--- The overall quality preset a level belongs to, or nil for one in between.
-function Model.LevelOf(level, levels)
-    for _, preset in ipairs(levels) do
-        if Model.Same(preset.level, level) then return preset end
+-- Whether every extra setting a quality preset turns on (`also`) is what it asks for in
+-- `live`. A setting the client does not have is not held against it, but one that is
+-- missing from all of them means there is nothing to say the preset is in force.
+function Model.AlsoHeld(preset, live)
+    if not preset.also or not live then return false end
+    local seen = 0
+    for cvar, want in pairs(preset.also) do
+        local have = live[cvar]
+        if have ~= nil then
+            if not Model.Same(want, have) then return false end
+            seen = seen + 1
+        end
+    end
+    return seen > 0
+end
+
+-- The overall quality preset the settings are at, or nil for a level in between. Presets
+-- that turn extra settings on share the level they build on, so they are tried first and
+-- count only while `live` holds those settings; without `live` they are skipped.
+function Model.LevelOf(level, levels, live)
+    for index = #levels, 1, -1 do
+        local preset = levels[index]
+        if Model.Same(preset.level, level) and (not preset.also or Model.AlsoHeld(preset, live)) then
+            return preset
+        end
     end
     return nil
+end
+
+-- The text on a preset's button in the upscaling row: its name and the share of the
+-- screen's pixels it draws, as the client will take it.
+function Model.PresetLabel(preset, limits)
+    local scale = math.max(limits.min, math.min(limits.max, preset.scale))
+    return string.format("%s %d%%", preset.label, math.floor(scale * 100 + 0.5))
+end
+
+-- What a player typed into a slider's value, as the variable's own number, or nil when
+-- there is no number in it. The player writes what they read: "67" for a percentage
+-- (as does "67%"; a bare fraction such as 0.67 is taken as it is), a level from 1 for a
+-- quality level, and nits or frames for a unit.
+function Model.ParseTyped(knob, text)
+    local n = tonumber(tostring(text or ""):match("^%s*(-?%d*%.?%d+)"))
+    if not n then return nil end
+    local shown = n
+    if knob.format == "percent" and (n > 1 or tostring(text):find("%%")) then shown = n / 100 end
+    return Model.FromShown(knob, shown)
 end

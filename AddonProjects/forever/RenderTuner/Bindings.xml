@@ -2,4 +2,7 @@
     <Binding name="RENDERTUNER_TOGGLE" header="RENDERTUNER" category="ADDONS" description="Open or close the RenderTuner panel">
         RenderTuner_Toggle()
     </Binding>
+    <Binding name="RENDERTUNER_PEEK" category="ADDONS" runOnUp="true" description="Hold to see the world behind the RenderTuner panel">
+        RenderTuner_Peek(keystate)
+    </Binding>
 </Bindings>

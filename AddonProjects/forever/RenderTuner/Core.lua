@@ -29,7 +29,7 @@ Nothing here runs while the game is idle: the addon acts on a command, a click o
 drag, and at login.
 ]]
 
-local VERSION = "0.3.0"
+local VERSION = "0.4.0"
 
 local Util = LibStub("LibICUtil-1.0")
 local Test = LibStub("LibICTest-1.0")
@@ -73,7 +73,9 @@ Store.Register(addonName, {
         },
     },
     -- Where the panel sits, and the group it was last showing.
-    charDefaults = { panel = { group = "upscale" } },
+    -- compact: only the title bar, the two preset rows and the actions are shown.
+    -- advanced: the Advanced cluster of groups is unfolded.
+    charDefaults = { panel = { group = "upscale", compact = false, advanced = false } },
     onReady = Env.Wrap("RenderTuner saved variables", function(db, cdb, info)
         ns.db, ns.cdb, ns.loadInfo = db, cdb, info
     end),
@@ -159,6 +161,23 @@ function ns.SetKnob(knob, value)
     ns.ApplyTarget(target, knob.label, true)
 end
 
+-- What the extras of a quality preset are set to by choosing `preset`, as { cvar = value },
+-- or nil. A preset with extras turns them on. Any other preset hands them back to the
+-- client's defaults, but only while they are what such a preset left them at, so a
+-- player's own HDR is not switched off by choosing High.
+local function Extras(preset, live)
+    if preset.also then return preset.also end
+    local given
+    for _, other in ipairs(ns.Catalog.LEVELS) do
+        if other.also and ns.Model.AlsoHeld(other, live) then
+            local defaults = ns.Apply.Defaults()
+            given = given or {}
+            for cvar in pairs(other.also) do given[cvar] = defaults[cvar] end
+        end
+    end
+    return given
+end
+
 -- An overall quality preset: the game's master level, and the levels beneath it.
 function ns.ApplyLevel(preset)
     local knob = ns.Model.Find(ns.Apply.Knobs(), "graphicsQuality")
@@ -166,8 +185,27 @@ function ns.ApplyLevel(preset)
         out.Print("this client has no overall quality level.")
         return
     end
+    local extras = Extras(preset, ns.Apply.Live())
     ns.SetKnob(knob, preset.level)
-    out.Printf("%s quality: level %s, and the levels beneath it.", preset.label, ns.Model.Format(knob, preset.level))
+    local line = string.format("%s quality: level %s, and the levels beneath it", preset.label,
+        ns.Model.Format(knob, preset.level))
+    if extras then
+        ns.ApplyTarget(extras, preset.label .. " extras", true)
+        local names = {}
+        for cvar in pairs(extras) do
+            local extra = ns.Model.Find(ns.Apply.Knobs(), cvar)
+            if extra then
+                names[#names + 1] = preset.also and (extra.label .. " " .. ns.Model.Format(extra, extras[cvar]))
+                    or extra.label
+            end
+        end
+        table.sort(names)
+        if #names > 0 then
+            line = line .. (preset.also and "; and turned on: " or "; back to the client's defaults: ")
+                .. table.concat(names, ", ")
+        end
+    end
+    out.Print(line .. ".")
 end
 
 -- Puts a list of knobs back to their saved values: one group, or what a search found.
@@ -266,10 +304,11 @@ end
 COMMANDS.quality = function(rest)
     if not Ready() then return end
     if Util.Trim(rest) == "" then
-        local now = ns.Model.LevelOf(ns.Apply.Live().graphicsQuality, ns.Catalog.LEVELS)
+        local live = ns.Apply.Live()
+        local now = ns.Model.LevelOf(live.graphicsQuality, ns.Catalog.LEVELS, live)
         for _, preset in ipairs(ns.Catalog.LEVELS) do
-            out.Printf("  %s%s: level %d of 10", preset.key, preset == now and " |cff00ff00(in use)|r" or "",
-                preset.level + 1)
+            out.Printf("  %s%s: level %d of 10%s", preset.key, preset == now and " |cff00ff00(in use)|r" or "",
+                preset.level + 1, preset.also and ", with HDR and a 16-bit float render format (experimental)" or "")
         end
         return
     end
@@ -434,5 +473,12 @@ function RenderTuner_Toggle()
     if ns.db and ns.db.saved then ns.Panel.Toggle() end
 end
 
+-- For the held key binding: the panel fades while the key is down, so the world can be
+-- seen as it is, and comes back when it is let go.
+function RenderTuner_Peek(keystate)
+    if ns.db and ns.db.saved then ns.Panel.Peek(keystate == "down") end
+end
+
 BINDING_HEADER_RENDERTUNER = "RenderTuner"
 BINDING_NAME_RENDERTUNER_TOGGLE = "Open or close the panel"
+BINDING_NAME_RENDERTUNER_PEEK = "Hold to see the world behind the panel"
