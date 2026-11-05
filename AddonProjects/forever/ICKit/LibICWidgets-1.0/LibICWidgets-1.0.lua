@@ -18,6 +18,7 @@ is the exception: its bar is the client's own.
     W.Tabs(parent, tabs, opts)          a row of tabs, each optionally showing its own page
     W.List(parent, w, h, opts)          column headers above pooled, single-line rows
     W.Resize(frame, opts)               a grip in the corner that resizes the frame
+    W.TextArea(parent, w, h, opts)      many lines to paste into, or a copy box
     W.Tooltip(frame, builder)           builder(GameTooltip, frame) adds the lines
     W.Menu(owner, items)                a context menu from a list
     W.Confirm(text, onAccept)           a yes/no dialog
@@ -1471,6 +1472,136 @@ function W.Resize(frame, opts)
     W.Tooltip(grip, function(tip) tip:AddLine("Drag to resize") end)
     Track(grip, RepaintGrip)
     return grip
+end
+
+--------------------------------------------------------------------------------
+-- Text area
+--------------------------------------------------------------------------------
+
+local AREA_INSET = 4        -- the text's inset from the area's edge
+
+-- Keeps the line with the cursor in view: y is the cursor's top (0 or less, down from the
+-- top of the text) and h its height, as OnCursorChanged gives them.
+local function FollowCursor(area, y, h)
+    local s = area.scroll
+    local top = -(tonumber(y) or 0)
+    local bottom = top + (tonumber(h) or 0)
+    local offset, view = s:GetOffset(), s.icViewH
+    if top < offset then
+        s:ScrollTo(top)
+    elseif bottom > offset + view then
+        s:ScrollTo(bottom - view)
+    end
+end
+
+local function FitText(area)
+    local e = area.edit
+    local height = math.max(area.scroll.icViewH, (e:GetHeight() or 0) + AREA_INSET)
+    area.scroll:SetContentHeight(height)
+end
+
+--[[
+A box of many lines: somewhere to paste a shared rule set, or a copy box to take an export
+from. A multi-line edit box in a themed scroll; the wheel and the bar move it, and the line
+being typed on stays in view.
+
+opts = {
+    text = "",
+    maxBytes,                          -- the most it takes; none by default
+    readOnly = true,                   -- a copy box: what is typed is undone, and focus
+                                       -- selects everything ready for Ctrl+C
+    onChange = fn(text, area),         -- each change the player makes, not SetText's
+}
+area:SetText(text)                     scrolls back to the top
+area:GetText()
+area:SelectAll()                       focuses the box and selects everything
+area:Resize(w, h)
+area.edit, area.scroll
+Escape drops focus. A box with focus takes every key, so drop it (area.edit:ClearFocus())
+when combat starts.
+]]
+function W.TextArea(parent, w, h, opts)
+    opts = opts or {}
+    local theme = Theme.Current()
+    local area = CreateFrame("Frame", nil, parent)
+    area:SetSize(w, h)
+    Skin(area)
+    area.icW, area.icH = w, h
+    area.icReadOnly = opts.readOnly == true
+    area.icOnChange = opts.onChange or false
+    area.icText = opts.text or ""
+
+    local scroll = W.Scroll(area, w - 2 * AREA_INSET, h - 2 * AREA_INSET, { step = 42 })
+    scroll:SetPoint("TOPLEFT", area, "TOPLEFT", AREA_INSET, -AREA_INSET)
+    area.scroll = scroll
+
+    local e = CreateFrame("EditBox", nil, scroll.content)
+    e:SetMultiLine(true)
+    e:SetAutoFocus(false)
+    e:SetFontObject(_G[theme.fonts.body] or theme.fonts.body)
+    e:SetPoint("TOPLEFT", scroll.content, "TOPLEFT", 0, 0)
+    e:SetWidth(w - 2 * AREA_INSET - SCROLL_BAR_W - 4)
+    if opts.maxBytes then e:SetMaxBytes(opts.maxBytes + 1) end
+    e:SetText(area.icText)
+    area.edit = e
+
+    e:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+    e:SetScript("OnEditFocusGained", function(self)
+        if area.icReadOnly then self:HighlightText() end
+    end)
+    e:SetScript("OnTextChanged", function(self, userInput)
+        if userInput and area.icReadOnly then
+            -- A copy box: put back what it holds and select it again.
+            self:SetText(area.icText)
+            self:HighlightText()
+            return
+        end
+        FitText(area)
+        if userInput then
+            area.icText = self:GetText() or ""
+            if area.icOnChange then area.icOnChange(area.icText, area) end
+        end
+    end)
+    if e:HasScript("OnCursorChanged") then
+        e:SetScript("OnCursorChanged", function(_, _, y, _, cursorH) FollowCursor(area, y, cursorH) end)
+    end
+    -- A press anywhere in the area, below the last line too, puts the cursor in the box.
+    scroll:EnableMouse(true)
+    scroll:SetScript("OnMouseDown", function() e:SetFocus() end)
+
+    function area:SetText(text)
+        self.icText = text or ""
+        self.edit:SetText(self.icText)
+        FitText(self)
+        self.scroll:ScrollTo(0)
+    end
+
+    function area:GetText()
+        return self.edit:GetText() or ""
+    end
+
+    function area:SelectAll()
+        self.edit:SetFocus()
+        self.edit:HighlightText()
+    end
+
+    function area:Resize(width, height)
+        self.icW, self.icH = width or self.icW, height or self.icH
+        self:SetWidth(self.icW)
+        self:SetHeight(self.icH)
+        self.scroll:SetViewWidth(self.icW - 2 * AREA_INSET)
+        self.scroll:SetViewHeight(math.max(1, self.icH - 2 * AREA_INSET))
+        self.edit:SetWidth(math.max(1, self.icW - 2 * AREA_INSET - SCROLL_BAR_W - 4))
+        FitText(self)
+    end
+
+    Track(area, function(self, current)
+        Paint(self, current.colors.field, current.colors.edge)
+        local c = current.colors.text
+        self.edit:SetTextColor(c.r, c.g, c.b, 1)
+    end)
+    FitText(area)
+    return area
 end
 
 --------------------------------------------------------------------------------

@@ -1717,6 +1717,35 @@ T.Case("Widgets: a resize grip follows the pointer inside its bounds", function(
     _G.GetCursorPosition = savedCursor
 end)
 
+T.Case("Widgets: a text area takes lines, or holds a copy box steady", function()
+    local host = W.Panel(nil, { width = 300, height = 200 })
+    host:Hide()
+    local changes = {}
+    local area = W.TextArea(host, 280, 120, {
+        text = "first line",
+        onChange = function(text) changes[#changes + 1] = text end,
+    })
+    T.Eq(area:GetText(), "first line", "starts with its text")
+    T.Eq(area.edit:GetParent(), area.scroll.content, "the box scrolls inside the area")
+    area.edit:SetText("first line\nsecond")
+    area.edit:GetScript("OnTextChanged")(area.edit, true)
+    T.Eq(changes[1], "first line\nsecond", "a typed change is reported")
+    area:SetText("{}")
+    T.Eq(#changes, 1, "SetText is not")
+    T.Eq(area:GetText(), "{}", "and replaces the text")
+    T.Eq(area.scroll:GetOffset(), 0, "back at the top")
+
+    local copy = W.TextArea(host, 280, 120, { text = "export", readOnly = true })
+    copy.edit:SetText("exporx")
+    copy.edit:GetScript("OnTextChanged")(copy.edit, true)
+    T.Eq(copy:GetText(), "export", "a copy box undoes what is typed")
+    copy:SetText("new export")
+    T.Eq(copy:GetText(), "new export", "but takes SetText")
+
+    area:Resize(400, 200)
+    T.Eq(area.scroll.icViewH, 192, "a resize gives the scroll the new height, less the inset")
+end)
+
 T.Case("Kit: the build and the login lines", function()
     local build = { version = "1.60.1", build = "70124", interface = 16001 }
     T.Eq(ns.DescribeBuild(build), "1.60.1 (70124), interface 16001", "version, build and interface")
