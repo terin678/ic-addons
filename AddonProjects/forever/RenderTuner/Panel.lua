@@ -5,20 +5,29 @@ The panel: every knob in the catalogue as a control, changed live while the worl
 view behind it.
 
     +------------------------------------------------------------------------+
-    | RenderTuner   142 fps                  67% Quality, 2 unsaved        x |  drag the bar
-    | Upscaling  [Native] [Quality] [Balanced] [Performance] [Potato]        |  render scale presets
-    | Quality    [Low] [Fair] [Good] [High] [Ultra]                          |  the game's 1 to 10 level
+    | RenderTuner  142 fps        Quality 67%, 2 unsaved   Peek  Compact   x |  drag the bar
+    | Upscaling  [Potato] [Performance] [Balanced] [Quality] [Native]        |  render scale, low to high
+    | Quality    [Low] [Fair] [Good] [High] [Ultra] [Extreme]                |  the game's 1 to 10 level
     | [Save] [Revert] [More...]  [Search settings      ]  [Restart graphics] |
     | Changed (2)        | Upscaling   Render scale, the filter...  [Revert] |
-    | Upscaling (1)      | Render scale      <---o------->  67%      undo    |
-    | Anti-aliasing      | Resample filter   [ FSR 1.0      v ]              |
-    | ...                | Sharpening        <------o---->  1.8              |
+    | PICTURE            | Render scale      <---o------->  67%      undo    |
+    |   Upscaling (1)    | Resample filter   [ FSR 1.0      v ]              |
+    |   Anti-aliasing    | Sharpening        <------o---->  1.8              |
+    | DETAIL             |                                                   |
+    |   ...              | what the setting under the pointer does           |
+    | Advanced +         +---------------------------------------------------+
     +------------------------------------------------------------------------+
 
-Down the left are "Changed" and the groups; the rows on the right are the knobs of the
-one picked, or of whatever the search box finds, in a view that scrolls. A row whose value
-differs from the saved set is in the accent colour and gains an undo; its group shows a
-count. Clicking a row's name offers its saved value and the client's default.
+Down the left are "Changed" and the groups, in three clusters, the last folded away; the
+rows on the right are the knobs of the one picked, or of whatever the search box finds, in a
+view that scrolls. A row whose value differs from the saved set is in the accent colour and
+gains an undo; its group shows a count. Clicking a row's name offers its saved value and the
+client's default; clicking a slider's number types one. The line under the rows says what
+the setting under the pointer does.
+
+The panel covers the world it tunes, so it can get out of the way: hold Peek (a key binding
+too) and it all but vanishes, Compact folds it to the bar and the two strips, and while a
+slider is held it goes half clear.
 
 This file decides nothing about a value. It shows what Apply.Live() reads and hands what
 the player did to the actions in Core.lua, which call Refresh() back. Rows are made the
@@ -28,6 +37,7 @@ rate in the title bar, twice a second, and only while the panel is open.
 
 local Util = LibStub("LibICUtil-1.0")
 local W = LibStub("LibICWidgets-1.0")
+local Theme = LibStub("LibICTheme-1.0")
 
 local Catalog = ns.Catalog
 local Model = ns.Model
@@ -43,24 +53,28 @@ local STRIP_GAP = 4
 local STRIP_LABEL_W = 70
 local GROUP_W = 170
 local GROUP_H = 21
+local CLUSTER_H = 18
 local HEAD_H = 26
+local HELP_H = 30
 local ROW_H = 24
-local LABEL_W = 230
-local CONTROL_W = 226
+local LABEL_W = 200
+local CONTROL_W = 240
 local UNDO_W = 44
 -- Bar, the two preset strips, the actions, and the gaps between them.
 local TOP = BAR_H + PAD + BUTTON_H + STRIP_GAP + BUTTON_H + PAD + BUTTON_H + PAD
--- "Changed" and every group, one above the other.
-local BODY_H = (#Catalog.GROUPS + 1) * GROUP_H
 local ROWS_X = PAD + GROUP_W + PAD
 local ROWS_W = WIDTH - ROWS_X - PAD
 local CHANGED = "changed"
+local PEEK_ALPHA = 0.08     -- while Peek is held
+local HOLD_ALPHA = 0.4      -- while a slider is held
+local HINT = "Click a setting's name for its saved value or the default. Click a number to type one."
 
 local frame
 local notice                -- the warning shown before the panel
 local warned = false        -- whether it has been seen this session
 local rows = {}             -- cvar -> row
 local groupButtons = {}     -- group key, or CHANGED -> button
+local clusterHeads = {}     -- cluster key -> its heading, a label or, when folded, a button
 local presetButtons = {}    -- upscaling preset key -> button
 local levelButtons = {}     -- quality preset key -> button
 local search = ""           -- what is typed in the search box
@@ -68,9 +82,25 @@ local stickyChanged         -- the knobs the Changed view opened with, kept whil
 local lastView              -- the view the scroll position belongs to
 local defaults              -- the client's defaults, read when the panel opens
 local ticker                -- the frame rate's timer, alive only while the panel is shown
+local peeking = false       -- Peek is held
+local holding = false       -- a slider is held
+local laidOut               -- which layout Panel.Layout last made
 
 local function Place()
     return ns.cdb and ns.cdb.panel
+end
+
+local function ClusterOf(key)
+    for _, group in ipairs(Catalog.GROUPS) do
+        if group.key == key then return group.cluster end
+    end
+end
+
+local function Folded(clusterKey)
+    for _, cluster in ipairs(Catalog.CLUSTERS) do
+        if cluster.key == clusterKey then return cluster.folded == true end
+    end
+    return false
 end
 
 local function CurrentGroup()
@@ -81,6 +111,17 @@ local function CurrentGroup()
         if group.key == key then return key end
     end
     return Catalog.GROUPS[1].key
+end
+
+-- Whether the folded cluster is open: the player opened it, or the group in view is in it.
+local function Unfolded()
+    local place = Place()
+    return (place and place.advanced == true) or Folded(ClusterOf(CurrentGroup()))
+end
+
+local function Compact()
+    local place = Place()
+    return place ~= nil and place.compact == true
 end
 
 --------------------------------------------------------------------------------
@@ -141,6 +182,40 @@ local function RowMenu(row)
     W.Menu(row.name, items)
 end
 
+-- Panel.Peek and the held slider both change one thing: how clear the panel is.
+local function ShowAlpha()
+    if frame then frame:SetAlpha(peeking and PEEK_ALPHA or (holding and HOLD_ALPHA or 1)) end
+end
+
+-- The line under the rows: what the setting under the pointer does, or how to use the rows.
+local function ShowHelp(row)
+    if not frame then return end
+    local knob = row and row.knob
+    if not knob then
+        frame.help:SetText(HINT)
+        return
+    end
+    local text = knob.help or ""
+    if knob.experimental then text = text .. " |cffff8040Experimental: can crash the game.|r" end
+    frame.help:SetText(text)
+end
+
+-- Under the pointer, a row gets a band and says what it does. Hooked on the name and on the
+-- control's own frames, since a row cannot hear the pointer through its children.
+local function Hover(row, target)
+    if not target or type(target.HookScript) ~= "function" then return end
+    target:HookScript("OnEnter", function()
+        local c = Theme.Current().colors.hover
+        row.band:SetColorTexture(c.r, c.g, c.b, 0.55)
+        row.band:Show()
+        ShowHelp(row)
+    end)
+    target:HookScript("OnLeave", function()
+        row.band:Hide()
+        ShowHelp(nil)
+    end)
+end
+
 local function BuildRow(knob)
     local row = CreateFrame("Frame", nil, frame.scroll.content)
     row:SetSize(LABEL_W + CONTROL_W + 4 + UNDO_W, ROW_H)
@@ -148,12 +223,17 @@ local function BuildRow(knob)
     row.locked = false
     row.icIndex = 0
 
+    row.band = row:CreateTexture(nil, "BACKGROUND")
+    row.band:SetAllPoints(row)
+    row.band:Hide()
+
     row.name = W.Button(row, Model.Label(knob), LABEL_W - 6, ROW_H - 4, {
         kind = "flat", justify = "LEFT", font = "body", textRole = "text",
         onClick = function() RowMenu(row) end,
     })
     row.name:SetPoint("LEFT", row, "LEFT", 0, 0)
     W.Tooltip(row.name, function(tip) RowTip(tip, row) end)
+    Hover(row, row.name)
 
     if knob.kind == "slider" then
         -- The slider works in the numbers the player reads; a reversed knob or a
@@ -164,14 +244,24 @@ local function BuildRow(knob)
             live = knob.settle ~= true,
             format = function(shown) return Model.Format(knob, Model.FromShown(knob, shown)) end,
             onChange = function(shown) Change(knob, Model.FromShown(knob, shown)) end,
+            onType = function(text)
+                local value = Model.ParseTyped(knob, text)
+                if value ~= nil then Change(knob, value) end
+            end,
+            onHold = function(held)
+                holding = held == true
+                ShowAlpha()
+            end,
         })
         row.control:SetPoint("LEFT", row, "LEFT", LABEL_W, 0)
+        Hover(row, row.control.inner)
     elseif knob.kind == "toggle" then
         row.control = W.CheckBox(row, {
             size = 16,
             onClick = function(checked) Change(knob, checked and 1 or 0) end,
         })
         row.control:SetPoint("LEFT", row, "LEFT", LABEL_W + 2, 0)
+        Hover(row, row.control)
     else
         row.control = W.Choice(row, CONTROL_W - 64, ROW_H - 4, {
             choices = knob.choices,
@@ -179,6 +269,7 @@ local function BuildRow(knob)
             onChange = function(value) Change(knob, value) end,
         })
         row.control:SetPoint("LEFT", row, "LEFT", LABEL_W, 0)
+        Hover(row, row.control)
     end
 
     -- The way back for this one setting, shown only while it differs from saved.
@@ -253,7 +344,8 @@ end
 
 -- A row of buttons sharing the width after a label that says what they are presets of.
 -- The names in the upscaling strip are DLSS's, and without the label "Quality" and
--- "Performance" read as overall graphics settings, which they are not.
+-- "Performance" read as overall graphics settings, which they are not. Every strip runs
+-- from least to most, left to right.
 local function Strip(p, y, label, presets, into, onClick, tooltip)
     local text = W.Label(p, label, { color = "textDim" })
     text:SetPoint("LEFT", p, "TOPLEFT", PAD, y - BUTTON_H / 2)
@@ -268,9 +360,15 @@ local function Strip(p, y, label, presets, into, onClick, tooltip)
     end
 end
 
+local EXTREME_WARNING = "Extreme is Ultra and then every setting beyond the quality levels turned all the way "
+    .. "up: how far everything is drawn, shadows and light, water and particles, 8x multisampling, a "
+    .. "32-bit float render format, HDR output and ray traced shadows, where this machine has them.\n\n"
+    .. "It is heavy, and some of it can crash the game or leave it unable to draw the world. "
+    .. "Save a set that works first. Choosing a lower level puts it all back as it was.\n\nTurn it on?"
+
 local function Build()
     local p = W.Panel(UIParent, {
-        name = "RenderTunerPanel", width = WIDTH, height = TOP + BODY_H + PAD, movable = true, strata = "HIGH",
+        name = "RenderTunerPanel", width = WIDTH, height = TOP + PAD, movable = true, strata = "HIGH",
         onMoved = function(self)
             local fx, fy = W.GetPlace(self)
             if fx and Place() then
@@ -296,15 +394,35 @@ local function Build()
     close:SetPoint("RIGHT", bar, "RIGHT", -3, 0)
     W.Tooltip(close, function(tip) tip:AddLine("Close") end)
 
+    p.compact = W.Button(bar, "Compact", 62, 18, { kind = "flat", onClick = function() Panel.SetCompact(not Compact()) end })
+    p.compact:SetPoint("RIGHT", close, "LEFT", -4, 0)
+    W.Tooltip(p.compact, function(tip)
+        tip:AddLine(Compact() and "Expand" or "Compact")
+        tip:AddLine("Folds the panel to this bar and the two rows of presets, to see more of the world.",
+            1, 1, 1, true)
+    end)
+
+    -- Held, not clicked: the panel is nearly clear for as long as the button is down.
+    p.peek = W.Button(bar, "Peek", 42, 18, { kind = "flat" })
+    p.peek:SetPoint("RIGHT", p.compact, "LEFT", -4, 0)
+    p.peek:HookScript("OnMouseDown", function() Panel.Peek(true) end)
+    p.peek:HookScript("OnMouseUp", function() Panel.Peek(false) end)
+    p.peek:HookScript("OnLeave", function() Panel.Peek(false) end)
+    W.Tooltip(p.peek, function(tip)
+        tip:AddLine("Peek")
+        tip:AddLine("Hold to see the world behind the panel. It also has a key binding, under AddOns.",
+            1, 1, 1, true)
+    end)
+
     p.status = W.Label(bar, "", { font = "small", color = "textDim", justify = "RIGHT" })
-    p.status:SetPoint("RIGHT", close, "LEFT", -6, 0)
+    p.status:SetPoint("RIGHT", p.peek, "LEFT", -8, 0)
 
     -- The two preset strips
     local stripY = -(BAR_H + PAD)
     Strip(p, stripY, "Upscaling", Catalog.PRESETS, presetButtons, function(preset)
         -- Bring the settings a preset changes into view, so the change is seen.
         ClearSearch()
-        if Place() then Place().group = "upscale" end
+        Panel.ShowGroup("upscale")
         ns.ApplyPreset(preset)
         Panel.Refresh()
     end, function(tip, preset)
@@ -316,15 +434,37 @@ local function Build()
         tip:AddLine("Changes nothing else: the quality levels stay as they are.", 0.7, 0.7, 0.7, true)
     end)
     Strip(p, stripY - BUTTON_H - STRIP_GAP, "Quality", Catalog.LEVELS, levelButtons, function(preset)
-        ClearSearch()
-        if Place() then Place().group = "quality" end
-        ns.ApplyLevel(preset)
-        Panel.Refresh()
+        -- The change comes first, so a fault in showing the group cannot stop it; script
+        -- errors are off in the client, so a fault is said in chat instead of lost.
+        local function Go()
+            local ok, err = pcall(function()
+                ClearSearch()
+                ns.ApplyLevel(preset)
+                Panel.ShowGroup(preset.experimental and "hdr" or "quality")
+            end)
+            if not ok then ns.Print("|cffff4444" .. preset.label .. " failed:|r " .. tostring(err)) end
+            Panel.Refresh()
+        end
+        -- Extreme turns on things that can crash the game: it is asked about, once it is off.
+        local live = ns.Apply.Live()
+        if preset.experimental and Model.LevelOf(live.graphicsQuality, Catalog.LEVELS, live, ns.Excused) ~= preset then
+            -- No popup to ask with: the warning is in the tooltip, so go on.
+            if not W.Confirm(EXTREME_WARNING, Go) then Go() end
+        else
+            Go()
+        end
     end, function(tip, preset)
         tip:AddLine(preset.label .. " quality")
         tip:AddLine(string.format("Sets the game's overall quality to level %d of 10, and the levels beneath it.",
             preset.level + 1), 1, 1, 1, true)
-        tip:AddLine("Leaves upscaling alone.", 0.7, 0.7, 0.7)
+        if preset.experimental then
+            tip:AddLine("Also turns every setting beyond the levels all the way up: draw distances, shadow "
+                .. "cascades and light range, water and particles, 8x multisampling, a 32-bit float render "
+                .. "format, HDR output, ray traced shadows. Experimental: it can crash the game.", 1, 0.5, 0.25, true)
+        else
+            tip:AddLine("Leaves upscaling alone. Puts the extras of Extreme back as they were, if it set them.",
+                0.7, 0.7, 0.7, true)
+        end
     end)
 
     -- Actions
@@ -371,24 +511,47 @@ local function Build()
     end)
     p.restart:Hide()
 
-    -- "Changed", then the groups, down the left
-    local function GroupButton(index, key, label)
-        local b = W.Button(p, label, GROUP_W, GROUP_H, {
+    -- Everything below the actions, in one frame, so Compact can fold it away in one go.
+    local body = CreateFrame("Frame", nil, p)
+    body:SetPoint("TOPLEFT", p, "TOPLEFT", 0, -TOP)
+    body:SetPoint("BOTTOMRIGHT", p, "BOTTOMRIGHT", 0, 0)
+    p.body = body
+
+    -- "Changed", then the groups under their clusters, down the left. Where each goes is
+    -- decided by Panel.Layout, since the folded cluster moves everything under it.
+    local function GroupButton(key, label)
+        local b = W.Button(body, label, GROUP_W - 12, GROUP_H, {
             kind = "flat", justify = "LEFT", font = "body",
             onClick = function() Panel.ShowGroup(key) end,
         })
-        b:SetPoint("TOPLEFT", p, "TOPLEFT", PAD, -(TOP + (index - 1) * GROUP_H))
         groupButtons[key] = b
     end
-    GroupButton(1, CHANGED, "Changed")
-    for index, group in ipairs(Catalog.GROUPS) do GroupButton(index + 1, group.key, group.label) end
+    groupButtons[CHANGED] = W.Button(body, "Changed", GROUP_W, GROUP_H, {
+        kind = "flat", justify = "LEFT", font = "body",
+        onClick = function() Panel.ShowGroup(CHANGED) end,
+    })
+    for _, cluster in ipairs(Catalog.CLUSTERS) do
+        if cluster.folded then
+            clusterHeads[cluster.key] = W.Button(body, cluster.label, GROUP_W, CLUSTER_H, {
+                kind = "flat", justify = "LEFT", font = "small", textRole = "textDim",
+                onClick = function() Panel.SetAdvanced(not Unfolded()) end,
+            })
+            W.Tooltip(clusterHeads[cluster.key], function(tip)
+                tip:AddLine(cluster.label)
+                tip:AddLine("The fine controls. Most players never need them.", 1, 1, 1, true)
+            end)
+        else
+            clusterHeads[cluster.key] = W.Label(body, cluster.label, { font = "small", color = "textDim" })
+        end
+    end
+    for _, group in ipairs(Catalog.GROUPS) do GroupButton(group.key, group.label) end
 
     -- The heading over the rows: what is in view, and the way back for all of it
-    p.head = W.Label(p, "", { font = "title", color = "accent" })
+    p.head = W.Label(body, "", { font = "title", color = "accent" })
     p.head:SetPoint("LEFT", p, "TOPLEFT", ROWS_X, -(TOP + HEAD_H / 2 - 2))
-    p.note = W.Label(p, "", { font = "small", color = "textDim" })
+    p.note = W.Label(body, "", { font = "small", color = "textDim" })
     p.note:SetPoint("LEFT", p.head, "RIGHT", 10, 0)
-    p.revertView = W.Button(p, "Revert these", 96, BUTTON_H - 2, {
+    p.revertView = W.Button(body, "Revert these", 96, BUTTON_H - 2, {
         onClick = function()
             if p.icList then ns.RevertKnobs(p.icList, p.head:GetText() or "these") end
         end,
@@ -400,20 +563,79 @@ local function Build()
     end)
     p.icList = false
 
-    p.scroll = W.Scroll(p, ROWS_W, BODY_H - HEAD_H, { step = ROW_H * 2 })
+    p.scroll = W.Scroll(body, ROWS_W, 200, { step = ROW_H * 2 })
     p.scroll:SetPoint("TOPLEFT", p, "TOPLEFT", ROWS_X, -(TOP + HEAD_H))
 
-    p.empty = W.Label(p, "", { color = "textDim" })
+    p.empty = W.Label(body, "", { color = "textDim" })
     p.empty:SetPoint("TOPLEFT", p, "TOPLEFT", ROWS_X + 6, -(TOP + HEAD_H + 8))
 
-    -- The frame rate stops being measured when there is nobody looking at it.
+    p.help = W.Label(body, HINT, { font = "small", color = "textDim", wrap = true })
+    p.help:SetWidth(ROWS_W - 4)
+    p.help:SetJustifyV("TOP")
+
+    -- The frame rate stops being measured when there is nobody looking at it, and the
+    -- panel comes back clear the next time it is opened.
     p:HookScript("OnHide", function()
+        peeking, holding = false, false
+        p:SetAlpha(1)
         if ticker then
             ticker:Cancel()
             ticker = nil
         end
     end)
     return p
+end
+
+-- Where the groups, their clusters, the rows and the help line go, and how tall the panel
+-- is: the folded cluster opening or closing, and Compact, change all of it.
+function Panel.Layout()
+    if not frame then return end
+    local place = Place()
+    -- The group in view is never hidden inside a folded cluster.
+    if place and Folded(ClusterOf(CurrentGroup())) then place.advanced = true end
+    local open, compact = Unfolded(), Compact()
+
+    -- Every step of a held slider comes through here, and nothing it does moves this.
+    local signature = (open and "open" or "folded") .. (compact and "compact" or "full")
+    if signature == laidOut then return end
+    laidOut = signature
+
+    local y = 0
+    groupButtons[CHANGED]:ClearAllPoints()
+    groupButtons[CHANGED]:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -(TOP + y))
+    y = y + GROUP_H
+    for _, cluster in ipairs(Catalog.CLUSTERS) do
+        local head = clusterHeads[cluster.key]
+        head:ClearAllPoints()
+        if cluster.folded then
+            head:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -(TOP + y))
+        else
+            head:SetPoint("LEFT", frame, "TOPLEFT", PAD + 4, -(TOP + y + CLUSTER_H / 2))
+        end
+        y = y + CLUSTER_H
+        for _, group in ipairs(Catalog.GROUPS) do
+            if group.cluster == cluster.key then
+                local b = groupButtons[group.key]
+                b:ClearAllPoints()
+                if not cluster.folded or open then
+                    b:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD + 12, -(TOP + y))
+                    b:Show()
+                    y = y + GROUP_H
+                else
+                    b:Hide()
+                end
+            end
+        end
+    end
+
+    frame.help:ClearAllPoints()
+    frame.help:SetPoint("TOPLEFT", frame, "TOPLEFT", ROWS_X + 2, -(TOP + y - HELP_H + 4))
+    frame.scroll:SetViewHeight(y - HEAD_H - HELP_H)
+
+    frame.body:SetShown(not compact)
+    frame.search:SetShown(not compact)
+    frame.compact:SetLabel(compact and "Expand" or "Compact")
+    frame:SetHeight(compact and TOP or (TOP + y + PAD))
 end
 
 --------------------------------------------------------------------------------
@@ -501,29 +723,83 @@ function Panel.Refresh()
         b:SetTextRole(n > 0 and "accent" or false)
     end
     Mark(CHANGED, "Changed", changed)
-    for _, group in ipairs(Catalog.GROUPS) do Mark(group.key, group.label, changedIn[group.key] or 0) end
+    local inCluster = {}
+    for _, group in ipairs(Catalog.GROUPS) do
+        local n = changedIn[group.key] or 0
+        Mark(group.key, group.label, n)
+        inCluster[group.cluster] = (inCluster[group.cluster] or 0) + n
+    end
+    -- The folded cluster says what it hides, and still says so when something in it differs.
+    local open = Unfolded()
+    for _, cluster in ipairs(Catalog.CLUSTERS) do
+        if cluster.folded then
+            local n = inCluster[cluster.key] or 0
+            local head = clusterHeads[cluster.key]
+            head:SetLabel(string.format("%s %s%s", cluster.label, open and "-" or "+",
+                n > 0 and string.format("  (%d changed)", n) or ""))
+            head:SetTextRole(n > 0 and "accent" or "textDim")
+        end
+    end
 
-    local preset = Model.PresetOf(live.RenderScale, Catalog.PRESETS, ns.Apply.Limits())
+    local limits = ns.Apply.Limits()
+    local preset = Model.PresetOf(live.RenderScale, Catalog.PRESETS, limits)
     for _, each in ipairs(Catalog.PRESETS) do
         presetButtons[each.key]:SetKind(each == preset and "accent" or "normal")
+        presetButtons[each.key]:SetLabel(Model.PresetLabel(each, limits))
     end
-    local level = Model.LevelOf(live.graphicsQuality, Catalog.LEVELS)
+    local level = Model.LevelOf(live.graphicsQuality, Catalog.LEVELS, live, ns.Excused)
     for _, each in ipairs(Catalog.LEVELS) do
-        levelButtons[each.key]:SetKind(each == level and "accent" or "normal")
+        local b = levelButtons[each.key]
+        b:SetKind(each == level and "accent" or "normal")
+        -- The one that can crash the game is orange until it is the chosen one.
+        b:SetLabel((each.experimental and each ~= level) and ("|cffff8040" .. each.label .. "|r") or each.label)
     end
 
     local scale = Model.Find(knobs, "RenderScale")
     frame.status:SetText(Model.Brief(scale and Model.Format(scale, live.RenderScale) or "?", preset, changed))
     frame.save:SetKind(changed > 0 and "accent" or "normal")
     frame.restart:SetShown(ns.pendingRestart == "gx" or ns.pendingRestart == "window")
+    Panel.Layout()
 end
 
 -- A group's key, or "changed" for everything that differs from saved.
 function Panel.ShowGroup(key)
     ClearSearch()
     stickyChanged = nil
-    if Place() then Place().group = key end
+    if Place() then
+        Place().group = key
+        if Folded(ClusterOf(key)) then Place().advanced = true end
+    end
     Panel.Refresh()
+end
+
+-- Opens or folds the cluster of fine controls. Folding it while one of its groups is in
+-- view moves to the first group, rather than leaving the view with no button.
+function Panel.SetAdvanced(on)
+    local place = Place()
+    if not place then return end
+    place.advanced = on == true
+    if not on and Folded(ClusterOf(CurrentGroup())) then
+        place.group = Catalog.GROUPS[1].key
+        stickyChanged = nil
+    end
+    Panel.Refresh()
+end
+
+-- Folds the panel to the bar and the presets, or back. Remembered.
+function Panel.SetCompact(on)
+    local place = Place()
+    if place then place.compact = on == true end
+    if frame then
+        Panel.Layout()
+        if on then frame.search:ClearFocus() end
+    end
+end
+
+-- Holds the panel nearly clear, for a look at the world behind it, until let go.
+function Panel.Peek(down)
+    peeking = down == true and frame ~= nil and frame:IsShown() == true
+    ShowAlpha()
 end
 
 -- What the search box would do, for the cases and for a command.
@@ -544,8 +820,10 @@ end
 local function Open()
     if not frame then
         frame = Build()
+        -- Tucked toward the left edge until the player moves it: the world they are
+        -- tuning is mostly in the middle.
         local place = Place()
-        W.SetPlace(frame, place and place.x or 0.45, place and place.y or 0.16)
+        W.SetPlace(frame, place and place.x or 0.02, place and place.y or 0.16)
     end
     -- What the client supports, and its defaults, are asked afresh each time the panel opens.
     ns.Apply.ForgetSupport()
@@ -653,6 +931,18 @@ end
 
 function Panel.Level(key)
     return levelButtons[key]
+end
+
+function Panel.Group(key)
+    return groupButtons[key]
+end
+
+function Panel.Cluster(key)
+    return clusterHeads[key]
+end
+
+function Panel.IsCompact()
+    return Compact()
 end
 
 function Panel.Frame()

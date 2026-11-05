@@ -88,7 +88,15 @@ local function Stub(kind, name)
     f.GetText = function(self) return self._text end
     f.GetChecked = function() return false end
     f.GetWidth = function() return 100 end
-    f.GetHeight = function() return 20 end
+    -- Height is kept, for the cases that check a window folded; the rest still read 20.
+    f.SetHeight = function(self, h) self._h = h end
+    f.SetSize = function(self, _, h) self._h = h end
+    -- rawget: an unset field would otherwise answer with the catch-all function.
+    f.GetHeight = function(self) return rawget(self, "_h") or 20 end
+    f.SetAlpha = function(self, a) self._alpha = a end
+    f.GetAlpha = function(self) return rawget(self, "_alpha") or 1 end
+    f.SetFrameLevel = function(self, n) self._level = n end
+    f.GetFrameLevel = function(self) return rawget(self, "_level") or 1 end
     f.GetEffectiveScale = function() return 1 end
     f.GetScale = function() return 1 end
     f.GetNumPoints = function() return 0 end

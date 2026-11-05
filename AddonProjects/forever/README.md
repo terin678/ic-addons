@@ -1,13 +1,13 @@
 # WoW Forever addons
 
 Target interface: 16001 (product `wow_classic_beta`, version 1.60.1). Client folder
-`_classic_beta_` while the game is in beta; `scripts/flavors.psd1` is where that changes.
+`_forever_` (the beta was `_classic_beta_`); `scripts/flavors.psd1` is where that changes.
 
 | Addon | Version | Guide |
 | --- | --- | --- |
-| ICKit | 0.4.0 | [Docs/ICKit.md](../../Docs/ICKit.md) |
+| ICKit | 0.5.0 | [Docs/ICKit.md](../../Docs/ICKit.md) |
 | Stickies | 0.1.0 | [Docs/Stickies.md](../../Docs/Stickies.md) |
-| RenderTuner | 0.3.0 | [Docs/RenderTuner.md](../../Docs/RenderTuner.md) |
+| RenderTuner | 0.4.0 | [Docs/RenderTuner.md](../../Docs/RenderTuner.md) |
 
 `ICKit` is the library addon for this flavor. Addons here list it under `## Dependencies`,
 so it must be installed alongside them; `scripts/package.ps1` bundles it into their zips

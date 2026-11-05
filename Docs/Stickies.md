@@ -6,7 +6,7 @@ character, or to every character on your account.
 
 ## Install
 
-Extract into `_classic_beta_\Interface\AddOns` so you get `AddOns\Stickies\Stickies.toc`.
+Extract into `_forever_\Interface\AddOns` so you get `AddOns\Stickies\Stickies.toc`.
 Stickies needs **ICKit**, which goes beside it (`AddOns\ICKit`). Restart the client after
 installing; a `/reload` does not pick up a new addon.
 

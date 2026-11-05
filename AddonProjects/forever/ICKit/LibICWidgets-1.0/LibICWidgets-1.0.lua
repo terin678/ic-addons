@@ -35,7 +35,7 @@ A field that is read before it is set is given a value at construction, always. 
 headless stub answers an unset field with a function, and "if not frame.x" would misread it.
 ]]
 
-local MAJOR, MINOR = "LibICWidgets-1.0", 2
+local MAJOR, MINOR = "LibICWidgets-1.0", 3
 local W = LibStub:NewLibrary(MAJOR, MINOR)
 if not W then return end
 
@@ -563,9 +563,13 @@ opts = {
     format = fn(value) -> text,     -- what the value reads as
     live = true,                    -- false: onChange waits until the thumb is let go
     onChange = fn(value, slider),   -- for a drag or a stepper click, not for SetValue
+    onType = fn(text, slider),      -- the value can be clicked and typed over; Enter sends the text
+    onHold = fn(held),              -- the thumb was picked up (true) or let go (false)
+    trough = true,                  -- false: no recessed rim behind the client's track
 }
 s:SetValue(v) moves it without calling onChange; s:GetValue(). Dragging is handled by the
-client's slider, so nothing here runs an OnUpdate.
+client's slider, so nothing here runs an OnUpdate. s.hit is the clickable value, when
+onType is given.
 ]]
 function W.Slider(parent, opts)
     opts = opts or {}
@@ -603,10 +607,54 @@ function W.Slider(parent, opts)
     s.bar, s.inner = bar, inner
     s.icFirst, s.icLast = first, last
 
+    -- The client's track is dark art on a dark panel. A rim behind it, in the theme's field
+    -- and edge colours, gives it a floor to sit in.
+    if opts.trough ~= false then
+        local trough = CreateFrame("Frame", nil, s)
+        trough:SetFrameLevel(math.max(0, bar:GetFrameLevel() - 1))
+        trough:SetHeight(14)
+        trough:SetPoint("LEFT", inner, "LEFT", -2, 0)
+        trough:SetPoint("RIGHT", inner, "RIGHT", 2, 0)
+        Skin(trough)
+        Track(trough, function(self, theme) Paint(self, theme.colors.field, theme.colors.edge) end)
+        s.trough = trough
+    end
+
     s.text = W.Label(s, "", { color = "text" })
     s.text:SetPoint("LEFT", bar, "RIGHT", 6, 0)
     s.text:SetPoint("RIGHT", s, "RIGHT", 0, 0)
     s.text:SetText(SliderText(s))
+    s.icOnHold = opts.onHold or false
+
+    -- The value, clicked, becomes a box to type into: the exact number, where a drag over
+    -- hundreds of steps cannot be.
+    if opts.onType then
+        local hit = CreateFrame("Button", nil, s)
+        hit:SetPoint("LEFT", bar, "RIGHT", 2, 0)
+        hit:SetPoint("RIGHT", s, "RIGHT", 0, 0)
+        hit:SetHeight(20)
+        local box = W.EditBox(s, math.max(40, valueWidth - 2), 18, {
+            maxBytes = 12,
+            onEnter = function(text, b)
+                b:ClearFocus()
+                opts.onType(text, s)
+            end,
+            onFocusLost = function(b) b:Hide() end,
+        })
+        box:SetPoint("LEFT", bar, "RIGHT", 3, 0)
+        box:SetFrameLevel(hit:GetFrameLevel() + 2)
+        box:Hide()
+        hit:SetScript("OnClick", function()
+            -- The number alone: "203 nits" is edited as 203.
+            box:SetText(SliderText(s):match("^%s*(-?[%d%.]+)") or "")
+            box:Show()
+            box:SetFocus()
+            box:HighlightText()
+        end)
+        hit:SetScript("OnEnter", function() s.text:SetRole("accent") end)
+        hit:SetScript("OnLeave", function() s.text:SetRole("text") end)
+        s.hit, s.entry = hit, box
+    end
 
     inner:HookScript("OnValueChanged", function(_, raw)
         if s.icQuiet == true then return end
@@ -614,10 +662,14 @@ function W.Slider(parent, opts)
         s.text:SetText(SliderText(s))
         if s.icLive == true or s.icHeld ~= true then SliderSend(s) end
     end)
-    inner:HookScript("OnMouseDown", function() s.icHeld = true end)
+    inner:HookScript("OnMouseDown", function()
+        s.icHeld = true
+        if s.icOnHold then s.icOnHold(true) end
+    end)
     inner:HookScript("OnMouseUp", function()
         s.icHeld = false
         SliderSend(s)
+        if s.icOnHold then s.icOnHold(false) end
     end)
 
     function s:SetValue(value)
@@ -639,6 +691,25 @@ end
 --------------------------------------------------------------------------------
 -- Choice
 --------------------------------------------------------------------------------
+
+-- The client's own down arrow, from the friends list's category rows, tinted to the dim
+-- text colour. A client without that atlas gets the letter v, which at least says "open".
+local CHEVRON = "friendslist-categorybutton-arrow-down"
+
+local function ChoiceMark(parent)
+    local info = C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(CHEVRON)
+    local mark = info and parent:CreateTexture(nil, "OVERLAY")
+    if mark and type(mark.SetAtlas) == "function" and (info.width or 0) > 0 and (info.height or 0) > 0 then
+        mark:SetAtlas(CHEVRON)
+        mark:SetSize(math.floor(9 * info.width / info.height + 0.5), 9)
+        Track(mark, function(self, theme)
+            local c = theme.colors.textDim
+            self:SetVertexColor(c.r, c.g, c.b)
+        end)
+        return mark
+    end
+    return W.Label(parent, "v", { font = "small", color = "textDim" })
+end
 
 local function ChoiceLabel(c)
     for _, choice in ipairs(c.icChoices) do
@@ -689,7 +760,7 @@ function W.Choice(parent, w, h, opts)
     c.label:ClearAllPoints()
     c.label:SetPoint("LEFT", c, "LEFT", 4, 0)
     c.label:SetPoint("RIGHT", c, "RIGHT", -16, 0)
-    c.mark = W.Label(c, "v", { font = "small", color = "textDim" })
+    c.mark = ChoiceMark(c)
     c.mark:SetPoint("RIGHT", c, "RIGHT", -5, 0)
 
     function c:SetValue(value)
@@ -729,6 +800,7 @@ everything fits.
 opts = { step = 24 }                -- how far one notch of the wheel moves
 s.content                           -- parent your rows to this; it is `w` less the bar wide
 s:SetContentHeight(h)               -- call when the rows change
+s:SetViewHeight(h)                  -- the window itself became taller or shorter
 s:ScrollTo(offset), s:GetOffset()
 ]]
 function W.Scroll(parent, w, h, opts)
@@ -791,6 +863,13 @@ function W.Scroll(parent, w, h, opts)
         end
         self.bar:SetShown(range > 0)
         self:ScrollTo(self.icOffset)
+    end
+
+    -- For a window whose room changes: the view is `height` tall from now on.
+    function s:SetViewHeight(height)
+        self.icViewH = math.max(1, tonumber(height) or 1)
+        self:SetHeight(self.icViewH)
+        self:SetContentHeight(self.icContentH)
     end
 
     bar:SetScript("OnValueChanged", function(_, value)

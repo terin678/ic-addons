@@ -581,6 +581,25 @@ T.Case("Widgets: a scroll view stays inside its content, and its bar shows only 
     s:SetContentHeight(60)
     T.Eq(s.bar:IsShown(), false, "content that fits hides the bar")
     T.Eq(s:GetOffset(), 0, "at the top")
+    s:SetViewHeight(40)
+    T.Eq(s.bar:IsShown(), true, "a window made shorter than its content shows the bar")
+    s:SetViewHeight(100)
+    T.Eq(s.bar:IsShown(), false, "and made taller hides it again")
+
+    -- A slider's value can be typed over, and says when its thumb is picked up and put down.
+    local typedValue, holds = nil, {}
+    local slider = W.Slider(p, {
+        min = 0, max = 10, step = 1, value = 3, width = 200,
+        onType = function(text) typedValue = text end,
+        onHold = function(held) holds[#holds + 1] = held end,
+    })
+    slider.entry:SetText("7")
+    slider.entry:GetScript("OnEnterPressed")(slider.entry)
+    T.Eq(typedValue, "7", "Enter sends what was typed")
+    slider.inner:GetScript("OnMouseDown")(slider.inner)
+    slider.inner:GetScript("OnMouseUp")(slider.inner)
+    T.Eq(table.concat({ tostring(holds[1]), tostring(holds[2]) }, ","), "true,false", "held, then let go")
+    T.Eq(rawget(W.Slider(p, { min = 0, max = 1, step = 0.1 }), "entry"), nil, "no typing unless asked for")
 
     local typed = {}
     local edit = W.EditBox(p, 100, 18, { onChange = function(text) typed[#typed + 1] = text end })

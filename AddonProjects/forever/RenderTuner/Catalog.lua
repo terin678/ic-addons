@@ -42,48 +42,100 @@ engine's threading, streaming and debugging variables.
 local Catalog = {}
 ns.Catalog = Catalog
 
-Catalog.GROUPS = {
-    { key = "upscale", label = "Upscaling", note = "Render scale, the upscaling filter and sharpening" },
-    { key = "aa", label = "Anti-aliasing", note = "Smoothing of jagged edges" },
-    { key = "frame", label = "Latency and frame rate", note = "Input delay, sync and frame rate limits" },
-    { key = "colour", label = "Colour", note = "Gamma, brightness and contrast" },
-    { key = "hdr", label = "HDR", note = "High dynamic range output" },
-    { key = "quality", label = "Quality levels", note = "The levels on the game's own graphics page" },
-    { key = "shadow", label = "Shadows", note = "Shadow technique, resolution and range" },
-    { key = "light", label = "Lighting and fog", note = "Ambient occlusion, fog, bloom and lights" },
-    { key = "ssao", label = "Ambient occlusion tuning", note = "The fine controls of the contact shadows" },
-    { key = "texture", label = "Textures", note = "Texture resolution and filtering" },
-    { key = "world", label = "View distance and detail", note = "How far things are drawn, and how detailed" },
-    { key = "water", label = "Water and weather", note = "Liquids, reflections, rain and snow" },
-    { key = "particles", label = "Particles and spells", note = "Spell effects, particles and crowds" },
-    { key = "effects", label = "Effects and camera", note = "Field of view, full-screen effects, outlines" },
-    { key = "raid", label = "Raid profile", note = "A second set of quality levels the game uses inside raids" },
-    { key = "misc", label = "Cursor and screenshots", note = "The pointer and saved screenshots" },
+-- The groups, in the order the panel lists them, gathered into the clusters below. A
+-- group's `cluster` is the key of one of Catalog.CLUSTERS.
+Catalog.CLUSTERS = {
+    { key = "picture", label = "Picture" },
+    { key = "detail", label = "Detail" },
+    -- What most players never need; the panel keeps it folded until asked.
+    { key = "advanced", label = "Advanced", folded = true },
 }
 
--- The upscaling presets. Each sets the render scale; the ones below 100% also switch the
--- resample filter to FSR 1.0. Sharpening is left where the user put it, and so is
--- everything else: these are presets for upscaling, not for overall quality. The lowest
--- is the client's floor and is named for how it looks, not after DLSS's "Ultra
--- Performance", which promised more than a third of the pixels can give.
+Catalog.GROUPS = {
+    { key = "upscale", cluster = "picture", label = "Upscaling", note = "Render scale, the upscaling filter and sharpening" },
+    { key = "aa", cluster = "picture", label = "Anti-aliasing", note = "Smoothing of jagged edges" },
+    { key = "frame", cluster = "picture", label = "Latency and frame rate", note = "Input delay, sync and frame rate limits" },
+    { key = "colour", cluster = "picture", label = "Colour", note = "Gamma, brightness and contrast" },
+    { key = "hdr", cluster = "picture", label = "HDR", note = "High dynamic range output" },
+    { key = "quality", cluster = "detail", label = "Quality levels", note = "The levels on the game's own graphics page" },
+    { key = "shadow", cluster = "detail", label = "Shadows", note = "Shadow technique, resolution and range" },
+    { key = "light", cluster = "detail", label = "Lighting and fog", note = "Ambient occlusion, fog, bloom and lights" },
+    { key = "texture", cluster = "detail", label = "Textures", note = "Texture resolution and filtering" },
+    { key = "world", cluster = "detail", label = "View distance and detail", note = "How far things are drawn, and how detailed" },
+    { key = "water", cluster = "detail", label = "Water and weather", note = "Liquids, reflections, rain and snow" },
+    { key = "particles", cluster = "detail", label = "Particles and spells", note = "Spell effects, particles and crowds" },
+    { key = "ssao", cluster = "advanced", label = "Ambient occlusion tuning", note = "The fine controls of the contact shadows" },
+    { key = "effects", cluster = "advanced", label = "Effects and camera", note = "Field of view, full-screen effects, outlines" },
+    { key = "raid", cluster = "advanced", label = "Raid profile", note = "A second set of quality levels the game uses inside raids" },
+    { key = "misc", cluster = "advanced", label = "Cursor and screenshots", note = "The pointer and saved screenshots" },
+}
+
+-- The upscaling presets, lowest picture first like the quality ones, so both rows read the
+-- same way: more to the right is a better picture and a heavier frame. Each sets the
+-- render scale; the ones below 100% also switch the resample filter to FSR 1.0.
+-- Sharpening is left where the user put it, and so is everything else: these are presets
+-- for upscaling, not for overall quality. The lowest is the client's floor and is named
+-- for how it looks, not after DLSS's "Ultra Performance", which promised more than a
+-- third of the pixels can give.
 Catalog.PRESETS = {
-    { key = "native", label = "Native", scale = 1 },
-    { key = "quality", label = "Quality", scale = 0.67 },
-    { key = "balanced", label = "Balanced", scale = 0.58 },
-    { key = "performance", label = "Performance", scale = 0.5 },
     { key = "potato", label = "Potato", scale = 0.3334 },
+    { key = "performance", label = "Performance", scale = 0.5 },
+    { key = "balanced", label = "Balanced", scale = 0.58 },
+    { key = "quality", label = "Quality", scale = 0.67 },
+    { key = "native", label = "Native", scale = 1 },
 }
 Catalog.FSR = 3
 
 -- The overall quality presets: points on the game's own 1 to 10 quality slider. Each
 -- sets that level and the levels beneath it, and leaves upscaling alone. `level` is the
 -- variable's value, which counts from 0.
+--
+-- Extreme is Ultra and then everything the quality levels do not reach, turned all the way
+-- up. The game's ten levels move only the dozen or so variables the graphics page lists;
+-- the rest (how far each kind of thing is drawn, shadow cascades and light range, 8x
+-- multisampling, the render format) are left where the machine's first run put them, and
+-- the client defaults are well short of their ceilings: view distance 7000 of 10000,
+-- three shadow cascades of four, a light range of 2048 of 4096, and a 16-bit float render
+-- format when 32-bit exists. `also` is that list, with the value each is given, and every
+-- number in it is the top of the knob's own range below.
+--
+-- Not in it, on purpose: the render scale (the upscaling row owns it), and anything that
+-- is a matter of taste rather than of quality: bloom, the field of view, the glow and
+-- the other full-screen effects, the ambient-occlusion tuning, the frame rate limits.
+--
+-- It asks first, wherever it is chosen from, because a few of these are the ones that
+-- can crash the game, and ray traced shadows need hardware that not every machine has;
+-- what the client refuses is left alone and said so. Choosing a lower level hands the
+-- list back as it was before Extreme.
 Catalog.LEVELS = {
     { key = "low", label = "Low", level = 0 },
     { key = "fair", label = "Fair", level = 2 },
     { key = "good", label = "Good", level = 4 },
     { key = "high", label = "High", level = 6 },
     { key = "ultra", label = "Ultra", level = 9 },
+    { key = "extreme", label = "Extreme", level = 9, experimental = true,
+      also = {
+          -- The picture's precision and sharpness: 32-bit float, HDR out, every kind of
+          -- anti-aliasing at once, the filtering and texture detail at full.
+          RenderFormat = 3, HDROutput = 1,
+          ffxAntiAliasingMode = 4, CMAA2Quality = 3, MSAAQuality = 3, MSAAAlphaTest = 1,
+          textureFilteringMode = 5, worldBaseMip = 0, terrainMipLevel = 0, componentTextureLevel = 0,
+          useHighResTextures = 1,
+          -- Shadows and light.
+          shadowMode = 4, shadowSoft = 1, shadowNumCascades = 4, shadowBlendCascades = 1,
+          entityShadowFadeScale = 100, shadowRt = 3,
+          SSAO = 4, volumeFogLevel = 4, maxLightDist = 4096,
+          -- How far everything is drawn, and in how much detail.
+          farclip = 10000, horizonClip = 10000, terrainLodDist = 650, wmoLodDist = 650,
+          wmoDoodadDist = 2000, doodadLodScale = 200, entityLodDist = 30,
+          lodObjectCullSize = 10, lodObjectCullDist = 100, lodObjectMinSize = 0, lodObjectFadeScale = 200,
+          groundEffectFade = 500,
+          -- Water, weather, particles and crowds.
+          waterDetail = 3, pbrLiquidDetail = 2, rippleDetail = 2, reflectionMode = 3, reflectionDownscale = 0,
+          weatherDensity = 3, particleDensity = 100, particleMTDensity = 100, unitClutter = 0,
+          -- Nothing shaded down to save time, and everything that can move, moving.
+          vrsValar = 0, vrsValarAlwaysOn = 0, physicsLevel = 2,
+      } },
 }
 
 local OFF_LOW_MED_HIGH_ULTRA = { { 0, "Off" }, { 1, "Low" }, { 2, "Medium" }, { 3, "High" }, { 4, "Ultra" } }
@@ -198,7 +250,7 @@ Catalog.KNOBS = {
     { cvar = "RenderFormat", label = "Render format", group = "hdr", kind = "choice", restart = "gx",
       experimental = true,
       choices = { { 0, "8-bit" }, { 1, "10-bit" }, { 2, "16-bit float" }, { 3, "32-bit float" } },
-      help = "The precision the world is drawn at. HDR and smooth gradients need 16-bit float; lower saves memory." },
+      help = "The precision the world is drawn at. 16-bit float is the client's own choice and what HDR needs; 32-bit float is the most precise and the heaviest." },
 
     -- Quality levels: Blizzard's own, set before the variables beneath them.
     { cvar = "graphicsQuality", label = "Overall quality", group = "quality", kind = "slider",

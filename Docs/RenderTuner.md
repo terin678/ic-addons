@@ -3,8 +3,9 @@
 The one place to tune WoW Forever's graphics: upscaling and quality presets, a live control
 for about 140 console variables, search, and a way back to what you had.
 
-**Version 0.3.0 has the floating panel and the commands.** The page in the game's Options
-window and the side-by-side comparison come next.
+**Version 0.4.0 has the floating panel and the commands**, an Extreme quality preset with
+the experimental extras, and a panel that can get out of the way of the world it tunes. The
+page in the game's Options window and the side-by-side comparison come next.
 
 ## What the client can and cannot do
 
@@ -23,7 +24,7 @@ does, and it does not look the same.
 
 ## Install
 
-Extract into `_classic_beta_\Interface\AddOns` so you get `AddOns\RenderTuner\RenderTuner.toc`.
+Extract into `_forever_\Interface\AddOns` so you get `AddOns\RenderTuner\RenderTuner.toc`.
 RenderTuner needs **ICKit**, which goes beside it (`AddOns\ICKit`). Restart the client after
 installing; a `/reload` does not pick up a new addon.
 
@@ -50,7 +51,7 @@ The first time you open the panel in a session, a warning says this and waits fo
 
 **Save a set that works before trying one**, so Revert has somewhere to return to. If the
 game will not start afterwards, delete `WTF\Config.wtf` in the game folder
-(`_classic_beta_\WTF\Config.wtf`): the client starts with default settings and writes a new
+(`_forever_\WTF\Config.wtf`): the client starts with default settings and writes a new
 one. That file holds machine-wide settings only, such as graphics and sound, not your
 characters, keybinds or addons' data.
 
@@ -59,18 +60,31 @@ characters, keybinds or addons' data.
 `/tuner` opens it. So does a left-click on RenderTuner in the addon list beside the
 minimap, and a key you bind under Options, Keybindings. A right-click in the addon list
 offers the upscaling presets without opening anything. Drag the panel by its title bar;
-Escape closes it. Its place is kept per character.
+Escape closes it. Its place is kept per character, and it starts toward the left edge, so
+the middle of the screen stays clear.
 
 **The title bar** shows the frame rate, measured twice a second while the panel is open, and
 where things stand: "67% Quality, 2 unsaved".
 
-**Two rows of presets** run across the top, and the one in use in each is highlighted.
+**Getting out of the way.** The panel sits over the world you are tuning, so it can step aside:
 
-- **Upscaling** sets the render scale and the resample filter and nothing else. "Quality"
-  and "Performance" here are the names DLSS uses for render scales; they do not touch the
-  quality levels.
+- **Peek**, in the title bar, makes the panel nearly clear for as long as you hold the
+  button. **Hold to see the world behind the panel** is also a key binding, under Options,
+  Keybindings, AddOns: hold the key, look, let go.
+- **Compact** folds the panel to the title bar and the two rows of presets. **Expand**
+  brings it back. Which one you left it in is kept per character.
+- **While a slider is held** the panel goes half clear, so you see what the thumb is doing.
+
+**Two rows of presets** run across the top, from least to most, left to right. The one in
+use in each is highlighted.
+
+- **Upscaling** sets the render scale and the resample filter and nothing else. Each button
+  shows the share of the screen's pixels it draws. "Quality" and "Performance" here are the
+  names DLSS uses for render scales; they do not touch the quality levels.
 - **Quality** sets the game's overall quality level, and the levels beneath it, and leaves
-  upscaling alone.
+  upscaling alone. **Extreme**, at the right in orange, is Ultra and then everything the
+  quality levels do not reach, turned all the way up (see below), after asking. Choosing a
+  lower level puts those settings back as they were before Extreme.
 
 Clicking a preset brings the group it changes into view, so you see what it did. The two
 rows are independent: Potato upscaling with Ultra quality is a combination you can make.
@@ -82,10 +96,16 @@ restart of the graphics engine.
 **The search box** finds settings by name, by console variable, by what their help says or
 by group, across every group at once: type `shadow` or `fps`. Escape clears it.
 
-**Down the left** are the groups. **Changed**, at the top, lists everything that differs
+**Down the left** are the groups, in three clusters: Picture, Detail and Advanced. Advanced
+is folded away until you open it (the line saying `Advanced +`), and says how many of its
+settings changed while it is shut. **Changed**, at the top, lists everything that differs
 from the saved set, whatever group it is in. A group with changes shows a count.
 
 **The rows on the right** are the settings in view, and they scroll with the mouse wheel.
+The line under them says what the setting under the pointer does.
+
+- **Click a slider's number** to type a value instead of dragging: `67` for 67%, a level
+  from 1, nits or frames as they read. Enter sets it; Escape or clicking away drops it.
 
 - A change takes effect as you make it, with the world in view behind the panel.
 - A setting that differs from saved is in the accent colour and gains an **undo** at the
@@ -112,11 +132,11 @@ each change rebuilds what the client draws into. Every other slider is live.
 
 | Preset | Render scale | Resample filter |
 | --- | --- | --- |
-| `native` | 100% | left as it is |
-| `quality` | 67% | FSR 1.0 |
-| `balanced` | 58% | FSR 1.0 |
-| `performance` | 50% | FSR 1.0 |
 | `potato` | 33% (the client's floor) | FSR 1.0 |
+| `performance` | 50% | FSR 1.0 |
+| `balanced` | 58% | FSR 1.0 |
+| `quality` | 67% | FSR 1.0 |
+| `native` | 100% | left as it is |
 
 `/tuner preset quality` uses one; the start of a name is enough (`/tuner preset perf`).
 `/tuner off` goes to native and `/tuner on` returns to the last upscaling preset you used.
@@ -131,10 +151,40 @@ A preset does not touch the sharpening strength, so it stays where you set it.
 | `good` | 5 |
 | `high` | 7 |
 | `ultra` | 10 |
+| `extreme` | 10, and about fifty settings beyond the levels at the top of their ranges (experimental) |
 
 `/tuner quality high` uses one. Each sets the overall level and asks the client what every
 level beneath it should be at that level, which is what the slider on the game's own
 graphics page does.
+
+**What Extreme means.** The game's ten levels move only the dozen or so variables its
+graphics page lists. Everything else is left where the client's first run put it, well short
+of the ceiling: view distance 7000 of 10000, three shadow cascades of four, a light range of
+2048 of 4096, a 16-bit float render format when a 32-bit one exists, and no multisampling.
+Extreme is Ultra, then each of these at the top of its own range:
+
+- **The picture:** 32-bit float render format, HDR output, 8x multisampling with CMAA2 at
+  Ultra, 16x anisotropic filtering, full-resolution textures.
+- **Shadows and light:** the best shadow technique, four cascades, shadows on every creature
+  out to the limit, ray traced shadows, Ultra ambient occlusion, the finest volumetric fog,
+  a light range of 4096.
+- **Distance and detail:** draw distance and horizon at 10000, terrain and building detail
+  at 650, props at twice the usual range, creature detail at 30, nothing dropped for being
+  small, grass out to 500.
+- **Water, weather, particles:** every water, ripple and reflection setting at its best,
+  reflections at full resolution, full particle density, crowds never thinned.
+- **Nothing shaded down:** variable rate shading off, and cloth and foliage moving on every
+  character.
+
+It leaves out what is taste rather than quality (bloom, field of view, the glow and other
+full-screen effects, the ambient-occlusion tuning, frame rate limits), the render scale
+(the upscaling row owns it), and the raid profile.
+
+It asks first, because HDR output, the 32-bit format and ray traced shadows can crash the
+game. A setting the client will not take on your machine, such as ray traced shadows without
+ray tracing, is left alone and named. Before it changes anything it notes what each setting
+was; choosing a lower level puts them back as they were, exactly. If you tune one of them
+by hand after Extreme, the button no longer lights, and a lower level leaves them to you.
 
 ## Saved, trial and original
 
@@ -176,7 +226,9 @@ many settings differ from the saved set.
 to its step and kept inside its range; a choice that is not offered is refused, with the
 list of what is. A quality level is counted from 1, as the game shows it.
 
-A key can be bound to opening the panel under Options, Keybindings.
+Two keys can be bound under Options, Keybindings, AddOns: one opens and closes the panel,
+the other is Peek, held to see the world behind it. A new key binding needs a full client
+restart to appear.
 
 ## The settings
 

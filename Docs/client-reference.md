@@ -11,7 +11,7 @@ patches.
 | era | `_classic_era_` | 11508 / 11509 | Classic Era and Hardcore |
 | anniversary | `_anniversary_` | 20506 | TBC Anniversary. Legacy auction house API (`QueryAuctionItems`, `GetAuctionItemInfo`, `CanSendAuctionQuery`) |
 | retail | `_retail_` | 120100 | Modern auction house API (`C_AuctionHouse`) |
-| forever | `_classic_beta_` | 16001 | WoW Forever, in beta as product `wow_classic_beta` (1.60.1). Modern client base; see below |
+| forever | `_forever_` | 16001 | WoW Forever, in beta as product `wow_classic_beta` (1.60.1). Modern client base; see below |
 
 An addon whose `.toc` interface is lower than the client's is flagged out of date and
 will not load unless the player ticks "Load out of date AddOns".
@@ -19,7 +19,7 @@ will not load unless the player ticks "Load out of date AddOns".
 ## What is known about forever (16001)
 
 The flavor name to folder, interface and library mapping is `scripts/flavors.psd1`. The
-client installs as `_classic_beta_` and runs as `WowB.exe`; `.build.info` lists it as
+client installed as `_classic_beta_` while in beta and runs as `Wow.exe` from `_forever_`; `.build.info` lists it as
 `wow_classic_beta`. Everything below was confirmed on build 1.60.1 (70124) on 2026-09-30,
 either by `/ickit probe` running in the client (the report is saved to `ICKitDB.probe`) or
 by reading the exported interface source.

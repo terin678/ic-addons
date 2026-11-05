@@ -168,16 +168,63 @@ T.Case("Catalog: the quality levels come twice, for the world and for raids, eac
     T.Eq(Catalog.LEVELS[1].level, 0, "the lowest quality preset is the game's level 1")
     T.Eq(Catalog.LEVELS[#Catalog.LEVELS].level, 9, "the highest is its level 10")
     for i = 2, #Catalog.LEVELS do
-        T.True(Catalog.LEVELS[i].level > Catalog.LEVELS[i - 1].level, "each higher than the last")
+        T.True(Catalog.LEVELS[i].level >= Catalog.LEVELS[i - 1].level, "each as high as the last")
     end
+    -- Extreme is Ultra and then some: the same level, with experimental extras.
+    local extreme = Catalog.LEVELS[#Catalog.LEVELS]
+    T.Eq(extreme.key, "extreme", "the top of the strip")
+    T.Eq(extreme.level, Catalog.LEVELS[#Catalog.LEVELS - 1].level, "at Ultra's level")
+    T.True(extreme.experimental == true, "marked experimental")
+    T.Eq(extreme.also.HDROutput, 1, "HDR output")
+    T.Eq(extreme.also.RenderFormat, 3, "a 32-bit float render format, not the 16-bit the client starts at")
 end)
 
-T.Case("Catalog: the presets run from native down, and the model can read each", function()
+T.Case("Catalog: Extreme turns real knobs to the heavy end of their own range", function()
+    local extreme = Catalog.LEVELS[#Catalog.LEVELS]
+    local byCvar = {}
+    for _, knob in ipairs(Catalog.KNOBS) do byCvar[knob.cvar] = knob end
+    -- Where more is lighter: these run toward their minimum, or off, as they get heavier.
+    local lighter = { lodObjectCullSize = true, lodObjectMinSize = true, reflectionDownscale = true,
+        worldBaseMip = true, terrainMipLevel = true, componentTextureLevel = true, unitClutter = true,
+        vrsValar = true, vrsValarAlwaysOn = true }
+    local count = 0
+    for cvar, value in pairs(extreme.also) do
+        count = count + 1
+        local knob = byCvar[cvar]
+        T.True(knob ~= nil, cvar .. " is a knob of the catalogue")
+        T.True(knob.group ~= "upscale" and not knob.raid, cvar .. " is neither the render scale's nor the raid set's")
+        T.True(knob.rank == nil, cvar .. " is not one of the levels, which Extreme leaves to Ultra")
+        if knob.kind == "slider" then
+            T.Eq(value, lighter[cvar] and knob.min or knob.max, cvar .. " at its heavy end")
+        elseif knob.kind == "toggle" then
+            T.Eq(value, lighter[cvar] and 0 or 1, cvar .. " at its heavy end")
+        else
+            local top = knob.choices[1][1]
+            for _, choice in ipairs(knob.choices) do
+                if lighter[cvar] then top = math.min(top, choice[1]) else top = math.max(top, choice[1]) end
+            end
+            T.Eq(value, top, cvar .. " at its heavy end")
+        end
+    end
+    T.True(count >= 40, "it reaches well beyond the two it began with")
+end)
+
+T.Case("Catalog: every group is in a cluster, and the presets run from least to most", function()
+    local clusters = {}
+    for _, cluster in ipairs(Catalog.CLUSTERS) do clusters[cluster.key] = true end
+    for _, group in ipairs(Catalog.GROUPS) do
+        T.True(clusters[group.cluster], group.key .. " is in a cluster that exists")
+    end
+    T.True(Catalog.CLUSTERS[#Catalog.CLUSTERS].folded == true, "the last cluster is folded away")
+    T.True(Catalog.CLUSTERS[1].folded ~= true, "the first is not")
+end)
+
+T.Case("Catalog: the presets run from potato up, and the model can read each", function()
     local limits = Model.Limits(0.33333334, 2)
-    T.Eq(Catalog.PRESETS[1].key, "native", "native first")
-    T.Eq(Catalog.PRESETS[1].scale, 1, "at full scale")
+    T.Eq(Catalog.PRESETS[#Catalog.PRESETS].key, "native", "native last")
+    T.Eq(Catalog.PRESETS[#Catalog.PRESETS].scale, 1, "at full scale")
     for i = 2, #Catalog.PRESETS do
-        T.True(Catalog.PRESETS[i].scale < Catalog.PRESETS[i - 1].scale, "each smaller than the last")
+        T.True(Catalog.PRESETS[i].scale > Catalog.PRESETS[i - 1].scale, "each larger than the last")
     end
     for _, preset in ipairs(Catalog.PRESETS) do
         local target = Model.Preset(preset, limits, Catalog.FSR)
@@ -309,6 +356,51 @@ T.Case("Model.Matches, View: which knobs are in view", function()
     T.Eq(Model.LevelOf(4, Catalog.LEVELS).key, "good", "a quality preset by its level")
     T.Eq(Model.LevelOf(5, Catalog.LEVELS), nil, "a level in between is no preset")
     T.Eq(Model.LevelOf(nil, Catalog.LEVELS), nil, "nor is no level")
+end)
+
+T.Case("Model.LevelOf, AlsoHeld: Extreme is Ultra with its extras held, and only then", function()
+    local extreme = Catalog.LEVELS[#Catalog.LEVELS]
+    local function Held() local t = {} for k, v in pairs(extreme.also) do t[k] = v end return t end
+    local held = Held()
+    T.Eq(Model.LevelOf(9, Catalog.LEVELS).key, "ultra", "without the settings to ask, Ultra")
+    T.Eq(Model.LevelOf(9, Catalog.LEVELS, {}).key, "ultra", "and with none of the extras to be seen")
+    T.Eq(Model.LevelOf(9, Catalog.LEVELS, held), extreme, "level 10 with the extras on is Extreme")
+    local off = Held()
+    off.farclip = 7000
+    T.Eq(Model.LevelOf(9, Catalog.LEVELS, off).key, "ultra", "one extra off, Ultra")
+    T.Eq(Model.LevelOf(6, Catalog.LEVELS, held).key, "high", "the extras alone make no level Extreme")
+    T.True(Model.AlsoHeld(extreme, held), "held")
+    T.Eq(Model.AlsoHeld(extreme, { HDROutput = 1 }), true, "a setting this client lacks is not held against it")
+    T.Eq(Model.AlsoHeld(extreme, {}), false, "none to see is nothing held")
+    T.Eq(Model.AlsoHeld(Catalog.LEVELS[1], held), false, "a preset with no extras holds none")
+
+    -- A machine that cannot do ray traced shadows is not held to them.
+    local noRt = function(cvar) return cvar == "shadowRt" and "needs ray tracing" or nil end
+    local without = Held()
+    without.shadowRt = 0
+    T.Eq(Model.AlsoHeld(extreme, without), false, "off, where the card could have them: not Extreme")
+    T.Eq(Model.AlsoHeld(extreme, without, noRt), true, "off, where it cannot: as far as it goes")
+    T.Eq(Model.LevelOf(9, Catalog.LEVELS, without, noRt), extreme, "and Extreme lights")
+
+    local wanted, left = Model.AlsoWanted(extreme, noRt)
+    T.Eq(wanted.shadowRt, nil, "the refused one is not asked for")
+    T.Eq(wanted.farclip, 10000, "the rest are")
+    T.Eq(table.concat(left, ","), "shadowRt", "and it is named")
+    T.Eq(next(select(2, Model.AlsoWanted(extreme))), nil, "with nothing refused, nothing is left out")
+end)
+
+T.Case("Model.PresetLabel, ParseTyped: the words on a button and the number a player types", function()
+    local limits = Model.Limits(0.33333334, 2)
+    T.Eq(Model.PresetLabel(Catalog.PRESETS[#Catalog.PRESETS], limits), "Native 100%", "name and share")
+    T.Eq(Model.PresetLabel(Catalog.PRESETS[1], limits), "Potato 33%", "clamped and rounded")
+    T.Eq(Model.PresetLabel(Catalog.PRESETS[1], Model.Limits(0.5, 2)), "Potato 50%", "to what the client allows")
+
+    T.Near(Model.ParseTyped(SLIDER, "67"), 0.67, "a percentage as it reads")
+    T.Near(Model.ParseTyped(SLIDER, " 67% "), 0.67, "with its sign and spaces")
+    T.Near(Model.ParseTyped(SLIDER, "0.8"), 0.8, "a fraction as it is")
+    T.Near(Model.ParseTyped(SHARP, "1.5"), 0.5, "a reversed knob, from the other end")
+    T.Eq(Model.ParseTyped(SLIDER, "fast"), nil, "words are no number")
+    T.Eq(Model.ParseTyped(SLIDER, ""), nil, "nor is nothing")
 end)
 
 T.Case("Model.Snapshot, Fill, Diff: sets of values", function()
@@ -711,13 +803,14 @@ if IC_HEADLESS then
             T.Eq(select(2, ns.Panel.Counts()), 0, "and opened afresh, the view is empty")
             T.Eq(frame.empty:GetText(), "Nothing differs from the saved set.", "and says so")
 
-            -- A long group scrolls.
+            -- A long group scrolls. The folded cluster open is the roomiest the view gets.
+            ns.Panel.SetAdvanced(true)
             ns.Panel.ShowGroup("world")
             frame.scroll:ScrollTo(48)
             T.Eq(frame.scroll:GetOffset(), 0, "a group that fits does not scroll")
             ns.Panel.ShowGroup("quality")
-            frame.scroll:ScrollTo(48)
-            T.Eq(frame.scroll:GetOffset(), 48, "a long one does")
+            frame.scroll:ScrollTo(24)
+            T.Eq(frame.scroll:GetOffset(), 24, "a long one does")
             ns.Panel.ShowGroup("colour")
             T.Eq(frame.scroll:GetOffset(), 0, "and a new view starts at the top")
         end)
@@ -757,6 +850,136 @@ if IC_HEADLESS then
             run("")
             T.Eq(notice:IsShown(), false, "not even in a new session")
             T.True(ns.Panel.IsShown(), "the panel opens straight away")
+        end)
+    end)
+
+    T.Case("Panel: Extreme asks first, sets its extras, and a lower level takes them back", function()
+        WithClient(function(cvars, sets, run, asked)
+            ns.Baseline()
+            run("")
+            local button = ns.Panel.Level("extreme")
+            -- Where the client's first run left things: well short of the ceilings.
+            cvars.HDROutput, cvars.RenderFormat, cvars.farclip, cvars.shadowNumCascades = "0", "2", "7000", "3"
+            cvars.MSAAQuality = "0"
+            button:GetScript("OnClick")(button)
+            T.Eq(#asked, 1, "Extreme is asked about")
+            T.Eq(cvars.HDROutput, "0", "and nothing is set until the answer")
+            asked[1].yes()
+            T.Eq(cvars.HDROutput, "1", "yes: HDR output on")
+            T.Eq(cvars.RenderFormat, "3", "the 32-bit float format, past the 16-bit it began at")
+            T.Eq(cvars.farclip, "10000", "the draw distance at its ceiling")
+            T.Eq(cvars.shadowNumCascades, "4", "the fourth shadow cascade")
+            T.Eq(cvars.MSAAQuality, "3", "8x multisampling")
+            T.Eq(cvars.shadowRt, "1", "ray traced shadows, which this machine cannot do, left alone")
+            T.Eq(cvars.graphicsQuality, "9", "on top of level 10")
+            T.Eq(ns.Panel.Level("extreme").icKind, "accent", "Extreme is the one lit")
+            T.Eq(ns.Panel.Level("ultra").icKind, "normal", "and Ultra is not")
+
+            -- Once on, pressing it again asks nothing.
+            button:GetScript("OnClick")(button)
+            T.Eq(#asked, 1, "no second question for what is already on")
+
+            local ultra = ns.Panel.Level("ultra")
+            ultra:GetScript("OnClick")(ultra)
+            T.Eq(cvars.HDROutput, "0", "Ultra puts HDR back as it was")
+            T.Eq(cvars.RenderFormat, "2", "and the render format")
+            T.Eq(cvars.farclip, "7000", "and the draw distance")
+            T.Eq(cvars.shadowNumCascades, "3", "and the cascades")
+            T.Eq(cvars.MSAAQuality, "0", "and the multisampling")
+            T.Eq(ns.db.settings.beforeExtras, nil, "the note of what they were is spent")
+            T.Eq(ns.Panel.Level("ultra").icKind, "accent", "Ultra is lit again")
+
+            -- A player's own change to one of them means Extreme is no longer in force, so
+            -- a lower level leaves the extras to the player.
+            button:GetScript("OnClick")(button)
+            asked[#asked].yes()
+            cvars.farclip = "8000"
+            local high = ns.Panel.Level("high")
+            high:GetScript("OnClick")(high)
+            T.Eq(cvars.MSAAQuality, "3", "tuned by hand, the extras stay")
+        end)
+    end)
+
+    T.Case("Panel: the strips run low to high and the upscaling buttons carry their share", function()
+        WithClient(function(cvars, sets, run)
+            ns.Baseline()
+            run("")
+            T.Eq(ns.Panel.Preset("native").label:GetText(), "Native 100%", "native, on the right")
+            T.Eq(ns.Panel.Preset("potato").label:GetText(), "Potato 33%", "potato, on the left")
+            T.Eq(ns.Panel.Preset("native").icKind, "accent", "the preset the scale is at is lit")
+        end)
+    end)
+
+    T.Case("Panel: the folded cluster opens and folds, and never hides the group in view", function()
+        WithClient(function(cvars, sets, run)
+            ns.Baseline()
+            run("")
+            local frame = ns.Panel.Frame()
+            ns.Panel.SetAdvanced(false)
+            T.Eq(ns.Panel.Group("ssao"):IsShown(), false, "folded: its groups are out of the nav")
+            T.Eq(ns.Panel.Group("shadow"):IsShown(), true, "the others are not")
+            local folded = frame:GetHeight()
+
+            ns.Panel.ShowGroup("raid")
+            T.Eq(ns.Panel.Group("raid"):IsShown(), true, "a group in it, picked, opens the cluster")
+            T.True(frame:GetHeight() > folded, "and the panel grows to fit")
+            ns.Panel.SetAdvanced(false)
+            T.Eq(ns.cdb.panel.group, "upscale", "folding it with one of its groups in view moves to the first group")
+            T.Eq(ns.Panel.Group("raid"):IsShown(), false, "and hides them again")
+            T.Eq(frame:GetHeight(), folded, "at the height it had")
+        end)
+    end)
+
+    T.Case("Panel: compact folds the body away, peek clears the panel, a held slider half clears it", function()
+        WithClient(function(cvars, sets, run)
+            ns.Baseline()
+            run("")
+            local frame = ns.Panel.Frame()
+            local full = frame:GetHeight()
+
+            ns.Panel.SetCompact(true)
+            T.True(ns.Panel.IsCompact(), "compact")
+            T.Eq(frame.body:IsShown(), false, "the body is folded")
+            T.Eq(frame.search:IsShown(), false, "and the search with it")
+            T.True(frame:GetHeight() < full / 2, "the panel is a fraction of its height")
+            T.Eq(ns.cdb.panel.compact, true, "remembered")
+            ns.Panel.SetCompact(false)
+            T.Eq(frame.body:IsShown(), true, "expanded again")
+            T.Eq(frame:GetHeight(), full, "to the same height")
+
+            ns.Panel.Peek(true)
+            T.True(frame:GetAlpha() < 0.2, "peek: nearly clear")
+            ns.Panel.Peek(false)
+            T.Eq(frame:GetAlpha(), 1, "let go: back")
+
+            local scale = ns.Panel.Row("RenderScale")
+            scale.control.inner:GetScript("OnMouseDown")(scale.control.inner)
+            T.True(frame:GetAlpha() < 1 and frame:GetAlpha() > 0.2, "a held slider half clears it")
+            ns.Panel.Peek(true)
+            T.True(frame:GetAlpha() < 0.2, "peek wins over it")
+            ns.Panel.Peek(false)
+            scale.control.inner:GetScript("OnMouseUp")(scale.control.inner)
+            T.Eq(frame:GetAlpha(), 1, "let go of the thumb: clear of it")
+
+            frame:Hide()
+            ns.Panel.Peek(true)
+            T.Eq(frame:GetAlpha(), 1, "peek with the panel shut does nothing")
+        end)
+    end)
+
+    T.Case("Panel: a number typed into a slider sets the variable", function()
+        WithClient(function(cvars, sets, run)
+            ns.Baseline()
+            run("")
+            local scale = ns.Panel.Row("RenderScale")
+            local entry = scale.control.entry
+            T.True(entry ~= nil, "the render scale can be typed over")
+            entry:SetText("75")
+            entry:GetScript("OnEnterPressed")(entry)
+            T.Eq(cvars.RenderScale, "0.75", "75 is 75 percent")
+            entry:SetText("nonsense")
+            entry:GetScript("OnEnterPressed")(entry)
+            T.Eq(cvars.RenderScale, "0.75", "words change nothing")
         end)
     end)
 

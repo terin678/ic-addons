@@ -29,7 +29,7 @@ Nothing here runs while the game is idle: the addon acts on a command, a click o
 drag, and at login.
 ]]
 
-local VERSION = "0.3.0"
+local VERSION = "0.4.0"
 
 local Util = LibStub("LibICUtil-1.0")
 local Test = LibStub("LibICTest-1.0")
@@ -73,7 +73,9 @@ Store.Register(addonName, {
         },
     },
     -- Where the panel sits, and the group it was last showing.
-    charDefaults = { panel = { group = "upscale" } },
+    -- compact: only the title bar, the two preset rows and the actions are shown.
+    -- advanced: the Advanced cluster of groups is unfolded.
+    charDefaults = { panel = { group = "upscale", compact = false, advanced = false } },
     onReady = Env.Wrap("RenderTuner saved variables", function(db, cdb, info)
         ns.db, ns.cdb, ns.loadInfo = db, cdb, info
     end),
@@ -159,15 +161,101 @@ function ns.SetKnob(knob, value)
     ns.ApplyTarget(target, knob.label, true)
 end
 
+-- Whether the client will not take a value, for the extras: ray traced shadows on a card
+-- without ray tracing, or a multisample level the card lacks.
+local function Refused(cvar, value)
+    return ns.Apply.Unsupported(cvar, value)
+end
+ns.Refused = Refused
+
+-- What a preset's extras are judged by: the client's refusals, and the values it took but
+-- did not keep (it caps a light distance of its own, and holds back multisampling until the
+-- graphics restart). Those are noted when a preset is applied, and not held against it.
+function ns.Excused(cvar, value)
+    local unkept = ns.db and ns.db.settings.unkept
+    return Refused(cvar, value) or (unkept ~= nil and unkept[cvar] == value) or nil
+end
+
+-- The preset with extras that the settings are holding now, or nil.
+local function HeldExtras(live)
+    for _, other in ipairs(ns.Catalog.LEVELS) do
+        if other.also and ns.Model.AlsoHeld(other, live, ns.Excused) then return other end
+    end
+end
+
 -- An overall quality preset: the game's master level, and the levels beneath it.
+--
+-- A preset with extras (Extreme) sets the level first, so the client works out the levels
+-- beneath it, and then the extras on top, noting what each was before in
+-- settings.beforeExtras. Any other preset, chosen while the extras are what Extreme left
+-- them at, puts them back as they were noted, or at the client's defaults for any that were
+-- not, and then sets its level. A player's own tuning, which makes the extras differ from
+-- Extreme, is left alone: choosing High does not switch off their HDR.
 function ns.ApplyLevel(preset)
     local knob = ns.Model.Find(ns.Apply.Knobs(), "graphicsQuality")
     if not knob then
         out.Print("this client has no overall quality level.")
         return
     end
-    ns.SetKnob(knob, preset.level)
-    out.Printf("%s quality: level %s, and the levels beneath it.", preset.label, ns.Model.Format(knob, preset.level))
+    local live = ns.Apply.Live()
+    local held = HeldExtras(live)
+    local line = string.format("%s quality: level %s, and the levels beneath it", preset.label,
+        ns.Model.Format(knob, preset.level))
+
+    if preset.also then
+        local wanted, left = ns.Model.AlsoWanted(preset, Refused)
+        if not held then
+            local before = {}
+            for cvar in pairs(wanted) do before[cvar] = live[cvar] end
+            ns.db.settings.beforeExtras = before
+        end
+        ns.SetKnob(knob, preset.level)
+        ns.ApplyTarget(wanted, preset.label .. " extras", true)
+        local count = 0
+        for _ in pairs(wanted) do count = count + 1 end
+        line = line .. string.format("; and %d more %s turned all the way up", count, Util.Plural(count, "setting"))
+        if #left > 0 then
+            local labels = {}
+            for _, cvar in ipairs(left) do
+                local extra = ns.Model.Find(ns.Apply.Knobs(), cvar)
+                labels[#labels + 1] = extra and extra.label or cvar
+            end
+            line = line .. "; this machine cannot do: " .. table.concat(labels, ", ")
+        end
+        -- What the client did not keep, said at once: the client may round or reset a value.
+        local after, odd = ns.Apply.Live(), {}
+        if after.graphicsQuality ~= nil and not ns.Model.Same(after.graphicsQuality, preset.level) then
+            odd[#odd + 1] = "graphicsQuality is " .. tostring(after.graphicsQuality)
+        end
+        for cvar, want in pairs(wanted) do
+            if after[cvar] ~= nil and not ns.Model.Same(want, after[cvar]) then
+                odd[#odd + 1] = string.format("%s is %s, not %s", cvar, tostring(after[cvar]), tostring(want))
+            end
+        end
+        table.sort(odd)
+        local unkept = {}
+        for cvar, want in pairs(wanted) do
+            if after[cvar] ~= nil and not ns.Model.Same(want, after[cvar]) then unkept[cvar] = want end
+        end
+        ns.db.settings.unkept = next(unkept) and unkept or nil
+        if #odd > 0 then
+            line = line .. "; |cffff8040the client did not keep: " .. table.concat(odd, "; ") .. "|r"
+        end
+    else
+        if held then
+            local back = {}
+            local defaults = ns.Apply.Defaults()
+            local before = ns.db.settings.beforeExtras or {}
+            for cvar in pairs(held.also) do
+                if before[cvar] ~= nil then back[cvar] = before[cvar] else back[cvar] = defaults[cvar] end
+            end
+            ns.db.settings.beforeExtras = nil
+            ns.ApplyTarget(back, held.label .. " extras", true)
+            line = line .. string.format("; and %s put back as they were", held.label)
+        end
+        ns.SetKnob(knob, preset.level)
+    end
+    out.Print(line .. ".")
 end
 
 -- Puts a list of knobs back to their saved values: one group, or what a search found.
@@ -266,10 +354,11 @@ end
 COMMANDS.quality = function(rest)
     if not Ready() then return end
     if Util.Trim(rest) == "" then
-        local now = ns.Model.LevelOf(ns.Apply.Live().graphicsQuality, ns.Catalog.LEVELS)
+        local live = ns.Apply.Live()
+        local now = ns.Model.LevelOf(live.graphicsQuality, ns.Catalog.LEVELS, live, ns.Excused)
         for _, preset in ipairs(ns.Catalog.LEVELS) do
-            out.Printf("  %s%s: level %d of 10", preset.key, preset == now and " |cff00ff00(in use)|r" or "",
-                preset.level + 1)
+            out.Printf("  %s%s: level %d of 10%s", preset.key, preset == now and " |cff00ff00(in use)|r" or "",
+                preset.level + 1, preset.also and ", and every setting beyond the levels turned all the way up (experimental)" or "")
         end
         return
     end
@@ -434,5 +523,12 @@ function RenderTuner_Toggle()
     if ns.db and ns.db.saved then ns.Panel.Toggle() end
 end
 
+-- For the held key binding: the panel fades while the key is down, so the world can be
+-- seen as it is, and comes back when it is let go.
+function RenderTuner_Peek(keystate)
+    if ns.db and ns.db.saved then ns.Panel.Peek(keystate == "down") end
+end
+
 BINDING_HEADER_RENDERTUNER = "RenderTuner"
 BINDING_NAME_RENDERTUNER_TOGGLE = "Open or close the panel"
+BINDING_NAME_RENDERTUNER_PEEK = "Hold to see the world behind the panel"
