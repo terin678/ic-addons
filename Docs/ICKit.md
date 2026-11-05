@@ -35,8 +35,12 @@ gold), **Impulse Control** (the guild's navy, gold and bone, for members who wan
 on screen repaints at once. The start of a name is enough, and `/ickit theme default` goes
 back. Only a theme you picked is saved, so an account that never chose follows the default.
 
-`/ickit gallery` opens a small panel with one of every widget in the current theme. Drag it
-by its title bar; where you leave it is remembered per character.
+`/ickit gallery` opens a small panel with one of every widget in the current theme, on three
+tabs: Basics (buttons, a tick box, an edit box, a menu, a confirm, a slider, a choice and the
+eight raid icons), List (two hundred sample rows; click a header to sort, a row to select it,
+hover for its tooltip) and Text (a text area holding a little JSON, with a button that reads it
+back). A fourth tab is disabled, to show how one looks. Drag it by its title bar and resize it
+by its bottom-right corner; its place, size and tab are remembered per character.
 
 ### The probe
 
@@ -69,8 +73,8 @@ should not. The counters cost two clock reads a call and need no console variabl
 | LibICComm-1.0 | 1 | Addon messages between players on the same addon: tables in, tables out, framed to fit, own echo dropped, a version hello, and a queue through lockdowns |
 | LibICStore-1.0 | 1 | Saved variables: defaults, schema, migrations, and whether the file really loaded |
 | LibICConsole-1.0 | 1 | Prefixed printing and the slash-command dispatcher with its help |
-| LibICTheme-1.0 | 1 | The theme registry: colour and font roles, the selected theme, change listeners |
-| LibICWidgets-1.0 | 3 | Themed frames drawn from colour textures: panel, label, button, check box, edit box, slider, choice, scroll, tooltip, menu, confirm |
+| LibICTheme-1.0 | 2 | The theme registry: colour and font roles, the selected theme, change listeners |
+| LibICWidgets-1.0 | 4 | Themed frames drawn from colour textures: panel, label, button, check box, edit box, slider, choice, scroll, tabs, list, resize grip, text area, raid icon, tooltip, menu, confirm |
 
 The libraries never print. An addon decides what to say, in its own voice. Only
 LibICWidgets creates frames, apart from the store's one event frame.
@@ -435,7 +439,8 @@ whatever the selected theme says that is, so an addon never holds a colour of it
 (a title bar), `field` (somewhere to type or tick), `edge`, `text`, `textDim`,
 `textDisabled`, `done` (a finished line), `accent`, `accentHover`, `accentText`, `danger`,
 `dangerHover`, `dangerText`, `button`, `buttonHover`, `buttonText`, `hover`, `selected`,
-`check`. Each is `{ r, g, b, a }`. Font roles: `body`, `title`, `small`, `button`.
+`check`, and the status text roles `good`, `warn` and `bad` (green, amber, red, each readable
+as text on the theme's ground; `danger` is a button fill and is not). Each is `{ r, g, b, a }`. Font roles: `body`, `title`, `small`, `button`.
 
 The kit itself saves a choice the player made (`ICKitDB.settings.theme`, absent until they
 pick) and applies it at load; an addon does not select a theme, it only draws in the
@@ -458,10 +463,15 @@ Blizzard frame template, repaints when the theme changes, and runs no `OnUpdate`
 | `W.Button(parent, text, w, h, opts)` | `opts.kind` is `normal`, `accent`, `danger` or `flat` (no fill until hovered); `opts.onClick`; `opts.justify = "LEFT"` with `opts.font` and `opts.textRole` for a row of a list; `opts.onDragStart(button)` and `opts.onDragStop(button)` for a row that is picked up and put down, while a plain press stays a click. `b:SetLabel(text)`, `b:SetKind(kind)`, `b:SetTextRole(role)`. |
 | `W.CheckBox(parent, opts)` | `opts`: `size`, `checked`, `onClick(checked, box)`. `box:SetChecked(on)`, `box:GetChecked()`. A click calls `onClick`; `SetChecked` does not. |
 | `W.EditBox(parent, w, h, opts)` | One line. `opts`: `maxBytes`, `placeholder`, `onEnter(text, box)`, `onEscape(box)`, `onFocusLost(box)`, `onTab(box, backwards)` for Tab and Shift-Tab. Escape always drops focus. |
+| `W.Tabs(parent, tabs, opts)` | A row of tabs with one selected. `tabs`: `{ { key, label, page }, ... }`; a tab's `page` (optional) is shown when it is selected and hidden otherwise, so a window switches pages with no code of its own. `opts`: `width` (tabs shrink alike to fit), `tabWidth` (96), `height` (22), `selected`, `onSelect(key, strip)` (a click, not `Select`). `strip:Select(key)`, `strip:GetSelected()`, `strip:SetLabel(key, text)`, `strip:SetDisabled(key, reason)` (greys the tab; the reason shows on hover; nil enables it), `strip.buttons[key]`. `W.TabLayout(count, width, tabW)` is the pure half. |
+| `W.List(parent, w, h, opts)` | A list: a column header row in its own frame above a scroll of fixed-height, single-line rows. Only the rows in view exist, pooled and filled again in full as it scrolls, so thousands of items cost a screenful. `opts.columns`: `{ { key, label, width, justify, tip, text = fn(item) }, ... }`; a column with no width fills the rest, `tip` is the header's hover text, `text(item)` returns the cell's text and colour role (else `opts.cell(item, column)`, else `item[key]`). `opts`: `rowHeight` (18), `headerHeight` (20), `onClick(item, mouseButton, row)` (left or right), `tooltip(GameTooltip, item)` for the full values a cut cell hides, `selected(item)`, `onHeader(key, column)` (to sort), `empty` (shown with no items). `list:SetItems(items)`, `list:Refresh()`, `list:Resize(w, h)`, `list:ScrollTo(offset)`, `list:GetItems()`, `list:SetSortMark(key, ascending)` (an arrow after the sorted column's header). A row's tooltip follows the item when the wheel refills the row under the pointer. `W.ColumnLayout(columns, width)` and `W.VisibleRange(offset, rowH, viewH, count)` are the pure halves. |
+| `W.Resize(frame, opts)` | A grip in the frame's bottom-right corner that resizes it. Place the frame by its top-left (`W.SetPlace` does), so it grows right and down. `opts`: `minWidth` (200), `minHeight` (120), `maxWidth` and `maxHeight` (the screen by default), `onResize(w, h, frame)` while dragging, `onResized(w, h, frame)` on release (save the size there). While held, and only then, it follows the pointer in an OnUpdate. `W.ResizeSize(startW, startH, dx, dy, minW, minH, maxW, maxH)` is the pure half. |
+| `W.TextArea(parent, w, h, opts)` | Many lines: somewhere to paste a shared rule set, or a copy box to take an export from. A multi-line edit box in a themed scroll; the line being typed on stays in view, and a press anywhere in the area puts the cursor in it. `opts`: `text`, `maxBytes`, `readOnly = true` (a copy box: typing is undone and focus selects everything, ready for Ctrl+C), `onChange(text, area)` (the player's changes, not `SetText`). `area:SetText(text)` (back to the top), `area:GetText()`, `area:SelectAll()`, `area:Resize(w, h)`, `area.edit`, `area.scroll`. Escape drops focus; drop it yourself when combat starts. |
+| `W.RaidIcon(parent, index, size)` | One raid target icon (1 star to 8 skull) as a texture on `parent`, `size` square (16). It draws from a plain number only: anything else, a secret index included, hides it. The client's `SetRaidTargetIconTexture` is not used, because it throws when handed a secret. `icon:SetIndex(index)` returns whether it shows; `icon:GetIndex()` is the index or false. `W.RaidIconCoords(index)` is the pure half: the texcoords, or nil. |
 | `W.Tooltip(frame, builder, anchor)` | `builder(GameTooltip, frame)` adds the lines; nil removes it. It hooks, so a button keeps its hover highlight. The tooltip sits at the pointer (`ANCHOR_CURSOR_RIGHT`) unless `anchor` says otherwise. |
 | `W.Slider(parent, opts)` | A number between two ends with its value written beside it. `opts`: `width`, `valueWidth`, `min`, `max`, `step`, `value`, `format(value)`, `live` (false waits for the thumb to be let go), `onChange(value, slider)`, `onType(text, slider)` (the value becomes a box to type into when clicked; Enter sends the text), `onHold(held)` (the thumb was picked up or let go), `trough` (false drops the rim drawn behind the track). `s:SetValue(v)` moves it without calling `onChange`; `s:GetValue()`. The bar is the client's `MinimalSliderWithSteppersTemplate`, so its art is not themed; the rim behind it is. `W.SliderValue(raw, min, max, step)` is the pure half: whole steps, with both ends reachable. |
 | `W.Choice(parent, w, h, opts)` | One of a short list: a button showing the current choice, with a chevron, that opens a menu of them all. `opts`: `choices` as `{ { value, label }, ... }`, `value`, `onChange(value, choice)`, `disabled(value)` returning a reason to grey a choice out. `c:SetValue(v)`, `c:GetValue()`. |
-| `W.Scroll(parent, w, h, opts)` | A window onto content taller than itself: parent rows to `s.content`, call `s:SetContentHeight(h)` when they change. The mouse wheel and a thin bar scroll it; the bar hides when everything fits. `opts.step` is one wheel notch. `s:SetViewHeight(h)` when the window itself changes height. `s:ScrollTo(offset)`, `s:GetOffset()`. `W.ScrollClamp(offset, contentH, viewH)` is the pure half. |
+| `W.Scroll(parent, w, h, opts)` | A window onto content taller than itself: parent rows to `s.content`, call `s:SetContentHeight(h)` when they change. The mouse wheel and a thin bar scroll it; the bar hides when everything fits. `opts.step` is one wheel notch; `opts.onScroll(offset, s)` hears every move. `s:SetViewHeight(h)` and `s:SetViewWidth(w)` when the window itself changes size. `s:ScrollTo(offset)`, `s:GetOffset()`. `W.ScrollClamp(offset, contentH, viewH)` is the pure half. |
 | `W.Menu(owner, items)` | A context menu. Items: `{ title }`, `{ text, onClick }`, `{ text, checked = fn, onClick }`, `{ text, radio = fn, onClick }` (one of several; picking closes the menu), `{ divider = true }`. An item may carry `disabled = true` or `disabled = "the reason"`. |
 | `W.Confirm(text, onAccept)` | A yes/no dialog. |
 | `W.Compartment(opts)` | An entry in the client's Addon Compartment, the list of addons beside the minimap: the modern way onto the minimap, costing no frame. `opts`: `text`, `icon`, `onClick(mouseButton)`, `tooltip`. Returns false on a client without one. |
@@ -479,8 +489,9 @@ distance it missed.
 An edit box with focus takes every key, movement included. An addon that shows one drops
 its focus (`box:ClearFocus()`) when combat starts.
 
-`Gallery.lua` in the kit is the worked example: a movable panel with a title bar that drags
-it, its place saved per character, a menu and a confirm.
+`Gallery.lua` in the kit is the worked example: a movable, resizable panel with a title bar
+that drags it, tabs that switch pages, a list with its header above the scroll, a text area,
+its place and size saved per character, a menu and a confirm.
 
 ## Running the cases
 

@@ -19,7 +19,9 @@ theme = { name, label, logo, colors = { role = { r, g, b, a } }, fonts = { role 
 
 Colour roles: ground (a panel), raised (a title bar), field (somewhere to type or tick),
 edge, text, textDim, textDisabled, done (a finished line), accent, accentHover, accentText,
-danger, dangerHover, dangerText, button, buttonHover, buttonText, hover, selected, check.
+danger, dangerHover, dangerText, button, buttonHover, buttonText, hover, selected, check, and
+the status text roles good, warn and bad (green, amber, red, each readable as text on the
+theme's ground: danger is a button fill and is not).
 Font roles: body, title, small, button.
 
 This library creates no frames and calls nothing in the client, so it is tested headless.
@@ -30,7 +32,7 @@ It ships three themes:
     Paper             dark ink on a yellow sticky note
 ]]
 
-local MAJOR, MINOR = "LibICTheme-1.0", 1
+local MAJOR, MINOR = "LibICTheme-1.0", 2
 local Theme = LibStub:NewLibrary(MAJOR, MINOR)
 if not Theme then return end
 
@@ -78,6 +80,9 @@ local BASE = {
         hover = C(1, 0.82, 0, 0.10),
         selected = C(1, 0.82, 0, 0.22),
         check = C(1, 0.82, 0),
+        good = C(0.400, 0.860, 0.400),
+        warn = C(1, 0.600, 0.200),
+        bad = C(1, 0.380, 0.320),
     },
     fonts = {
         body = "GameFontHighlightSmall",
@@ -208,6 +213,9 @@ Theme.Register("Impulse Control", {
         hover = C(1, 1, 1, 0.07),
         selected = C(0.875, 0.612, 0.200, 0.25),
         check = C(0.875, 0.612, 0.200),
+        good = C(0.470, 0.850, 0.470),
+        warn = C(1, 0.800, 0.350),
+        bad = C(1, 0.420, 0.360),
     },
 })
 
@@ -232,6 +240,9 @@ Theme.Register("Paper", {
         buttonHover = C(0.84, 0.74, 0.28),
         buttonText = C(0.16, 0.14, 0.08),
         hover = C(0, 0, 0, 0.07),
+        good = C(0.050, 0.330, 0.080),
+        warn = C(0.640, 0.300, 0),
+        bad = C(0.850, 0.150, 0.100),
         selected = C(0.80, 0.45, 0.10, 0.25),
         check = C(0.45, 0.28, 0.05),
     },

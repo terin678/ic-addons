@@ -1545,6 +1545,263 @@ end
 -- The addon itself
 --------------------------------------------------------------------------------
 
+T.Case("Theme: every shipped theme has the status text roles", function()
+    for _, name in ipairs(Theme.Names()) do
+        local t = Theme.Get(name)
+        for _, role in ipairs({ "good", "warn", "bad" }) do
+            T.True(type(t.colors[role]) == "table", name .. " has " .. role)
+        end
+    end
+    local forever = Theme.Get("Forever").colors
+    T.True(forever.bad.r > forever.danger.r, "Forever's bad text is brighter than its danger fill")
+end)
+
+T.Case("Widgets: tabs lay out, shrinking alike when they would not fit", function()
+    local l = W.TabLayout(3, 400, 96)
+    T.Eq(l[1].x, 0, "the first at the left")
+    T.Eq(l[2].x, 98, "the next a tab and a gap along")
+    T.Eq(l[3].w, 96, "full width when there is room")
+    l = W.TabLayout(4, 200, 96)
+    T.Eq(l[1].w, 48, "four in 200 shrink to 48 each")
+    T.True(l[4].x + l[4].w <= 200, "and fit")
+    T.Eq(#W.TabLayout(0, 100), 0, "no tabs, no layout")
+    T.Eq(W.TabLayout(2, nil, 50)[2].x, 52, "no width means room for all")
+end)
+
+T.Case("Widgets: tabs select one, show its page, and refuse a disabled one", function()
+    local host = W.Panel(nil, { width = 300, height = 200 })
+    host:Hide()
+    local pageA, pageB = CreateFrame("Frame", nil, host), CreateFrame("Frame", nil, host)
+    local picked = {}
+    local strip = W.Tabs(host, {
+        { key = "a", label = "Roles", page = pageA },
+        { key = "b", label = "Rules", page = pageB },
+        { key = "c", label = "Deaths" },
+    }, { width = 300, onSelect = function(key) picked[#picked + 1] = key end })
+    T.Eq(strip:GetSelected(), "a", "the first tab is selected to start")
+    T.Eq(pageA:IsShown() and not pageB:IsShown(), true, "its page shows, the other hides")
+    strip.buttons.b:GetScript("OnClick")(strip.buttons.b)
+    T.Eq(strip:GetSelected(), "b", "a click selects")
+    T.Eq(picked[1], "b", "and is reported")
+    T.Eq(pageB:IsShown() and not pageA:IsShown(), true, "and swaps the pages")
+    strip.buttons.b:GetScript("OnClick")(strip.buttons.b)
+    T.Eq(#picked, 1, "clicking the selected tab again says nothing")
+    T.Eq(strip:Select("c"), true, "Select works on a tab with no page")
+    T.Eq(#picked, 1, "and does not report")
+    T.Eq(pageA:IsShown() or pageB:IsShown(), false, "every page hides")
+    T.Eq(strip:Select("nope"), false, "an unknown key is refused")
+    T.Eq(strip:GetSelected(), "c", "and changes nothing")
+    strip:SetDisabled("a", "Needs a raid")
+    strip.buttons.a:GetScript("OnClick")(strip.buttons.a)
+    T.Eq(strip:GetSelected(), "c", "a disabled tab cannot be picked")
+    T.Eq(strip.buttons.a.icDisabled, "Needs a raid", "and keeps its reason for the tooltip")
+    strip:SetDisabled("a", nil)
+    strip.buttons.a:GetScript("OnClick")(strip.buttons.a)
+    T.Eq(strip:GetSelected(), "a", "enabled again, it can")
+    strip:SetLabel("b", "Rules (3)")
+    T.Eq(strip.buttons.b.label:GetText(), "Rules (3)", "a label can change")
+    local other = W.Tabs(host, { { key = "x" }, { key = "y" } }, { selected = "y" })
+    T.Eq(other:GetSelected(), "y", "a starting tab can be named")
+    T.Eq(W.Tabs(host, { { key = "x" } }, { selected = "zz" }):GetSelected(), "x",
+        "an unknown starting tab falls back to the first")
+end)
+
+T.Case("Widgets: list columns and the rows in view", function()
+    local l = W.ColumnLayout({ { key = "a", width = 100 }, { key = "b" }, { key = "c", width = 50 } }, 400)
+    T.Eq(l[1].x, 0, "the first column at the left")
+    T.Eq(l[2].x, 106, "the next a column and a gap along")
+    T.Eq(l[2].w, 238, "the column with no width fills what is left")
+    T.Eq(l[3].x, 350, "and the last sits after it")
+    T.Eq(l[3].x + l[3].w, 400, "ending at the edge")
+    l = W.ColumnLayout({ { key = "a", width = 300 }, { key = "b" } }, 200)
+    T.Eq(l[2].w, 24, "a fill column is never squeezed to nothing")
+    l = W.ColumnLayout({ { key = "a" }, { key = "b" } }, 100)
+    T.Eq(l[2].w, 24, "a second column with no width gets the least")
+    T.Eq(#W.ColumnLayout(nil, 100), 0, "no columns, no layout")
+
+    local first, last = W.VisibleRange(0, 18, 90, 100)
+    T.Eq(first, 1, "from the top")
+    T.Eq(last, 5, "five rows fill 90 pixels")
+    first, last = W.VisibleRange(27, 18, 90, 100)
+    T.Eq(first, 2, "scrolled half a row and more: the second is the first in view")
+    T.Eq(last, 7, "and the seventh is cut by the bottom")
+    first, last = W.VisibleRange(0, 18, 90, 3)
+    T.Eq(last, 3, "never past the items")
+    first, last = W.VisibleRange(0, 18, 90, 0)
+    T.True(last < first, "no items, no rows")
+end)
+
+T.Case("Widgets: a list fills pooled rows in full and blanks the rest", function()
+    local host = W.Panel(nil, { width = 300, height = 200 })
+    host:Hide()
+    local clicks, chosen = {}, nil
+    local list = W.List(host, 300, 20 + 18 * 4, {
+        columns = {
+            { key = "name", label = "Name" },
+            { key = "hp", label = "Health", width = 60, justify = "RIGHT", tip = "Out of combat" },
+            { key = "state", label = "State", width = 60,
+                text = function(item) return item.dead and "dead" or "alive", item.dead and "danger" or "good" end },
+        },
+        onClick = function(item, mouseButton) clicks[#clicks + 1] = item.name .. ":" .. mouseButton end,
+        selected = function(item) return item == chosen end,
+        empty = "Nobody here",
+    })
+    T.Eq(list.header:GetParent(), list, "the header belongs to the list, not to the scroll")
+    T.Eq(#list.header.cells, 3, "one header cell per column")
+    T.Eq(list.header.cells[1].label:GetText(), "Name", "with its label")
+    T.Eq(#list.rows, 5, "a view of four rows has five, for the one cut by the scroll")
+    T.Eq(list.emptyLabel:IsShown(), true, "an empty list says so")
+
+    local items = {}
+    for i = 1, 50 do items[i] = { name = "Unit " .. i, hp = i * 10, dead = i % 2 == 0 } end
+    list:SetItems(items)
+    T.Eq(list.emptyLabel:IsShown(), false, "with items it does not")
+    T.Eq(#list.rows, 5, "fifty items still use five rows")
+    T.Eq(list.rows[1].cells[1]:GetText(), "Unit 1", "the first row shows the first item")
+    T.Eq(list.rows[1].cells[2]:GetText(), "10", "a field by the column's key, as text")
+    T.Eq(list.rows[2].cells[3]:GetText(), "dead", "a column's own text")
+    T.Eq(list.rows[2].icRoles[3], "danger", "and its colour role")
+    list.rows[1]:GetScript("OnClick")(list.rows[1], "RightButton")
+    T.Eq(clicks[1], "Unit 1:RightButton", "a click reports the item and the button")
+
+    list:ScrollTo(18 * 10)
+    T.Eq(list.rows[1].cells[1]:GetText(), "Unit 11", "scrolled ten rows, the pooled rows show the next items")
+    T.Eq(list.rows[1].icItem, items[11], "and hold them for clicks and tooltips")
+    chosen = items[12]
+    list:Refresh()
+    T.Eq(list.rows[2].icSelected, true, "the selected item is drawn selected")
+    T.Eq(list.rows[1].icSelected, false, "and the row before is not")
+
+    list:SetItems({ { name = "Last" } })
+    T.Eq(list.rows[1].cells[1]:GetText(), "Last", "a shorter list starts again at the top")
+    T.Eq(list.rows[1].cells[2]:GetText(), "", "a missing value is blank, not the last item's")
+    T.Eq(list.rows[1].icSelected, false, "and nothing of the old selection survives")
+    T.Eq(list.rows[2]:IsShown(), false, "unused rows hide")
+    T.Eq(list.rows[2].icItem, false, "holding no item")
+    list.rows[2]:GetScript("OnClick")(list.rows[2], "LeftButton")
+    T.Eq(#clicks, 1, "a click on an empty row reports nothing")
+
+    list:SetSortMark("hp", false)
+    T.Eq(list.header.cells[2].label:GetText(), "Health v", "the sorted column carries an arrow")
+    T.Eq(list.header.cells[1].label:GetText(), "Name", "the others none")
+    list:SetSortMark("name", true)
+    T.Eq(list.header.cells[1].label:GetText() .. "|" .. list.header.cells[2].label:GetText(), "Name ^|Health",
+        "a new sort moves the arrow")
+    list:SetSortMark(nil)
+    T.Eq(list.header.cells[1].label:GetText(), "Name", "and nil clears it")
+
+    list:Resize(300, 20 + 18 * 8)
+    T.Eq(#list.rows, 9, "a taller list makes the rows it now needs")
+    T.Eq(list.rows[9].cells[1]:GetText() == nil or list.rows[9]:IsShown() == false, true, "and the new ones start hidden")
+end)
+
+T.Case("Widgets: a resize grip follows the pointer inside its bounds", function()
+    local w, h = W.ResizeSize(400, 300, 50, -20, 200, 120, 1000, 800)
+    T.Eq(w, 450, "dragged right, wider")
+    T.Eq(h, 280, "dragged up, shorter")
+    w, h = W.ResizeSize(400, 300, -500, -500, 200, 120)
+    T.Eq(w, 200, "never narrower than the least")
+    T.Eq(h, 120, "nor shorter")
+    w, h = W.ResizeSize(400, 300, 5000, 5000, 200, 120, 1000, 800)
+    T.Eq(w, 1000, "nor wider than the most")
+    T.Eq(h, 800, "nor taller")
+    w = W.ResizeSize(400, 300, 10.4, 0)
+    T.Eq(w, 410, "whole pixels, with no bounds given")
+
+    if not IC_HEADLESS then return end
+    local savedCursor = GetCursorPosition
+    local cx, cy = 500, 500
+    _G.GetCursorPosition = function() return cx, cy end
+    local frame = W.Panel(nil, { width = 400, height = 300 })
+    frame:Hide()
+    local sizes, done = {}, nil
+    local grip = W.Resize(frame, {
+        minWidth = 300, minHeight = 200, maxWidth = 2000, maxHeight = 2000,
+        onResize = function(nw, nh) sizes[#sizes + 1] = nw .. "x" .. nh end,
+        onResized = function(nw, nh) done = nw .. "x" .. nh end,
+    })
+    grip.icFrame.GetWidth = function() return 400 end
+    grip:GetScript("OnMouseDown")(grip, "LeftButton")
+    T.True(grip:GetScript("OnUpdate") ~= nil, "held, it follows the pointer")
+    cx, cy = 560, 440
+    grip:GetScript("OnUpdate")(grip)
+    T.Eq(sizes[1], "460x360", "sixty right and sixty down grows it")
+    grip:GetScript("OnUpdate")(grip)
+    T.Eq(#sizes, 1, "a pointer that has not moved changes nothing")
+    cx, cy = 0, 900
+    grip:GetScript("OnUpdate")(grip)
+    T.Eq(sizes[2], "300x200", "and it stops at the least")
+    grip:GetScript("OnMouseUp")(grip, "LeftButton")
+    T.Eq(grip:GetScript("OnUpdate"), nil, "let go, the OnUpdate is gone")
+    T.Eq(done, "300x200", "and the final size is reported once")
+    _G.GetCursorPosition = savedCursor
+end)
+
+T.Case("Widgets: a text area takes lines, or holds a copy box steady", function()
+    local host = W.Panel(nil, { width = 300, height = 200 })
+    host:Hide()
+    local changes = {}
+    local area = W.TextArea(host, 280, 120, {
+        text = "first line",
+        onChange = function(text) changes[#changes + 1] = text end,
+    })
+    T.Eq(area:GetText(), "first line", "starts with its text")
+    T.Eq(area.edit:GetParent(), area.scroll.content, "the box scrolls inside the area")
+    area.edit:SetText("first line\nsecond")
+    area.edit:GetScript("OnTextChanged")(area.edit, true)
+    T.Eq(changes[1], "first line\nsecond", "a typed change is reported")
+    area:SetText("{}")
+    T.Eq(#changes, 1, "SetText is not")
+    T.Eq(area:GetText(), "{}", "and replaces the text")
+    T.Eq(area.scroll:GetOffset(), 0, "back at the top")
+
+    local copy = W.TextArea(host, 280, 120, { text = "export", readOnly = true })
+    copy.edit:SetText("exporx")
+    copy.edit:GetScript("OnTextChanged")(copy.edit, true)
+    T.Eq(copy:GetText(), "export", "a copy box undoes what is typed")
+    copy:SetText("new export")
+    T.Eq(copy:GetText(), "new export", "but takes SetText")
+
+    area:Resize(400, 200)
+    T.Eq(area.scroll.icViewH, 192, "a resize gives the scroll the new height, less the inset")
+end)
+
+T.Case("Widgets: a raid icon from a plain number, hidden for anything else", function()
+    local l, r, t, b = W.RaidIconCoords(1)
+    T.Eq(l .. "," .. r .. "," .. t .. "," .. b, "0,0.25,0,0.25", "star is the first quarter of the top row")
+    l, r, t, b = W.RaidIconCoords(8)
+    T.Eq(l .. "," .. r .. "," .. t .. "," .. b, "0.75,1,0.25,0.5", "skull is the last of the second row")
+    l, r, t, b = W.RaidIconCoords(5)
+    T.Eq(l .. "," .. t, "0,0.25", "moon starts the second row")
+    T.Eq(W.RaidIconCoords(0), nil, "0 is no icon")
+    T.Eq(W.RaidIconCoords(9), nil, "nor is 9")
+    T.Eq(W.RaidIconCoords(2.5), nil, "nor a fraction")
+    T.Eq(W.RaidIconCoords("3"), nil, "nor text")
+    T.Eq(W.RaidIconCoords(nil), nil, "nor nothing")
+
+    local host = W.Panel(nil, { width = 40, height = 40 })
+    host:Hide()
+    local icon = W.RaidIcon(host, 8, 20)
+    T.Eq(icon:GetIndex(), 8, "it shows the index it was made with")
+    T.Eq(icon:IsShown(), true, "visibly")
+    T.Eq(icon:SetIndex(nil), false, "no index hides it")
+    T.Eq(icon:IsShown(), false, "it is hidden")
+    T.Eq(icon:GetIndex(), false, "and it holds none")
+    local mark = FakeSecret()
+    Env.SetSecretCheck(function(v) return v == mark end)
+    T.Eq(icon:SetIndex(mark), false, "a secret index is never used")
+    T.Eq(icon:IsShown(), false, "the icon hides instead")
+    Env.SetSecretCheck(nil)
+    T.Eq(icon:SetIndex(3), true, "a plain one shows again")
+end)
+
+T.Case("Gallery: builds every widget, and toggles", function()
+    -- Headless only: in game this would open the gallery in the middle of /ickit test.
+    if not IC_HEADLESS then return end
+    T.Eq(ns.Gallery.Toggle(), true, "the first call builds it and shows it")
+    T.Eq(ns.Gallery.Toggle(), false, "the next hides it")
+end)
+
 T.Case("Kit: the build and the login lines", function()
     local build = { version = "1.60.1", build = "70124", interface = 16001 }
     T.Eq(ns.DescribeBuild(build), "1.60.1 (70124), interface 16001", "version, build and interface")
