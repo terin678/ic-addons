@@ -54,7 +54,7 @@ the layers it needs exist.
 | 1 | `LibICStore-1.0` | Saved variables: defaults, schema, migrations, the load check | shipped in ICKit 0.2.0 |
 | 1 | `LibICConsole-1.0` | Printing and slash commands | shipped in ICKit 0.2.0 |
 | 1 | `LibICTheme-1.0` | The theme registry: colour and font roles, change listeners | shipped in ICKit 0.3.0 |
-| 2 | `LibICWidgets-1.0` | Themed frames: panel, label, button, check box, edit box, tooltip, menu, confirm | shipped in ICKit 0.3.0 |
+| 2 | `LibICWidgets-1.0` | Themed frames: panel, label, button, check box, edit box, tooltip, menu, confirm; tabs, list, resize grip, text area and raid icon in 0.12.0 | shipped in ICKit 0.3.0 |
 
 All of them live in one library addon, [ICKit](../ICKit.md). A library is added when an
 addon needs it and not before.

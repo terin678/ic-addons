@@ -1545,6 +1545,56 @@ end
 -- The addon itself
 --------------------------------------------------------------------------------
 
+T.Case("Widgets: tabs lay out, shrinking alike when they would not fit", function()
+    local l = W.TabLayout(3, 400, 96)
+    T.Eq(l[1].x, 0, "the first at the left")
+    T.Eq(l[2].x, 98, "the next a tab and a gap along")
+    T.Eq(l[3].w, 96, "full width when there is room")
+    l = W.TabLayout(4, 200, 96)
+    T.Eq(l[1].w, 48, "four in 200 shrink to 48 each")
+    T.True(l[4].x + l[4].w <= 200, "and fit")
+    T.Eq(#W.TabLayout(0, 100), 0, "no tabs, no layout")
+    T.Eq(W.TabLayout(2, nil, 50)[2].x, 52, "no width means room for all")
+end)
+
+T.Case("Widgets: tabs select one, show its page, and refuse a disabled one", function()
+    local host = W.Panel(nil, { width = 300, height = 200 })
+    host:Hide()
+    local pageA, pageB = CreateFrame("Frame", nil, host), CreateFrame("Frame", nil, host)
+    local picked = {}
+    local strip = W.Tabs(host, {
+        { key = "a", label = "Roles", page = pageA },
+        { key = "b", label = "Rules", page = pageB },
+        { key = "c", label = "Deaths" },
+    }, { width = 300, onSelect = function(key) picked[#picked + 1] = key end })
+    T.Eq(strip:GetSelected(), "a", "the first tab is selected to start")
+    T.Eq(pageA:IsShown() and not pageB:IsShown(), true, "its page shows, the other hides")
+    strip.buttons.b:GetScript("OnClick")(strip.buttons.b)
+    T.Eq(strip:GetSelected(), "b", "a click selects")
+    T.Eq(picked[1], "b", "and is reported")
+    T.Eq(pageB:IsShown() and not pageA:IsShown(), true, "and swaps the pages")
+    strip.buttons.b:GetScript("OnClick")(strip.buttons.b)
+    T.Eq(#picked, 1, "clicking the selected tab again says nothing")
+    T.Eq(strip:Select("c"), true, "Select works on a tab with no page")
+    T.Eq(#picked, 1, "and does not report")
+    T.Eq(pageA:IsShown() or pageB:IsShown(), false, "every page hides")
+    T.Eq(strip:Select("nope"), false, "an unknown key is refused")
+    T.Eq(strip:GetSelected(), "c", "and changes nothing")
+    strip:SetDisabled("a", "Needs a raid")
+    strip.buttons.a:GetScript("OnClick")(strip.buttons.a)
+    T.Eq(strip:GetSelected(), "c", "a disabled tab cannot be picked")
+    T.Eq(strip.buttons.a.icDisabled, "Needs a raid", "and keeps its reason for the tooltip")
+    strip:SetDisabled("a", nil)
+    strip.buttons.a:GetScript("OnClick")(strip.buttons.a)
+    T.Eq(strip:GetSelected(), "a", "enabled again, it can")
+    strip:SetLabel("b", "Rules (3)")
+    T.Eq(strip.buttons.b.label:GetText(), "Rules (3)", "a label can change")
+    local other = W.Tabs(host, { { key = "x" }, { key = "y" } }, { selected = "y" })
+    T.Eq(other:GetSelected(), "y", "a starting tab can be named")
+    T.Eq(W.Tabs(host, { { key = "x" } }, { selected = "zz" }):GetSelected(), "x",
+        "an unknown starting tab falls back to the first")
+end)
+
 T.Case("Kit: the build and the login lines", function()
     local build = { version = "1.60.1", build = "70124", interface = 16001 }
     T.Eq(ns.DescribeBuild(build), "1.60.1 (70124), interface 16001", "version, build and interface")

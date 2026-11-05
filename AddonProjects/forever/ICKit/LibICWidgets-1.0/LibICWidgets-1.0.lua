@@ -15,6 +15,7 @@ is the exception: its bar is the client's own.
     W.Slider(parent, opts)              a number between two ends, its value beside it
     W.Choice(parent, w, h, opts)        one of a short list, picked from a menu
     W.Scroll(parent, w, h, opts)        a window onto content taller than itself
+    W.Tabs(parent, tabs, opts)          a row of tabs, each optionally showing its own page
     W.Tooltip(frame, builder)           builder(GameTooltip, frame) adds the lines
     W.Menu(owner, items)                a context menu from a list
     W.Confirm(text, onAccept)           a yes/no dialog
@@ -35,7 +36,7 @@ A field that is read before it is set is given a value at construction, always. 
 headless stub answers an unset field with a function, and "if not frame.x" would misread it.
 ]]
 
-local MAJOR, MINOR = "LibICWidgets-1.0", 3
+local MAJOR, MINOR = "LibICWidgets-1.0", 4
 local W = LibStub:NewLibrary(MAJOR, MINOR)
 if not W then return end
 
@@ -889,6 +890,156 @@ function W.Scroll(parent, w, h, opts)
         self.icThumb:SetColorTexture(thumb.r, thumb.g, thumb.b, 1)
     end)
     return s
+end
+
+--------------------------------------------------------------------------------
+-- Tabs
+--------------------------------------------------------------------------------
+
+local TAB_GAP = 2           -- pixels between two tabs
+local TAB_W = 96            -- a tab's width when the strip has room
+local TAB_H = 22
+local TAB_MARK_H = 2        -- the accent line under the selected tab
+
+-- Pure. Where each of `count` tabs sits in a strip `width` wide: { x, w } each, `tabW`
+-- wide with TAB_GAP between, all shrunk alike when they would not fit. No width means
+-- room for all.
+function W.TabLayout(count, width, tabW)
+    local out = {}
+    if (count or 0) < 1 then return out end
+    local w = tabW or TAB_W
+    if width and count * w + (count - 1) * TAB_GAP > width then
+        w = math.max(1, math.floor((width - (count - 1) * TAB_GAP) / count))
+    end
+    for i = 1, count do out[i] = { x = (i - 1) * (w + TAB_GAP), w = w } end
+    return out
+end
+
+local function RepaintTab(b, theme)
+    local c = theme.colors
+    local text
+    if b.icDisabled then
+        Paint(b, nil, nil)
+        text = c.textDisabled
+    elseif b.icSelected then
+        Paint(b, c.selected, nil)
+        text = c.text
+    elseif b.icHover then
+        Paint(b, c.hover, nil)
+        text = c.text
+    else
+        Paint(b, c.raised, nil)
+        text = c.textDim
+    end
+    b.label:SetTextColor(text.r, text.g, text.b, text.a or 1)
+    local a = c.accent
+    b.mark:SetColorTexture(a.r, a.g, a.b, a.a or 1)
+    b.mark:SetShown(b.icSelected == true)
+end
+
+local function DisabledTip(tip, b)
+    tip:AddLine(b.label:GetText() or "")
+    tip:AddLine(tostring(b.icDisabled), 1, 1, 1, true)
+end
+
+--[[
+A row of tabs with one selected. A tab may own a page: selecting the tab shows its page
+and hides the others, so a window switches pages with no code of its own.
+
+tabs = { { key = "roles", label = "Roles", page = frame }, ... }   -- page is optional
+opts = {
+    width,                       -- the strip; tabs shrink alike to fit it
+    tabWidth = 96, height = 22,
+    selected = key,              -- the first tab otherwise
+    onSelect = fn(key, strip),   -- a click on another tab, not Select
+}
+strip:Select(key)                selects it without calling onSelect; false for no such tab
+strip:GetSelected()
+strip:SetLabel(key, text)
+strip:SetDisabled(key, reason)   a reason greys the tab and says why on hover; nil enables
+strip.buttons[key]
+]]
+function W.Tabs(parent, tabs, opts)
+    opts = opts or {}
+    tabs = tabs or {}
+    local theme = Theme.Current()
+    local height = opts.height or TAB_H
+    local layout = W.TabLayout(#tabs, opts.width, opts.tabWidth)
+    local strip = CreateFrame("Frame", nil, parent)
+    local last = layout[#layout]
+    strip:SetSize(opts.width or (last and last.x + last.w or 1), height)
+    strip.icTabs = tabs
+    strip.buttons = {}
+    strip.icSelected = false
+    strip.icOnSelect = opts.onSelect or false
+
+    function strip:Select(key)
+        if not self.buttons[key] then return false end
+        self.icSelected = key
+        local current = Theme.Current()
+        for _, tab in ipairs(self.icTabs) do
+            local b = self.buttons[tab.key]
+            b.icSelected = tab.key == key
+            RepaintTab(b, current)
+            if tab.page then tab.page:SetShown(tab.key == key) end
+        end
+        return true
+    end
+
+    function strip:GetSelected()
+        return self.icSelected
+    end
+
+    function strip:SetLabel(key, text)
+        local b = self.buttons[key]
+        if b then b.label:SetText(text or "") end
+    end
+
+    function strip:SetDisabled(key, reason)
+        local b = self.buttons[key]
+        if not b then return end
+        b.icDisabled = reason or false
+        W.Tooltip(b, reason and DisabledTip or nil)
+        RepaintTab(b, (Theme.Current()))
+    end
+
+    for i, tab in ipairs(tabs) do
+        local b = CreateFrame("Button", nil, strip)
+        b:SetSize(layout[i].w, height)
+        b:SetPoint("TOPLEFT", strip, "TOPLEFT", layout[i].x, 0)
+        Skin(b)
+        b.icKey = tab.key
+        b.icSelected = false
+        b.icHover = false
+        b.icDisabled = false
+        b.label = b:CreateFontString(nil, "OVERLAY", theme.fonts.button)
+        b.label:SetPoint("LEFT", b, "LEFT", 4, 0)
+        b.label:SetPoint("RIGHT", b, "RIGHT", -4, 0)
+        b.label:SetWordWrap(false)
+        b.label:SetText(tab.label or tab.key)
+        b.mark = b:CreateTexture(nil, "ARTWORK")
+        b.mark:SetPoint("BOTTOMLEFT", b, "BOTTOMLEFT", 0, 0)
+        b.mark:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", 0, 0)
+        b.mark:SetHeight(TAB_MARK_H)
+        b:SetScript("OnEnter", function(self)
+            self.icHover = true
+            RepaintTab(self, (Theme.Current()))
+        end)
+        b:SetScript("OnLeave", function(self)
+            self.icHover = false
+            RepaintTab(self, (Theme.Current()))
+        end)
+        b:SetScript("OnClick", function(self)
+            if self.icDisabled or self.icKey == strip.icSelected then return end
+            strip:Select(self.icKey)
+            if strip.icOnSelect then strip.icOnSelect(self.icKey, strip) end
+        end)
+        strip.buttons[tab.key] = b
+        Track(b, RepaintTab)
+    end
+
+    if not strip:Select(opts.selected) and tabs[1] then strip:Select(tabs[1].key) end
+    return strip
 end
 
 --------------------------------------------------------------------------------
