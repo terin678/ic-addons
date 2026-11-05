@@ -181,6 +181,62 @@ T.Case("Env.Try: an answer, several answers, or the error", function()
     T.Eq(Env.Try("nothing", nil).err, "not a function", "asking nothing is said to be so")
 end)
 
+-- A stand-in for a secret value: like the client's, it refuses to become text.
+local function FakeSecret()
+    return setmetatable({}, {
+        __tostring = function() error("attempt to read a secret value") end,
+        __concat = function() error("attempt to concatenate a secret value") end,
+    })
+end
+
+T.Case("Env.IsSecret: the client's check, guarded, or false where there is none", function()
+    local mark = FakeSecret()
+    Env.SetSecretCheck(nil)
+    if type(issecretvalue) ~= "function" then
+        T.Eq(Env.IsSecret(mark), false, "a client without the check has no secrets")
+    end
+    Env.SetSecretCheck(function(v) return v == mark end)
+    T.Eq(Env.IsSecret(mark), true, "the check says so")
+    T.Eq(Env.IsSecret("plain"), false, "a plain value is not")
+    Env.SetSecretCheck(function() error("check broke") end)
+    T.Eq(Env.IsSecret(mark), false, "a check that fails is read as not secret, not raised")
+    Env.SetSecretCheck(function() return 1 end)
+    T.Eq(Env.IsSecret(mark), false, "only a true answer counts")
+    Env.SetSecretCheck(nil)
+end)
+
+T.Case("Env.Try: a secret return is marked, never joined into the text", function()
+    local mark = FakeSecret()
+    Env.SetSecretCheck(function(v) return v == mark end)
+    local t = Env.Try("unit", function() return "a", mark, 3 end)
+    T.Eq(t.ok, true, "the call answered")
+    T.Eq(t.n, 3, "all three returns counted")
+    T.Eq(t.text, "a, <secret>, 3", "the secret one is named, not read")
+    T.True(t.secret[2], "and its place is marked")
+    T.Eq(t.secret[1], nil, "a plain one is not")
+    T.True(t.values[2] == mark, "the value itself is handed back untouched")
+    t = Env.Try("secret error", function() error(mark) end)
+    T.Eq(t.ok, false, "an error raised with a secret is caught")
+    T.Eq(t.err, "<secret>", "and named, not read")
+    Env.SetSecretCheck(nil)
+end)
+
+T.Case("Env.Try: a return that will not become text leaves the answer intact", function()
+    local odd = FakeSecret()
+    Env.SetSecretCheck(function() return false end)
+    local t = Env.Try("odd", function() return 1, odd end)
+    T.Eq(t.ok, true, "the call still answered")
+    T.Eq(t.unreadable, true, "the text is said to be unreadable")
+    T.Eq(t.text, "<unreadable>", "rather than raising")
+    T.True(t.values[2] == odd, "and the values are all there")
+    t = Env.Try("odd error", function() error(odd) end)
+    T.Eq(t.err, "<unreadable>", "an error that will not become text is named too")
+    t = Env.Try("plain", function() return true end)
+    T.Eq(t.unreadable, nil, "a plain answer is readable")
+    T.Eq(next(t.secret), nil, "with nothing secret")
+    Env.SetSecretCheck(nil)
+end)
+
 T.Case("Env.Wrap: calls and time are counted, the function behaves as before", function()
     local now, step = 0, 5
     Env.SetClock(function() return now end)
