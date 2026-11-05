@@ -19,6 +19,7 @@ is the exception: its bar is the client's own.
     W.List(parent, w, h, opts)          column headers above pooled, single-line rows
     W.Resize(frame, opts)               a grip in the corner that resizes the frame
     W.TextArea(parent, w, h, opts)      many lines to paste into, or a copy box
+    W.RaidIcon(parent, index, size)     a raid target icon from a plain number, 1 to 8
     W.Tooltip(frame, builder)           builder(GameTooltip, frame) adds the lines
     W.Menu(owner, items)                a context menu from a list
     W.Confirm(text, onAccept)           a yes/no dialog
@@ -44,6 +45,7 @@ local W = LibStub:NewLibrary(MAJOR, MINOR)
 if not W then return end
 
 local Theme = LibStub("LibICTheme-1.0")
+local Env = LibStub("LibICEnv-1.0")
 
 --------------------------------------------------------------------------------
 -- Painting, and repainting on a theme change
@@ -1602,6 +1604,62 @@ function W.TextArea(parent, w, h, opts)
     end)
     FitText(area)
     return area
+end
+
+--------------------------------------------------------------------------------
+-- Raid icon
+--------------------------------------------------------------------------------
+
+-- The eight raid target icons, four to a row in one texture: star, circle, diamond,
+-- triangle, then moon, square, cross, skull.
+local RAID_ICONS = "Interface\\TargetingFrame\\UI-RaidTargetingIcons"
+local RAID_ICON_COUNT = 8
+
+-- Pure. The texcoords (left, right, top, bottom) of raid icon `index` (1 to 8) in the
+-- icons' texture, or nil for anything else: a number out of range, a fraction, text, nil.
+function W.RaidIconCoords(index)
+    if type(index) ~= "number" or index ~= math.floor(index) or index < 1 or index > RAID_ICON_COUNT then
+        return nil
+    end
+    local col, row = (index - 1) % 4, math.floor((index - 1) / 4)
+    return col * 0.25, (col + 1) * 0.25, row * 0.25, (row + 1) * 0.25
+end
+
+--[[
+One raid target icon, from a plain number. The client's own SetRaidTargetIconTexture is not
+used: it throws when handed a secret index. Here anything that is not a plain whole number
+from 1 to 8, a secret one included, hides the icon instead.
+
+icon = W.RaidIcon(parent, index, size)   size is 16 by default
+icon:SetIndex(index)                     returns whether it is showing
+icon:GetIndex()                          the index shown, or false
+]]
+function W.RaidIcon(parent, index, size)
+    local icon = parent:CreateTexture(nil, "ARTWORK")
+    icon:SetSize(size or 16, size or 16)
+    icon:SetTexture(RAID_ICONS)
+    icon.icIndex = false
+
+    function icon:SetIndex(i)
+        local l, r, t, b
+        if not Env.IsSecret(i) then l, r, t, b = W.RaidIconCoords(i) end
+        if not l then
+            self.icIndex = false
+            self:Hide()
+            return false
+        end
+        self.icIndex = i
+        self:SetTexCoord(l, r, t, b)
+        self:Show()
+        return true
+    end
+
+    function icon:GetIndex()
+        return self.icIndex
+    end
+
+    icon:SetIndex(index)
+    return icon
 end
 
 --------------------------------------------------------------------------------
