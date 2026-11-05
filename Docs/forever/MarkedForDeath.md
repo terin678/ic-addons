@@ -261,9 +261,9 @@ logged until you stand in an instance and type `/mfd combatlog here`. The open w
 never logged. A log you started yourself, or one another addon started outside your list,
 is left alone.
 
-On this client the log file stayed empty in the open world when tested. Whether it fills
-inside an instance is still being checked, and `/mfd combatlog` says so while anything is
-listed.
+On this client the log file is written late: it can stay empty through a pull and fill a
+few minutes later. An empty file right after a fight is normal, so upload it after the
+session. `/mfd combatlog` and the settings tab say so while anything is listed.
 
 ## Log
 
