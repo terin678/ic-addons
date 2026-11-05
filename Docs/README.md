@@ -16,6 +16,7 @@ maintainers.
 | [ICKit.md](ICKit.md) | The shared kit under the WoW Forever addons: pure helpers and the case runner so far, one layer at a time |
 | [Stickies.md](Stickies.md) | Sticky notes for WoW Forever: a title and a checklist on screen, per character or shared across the account |
 | [RenderTuner.md](RenderTuner.md) | Graphics tuner for WoW Forever: what the client can and cannot do, the tuning panel, upscaling and quality presets, and the commands |
+| [forever/MarkedForDeath.md](forever/MarkedForDeath.md) | Marked For Death for WoW Forever: icons as seats, mob rules by job, marking by your own keypress. A skeleton until the feature lanes land |
 | [forever/VISION.md](forever/VISION.md) | Why the Forever addons start fresh, the rules they are built by, and the order things arrive in |
 | [client-reference.md](client-reference.md) | Interface versions, client folders, and API notes per flavor |
 
