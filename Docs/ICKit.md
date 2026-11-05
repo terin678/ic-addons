@@ -65,6 +65,7 @@ should not. The counters cost two clock reads a call and need no console variabl
 | LibICEnv-1.0 | 2 | What this client offers (build, a feature probe, secret values) and what handlers cost (call and time counters, memory) |
 | LibICRestrict-1.0 | 1 | What the client will not let an addon do or read right now: secret values, and combat, encounter and chat restrictions with a reason |
 | LibICGroup-1.0 | 1 | Who is in the group: a roster snapshot of plain values, every field checked for secrets, and whether the player may mark |
+| LibICChat-1.0 | 1 | Lines said in chat: decided before they go (send, hold until chat unlocks, or refuse with a reason), with a per-channel budget |
 | LibICStore-1.0 | 1 | Saved variables: defaults, schema, migrations, and whether the file really loaded |
 | LibICConsole-1.0 | 1 | Prefixed printing and the slash-command dispatcher with its help |
 | LibICTheme-1.0 | 1 | The theme registry: colour and font roles, the selected theme, change listeners |
@@ -266,6 +267,51 @@ raid only as leader or assist or when everyone is assist. Raid units are read th
 as party ones, but the probe has only seen a party so far.
 
 There is no change event yet: call `Group.Now()` when you need a roster, out of combat.
+
+## LibICChat-1.0
+
+```lua
+local Chat = LibStub("LibICChat-1.0")
+local chat = Chat.New({ ttl = 10, onDrop = function(entry, reason) out.Debug("dropped: %s", reason) end })
+
+-- A death call: wait for chat to unlock, up to ten seconds.
+chat:Say({ text = "Healer down", channels = { "RAID_WARNING", "RAID" }, whenLocked = "queue" })
+
+-- A pre-pull line: after the pull it is wrong, so never hold it.
+local plan = chat:Say({ text = "Pull in 10", channel = "RAID" })
+if plan.action == "refuse" then button:SetLabel(plan.reason) end
+```
+
+On Forever chat can be locked, and RAID, RAID_WARNING and INSTANCE_CHAT each have their own
+rules, so every line is decided before it goes. The answer is a plan: `action` is `send`,
+`queue` (held until it can go or its time runs out) or `refuse`, with the `channel` it uses
+or would use, the cleaned `text`, and a `reason` in words.
+
+A line: `text` (line breaks become spaces, cut to 255 bytes), `channels` (a list; the first
+the group allows wins) or `channel`, `whenLocked = "queue"` to hold it rather than refuse,
+`ttl` (seconds a held line lives; the sender's by default), and `pressed = true` when a key
+press or click sent it.
+
+| Call | What it does |
+| --- | --- |
+| `Chat.New(opts)` | A sender with its own queue and record of what it sent. `opts`: `ttl` (10), `maxQueue` (20), `budget` (`{ [channel] = { lines, seconds } }`, `"*"` for the rest), `instance` (`"follow"` trusts the client's chat lock; `"locked"` treats every instance as locked), `onSend(plan)`, `onDrop(entry, reason)`. |
+| `sender:Say(line)` | Decides and acts: sends, holds, or refuses. Returns the plan. |
+| `sender:Flush()` | Sends what may go now and drops what expired. It runs by itself when the restriction state changes, and once a second while a line is held, in case chat unlocks without the restriction event. |
+| `sender:Queue()` | Held lines, oldest first: `{ line, expires, plan }`. |
+| `sender.stop()` | Stops it listening for restriction changes. |
+| `Chat.Decide(line, state)` | The plan, pure. `state`: `now`, `chat` (locked), `inInstance`, `instance`, `group` (`solo`, `party`, `raid`), `lead` (leader or assist in a raid; nil when unreadable), `instanceGroup`, `sent`, `budget`. |
+| `Chat.Flush(queue, state)` | `{ send, dropped, keep }`, pure: each held line decided again in order, counting this round's sends against the budget. A dropped entry says why (`expired`, or the refusal). |
+| `Chat.Budget(channel, state)` | 0 when a line may go now, else the seconds until one may. |
+
+What each channel needs: PARTY a party or raid; RAID a raid; RAID_WARNING a raid and lead
+or assist; INSTANCE_CHAT an instance group; SAY and YELL a key press (from a timer in combat
+the probe saw SAY sent but never arrive). Over budget a line is held (when it may be) or
+refused; the default is 2 raid warnings and 4 lines on any other channel per 10 seconds.
+
+The sender reads the chat lock from LibICRestrict, the group from LibICGroup, the instance
+type from `GetInstanceInfo`, and sends with `SendChatMessage`. Whether an instance locks
+chat during trash, a boss or not at all is not known yet; `instance = "locked"` is the
+setting for a client found to lock without saying so.
 
 ## LibICStore-1.0
 
