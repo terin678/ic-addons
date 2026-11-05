@@ -600,7 +600,7 @@ T.Case("Group.Snapshot: a party, every field plain", function()
 end)
 
 T.Case("Group.Snapshot: alone, and nothing said", function()
-    local s = Group.Snapshot({ me = "Player-1-A", units = { { unit = "player", guid = "Player-1-A", name = "Mal",
+    local s = Group.Snapshot({ inGroup = false, me = "Player-1-A", units = { { unit = "player", guid = "Player-1-A", name = "Mal",
         role = "NONE" } } })
     T.Eq(s.kind, "solo", "alone")
     T.Eq(s.me.display, "Mal", "one name is the whole name")
@@ -651,6 +651,38 @@ T.Case("Group.Snapshot: a secret field is unknown, never guessed", function()
     Env.SetSecretCheck(nil)
 end)
 
+T.Case("Group.Snapshot: whether this is a raid, and assist, are never guessed", function()
+    local mark = FakeSecret()
+    Env.SetSecretCheck(function(v) return v == mark end)
+    local reading = PartyReading()
+    reading.inRaid = mark
+    reading.units[1].leader, reading.units[1].assist = false, nil
+    local s = Group.Snapshot(reading)
+    T.Eq(s.kindKnown, false, "a secret IsInRaid leaves the kind unknown")
+    T.Eq(s.kind, "party", "the kind says group")
+    T.Eq(s.me.rank, nil, "with no assist answer, a non-leader's rank is unknown")
+    T.Eq(s.canMark, nil, "so whether the player may mark is unknown, not yes")
+    reading.units[1].assist = true
+    T.Eq(Group.Snapshot(reading).canMark, true, "an assist may mark either way")
+    reading.units[1].assist = nil
+    reading.units[1].unit, reading.units[2].unit = "raid1", "raid2"
+    s = Group.Snapshot(reading)
+    T.Eq(s.kind, "raid", "raid unit tokens prove a raid")
+    T.Eq(s.kindKnown, true, "and the kind is known")
+    T.Eq(s.me.rank, nil, "a raid member with no assist answer has no rank")
+    reading.units[1].assist = mark
+    T.Eq(Group.Snapshot(reading).me.unknown.assist, true, "a secret assist is named unknown")
+    reading.everyoneAssist = mark
+    T.Eq(Group.Snapshot(reading).everyoneAssist, nil, "a secret everyone-assist is nil, not false")
+    reading = PartyReading()
+    reading.inRaid, reading.units[2].assist = false, nil
+    s = Group.Snapshot(reading)
+    T.Eq(s.kindKnown and s.byGuid["Player-1-B"].rank, "member", "a known party member with no assist answer is a member")
+    reading = { inRaid = mark, inGroup = false, units = { { unit = "player" } } }
+    T.Eq(Group.Snapshot(reading).kindKnown, true, "not in a group is known alone")
+    Env.SetSecretCheck(nil)
+end)
+
 T.Case("Group.Read: the units of a party or a raid, every call guarded", function()
     -- Headless only: in game, writing these globals would taint them.
     if not IC_HEADLESS then return end
@@ -696,6 +728,16 @@ T.Case("Group.Read: the units of a party or a raid, every call guarded", functio
     _G.IsInGroup = function() return false end
     raid = false
     T.Eq(#Group.Read().units, 1, "alone is the player only")
+    local mark = FakeSecret()
+    Env.SetSecretCheck(function(v) return v == mark end)
+    _G.IsInGroup = function() return true end
+    _G.IsInRaid = function() return mark end
+    count = 8
+    T.Eq(Group.Read().units[1].unit, "raid1", "an unreadable IsInRaid with eight members reads raid units")
+    count = 3
+    T.Eq(Group.Read().units[1].unit, "player", "and with three, party units")
+    T.Eq(Group.Now().kindKnown, false, "leaving the kind unknown")
+    Env.SetSecretCheck(nil)
 
     for _, n in ipairs(names) do _G[n] = saved[n] end
 end)
@@ -743,6 +785,10 @@ T.Case("Chat.Decide: what each channel needs from the group", function()
     T.Eq(Chat.Decide({ text = "x", channel = "SAY" }, party).reason, "SAY needs a key press", "SAY from a timer")
     T.Eq(Chat.Decide({ text = "x", channel = "SAY", pressed = true }, party).action, "send", "SAY from a press")
     T.Eq(Chat.Decide({ text = "x", channel = "GUILD" }, party).reason, "no such channel: GUILD", "an unknown channel")
+    local maybe = { group = "group" }
+    T.Eq(Chat.Decide({ text = "x", channel = "RAID" }, maybe).reason, "cannot tell whether this is a raid",
+        "a group that may be a raid does not guess")
+    T.Eq(Chat.Decide({ text = "x", channels = { "RAID", "PARTY" } }, maybe).channel, "PARTY", "PARTY works either way")
 end)
 
 T.Case("Chat.Decide: locked chat queues or refuses, as the line asks", function()

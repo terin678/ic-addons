@@ -7,7 +7,7 @@ field checked, and kept: a pull then reads the snapshot, not the client.
 
     local Group = LibStub("LibICGroup-1.0")
 
-    Group.Snapshot(reading)         -> { kind, size, members, byGuid, me, leader, canMark, unknown }
+    Group.Snapshot(reading)         -> { kind, kindKnown, size, members, byGuid, me, leader, canMark, unknown }
     Group.Read()                    -> the reading Snapshot takes, from the client now
     Group.Now()                     -> Snapshot(Read())
 
@@ -17,7 +17,7 @@ missing answer leaves that field nil. Raid units are read the same way, but how 
 answers is not yet confirmed, so treat a raid snapshot's gaps as unknown, not as no.
 ]]
 
-local MAJOR, MINOR = "LibICGroup-1.0", 1
+local MAJOR, MINOR = "LibICGroup-1.0", 2
 local Group = LibStub:NewLibrary(MAJOR, MINOR)
 if not Group then return end
 
@@ -50,8 +50,9 @@ end
 
 -- One member from one unit's reading. Every field is read through Restrict.Readable; one
 -- that is secret, missing or the wrong type is nil, and named in `unknown` when the client
--- did send something.
-local function Member(row, me)
+-- did send something. strict: no assist answer at all is not taken as "not assist", which
+-- is safe only where there is no assist to be (a party, alone).
+local function Member(row, me, strict)
     local plain, unknown = {}, {}
     for _, field in ipairs(FIELDS) do
         local raw = row[field]
@@ -77,7 +78,7 @@ local function Member(row, me)
         m.rank = "leader"
     elseif assist then
         m.rank = "assist"
-    elseif leader == false and (assist == false or assist == nil and not unknown.assist) then
+    elseif leader == false and (assist == false or assist == nil and not unknown.assist and not strict) then
         m.rank = "member"
     end
     if m.name then
@@ -99,6 +100,8 @@ end
 --                       dead (UnitIsDeadOrGhost) }
 -- Returns:
 --   kind       "solo", "party" or "raid"
+--   kindKnown  false when IsInRaid could not be read and nothing else proved a raid: kind
+--              then says "party" for a group that may be a raid
 --   size       how many members
 --   members    one per unit row: { unit, guid, name, name2, display, class, classLocal,
 --              role ("TANK", "HEALER", "DAMAGER" or nil), mainTank, rank ("leader",
@@ -108,16 +111,28 @@ end
 --   leader     the member who leads, or nil
 --   canMark    whether the player may set raid target icons: always in a party or alone,
 --              in a raid only as leader or assist or when everyone is assist; nil when the
---              player's rank could not be read
+--              player's rank, or whether this is a raid, could not be read
 --   unknown    how many fields across all members came back unreadable
 function Group.Snapshot(reading)
     reading = reading or {}
-    local inRaid = Restrict.Readable(reading.inRaid) == true
-    local inGroup = Restrict.Readable(reading.inGroup) == true
+    local units = reading.units or {}
+    local raidAnswer = Restrict.Readable(reading.inRaid)
+    local groupAnswer = Restrict.Readable(reading.inGroup)
+    -- A raid is known from IsInRaid, or proved by raid unit tokens; alone is known from
+    -- IsInGroup. Anything else is a group that may be a raid.
+    local isRaid, kindKnown = false, false
+    if type(raidAnswer) == "boolean" then
+        isRaid, kindKnown = raidAnswer, true
+    elseif units[1] and tostring(units[1].unit):match("^raid%d") then
+        isRaid, kindKnown = true, true
+    end
+    if groupAnswer == false and not isRaid then kindKnown = true end
     local me = Text(Restrict.Readable(reading.me))
-    local s = { kind = inRaid and "raid" or (inGroup and "party" or "solo"), members = {}, byGuid = {}, unknown = 0 }
-    for i, row in ipairs(reading.units or {}) do
-        local m = Member(row, me)
+    local s = { kind = isRaid and "raid" or (groupAnswer == true and "party" or "solo"), kindKnown = kindKnown,
+        members = {}, byGuid = {}, unknown = 0 }
+    local strict = isRaid or not kindKnown
+    for i, row in ipairs(units) do
+        local m = Member(row, me, strict)
         s.members[i] = m
         if m.guid then s.byGuid[m.guid] = m end
         if m.isMe then s.me = m end
@@ -127,12 +142,13 @@ function Group.Snapshot(reading)
     s.size = #s.members
     s.everyoneAssist = Flag(Restrict.Readable(reading.everyoneAssist))
 
-    if s.kind ~= "raid" then
+    local rank = s.me and s.me.rank
+    if s.kind ~= "raid" and s.kindKnown then
         s.canMark = true
-    elseif s.everyoneAssist then
+    elseif s.everyoneAssist or rank == "leader" or rank == "assist" then
         s.canMark = true
-    elseif s.me and s.me.rank then
-        s.canMark = s.me.rank ~= "member"
+    elseif rank == "member" and s.kind == "raid" then
+        s.canMark = false
     end
     return s
 end
@@ -188,7 +204,10 @@ function Group.Read()
     local count = Restrict.Readable(Ask(GetNumGroupMembers))
     if type(count) ~= "number" then count = 0 end
     local units = {}
-    local plainRaid = Restrict.Readable(inRaid) == true
+    -- IsInRaid is not yet proven plain: when it cannot be read, more members than a party
+    -- holds is a raid.
+    local raidAnswer = Restrict.Readable(inRaid)
+    local plainRaid = raidAnswer == true or (raidAnswer == nil and count > MAX_PARTY)
     local plainGroup = Restrict.Readable(inGroup) == true
     for i, unit in ipairs(Units(plainRaid, plainGroup, count)) do units[i] = ReadUnit(unit) end
     return {
