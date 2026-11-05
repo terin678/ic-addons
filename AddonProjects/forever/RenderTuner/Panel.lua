@@ -434,16 +434,22 @@ local function Build()
         tip:AddLine("Changes nothing else: the quality levels stay as they are.", 0.7, 0.7, 0.7, true)
     end)
     Strip(p, stripY - BUTTON_H - STRIP_GAP, "Quality", Catalog.LEVELS, levelButtons, function(preset)
+        -- The change comes first, so a fault in showing the group cannot stop it; script
+        -- errors are off in the client, so a fault is said in chat instead of lost.
         local function Go()
-            ClearSearch()
-            Panel.ShowGroup(preset.experimental and "hdr" or "quality")
-            ns.ApplyLevel(preset)
+            local ok, err = pcall(function()
+                ClearSearch()
+                ns.ApplyLevel(preset)
+                Panel.ShowGroup(preset.experimental and "hdr" or "quality")
+            end)
+            if not ok then ns.Print("|cffff4444" .. preset.label .. " failed:|r " .. tostring(err)) end
             Panel.Refresh()
         end
         -- Extreme turns on things that can crash the game: it is asked about, once it is off.
         local live = ns.Apply.Live()
         if preset.experimental and Model.LevelOf(live.graphicsQuality, Catalog.LEVELS, live, ns.Refused) ~= preset then
-            W.Confirm(EXTREME_WARNING, Go)
+            -- No popup to ask with: the warning is in the tooltip, so go on.
+            if not W.Confirm(EXTREME_WARNING, Go) then Go() end
         else
             Go()
         end
