@@ -2,7 +2,7 @@ local addonName, ns = ...
 
 --[[
 Tests_RaidCheck: the raid check lane's cases (Data_Auras, RaidCheckModel, and the pure
-halves of RaidCheck). Owned by lane C. Cases registered on ns.Tests with T.Case;
+halves of RaidCheck and UI_RaidCheck). Owned by lane C. Cases registered on ns.Tests with T.Case;
 Tests.lua runs them all. Every case builds its own tables.
 ]]
 
@@ -355,4 +355,47 @@ T.Case("ShouldAutoOpen: leader or assist only, and the switch wins", function()
     T.Eq(Model.ShouldAutoOpen(Roster("solo", "leader"), {}), false, "alone")
     T.Eq(Model.ShouldAutoOpen(Roster("raid", "leader"), { autoOpen = false }), false, "switched off")
     T.Eq(Model.ShouldAutoOpen(nil, {}), false, "no roster")
+end)
+
+T.Case("RaidCheckUI.ListColumns: name fills, each cell column keeps its kind's width", function()
+    local UI = ns.RaidCheckUI
+    local columns = Model.Columns({})
+    local list = UI.ListColumns(columns)
+    T.Eq(#list, #columns + 1, "a name column plus one per model column")
+    T.Eq(list[1].key, "name", "name first")
+    T.Eq(list[1].width, nil, "the name column fills")
+    for i, c in ipairs(columns) do
+        T.Eq(list[i + 1].key, c.key, "same order: " .. c.key)
+        T.True(type(list[i + 1].width) == "number" and list[i + 1].width > 0, "fixed width: " .. c.key)
+    end
+    local flask = UI.ListColumns({ { key = "flask", label = "Flask", kind = "flask" } })[2]
+    T.Eq(flask.justify, "LEFT", "flask text reads from the left")
+    local odd = UI.ListColumns({ { key = "x", label = "X", kind = "nothing known" } })[2]
+    T.Eq(odd.width, 40, "an unknown kind gets the narrow width")
+end)
+
+T.Case("RaidCheckUI.GridCell: colour roles, and grey is never red", function()
+    local UI = ns.RaidCheckUI
+    local row = { name = "Ann", missing = {}, unknown = 0, cells = {
+        fort = { status = "ok", text = "yes" },
+        int = { status = "missing", text = "no" },
+        mark = { status = "unknown", text = "?" },
+        ver = { status = "old", text = "0.0.9" },
+        sprot = { status = "none", text = "-" },
+        odd = { status = "made up", text = "x" },
+    } }
+    local function Role(key) return select(2, UI.GridCell(row, { key = key })) end
+    T.Eq(Role("fort"), "good", "ok")
+    T.Eq(Role("int"), "bad", "missing")
+    T.Eq(Role("mark"), "textDim", "unknown is grey")
+    T.Eq(Role("ver"), "warn", "older version")
+    T.Eq(Role("sprot"), "textDisabled", "nothing expected")
+    T.Eq(Role("odd"), "textDim", "a status the grid does not know is grey, not red")
+    T.Eq(UI.GridCell(row, { key = "fort" }), "yes", "the cell's text")
+    T.Eq(UI.GridCell(row, { key = "absent" }), "", "a column with no cell is blank")
+    T.Eq(select(2, UI.GridCell(row, { key = "name" })), "good", "nothing missing: green name")
+    row.unknown = 1
+    T.Eq(select(2, UI.GridCell(row, { key = "name" })), "textDim", "only unread: grey name")
+    row.missing = { "Fort" }
+    T.Eq(select(2, UI.GridCell(row, { key = "name" })), "bad", "missing something: red name")
 end)

@@ -2,22 +2,20 @@ local addonName, ns = ...
 
 --[[
 UI_RaidCheck: the raid check grid and buff board.
-Owned by lane C (raid check). Frame module: builds nothing at file scope; the windows are
-made the first time they are shown, which is never before the ns.OnReady hook below, and
-that hook returns early on IC_HEADLESS. Everything shown comes from RaidCheck's snapshot,
-which RaidCheckModel built; this file only draws it.
+Owned by lane C (raid check). Frame module: builds nothing at file scope; the tab is
+registered and the board made in the ns.OnReady hook below, which returns early on
+IC_HEADLESS. Everything shown comes from RaidCheck's snapshot, which RaidCheckModel built;
+this file only draws it.
 
-    The grid    a window: toolbar, a header row above the scroll, one fixed-height row per
-                member and one cell per column. /mfd check.
+    The grid    the main window's "Raid check" tab (lane G's ns.UI.AddTab): toolbar, status
+                line, then a W.List with one row per member and one cell per column.
+                /mfd check opens the window on it.
     The board   a small movable panel listing only the members missing something, its
                 place saved per character (windows.board). /mfd check board.
 
 Colours mean one thing each: green has it, red missing, grey could not be read (never
-red), amber an older version, dim nothing expected.
-
-TODO(lane G, K8): when UI_Main offers ns.UI.AddTab, BuildGrid moves into a "Raid check" tab
-and the standalone grid window goes; until then it opens centred and is not remembered.
-When LibICWidgets has List (K8), the hand-pooled rows below move onto it.
+red), amber an older version, dim nothing expected. In the grid they are theme roles
+(good, bad, textDim, warn, textDisabled); the board and tooltips use the fixed codes.
 ]]
 
 ns.RaidCheckUI = ns.RaidCheckUI or {}
@@ -26,19 +24,17 @@ local RC = ns.RaidCheck
 local Model = ns.RaidCheckModel
 
 local W = LibStub("LibICWidgets-1.0")
+local Theme = LibStub("LibICTheme-1.0")
 
-local GRID_NAME = "MarkedForDeathRaidCheck"     -- named for UISpecialFrames (Escape closes)
 local BOARD_NAME = "MarkedForDeathBuffBoard"
 local ROW_H = 18                                -- pixels, every list row
 local HEAD_H = 18                               -- the header row
 local TITLE_H = 24
 local TOOLBAR_H = 26
+local STATUS_H = 14                             -- the status line under the toolbar
 local PAD = 8
-local NAME_W = 120
-local GRID_ROWS = 20                            -- rows visible before the list scrolls
 local BOARD_W, BOARD_ROWS = 300, 10
 local BOARD_NAME_W = 110
-local TOOLBAR_W = 386                           -- the grid toolbar's buttons and gaps
 local TICK = 10                                 -- seconds between redraws of the read's age
 
 -- Cell widths by column kind, in pixels.
@@ -49,8 +45,21 @@ local STATUS_HEX = {
     ok = "ff44ff44", missing = "ffff4444", unknown = "ff999999", old = "ffffcc66", none = "ff666666",
 }
 
+-- The same meanings as theme colour roles, for the grid's cells.
+local STATUS_ROLE = {
+    ok = "good", missing = "bad", unknown = "textDim", old = "warn", none = "textDisabled",
+}
+
+-- For GameTooltip, which is dark on every theme.
 local function Paint(status, text)
     return "|c" .. (STATUS_HEX[status] or STATUS_HEX.unknown) .. tostring(text or "") .. "|r"
+end
+
+-- For text on our own panels: the theme's colour for the status, so it reads on a light
+-- theme too.
+local function ThemePaint(status, text)
+    local color = Theme.Current().colors[STATUS_ROLE[status] or STATUS_ROLE.unknown]
+    return Theme.Hex(color) .. tostring(text or "") .. "|r"
 end
 
 local function Age(seconds)
@@ -73,7 +82,7 @@ end
 local function StatusLine(snap)
     if not snap then return "Not read yet. Scan reads everyone's buffs out of combat." end
     local line = string.format("Read %s ago (%s), %d members.", Age(time() - snap.at), snap.reason, #snap.rows)
-    if snap.held then line = line .. " " .. Paint("old", "Held: " .. snap.held .. ".") end
+    if snap.held then line = line .. " " .. ThemePaint("old", "Held: " .. snap.held .. ".") end
     return line
 end
 
@@ -98,8 +107,8 @@ end
 -- A window shell: panel, title bar that drags it, a close button
 --------------------------------------------------------------------------------
 
--- `escape = false` keeps Escape from closing it: the board stays up through a raid.
-local function Shell(name, title, width, height, onMoved, escape)
+-- Not in UISpecialFrames: Escape leaves the board up through a raid.
+local function Shell(name, title, width, height, onMoved)
     local panel = W.Panel(UIParent, {
         name = name, width = width, height = height, strata = "MEDIUM", movable = true, onMoved = onMoved,
     })
@@ -114,16 +123,15 @@ local function Shell(name, title, width, height, onMoved, escape)
     local close = W.Button(bar, "x", 20, 18, { kind = "flat", onClick = function() panel:Hide() end })
     close:SetPoint("RIGHT", bar, "RIGHT", -4, 0)
     W.Tooltip(close, function(tip) tip:AddLine("Close") tip:Show() end)
-    if escape ~= false then tinsert(UISpecialFrames, name) end
     panel:Hide()
     return panel
 end
 
 --------------------------------------------------------------------------------
--- The grid
+-- The grid (the main window's "check" tab, on W.List)
 --------------------------------------------------------------------------------
 
-local grid
+local grid      -- { page, toolbar, status, list, lists, columns, columnKey, boardButton }
 
 local function GridColumns()
     local snap = RC.Snapshot()
@@ -131,77 +139,61 @@ local function GridColumns()
     return Model.Columns(ns.db and ns.db.check and ns.db.check.columns)
 end
 
-local function ColumnsWidth(columns)
-    local w = NAME_W
-    for _, c in ipairs(columns) do w = w + (KIND_W[c.kind] or 40) end
-    return w
+-- Below the toolbar and the status line, the list takes the rest of the page.
+local function ListHeight(pageH)
+    return math.max(ROW_H * 3, pageH - TOOLBAR_H - STATUS_H - 4)
 end
 
--- One pooled row: a name and a cell per column, rebuilt when the columns change.
-local function GridRow(content, index)
-    local row = CreateFrame("Frame", nil, content)
-    row:SetHeight(ROW_H)
-    row:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -(index - 1) * ROW_H)
-    row:SetPoint("RIGHT", content, "RIGHT", 0, 0)
-    row:EnableMouse(true)
-    row.name = Cell(row, NAME_W - 4, "LEFT")
-    row.name:SetPoint("LEFT", row, "LEFT", 4, 0)
-    row.cells = {}
-    W.Tooltip(row, function(tip, self)
-        if self.icRow then RowTooltip(tip, self.icRow, grid.columns) end
-    end)
-    return row
-end
-
-local function LayoutCells(row, columns)
-    for _, fs in pairs(row.cells) do fs:Hide() end
-    local x = NAME_W
+-- Pure. The List's columns from the model's: the name fills what the cells leave.
+function UI.ListColumns(columns)
+    local out = { { key = "name", label = "Name" } }
     for _, c in ipairs(columns) do
-        local w = KIND_W[c.kind] or 40
-        local fs = row.cells[c.key]
-        if not fs then
-            local justify = (c.kind == "blessing" or c.kind == "flask") and "LEFT" or "CENTER"
-            fs = Cell(row, w - 4, justify)
-            row.cells[c.key] = fs
-        end
-        fs:ClearAllPoints()
-        fs:SetPoint("LEFT", row, "LEFT", x + 2, 0)
-        fs:Show()
-        x = x + w
+        out[#out + 1] = { key = c.key, label = c.label, width = KIND_W[c.kind] or 40,
+            justify = (c.kind == "blessing" or c.kind == "flask") and "LEFT" or "CENTER" }
     end
+    return out
 end
 
--- Sizes the window, the list and the header to the columns, never narrower than the
--- toolbar, so a column switched on later never runs past the edge.
-local function SizeGrid(columns)
-    local listW = ColumnsWidth(columns) + 16      -- room for the scroll bar
-    grid:SetWidth(math.max(listW, TOOLBAR_W) + PAD * 2)
-    grid.scroll:SetWidth(listW)
-    grid.scroll.content:SetWidth(listW - 12)
-    grid.header:SetWidth(listW - 12)
+local function NameRole(row)
+    if #row.missing > 0 then return STATUS_ROLE.missing end
+    if row.unknown > 0 then return STATUS_ROLE.unknown end
+    return STATUS_ROLE.ok
 end
 
-local function BuildHeader(columns)
-    for _, fs in pairs(grid.heads) do fs:Hide() end
-    local x = NAME_W
-    for _, c in ipairs(columns) do
-        local w = KIND_W[c.kind] or 40
-        local fs = grid.heads[c.key]
-        if not fs then
-            fs = Cell(grid.header, w - 4, "CENTER")
-            fs:SetRole("textDim")
-            grid.heads[c.key] = fs
-        end
-        fs:SetText(c.label)
-        fs:ClearAllPoints()
-        fs:SetPoint("LEFT", grid.header, "LEFT", x + 2, 0)
-        fs:Show()
-        x = x + w
+-- Pure. A grid cell's text and theme role. Grey (textDim) is never red: an unknown or a
+-- status the grid does not know is drawn as unknown.
+function UI.GridCell(row, column)
+    if column.key == "name" then return row.name, NameRole(row) end
+    local cell = row.cells[column.key]
+    if not cell then return "", nil end
+    return cell.text or "", STATUS_ROLE[cell.status] or STATUS_ROLE.unknown
+end
+
+-- The List's columns are fixed when it is made, so each set of columns (a setting) has its
+-- own, kept by column key and shown in turn; switching back reuses the one already made.
+local function UseList(key, columns)
+    if grid.list then grid.list:Hide() end
+    local page = grid.page
+    local made = grid.lists[key]
+    if made then
+        made:Resize(page:GetWidth(), ListHeight(page:GetHeight()))
+        made:Show()
+        grid.list = made
+        return
     end
+    grid.list = W.List(page, page:GetWidth(), ListHeight(page:GetHeight()), {
+        columns = UI.ListColumns(columns),
+        rowHeight = ROW_H,
+        cell = UI.GridCell,
+        tooltip = function(tip, row) RowTooltip(tip, row, grid.columns) end,
+        empty = "Nobody read yet. Scan reads the group out of combat.",
+    })
+    grid.list:SetPoint("TOPLEFT", grid.status, "BOTTOMLEFT", 0, -4)
+    grid.lists[key] = grid.list
 end
 
 local function RefreshGrid()
-    if not grid or not grid:IsShown() then return end
+    if not grid or not grid.page:IsVisible() then return end
     local snap = RC.Snapshot()
     local columns = GridColumns()
     local key = {}
@@ -210,34 +202,10 @@ local function RefreshGrid()
     if key ~= grid.columnKey then
         grid.columnKey = key
         grid.columns = columns
-        SizeGrid(columns)
-        BuildHeader(columns)
-        for _, row in ipairs(grid.rows) do LayoutCells(row, columns) end
+        UseList(key, columns)
     end
     grid.status:SetText(StatusLine(snap))
-
-    local rows = snap and snap.rows or {}
-    for i, data in ipairs(rows) do
-        local row = grid.rows[i]
-        if not row then
-            row = GridRow(grid.scroll.content, i)
-            LayoutCells(row, grid.columns)
-            grid.rows[i] = row
-        end
-        row.icRow = data
-        local nameStatus = #data.missing > 0 and "missing" or (data.unknown > 0 and "unknown" or "ok")
-        row.name:SetText(Paint(nameStatus == "ok" and "ok" or nameStatus, data.name))
-        for _, c in ipairs(grid.columns) do
-            local cell = data.cells[c.key]
-            row.cells[c.key]:SetText(cell and Paint(cell.status, cell.text) or "")
-        end
-        row:Show()
-    end
-    for i = #rows + 1, #grid.rows do
-        grid.rows[i].icRow = nil
-        grid.rows[i]:Hide()
-    end
-    grid.scroll:SetContentHeight(#rows * ROW_H)
+    grid.list:SetItems(snap and snap.rows or {})
 end
 
 -- Lays the buttons left to right; returns them by `key`.
@@ -246,7 +214,7 @@ local function Toolbar(parent, buttons)
     for _, b in ipairs(buttons) do
         local button = W.Button(parent, b.text, b.width, 20, { kind = b.kind, onClick = b.onClick })
         button:SetPoint("LEFT", parent, "LEFT", x, 0)
-        W.Tooltip(button, function(tip) tip:AddLine(b.text) tip:AddLine(b.tip, 1, 1, 1, true) tip:Show() end)
+        W.Tooltip(button, function(tip) tip:AddLine(b.text) tip:AddLine(b.tip, 1, 1, 1, true) end)
         x = x + b.width + 4
         if b.key then made[b.key] = button end
     end
@@ -260,17 +228,20 @@ local function BoardLabel()
     end
 end
 
--- While a window is shown its "read Ns ago" is redrawn every TICK seconds; a quiet group
--- sends no event that would. The ticker stops when the window hides.
+-- While a page or window is shown its "read Ns ago" is redrawn every TICK seconds; a
+-- quiet group sends no event that would. The ticker stops when it hides.
+-- Returns the start function, for a frame already showing when the hooks go on.
 local function Tick(frame, redraw)
-    frame:HookScript("OnShow", function(self)
+    local function Start(self)
         if self.icTicker or not (C_Timer and C_Timer.NewTicker) then return end
         self.icTicker = C_Timer.NewTicker(TICK, redraw)
-    end)
+    end
+    frame:HookScript("OnShow", Start)
     frame:HookScript("OnHide", function(self)
         if self.icTicker then self.icTicker:Cancel() end
         self.icTicker = nil
     end)
+    return Start
 end
 
 local function Scan()
@@ -278,59 +249,56 @@ local function Scan()
     if not ok then ns.Printf("not read: %s.", why) end
 end
 
-local function BuildGrid()
-    local columns = GridColumns()
-    local listW = ColumnsWidth(columns) + 16      -- room for the scroll bar
-    local width = math.max(listW, TOOLBAR_W) + PAD * 2
-    local statusH = 14
-    local height = TITLE_H + PAD + TOOLBAR_H + statusH + 4 + HEAD_H + GRID_ROWS * ROW_H + PAD
-    grid = Shell(GRID_NAME, "Raid check", width, height)
-    grid.rows, grid.heads = {}, {}
+-- UI_Main hands over the page the first time the tab shows, already sized.
+local function BuildGridInto(page)
+    grid = { page = page, lists = {} }
 
-    local toolbar = CreateFrame("Frame", nil, grid)
-    toolbar:SetHeight(TOOLBAR_H)
-    toolbar:SetPoint("TOPLEFT", grid, "TOPLEFT", PAD, -(TITLE_H + PAD))
-    toolbar:SetPoint("RIGHT", grid, "RIGHT", -PAD, 0)
-    local made = Toolbar(toolbar, {
+    grid.toolbar = CreateFrame("Frame", nil, page)
+    grid.toolbar:SetHeight(TOOLBAR_H)
+    grid.toolbar:SetPoint("TOPLEFT", page, "TOPLEFT", 0, 0)
+    grid.toolbar:SetPoint("RIGHT", page, "RIGHT", 0, 0)
+    local made = Toolbar(grid.toolbar, {
         { text = "Scan", width = 60, kind = "accent", onClick = Scan,
           tip = "Read everyone's buffs now. Out of combat only." },
         { text = "Callout", width = 70, onClick = function() RC.Callout() end,
-          tip = "Say who is missing what in group chat, one line per fix. Grey cells are never named." },
+          tip = "Say who is missing what in the announce channel, one line per fix (Raid Lead only). Grey cells are never named." },
         { text = "Missing", width = 70, onClick = function() RC.Missing() end,
           tip = "Print who is missing what, for you only." },
         { text = "Ready check", width = 90, onClick = function() RC.ReadyCheck() end,
           tip = "Start the game's ready check (leader or assistant)." },
         { key = "board", text = "Hide board", width = 80, kind = "flat", onClick = function() UI.ToggleBoard() end,
-          tip = "The small board: only the members missing something." },
+          tip = "The small board: only the members missing something. It stays up when this window closes." },
     })
     grid.boardButton = made.board
     BoardLabel()
 
-    grid.status = W.Label(grid, "", { font = "small", color = "textDim" })
-    grid.status:SetPoint("TOPLEFT", toolbar, "BOTTOMLEFT", 0, -2)
-    grid.status:SetPoint("RIGHT", grid, "RIGHT", -PAD, 0)
+    grid.status = W.Label(page, "", { font = "small", color = "textDim" })
+    grid.status:SetPoint("TOPLEFT", grid.toolbar, "BOTTOMLEFT", 0, 0)
+    grid.status:SetPoint("RIGHT", page, "RIGHT", 0, 0)
+    grid.status:SetHeight(STATUS_H)
     grid.status:SetWordWrap(false)
-    grid.status:SetHeight(statusH)
+    if grid.status.SetMaxLines then grid.status:SetMaxLines(1) end
 
-    -- The header row sits above the scroll, so it stays put while rows scroll.
-    grid.header = CreateFrame("Frame", nil, grid)
-    grid.header:SetHeight(HEAD_H)
-    grid.header:SetPoint("TOPLEFT", toolbar, "BOTTOMLEFT", 0, -(statusH + 4))
-    grid.header:SetWidth(listW - 12)
-    local nameHead = Cell(grid.header, NAME_W - 4, "LEFT")
-    nameHead:SetRole("textDim")
-    nameHead:SetText("Name")
-    nameHead:SetPoint("LEFT", grid.header, "LEFT", 4, 0)
-
-    grid.scroll = W.Scroll(grid, listW, GRID_ROWS * ROW_H, { step = ROW_H * 3 })
-    grid.scroll:SetPoint("TOPLEFT", grid.header, "BOTTOMLEFT", 0, 0)
-
-    grid:HookScript("OnShow", function()
+    -- The page shows and hides with the tab and with the window, so the live events are
+    -- on exactly while somebody can see the grid.
+    local function Shown()
         RC.Live("grid", true)
         RefreshGrid()
-    end)
-    grid:HookScript("OnHide", function() RC.Live("grid", false) end)
-    Tick(grid, function() grid.status:SetText(StatusLine(RC.Snapshot())) end)
+    end
+    page:HookScript("OnShow", Shown)
+    page:HookScript("OnHide", function() RC.Live("grid", false) end)
+    local startTick = Tick(page, function() grid.status:SetText(StatusLine(RC.Snapshot())) end)
+
+    -- A tab click, or opening on the saved tab, shows the page before it is built, so
+    -- that first OnShow has already gone by: do its work now.
+    if page:IsVisible() then
+        Shown()
+        startTick(page)
+    end
+end
+
+local function ResizeGrid(w, h)
+    if grid and grid.list then grid.list:Resize(w, ListHeight(h)) end
 end
 
 --------------------------------------------------------------------------------
@@ -355,7 +323,7 @@ local function RefreshBoard()
     end
     local line = snap and string.format("%d missing something, read %s ago.", #shown, Age(time() - snap.at))
         or "Not read yet."
-    if unknown > 0 then line = line .. " " .. Paint("unknown", unknown .. " not read in full.") end
+    if unknown > 0 then line = line .. " " .. ThemePaint("unknown", unknown .. " not read in full.") end
     board.status:SetText(line)
     for i, data in ipairs(shown) do
         local row = board.rows[i]
@@ -377,7 +345,7 @@ local function RefreshBoard()
         end
         row.icRow = data
         row.name:SetText(data.name)
-        row.what:SetText(Paint("missing", Model.MissingLine(data)))
+        row.what:SetText(ThemePaint("missing", Model.MissingLine(data)))
         row:Show()
     end
     for i = #shown + 1, #board.rows do
@@ -391,7 +359,7 @@ local function BuildBoard()
     local listW = BOARD_W - PAD * 2
     local statusH = 14
     local height = TITLE_H + PAD + statusH + 4 + HEAD_H + BOARD_ROWS * ROW_H + PAD
-    board = Shell(BOARD_NAME, "Buff board", BOARD_W, height, SaveBoard, false)
+    board = Shell(BOARD_NAME, "Buff board", BOARD_W, height, SaveBoard)
     board.rows = {}
     local place = ns.cdb and ns.cdb.windows.board
     if place and place.fx and place.fy then
@@ -440,18 +408,18 @@ end
 -- Entry points
 --------------------------------------------------------------------------------
 
+-- Opens the main window on the Raid check tab.
 function UI.ShowGrid()
-    if not grid then BuildGrid() end
+    if not (ns.UI and ns.UI.Open) then return end
     if not RC.Snapshot() then RC.Scan("opened") end
-    grid:Show()
+    ns.UI.Open("check")
 end
 
+-- Opens it, or closes the window when the Raid check tab is the one showing.
 function UI.ToggleGrid()
-    if grid and grid:IsShown() then
-        grid:Hide()
-        return
-    end
-    UI.ShowGrid()
+    if not (ns.UI and ns.UI.Toggle) then return end
+    if not RC.Snapshot() then RC.Scan("opened") end
+    ns.UI.Toggle("check")
 end
 
 function UI.BoardShown()
@@ -470,6 +438,12 @@ end
 
 ns.OnReady("raidcheck window", function()
     if IC_HEADLESS then return end
+    -- Takes the "check" tab from UI_Main's placeholder (whichever ready hook runs first).
+    if ns.UI and ns.UI.AddTab then
+        local ok, why = ns.UI.AddTab("check", "Raid check", BuildGridInto,
+            { refresh = RefreshGrid, onResize = ResizeGrid })
+        if not ok then ns.Printf("the raid check tab was not added: %s.", tostring(why)) end
+    end
     RC.OnChange("ui", function()
         RefreshGrid()
         RefreshBoard()

@@ -57,7 +57,7 @@ A new install starts with this plan, with no players pinned:
 
 | Command | What it does |
 | --- | --- |
-| `/mfd check` | Opens or closes the grid: one row per member, one cell per buff or consumable |
+| `/mfd check` | Opens the window on the Raid check tab, or closes it when that tab is showing: one row per member, one cell per buff or consumable |
 | `/mfd check missing` | Prints who is missing what, for you only |
 | `/mfd check callout` | Says who is missing what in the announce channel, one line per fix, at most four lines, once per 10 seconds. Only the Raid Lead sends it, and never during a chat lockdown |
 | `/mfd check auras` | Lists your own buffs with their spell ids and what the check took each one for |
@@ -66,13 +66,14 @@ A new install starts with this plan, with no players pinned:
 
 **When it reads.** On Forever the client hides auras in combat, so the check reads everyone
 only out of combat: when you press Scan or run a command, on every ready check, and, while
-the grid or board is open, whenever a buff or the group changes. When combat starts it
-reads once more (the lock arrives a few seconds after the pull) and then shows that read,
-with its age, until combat ends. Nothing is read or thrown away in combat. A closed grid
-listens to nothing but the ready check.
+the Raid check tab or the board is showing, whenever a buff or the group changes. When
+combat starts it reads once more (the lock arrives a few seconds after the pull) and then
+shows that read, with its age, until combat ends. Nothing is read or thrown away in combat. With neither
+showing it listens to nothing but the ready check.
 
-**On a ready check** everyone's check reads the group. The grid opens by itself only for the
-group's leader and assistants, so twenty four other screens stay clear.
+**On a ready check** everyone's check reads the group. The window opens on the Raid check
+tab by itself only for the group's leader and assistants, so twenty four other screens stay
+clear.
 
 **The columns.** Int, Mark, Fort, Spirit and SProt (the class buffs), Bless (the blessings a
 member carries, one expected per paladin present), Flask, Food, Dur (durability) and Ver
@@ -326,7 +327,8 @@ rule you have as a file to copy, and **Load file** reads one: matches are update
 nothing is deleted. Rules read from an Anniversary file sit under their old zone name until
 you stand in the instance they belong to and press **Move here**.
 
-**Raid check** opens the raid check grid (`/mfd check`) until the grid moves into the tab.
+**Raid check** is the raid check grid (`/mfd check`): Scan, Callout, Missing, Ready check
+and Board above a list of the group; see [Raid check](#raid-check).
 **Deaths** holds the death call and chat cue settings.
 
 **Settings** has the on switch, debug lines and the minimap button; the Raid Lead; a summary
