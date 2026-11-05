@@ -3,12 +3,15 @@ local addonName, ns = ...
 --[[
 Buttons: the marking route the recon says is left. SetRaidTarget refuses addon Lua, so a
 Forever MarkedForDeath would write a secure macro out of combat and the player would press
-it. Four buttons ask whether that works, and how far:
+it. Six buttons ask whether that works, and how far:
 
     Mark by name    /targetexact <name> then /tm ~<icon>, for each name    (P6)
     Conditionals    /tm [@mouseover,exists] ~8 and /tm [@nameplate1,exists] ~7  (P7)
     Long macro      a macro past 255 characters whose last line marks you with the moon  (P7)
     Clear all       the secure raidtarget action's clear-all
+    Snippet         a secure snippet rewrites the macro on each click, mouseover square
+                    then diamond                                            (P15)
+    Click chain     /click on a hidden named button that marks you with the triangle  (P17)
 
 Each click is a run: after a second the marks on the target, mouseover and player are read
 back, with the client's refusals heard in between. Attributes are set out of combat only;
@@ -27,11 +30,29 @@ local W = LibStub("LibICWidgets-1.0")
 local BUTTON_W, BUTTON_H, GAP = 150, 22, 6
 local PANEL_W = BUTTON_W * 2 + GAP * 3
 local TOP = 46
-local PANEL_H = TOP + BUTTON_H * 2 + GAP * 2
+local PANEL_H = TOP + BUTTON_H * 3 + GAP * 3
 -- Seconds after a click before the marks are read back.
 local READBACK = 1.0
 -- Characters in the long macro: past the old 255 limit.
 local LONG = 300
+
+-- The button "/click" presses. It has to have a global name, because /click finds a
+-- button by name; nothing else in the addon is a global.
+local CLICK_TARGET = "MFDProbeClickTarget"
+
+-- Run in the restricted environment before the snippet button's own click: it rewrites
+-- the button's macro, which is the question (P15). Odd clicks mark the mouseover with the
+-- square, even ones with the diamond, so every click, in combat too, needs a rewrite to
+-- come out right; the counter shows the snippet ran at all.
+local SNIPPET = [=[
+    local n = (self:GetAttribute("probe-runs") or 0) + 1
+    self:SetAttribute("probe-runs", n)
+    if n % 2 == 1 then
+        self:SetAttribute("macrotext", "/tm [@mouseover,exists] 6")
+    else
+        self:SetAttribute("macrotext", "/tm [@mouseover,exists] 3")
+    end
+]=]
 
 local panel
 local buttons = {}   -- key -> button
@@ -43,8 +64,11 @@ local function OnClicked(key)
     local run = ns.Checks.NewRun("click " .. key, "click")
     ns.Listen.Ensure(run, READBACK + 2)
     local button = buttons[key]
+    -- The attribute, not the Lua field: the snippet rewrites only the attribute.
+    local text = ns.Call(button.GetAttribute, button, "macrotext")
+    local macro = text.ok and type(text.values[1]) == "string" and text.values[1] or ""
     run.rows[#run.rows + 1] = { id = "button." .. key .. ".clicked", outcome = "ok",
-        v = string.format("%d characters", #(button.macroText or "")), combat = ns.InCombat() }
+        v = string.format("%d characters", #macro), combat = ns.InCombat() }
     C_Timer.After(READBACK, function()
         for _, unit in ipairs(READ_UNITS) do
             local exists = ns.Call(UnitExists, unit)
@@ -53,6 +77,10 @@ local function OnClicked(key)
                 ns.AddRow(run, "button." .. key .. ".after." .. unit .. ".GetRaidTargetIndex",
                     ns.Call(GetRaidTargetIndex, unit))
             end
+        end
+        -- What the secure side left on the button, for the snippet's question.
+        for _, name in ipairs(button.readAttributes or {}) do
+            ns.AddRow(run, "button." .. key .. ".attribute." .. name, ns.Call(button.GetAttribute, button, name))
         end
         ns.Print(string.format("click on %s recorded as run %d.", button.label, run.id))
     end)
@@ -100,6 +128,28 @@ local function Build()
     clear.macroText = ""
     clear:SetAttribute("type", "raidtarget")
     clear:SetAttribute("action", "clear-all")
+
+    -- P15: the macro starts empty; only the snippet, run on the click, gives it one.
+    local snippet = MakeButton("snippet", "Snippet: mouseover", 1, 3)
+    snippet.macroText = ""
+    snippet.readAttributes = { "probe-runs", "macrotext" }
+    snippet:SetAttribute("type", "macro")
+    snippet:SetAttribute("macrotext", "")
+    local header = CreateFrame("Frame", nil, panel, "SecureHandlerBaseTemplate")
+    local wrapped = ns.Call(SecureHandlerWrapScript, snippet, "OnClick", header, SNIPPET)
+    Buttons.wrapError = not wrapped.ok and wrapped.err or nil
+
+    -- P17: a hidden button that marks you with the triangle, pressed by another's /click.
+    local target = CreateFrame("Button", CLICK_TARGET, panel, "SecureActionButtonTemplate")
+    target:Hide()
+    target:RegisterForClicks("AnyUp")
+    target:SetAttribute("useOnKeyDown", false)
+    target:SetAttribute("type", "macro")
+    target:SetAttribute("macrotext", "/tm [@player] 4")
+    local chain = MakeButton("click", "Click chain", 2, 3)
+    chain.macroText = "/click " .. CLICK_TARGET .. " LeftButton"
+    chain:SetAttribute("type", "macro")
+    chain:SetAttribute("macrotext", chain.macroText)
 end
 
 -- The hostile names in view that read plainly, without repeats.
@@ -128,6 +178,9 @@ function Buttons.Show(names)
     named:SetText(#names > 0 and string.format("Mark by name (%d)", #names) or "Mark by name (none)")
     panel:Show()
     local lines = { "the marking buttons are up, below the top of the screen." }
+    if Buttons.wrapError then
+        lines[#lines + 1] = "|cffff4444the snippet could not be attached:|r " .. Buttons.wrapError
+    end
     if #names == 0 then
         lines[#lines + 1] = "no mob names read plainly here; type them: /mfdp buttons Name One, Name Two"
     else

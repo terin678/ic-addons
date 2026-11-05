@@ -573,6 +573,18 @@ end
 -- on other clients) to answer with their durability.
 local DURABILITY_PREFIX = "LibDRBLT"
 
+-- P16: a raid warning drawn on this screen only, which sends nothing. Whether the line
+-- shows during an encounter or a chat lockdown is for the player's eyes; the rows say
+-- whether the call ran and whether the frame was showing straight after.
+local function CheckNotice(run)
+    local frameOk = type(RaidWarningFrame) == "table"
+    Note(run, "notice.RaidWarningFrame", frameOk and "ok" or "absent", frameOk and "present" or "missing")
+    local info = type(ChatTypeInfo) == "table" and ChatTypeInfo.RAID_WARNING or nil
+    local text = string.format("MFDProbe notice %d (%s)", run.id, ns.InCombat() and "in combat" or "out of combat")
+    Add(run, "notice.RaidNotice_AddMessage", RaidNotice_AddMessage, RaidWarningFrame, text, info)
+    if frameOk then Add(run, "notice.RaidWarningFrame.IsShown", RaidWarningFrame.IsShown, RaidWarningFrame) end
+end
+
 local function CheckDurability(run)
     Add(run, "durability.head", GetInventoryItemDurability, 1)
     Add(run, "durability.chest", GetInventoryItemDurability, 5)
@@ -626,7 +638,8 @@ function Checks.NewRun(phase, trigger)
 end
 
 local LIGHT = { CheckRestrictions, CheckUnits, CheckMeter, CheckCombatLog }
-local HEAVY = { CheckPresence, CheckChat, CheckAddonMessages, CheckInspect, CheckLogging, CheckDurability, CheckSecureButton }
+local HEAVY = { CheckPresence, CheckChat, CheckAddonMessages, CheckInspect, CheckLogging, CheckNotice, CheckDurability,
+    CheckSecureButton }
 
 -- One pass. Each check is fenced off, so one that throws loses its own rows and nothing
 -- else.

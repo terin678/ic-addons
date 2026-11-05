@@ -193,7 +193,9 @@ T.Case("Checks.Run: every check runs on a client that has almost nothing", funct
     end
     T.True(#run.rows > 20, "rows were written")
     local lines = ns.Buttons.Show({ "Mine Rat" })
-    T.True(lines[2]:find("Mine Rat", 1, true), "the buttons build and name the mob")
+    T.True(table.concat(lines, " "):find("Mine Rat", 1, true), "the buttons build and name the mob")
+    T.True(table.concat(lines, " "):find("snippet could not be attached", 1, true),
+        "a client with no secure handlers says the snippet is missing")
     T.True(#ns.Buttons.Show({})[2] > 0, "and say something with no names")
     ns.Buttons.Hide()
     ns.Listen.Stop()

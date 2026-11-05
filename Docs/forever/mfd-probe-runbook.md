@@ -15,7 +15,10 @@ Typed runs (`/mfdp now`) try to set a raid mark from addon code on your target a
 yourself. The client is expected to refuse this, and each refusal opens a popup saying the
 addon was blocked from an action. That popup is a result: close it. The marking buttons
 (step 5) do set real marks on mobs (skull, cross, square and down by name, skull and cross
-by mouseover and first nameplate, the moon on you) and `Clear all` removes every mark.
+by mouseover and first nameplate, the moon on you, square or diamond on the mouseover from
+`Snippet: mouseover`, the triangle on you from `Click chain`) and `Clear all` removes every
+mark. Typed runs and one run per pull also flash a raid warning reading `MFDProbe notice
+<n>` on your own screen only; it sends nothing.
 `/mfdp now` and one run in each pull send a test line to PARTY, RAID, INSTANCE_CHAT,
 RAID_WARNING and SAY, and ask the group's addons for durability. Tell the group first.
 `/mfdp chat off` leaves the chat lines out, but those answers are part of what we need.
@@ -35,13 +38,18 @@ RAID_WARNING and SAY, and ask the group's addons for durability. Tell the group 
    says so: then type the names you see on the nameplates instead, for example
    `/mfdp buttons Defias Pillager, Defias Evoker`. With a pack in view and the mouse over
    one of its mobs, click each button once, waiting a second between clicks:
-   `Mark by name`, `Conditionals`, `Long macro`, then `Clear all`. Each click says
-   `click ... recorded`.
+   `Mark by name`, `Conditionals`, `Long macro`, `Snippet: mouseover` (mouse over a mob),
+   `Click chain`, then `Clear all`. Each click says `click ... recorded`. The marking
+   buttons work in the open world too, so this step and the next can be done there first.
 6. **Pull that pack with the buttons up.** `/mfdp arm` just before the pull. In combat,
-   click `Mark by name`, `Conditionals` and `Long macro`, and type `/mfdp now` once. After
-   the fight, click `Clear all`, then `/mfdp buttons hide`.
-7. **A boss, if you get to one.** `/mfdp arm` before the pull. Arming leaves combat
-   logging on until the pull is captured, so the log file can be checked afterwards.
+   click `Mark by name`, `Conditionals`, `Long macro`, `Snippet: mouseover` twice (mouse
+   over a different mob each time) and `Click chain`, and type `/mfdp now` once. After the
+   fight, click `Clear all`, then `/mfdp buttons hide`.
+7. **A boss, if you get to one.** `/mfdp arm` before the pull, and type `/mfdp now` once
+   during the fight. Watch the middle of the screen: say whether the `MFDProbe notice`
+   raid warning showed during the boss (it is the only answer the file cannot hold).
+   Arming leaves combat logging on until the pull is captured, so the log file can be
+   checked afterwards.
 8. **A raid instance, if you are in one** (Onyxia's Lair, or any raid map). Out of combat
    and away from a boss: `/mfdp now`, then `/mfdp arm` before a trash pull. This answers
    whether chat is locked for the whole raid map or only during an encounter.
