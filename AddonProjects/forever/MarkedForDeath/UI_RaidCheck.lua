@@ -38,6 +38,8 @@ local NAME_W = 120
 local GRID_ROWS = 20                            -- rows visible before the list scrolls
 local BOARD_W, BOARD_ROWS = 300, 10
 local BOARD_NAME_W = 110
+local TOOLBAR_W = 386                           -- the grid toolbar's buttons and gaps
+local TICK = 10                                 -- seconds between redraws of the read's age
 
 -- Cell widths by column kind, in pixels.
 local KIND_W = { buff = 40, blessing = 84, flask = 104, food = 40, durability = 44, version = 48 }
@@ -96,7 +98,8 @@ end
 -- A window shell: panel, title bar that drags it, a close button
 --------------------------------------------------------------------------------
 
-local function Shell(name, title, width, height, onMoved)
+-- `escape = false` keeps Escape from closing it: the board stays up through a raid.
+local function Shell(name, title, width, height, onMoved, escape)
     local panel = W.Panel(UIParent, {
         name = name, width = width, height = height, strata = "MEDIUM", movable = true, onMoved = onMoved,
     })
@@ -111,7 +114,7 @@ local function Shell(name, title, width, height, onMoved)
     local close = W.Button(bar, "x", 20, 18, { kind = "flat", onClick = function() panel:Hide() end })
     close:SetPoint("RIGHT", bar, "RIGHT", -4, 0)
     W.Tooltip(close, function(tip) tip:AddLine("Close") tip:Show() end)
-    tinsert(UISpecialFrames, name)
+    if escape ~= false then tinsert(UISpecialFrames, name) end
     panel:Hide()
     return panel
 end
@@ -168,6 +171,16 @@ local function LayoutCells(row, columns)
     end
 end
 
+-- Sizes the window, the list and the header to the columns, never narrower than the
+-- toolbar, so a column switched on later never runs past the edge.
+local function SizeGrid(columns)
+    local listW = ColumnsWidth(columns) + 16      -- room for the scroll bar
+    grid:SetWidth(math.max(listW, TOOLBAR_W) + PAD * 2)
+    grid.scroll:SetWidth(listW)
+    grid.scroll.content:SetWidth(listW - 12)
+    grid.header:SetWidth(listW - 12)
+end
+
 local function BuildHeader(columns)
     for _, fs in pairs(grid.heads) do fs:Hide() end
     local x = NAME_W
@@ -197,6 +210,7 @@ local function RefreshGrid()
     if key ~= grid.columnKey then
         grid.columnKey = key
         grid.columns = columns
+        SizeGrid(columns)
         BuildHeader(columns)
         for _, row in ipairs(grid.rows) do LayoutCells(row, columns) end
     end
@@ -226,14 +240,37 @@ local function RefreshGrid()
     grid.scroll:SetContentHeight(#rows * ROW_H)
 end
 
+-- Lays the buttons left to right; returns them by `key`.
 local function Toolbar(parent, buttons)
-    local x = 0
+    local x, made = 0, {}
     for _, b in ipairs(buttons) do
         local button = W.Button(parent, b.text, b.width, 20, { kind = b.kind, onClick = b.onClick })
         button:SetPoint("LEFT", parent, "LEFT", x, 0)
         W.Tooltip(button, function(tip) tip:AddLine(b.text) tip:AddLine(b.tip, 1, 1, 1, true) tip:Show() end)
         x = x + b.width + 4
+        if b.key then made[b.key] = button end
     end
+    return made
+end
+
+-- The Board button says whether the board is open.
+local function BoardLabel()
+    if grid and grid.boardButton then
+        grid.boardButton:SetLabel(UI.BoardShown() and "Hide board" or "Board")
+    end
+end
+
+-- While a window is shown its "read Ns ago" is redrawn every TICK seconds; a quiet group
+-- sends no event that would. The ticker stops when the window hides.
+local function Tick(frame, redraw)
+    frame:HookScript("OnShow", function(self)
+        if self.icTicker or not (C_Timer and C_Timer.NewTicker) then return end
+        self.icTicker = C_Timer.NewTicker(TICK, redraw)
+    end)
+    frame:HookScript("OnHide", function(self)
+        if self.icTicker then self.icTicker:Cancel() end
+        self.icTicker = nil
+    end)
 end
 
 local function Scan()
@@ -244,7 +281,7 @@ end
 local function BuildGrid()
     local columns = GridColumns()
     local listW = ColumnsWidth(columns) + 16      -- room for the scroll bar
-    local width = listW + PAD * 2
+    local width = math.max(listW, TOOLBAR_W) + PAD * 2
     local statusH = 14
     local height = TITLE_H + PAD + TOOLBAR_H + statusH + 4 + HEAD_H + GRID_ROWS * ROW_H + PAD
     grid = Shell(GRID_NAME, "Raid check", width, height)
@@ -254,7 +291,7 @@ local function BuildGrid()
     toolbar:SetHeight(TOOLBAR_H)
     toolbar:SetPoint("TOPLEFT", grid, "TOPLEFT", PAD, -(TITLE_H + PAD))
     toolbar:SetPoint("RIGHT", grid, "RIGHT", -PAD, 0)
-    Toolbar(toolbar, {
+    local made = Toolbar(toolbar, {
         { text = "Scan", width = 60, kind = "accent", onClick = Scan,
           tip = "Read everyone's buffs now. Out of combat only." },
         { text = "Callout", width = 70, onClick = function() RC.Callout() end,
@@ -263,14 +300,17 @@ local function BuildGrid()
           tip = "Print who is missing what, for you only." },
         { text = "Ready check", width = 90, onClick = function() RC.ReadyCheck() end,
           tip = "Start the game's ready check (leader or assistant)." },
-        { text = "Board", width = 60, kind = "flat", onClick = function() UI.ToggleBoard() end,
+        { key = "board", text = "Hide board", width = 80, kind = "flat", onClick = function() UI.ToggleBoard() end,
           tip = "The small board: only the members missing something." },
     })
+    grid.boardButton = made.board
+    BoardLabel()
 
     grid.status = W.Label(grid, "", { font = "small", color = "textDim" })
     grid.status:SetPoint("TOPLEFT", toolbar, "BOTTOMLEFT", 0, -2)
     grid.status:SetPoint("RIGHT", grid, "RIGHT", -PAD, 0)
     grid.status:SetWordWrap(false)
+    grid.status:SetHeight(statusH)
 
     -- The header row sits above the scroll, so it stays put while rows scroll.
     grid.header = CreateFrame("Frame", nil, grid)
@@ -290,6 +330,7 @@ local function BuildGrid()
         RefreshGrid()
     end)
     grid:HookScript("OnHide", function() RC.Live("grid", false) end)
+    Tick(grid, function() grid.status:SetText(StatusLine(RC.Snapshot())) end)
 end
 
 --------------------------------------------------------------------------------
@@ -329,7 +370,8 @@ local function RefreshBoard()
             row.what = Cell(row, BOARD_W - BOARD_NAME_W - PAD * 2 - 20, "LEFT")
             row.what:SetPoint("LEFT", row, "LEFT", BOARD_NAME_W, 0)
             W.Tooltip(row, function(tip, self)
-                if self.icRow then RowTooltip(tip, self.icRow, snap and snap.ctx.columns or {}) end
+                local now = RC.Snapshot()
+                if self.icRow then RowTooltip(tip, self.icRow, now and now.ctx.columns or {}) end
             end)
             board.rows[i] = row
         end
@@ -349,7 +391,7 @@ local function BuildBoard()
     local listW = BOARD_W - PAD * 2
     local statusH = 14
     local height = TITLE_H + PAD + statusH + 4 + HEAD_H + BOARD_ROWS * ROW_H + PAD
-    board = Shell(BOARD_NAME, "Buff board", BOARD_W, height, SaveBoard)
+    board = Shell(BOARD_NAME, "Buff board", BOARD_W, height, SaveBoard, false)
     board.rows = {}
     local place = ns.cdb and ns.cdb.windows.board
     if place and place.fx and place.fy then
@@ -361,6 +403,7 @@ local function BuildBoard()
     board.status:SetPoint("TOPLEFT", board, "TOPLEFT", PAD, -(TITLE_H + PAD))
     board.status:SetPoint("RIGHT", board, "RIGHT", -PAD, 0)
     board.status:SetWordWrap(false)
+    board.status:SetHeight(statusH)
 
     local header = CreateFrame("Frame", nil, board)
     header:SetHeight(HEAD_H)
@@ -378,11 +421,19 @@ local function BuildBoard()
     board.scroll = W.Scroll(board, listW, BOARD_ROWS * ROW_H, { step = ROW_H * 3 })
     board.scroll:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, 0)
 
+    -- Open or closed is kept per character, so a board left up comes back after a reload.
     board:HookScript("OnShow", function()
         RC.Live("board", true)
+        if ns.cdb then ns.cdb.windows.board.shown = true end
+        BoardLabel()
         RefreshBoard()
     end)
-    board:HookScript("OnHide", function() RC.Live("board", false) end)
+    board:HookScript("OnHide", function()
+        RC.Live("board", false)
+        if ns.cdb then ns.cdb.windows.board.shown = false end
+        BoardLabel()
+    end)
+    Tick(board, RefreshBoard)
 end
 
 --------------------------------------------------------------------------------
@@ -403,6 +454,10 @@ function UI.ToggleGrid()
     UI.ShowGrid()
 end
 
+function UI.BoardShown()
+    return board ~= nil and board:IsShown()
+end
+
 function UI.ToggleBoard()
     if board and board:IsShown() then
         board:Hide()
@@ -419,4 +474,5 @@ ns.OnReady("raidcheck window", function()
         RefreshGrid()
         RefreshBoard()
     end)
+    if ns.cdb and ns.cdb.windows.board.shown then UI.ToggleBoard() end
 end)

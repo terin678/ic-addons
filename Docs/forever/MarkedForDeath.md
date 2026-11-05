@@ -61,7 +61,7 @@ A new install starts with this plan, with no players pinned:
 | `/mfd check missing` | Prints who is missing what, for you only |
 | `/mfd check callout` | Says who is missing what in raid (or party) chat, one line per fix, at most four lines, once per 10 seconds |
 | `/mfd check auras` | Lists your own buffs with their spell ids and what the check took each one for |
-| `/mfd check board` | Opens or closes the buff board: a small window listing only the members missing something |
+| `/mfd check board` | Opens or closes the buff board: a small window listing only the members missing something. Escape leaves it up, and it is still open after a reload |
 | `/mfd check ready` | Starts the game's ready check (group leader or assistant) |
 
 **When it reads.** On Forever the client hides auras in combat, so the check reads everyone
