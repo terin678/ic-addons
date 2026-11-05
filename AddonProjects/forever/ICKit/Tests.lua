@@ -1775,6 +1775,13 @@ T.Case("Widgets: a raid icon from a plain number, hidden for anything else", fun
     T.Eq(icon:SetIndex(3), true, "a plain one shows again")
 end)
 
+T.Case("Gallery: builds every widget, and toggles", function()
+    -- Headless only: in game this would open the gallery in the middle of /ickit test.
+    if not IC_HEADLESS then return end
+    T.Eq(ns.Gallery.Toggle(), true, "the first call builds it and shows it")
+    T.Eq(ns.Gallery.Toggle(), false, "the next hides it")
+end)
+
 T.Case("Kit: the build and the login lines", function()
     local build = { version = "1.60.1", build = "70124", interface = 16001 }
     T.Eq(ns.DescribeBuild(build), "1.60.1 (70124), interface 16001", "version, build and interface")

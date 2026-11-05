@@ -35,8 +35,12 @@ gold), **Impulse Control** (the guild's navy, gold and bone, for members who wan
 on screen repaints at once. The start of a name is enough, and `/ickit theme default` goes
 back. Only a theme you picked is saved, so an account that never chose follows the default.
 
-`/ickit gallery` opens a small panel with one of every widget in the current theme. Drag it
-by its title bar; where you leave it is remembered per character.
+`/ickit gallery` opens a small panel with one of every widget in the current theme, on three
+tabs: Basics (buttons, a tick box, an edit box, a menu, a confirm, a slider, a choice and the
+eight raid icons), List (two hundred sample rows; click a header to sort, a row to select it,
+hover for its tooltip) and Text (a text area holding a little JSON, with a button that reads it
+back). A fourth tab is disabled, to show how one looks. Drag it by its title bar and resize it
+by its bottom-right corner; its place, size and tab are remembered per character.
 
 ### The probe
 
@@ -484,8 +488,9 @@ distance it missed.
 An edit box with focus takes every key, movement included. An addon that shows one drops
 its focus (`box:ClearFocus()`) when combat starts.
 
-`Gallery.lua` in the kit is the worked example: a movable panel with a title bar that drags
-it, its place saved per character, a menu and a confirm.
+`Gallery.lua` in the kit is the worked example: a movable, resizable panel with a title bar
+that drags it, tabs that switch pages, a list with its header above the scroll, a text area,
+its place and size saved per character, a menu and a confirm.
 
 ## Running the cases
 
