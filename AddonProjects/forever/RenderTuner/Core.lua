@@ -168,10 +168,18 @@ local function Refused(cvar, value)
 end
 ns.Refused = Refused
 
+-- What a preset's extras are judged by: the client's refusals, and the values it took but
+-- did not keep (it caps a light distance of its own, and holds back multisampling until the
+-- graphics restart). Those are noted when a preset is applied, and not held against it.
+function ns.Excused(cvar, value)
+    local unkept = ns.db and ns.db.settings.unkept
+    return Refused(cvar, value) or (unkept ~= nil and unkept[cvar] == value) or nil
+end
+
 -- The preset with extras that the settings are holding now, or nil.
 local function HeldExtras(live)
     for _, other in ipairs(ns.Catalog.LEVELS) do
-        if other.also and ns.Model.AlsoHeld(other, live, Refused) then return other end
+        if other.also and ns.Model.AlsoHeld(other, live, ns.Excused) then return other end
     end
 end
 
@@ -225,6 +233,11 @@ function ns.ApplyLevel(preset)
             end
         end
         table.sort(odd)
+        local unkept = {}
+        for cvar, want in pairs(wanted) do
+            if after[cvar] ~= nil and not ns.Model.Same(want, after[cvar]) then unkept[cvar] = want end
+        end
+        ns.db.settings.unkept = next(unkept) and unkept or nil
         if #odd > 0 then
             line = line .. "; |cffff8040the client did not keep: " .. table.concat(odd, "; ") .. "|r"
         end
@@ -342,7 +355,7 @@ COMMANDS.quality = function(rest)
     if not Ready() then return end
     if Util.Trim(rest) == "" then
         local live = ns.Apply.Live()
-        local now = ns.Model.LevelOf(live.graphicsQuality, ns.Catalog.LEVELS, live, ns.Refused)
+        local now = ns.Model.LevelOf(live.graphicsQuality, ns.Catalog.LEVELS, live, ns.Excused)
         for _, preset in ipairs(ns.Catalog.LEVELS) do
             out.Printf("  %s%s: level %d of 10%s", preset.key, preset == now and " |cff00ff00(in use)|r" or "",
                 preset.level + 1, preset.also and ", and every setting beyond the levels turned all the way up (experimental)" or "")

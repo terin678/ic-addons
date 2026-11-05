@@ -447,7 +447,7 @@ local function Build()
         end
         -- Extreme turns on things that can crash the game: it is asked about, once it is off.
         local live = ns.Apply.Live()
-        if preset.experimental and Model.LevelOf(live.graphicsQuality, Catalog.LEVELS, live, ns.Refused) ~= preset then
+        if preset.experimental and Model.LevelOf(live.graphicsQuality, Catalog.LEVELS, live, ns.Excused) ~= preset then
             -- No popup to ask with: the warning is in the tooltip, so go on.
             if not W.Confirm(EXTREME_WARNING, Go) then Go() end
         else
@@ -747,7 +747,7 @@ function Panel.Refresh()
         presetButtons[each.key]:SetKind(each == preset and "accent" or "normal")
         presetButtons[each.key]:SetLabel(Model.PresetLabel(each, limits))
     end
-    local level = Model.LevelOf(live.graphicsQuality, Catalog.LEVELS, live, ns.Refused)
+    local level = Model.LevelOf(live.graphicsQuality, Catalog.LEVELS, live, ns.Excused)
     for _, each in ipairs(Catalog.LEVELS) do
         local b = levelButtons[each.key]
         b:SetKind(each == level and "accent" or "normal")
