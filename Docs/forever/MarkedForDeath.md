@@ -63,7 +63,36 @@ A new install starts with this plan, with no players pinned:
 
 ## Capture mode
 
-*To come (lane E).*
+| Command | What it does |
+| --- | --- |
+| `/mfd capture` | Says whether capture is on, and lists the subcommands |
+| `/mfd capture on`, `off` | Starts or stops recording; it stays on across reloads until turned off |
+| `/mfd capture show` | What has been recorded: totals, hidden sightings, and a line per instance |
+| `/mfd capture export` | Puts everything recorded in a box on screen as one line of text, ready to copy |
+| `/mfd capture clear` | Forgets everything recorded, after a yes/no question |
+
+Marked For Death ships with the ids of every Forever dungeon and its bosses, but the raids
+that open on December 9 (Barrow Deeps, Hyjal Summit, Onyxia's Lair) have none anywhere yet.
+Capture mode is how the guild fills them: turn it on before the first raid, play normally,
+then export and hand the text to whoever keeps the addon.
+
+While it is on it records the instance you are in (its id, name, size and difficulty),
+each boss pull with its encounter id and whether it was a kill or a wipe, and, out of
+combat only, the npc id and name of whatever you target, mouse over or see a nameplate
+for. Inside instances the client often hides a mob's name from addons; those sightings are
+counted, never stored, and `show` says how many. It also notes your own buffs out of combat
+and the spells you cast, which is how a hunter's capture finds the Freezing Trap id. It
+never reads the combat log and never places a raid icon. Off, it costs nothing: no event
+is listened to.
+
+The store keeps at most 2,000 mobs, 200 encounters, 200 instances and 500 buffs and casts;
+past that the one seen longest ago is dropped.
+
+**For the maintainer.** Save each export to a file and run
+`luajit scripts/mfd-forever-capture.lua <files>`. It prints every change it would make to
+`Data_Instances.lua` and `Data_Mobs.lua` and every conflict (a name the client gives
+differently wins and is reported); add `--write` to apply them, then review the diff.
+Buffs and casts are printed for `Data_Auras.lua`, which is edited by hand.
 
 ## Other addons and combat logging
 
