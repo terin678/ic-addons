@@ -2,7 +2,7 @@
 ## Title: ICKit
 ## Notes: The shared kit under the Impulse Control addons for WoW Forever: small libraries, added one layer at a time.
 ## Author: Malexis
-## Version: 0.8.0
+## Version: 0.9.0
 ## IconTexture: Interface\AddOns\ICKit\Textures\ImpulseControl-64.tga
 ## Group: ICKit
 ## Category: Impulse Control
@@ -16,6 +16,7 @@ LibICTest-1.0\LibICTest-1.0.lua
 LibICJSON-1.0\LibICJSON-1.0.lua
 LibICEnv-1.0\LibICEnv-1.0.lua
 LibICRestrict-1.0\LibICRestrict-1.0.lua
+LibICGroup-1.0\LibICGroup-1.0.lua
 LibICStore-1.0\LibICStore-1.0.lua
 LibICConsole-1.0\LibICConsole-1.0.lua
 LibICTheme-1.0\LibICTheme-1.0.lua
