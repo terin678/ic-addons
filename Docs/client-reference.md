@@ -202,8 +202,10 @@ reaches the group and comes back as `CHAT_MSG_PARTY_LEADER`, in combat too. SAY 
 from a typed command; from a timer in combat it did not. RAID, RAID_WARNING and
 INSTANCE_CHAT in a party answer "You are not in a raid group".
 `C_ChatInfo.SendAddonMessage` to PARTY returns 0 and loops back in and out of combat; to
-INSTANCE_CHAT outside an instance group it returns 5. Nobody answered a `LibDRBLT`
-durability request. `RaidNotice_AddMessage(RaidWarningFrame, ...)` shows, in and out of
+INSTANCE_CHAT outside an instance group it returns 5. The durability request went out on
+`LibDRBLT`, the prefix MarkedForDeath used on Anniversary, but `LibDurability` as
+installed (in the Nova addons' copy) speaks on `Durability` (an `R` asks, `percent,broken`
+answers). So the silence is no evidence either way; the probe now asks on both. `RaidNotice_AddMessage(RaidWarningFrame, ...)` shows, in and out of
 combat.
 
 **Inspect and talents.** `NotifyInspect` then `INSPECT_READY` answers in and out of

@@ -556,9 +556,10 @@ local function CheckLogging(run)
     pcall(LoggingCombat, false)
 end
 
--- The LibDurability prefix: an "R" asks everyone who runs it (inside BigWigs, DBM and MRT
--- on other clients) to answer with their durability.
-local DURABILITY_PREFIX = "LibDRBLT"
+-- Durability requests: an "R" on the prefix asks everyone running the library to answer
+-- "percent,broken". LibDurability as installed on these clients uses "Durability";
+-- "LibDRBLT" is the older name MarkedForDeath spoke on Anniversary. Both are asked.
+local DURABILITY_PREFIXES = { "Durability", "LibDRBLT" }
 
 -- P16: a raid warning drawn on this screen only, which sends nothing. Whether the line
 -- shows during an encounter or a chat lockdown is for the player's eyes; the rows say
@@ -579,23 +580,25 @@ local function CheckDurability(run)
     local ci = C_ChatInfo or {}
     local channel = Plain(IsInRaid) and "RAID" or (Plain(IsInGroup) and "PARTY")
     if not channel then
-        Note(run, "durability.LibDRBLT.request", "none", "not in a group")
+        Note(run, "durability.request", "none", "not in a group")
         return
     end
-    Add(run, "durability.LibDRBLT.register", ci.RegisterAddonMessagePrefix, DURABILITY_PREFIX)
-    local answers = 0
-    local function OnAddon(_, prefix, text)
-        if ns.IsSecret(prefix) or prefix ~= DURABILITY_PREFIX then return end
-        if ns.IsSecret(text) or text ~= "R" then answers = answers + 1 end
+    for _, prefix in ipairs(DURABILITY_PREFIXES) do
+        local base = "durability." .. prefix
+        Add(run, base .. ".register", ci.RegisterAddonMessagePrefix, prefix)
+        local answers = 0
+        local function OnAddon(_, heard, text)
+            if ns.IsSecret(heard) or heard ~= prefix then return end
+            if ns.IsSecret(text) or text ~= "R" then answers = answers + 1 end
+        end
+        ns.Listen.On("CHAT_MSG_ADDON", OnAddon)
+        ns.Listen.Ensure(run, ECHO_WAIT + 1)
+        Add(run, base .. ".request", ci.SendAddonMessage, prefix, "R", channel)
+        C_Timer.After(ECHO_WAIT, function()
+            ns.Listen.Off("CHAT_MSG_ADDON", OnAddon)
+            Note(run, base .. ".answers", answers > 0 and "ok" or "none", string.format("%d in %ds", answers, ECHO_WAIT))
+        end)
     end
-    ns.Listen.On("CHAT_MSG_ADDON", OnAddon)
-    ns.Listen.Ensure(run, ECHO_WAIT + 1)
-    Add(run, "durability.LibDRBLT.request", ci.SendAddonMessage, DURABILITY_PREFIX, "R", channel)
-    C_Timer.After(ECHO_WAIT, function()
-        ns.Listen.Off("CHAT_MSG_ADDON", OnAddon)
-        Note(run, "durability.LibDRBLT.answers", answers > 0 and "ok" or "none",
-            string.format("%d in %ds", answers, ECHO_WAIT))
-    end)
 end
 
 local function CheckSecureButton(run)
