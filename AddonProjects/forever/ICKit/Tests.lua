@@ -1675,6 +1675,48 @@ T.Case("Widgets: a list fills pooled rows in full and blanks the rest", function
     T.Eq(list.rows[9].cells[1]:GetText() == nil or list.rows[9]:IsShown() == false, true, "and the new ones start hidden")
 end)
 
+T.Case("Widgets: a resize grip follows the pointer inside its bounds", function()
+    local w, h = W.ResizeSize(400, 300, 50, -20, 200, 120, 1000, 800)
+    T.Eq(w, 450, "dragged right, wider")
+    T.Eq(h, 280, "dragged up, shorter")
+    w, h = W.ResizeSize(400, 300, -500, -500, 200, 120)
+    T.Eq(w, 200, "never narrower than the least")
+    T.Eq(h, 120, "nor shorter")
+    w, h = W.ResizeSize(400, 300, 5000, 5000, 200, 120, 1000, 800)
+    T.Eq(w, 1000, "nor wider than the most")
+    T.Eq(h, 800, "nor taller")
+    w = W.ResizeSize(400, 300, 10.4, 0)
+    T.Eq(w, 410, "whole pixels, with no bounds given")
+
+    if not IC_HEADLESS then return end
+    local savedCursor = GetCursorPosition
+    local cx, cy = 500, 500
+    _G.GetCursorPosition = function() return cx, cy end
+    local frame = W.Panel(nil, { width = 400, height = 300 })
+    frame:Hide()
+    local sizes, done = {}, nil
+    local grip = W.Resize(frame, {
+        minWidth = 300, minHeight = 200, maxWidth = 2000, maxHeight = 2000,
+        onResize = function(nw, nh) sizes[#sizes + 1] = nw .. "x" .. nh end,
+        onResized = function(nw, nh) done = nw .. "x" .. nh end,
+    })
+    grip.icFrame.GetWidth = function() return 400 end
+    grip:GetScript("OnMouseDown")(grip, "LeftButton")
+    T.True(grip:GetScript("OnUpdate") ~= nil, "held, it follows the pointer")
+    cx, cy = 560, 440
+    grip:GetScript("OnUpdate")(grip)
+    T.Eq(sizes[1], "460x360", "sixty right and sixty down grows it")
+    grip:GetScript("OnUpdate")(grip)
+    T.Eq(#sizes, 1, "a pointer that has not moved changes nothing")
+    cx, cy = 0, 900
+    grip:GetScript("OnUpdate")(grip)
+    T.Eq(sizes[2], "300x200", "and it stops at the least")
+    grip:GetScript("OnMouseUp")(grip, "LeftButton")
+    T.Eq(grip:GetScript("OnUpdate"), nil, "let go, the OnUpdate is gone")
+    T.Eq(done, "300x200", "and the final size is reported once")
+    _G.GetCursorPosition = savedCursor
+end)
+
 T.Case("Kit: the build and the login lines", function()
     local build = { version = "1.60.1", build = "70124", interface = 16001 }
     T.Eq(ns.DescribeBuild(build), "1.60.1 (70124), interface 16001", "version, build and interface")

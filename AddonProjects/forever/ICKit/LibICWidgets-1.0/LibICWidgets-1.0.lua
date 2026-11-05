@@ -17,6 +17,7 @@ is the exception: its bar is the client's own.
     W.Scroll(parent, w, h, opts)        a window onto content taller than itself
     W.Tabs(parent, tabs, opts)          a row of tabs, each optionally showing its own page
     W.List(parent, w, h, opts)          column headers above pooled, single-line rows
+    W.Resize(frame, opts)               a grip in the corner that resizes the frame
     W.Tooltip(frame, builder)           builder(GameTooltip, frame) adds the lines
     W.Menu(owner, items)                a context menu from a list
     W.Confirm(text, onAccept)           a yes/no dialog
@@ -1348,6 +1349,128 @@ function W.List(parent, w, h, opts)
     EnsureRows(list)
     list:Render()
     return list
+end
+
+--------------------------------------------------------------------------------
+-- Resize grip
+--------------------------------------------------------------------------------
+
+local GRIP = 16             -- the grip's square, in the frame's bottom-right corner
+local GRIP_DOT = 2          -- one dot of the grip's mark
+local RESIZE_MIN_W, RESIZE_MIN_H = 200, 120
+
+-- Pure. A frame's size after its grip has been dragged `dx` right and `dy` down from
+-- where it was `startW` by `startH`, held inside the bounds. A bound that is nil or not
+-- a number does not hold.
+function W.ResizeSize(startW, startH, dx, dy, minW, minH, maxW, maxH)
+    local function Hold(v, lo, hi)
+        if type(lo) == "number" and v < lo then v = lo end
+        if type(hi) == "number" and v > hi then v = hi end
+        return v
+    end
+    local w = Hold((startW or 0) + (dx or 0), minW, maxW)
+    local h = Hold((startH or 0) + (dy or 0), minH, maxH)
+    return math.floor(w + 0.5), math.floor(h + 0.5)
+end
+
+local function RepaintGrip(grip, theme)
+    local c = grip.icHover and theme.colors.accent or theme.colors.edge
+    for _, dot in ipairs(grip.dots) do dot:SetColorTexture(c.r, c.g, c.b, c.a or 1) end
+end
+
+-- Runs only while the grip is held.
+local function FollowGrip(grip)
+    local frame = grip.icFrame
+    local px, py = GetCursorPosition()
+    local scale = frame:GetEffectiveScale() or 1
+    if scale <= 0 then scale = 1 end
+    local maxW, maxH = grip.icMaxW, grip.icMaxH
+    if maxW == false then maxW = UIParent:GetWidth() end
+    if maxH == false then maxH = UIParent:GetHeight() end
+    local w, h = W.ResizeSize(grip.icStartW, grip.icStartH, (px - grip.icStartX) / scale,
+        (grip.icStartY - py) / scale, grip.icMinW, grip.icMinH, maxW, maxH)
+    if w == grip.icLastW and h == grip.icLastH then return end
+    grip.icLastW, grip.icLastH = w, h
+    frame:SetSize(w, h)
+    if grip.icOnResize then grip.icOnResize(w, h, frame) end
+end
+
+local function StopGrip(grip)
+    if grip.icHeld ~= true then return end
+    grip.icHeld = false
+    grip:SetScript("OnUpdate", nil)
+    if grip.icOnResized then grip.icOnResized(grip.icLastW, grip.icLastH, grip.icFrame) end
+end
+
+--[[
+A grip in a frame's bottom-right corner that resizes it. The frame should be placed by its
+top-left corner (W.SetPlace does that), so it grows right and down. While the grip is held,
+and only then, it follows the pointer in an OnUpdate, the same as the minimap button.
+
+opts = {
+    minWidth = 200, minHeight = 120,
+    maxWidth, maxHeight,             -- the screen's size by default
+    onResize = fn(w, h, frame),      -- while dragging, each time the size changes
+    onResized = fn(w, h, frame),     -- let go: save the size here
+}
+Returns the grip. Lay out what the frame holds again in onResize: a list's Resize, a
+scroll's SetViewHeight.
+]]
+function W.Resize(frame, opts)
+    opts = opts or {}
+    local grip = CreateFrame("Button", nil, frame)
+    grip:SetSize(GRIP, GRIP)
+    grip:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -1, 1)
+    grip:SetFrameLevel((frame:GetFrameLevel() or 0) + 10)
+    grip.icFrame = frame
+    grip.icMinW = opts.minWidth or RESIZE_MIN_W
+    grip.icMinH = opts.minHeight or RESIZE_MIN_H
+    grip.icMaxW = opts.maxWidth or false
+    grip.icMaxH = opts.maxHeight or false
+    grip.icOnResize = opts.onResize or false
+    grip.icOnResized = opts.onResized or false
+    grip.icHeld = false
+    grip.icHover = false
+    grip.icStartX, grip.icStartY, grip.icStartW, grip.icStartH = 0, 0, 0, 0
+    grip.icLastW, grip.icLastH = 0, 0
+
+    -- Six dots in a triangle against the corner, the usual mark, drawn from colour.
+    grip.dots = {}
+    for row = 0, 2 do
+        for col = 0, 2 - row do
+            local dot = grip:CreateTexture(nil, "OVERLAY")
+            dot:SetSize(GRIP_DOT, GRIP_DOT)
+            dot:SetPoint("BOTTOMRIGHT", grip, "BOTTOMRIGHT", -2 - col * 4, 2 + row * 4)
+            grip.dots[#grip.dots + 1] = dot
+        end
+    end
+
+    grip:SetScript("OnMouseDown", function(self, button)
+        if button ~= "LeftButton" then return end
+        local px, py = GetCursorPosition()
+        self.icStartX, self.icStartY = px or 0, py or 0
+        self.icStartW, self.icStartH = self.icFrame:GetWidth() or 0, self.icFrame:GetHeight() or 0
+        self.icLastW, self.icLastH = self.icStartW, self.icStartH
+        self.icHeld = true
+        if GameTooltip then GameTooltip:Hide() end
+        self:SetScript("OnUpdate", FollowGrip)
+    end)
+    grip:SetScript("OnMouseUp", function(self, button)
+        if button == "LeftButton" then StopGrip(self) end
+    end)
+    -- Hidden mid-drag (the window closed): let go.
+    grip:SetScript("OnHide", StopGrip)
+    grip:SetScript("OnEnter", function(self)
+        self.icHover = true
+        RepaintGrip(self, (Theme.Current()))
+    end)
+    grip:SetScript("OnLeave", function(self)
+        self.icHover = false
+        RepaintGrip(self, (Theme.Current()))
+    end)
+    W.Tooltip(grip, function(tip) tip:AddLine("Drag to resize") end)
+    Track(grip, RepaintGrip)
+    return grip
 end
 
 --------------------------------------------------------------------------------
