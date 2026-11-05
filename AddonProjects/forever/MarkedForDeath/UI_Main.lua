@@ -19,8 +19,10 @@ For other lanes:
             onResize(w, h)       the page's new size while the window is dragged larger
             placeholder = true   a later AddTab with the same key replaces this one
         Returns true, or false and why (a key already taken by a real tab).
-        Lane C's raid check grid belongs in the "check" tab: until it calls AddTab("check",
-        ...), a placeholder there opens the standalone grid.
+        Lane C's raid check takes the "check" tab with AddTab at ready. A placeholder holds
+        the key until then, and stays only if that failed: it says so and sends the player to
+        the line printed in chat at login (neither failure writes /mfd log), with no button:
+        the grid has no other home to open.
     ns.UI.Open(key), Toggle(key), Close(), IsShown(), Select(key), Refresh()
     ns.UI.IsEnabled(), ns.UI.SetEnabled(on)
         The addon's master switch (settings.enabled), also /mfd on and /mfd off. Setting it
@@ -559,22 +561,17 @@ function UI.Refresh()
 end
 
 --------------------------------------------------------------------------------
--- The raid check placeholder (until lane C moves its grid into the tab)
+-- The raid check placeholder: shown only when lane C's tab did not register
 --------------------------------------------------------------------------------
 
+-- Two lines of prose and nothing to press: the grid lives in this tab, so a button that
+-- opened "the raid check" would only open this page again.
 local function BuildCheckPlaceholder(page)
-    local open = W.Button(page, "Open the raid check", 150, 22, {
-        kind = "accent",
-        onClick = function() if ns.RaidCheckUI and ns.RaidCheckUI.ShowGrid then ns.RaidCheckUI.ShowGrid() end end,
-    })
-    open:SetPoint("TOPLEFT", page, "TOPLEFT", 0, 0)
-    local board = W.Button(page, "Buff board", 100, 22, {
-        onClick = function() if ns.RaidCheckUI and ns.RaidCheckUI.ToggleBoard then ns.RaidCheckUI.ToggleBoard() end end,
-    })
-    board:SetPoint("LEFT", open, "RIGHT", 6, 0)
-    local note = W.Label(page, "The raid check opens in its own window for now. Same as /mfd check.",
-        { color = "textDim" })
-    note:SetPoint("TOPLEFT", open, "BOTTOMLEFT", 0, -10)
+    local head = W.Label(page, "The raid check tab did not load.", { color = "bad" })
+    head:SetPoint("TOPLEFT", page, "TOPLEFT", 4, -4)
+    local note = W.Label(page, "A line in the chat at login says why.\n"
+        .. "A /reload tries again; if it still fails, report that line.", { color = "textDim" })
+    note:SetPoint("TOPLEFT", head, "BOTTOMLEFT", 0, -8)
 end
 
 --------------------------------------------------------------------------------
