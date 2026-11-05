@@ -28,7 +28,8 @@ For other lanes:
 
 Other members' durability and versions come from lane F's Comms (ns.Comms.Durability and
 ns.Comms.Versions, keyed by player name), read guarded: before Comms exists those cells
-are grey. Comms tells the check when either changes (ns.Comms.Listen).
+are grey. Comms tells the check when either changes (ns.Comms.Listen); a ready check, Scan or a
+/mfd check command also asks for durability (ns.Comms.RequestDurability).
 ]]
 
 ns.RaidCheck = ns.RaidCheck or {}
@@ -129,6 +130,16 @@ local function Heard(t, m)
     return t[m.display or ""] or t[m.name or ""]
 end
 
+-- Reads a person asked for (and a ready check) also ask the group for durability over lane
+-- F's Comms; answers arrive later through Comms.Listen. Comms throttles it to once per 10 s
+-- and says no when alone, so it is not checked here. Live re-reads never ask.
+local ASKS_DURABILITY = { ["ready check"] = true, command = true, scan = true, opened = true }
+
+local function RequestDurability()
+    local comms = ns.Comms
+    if comms and type(comms.RequestDurability) == "function" then pcall(comms.RequestDurability) end
+end
+
 local function Notify()
     for _, fn in pairs(listeners) do
         local ok, err = pcall(fn, snapshot)
@@ -150,6 +161,7 @@ function RC.Scan(reason)
         return false, why
     end
 
+    if ASKS_DURABILITY[reason] then RequestDurability() end
     local roster = Group.Now()
     local members = roster.members or {}
     local durability, versions = FromComms("Durability"), FromComms("Versions")
