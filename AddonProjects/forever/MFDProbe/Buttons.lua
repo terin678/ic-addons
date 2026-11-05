@@ -62,7 +62,10 @@ local function MakeButton(key, label, column, row)
     local b = CreateFrame("Button", nil, panel, "SecureActionButtonTemplate, UIPanelButtonTemplate")
     b:SetSize(BUTTON_W, BUTTON_H)
     b:SetPoint("TOPLEFT", panel, "TOPLEFT", GAP + (column - 1) * (BUTTON_W + GAP), -(TOP + (row - 1) * (BUTTON_H + GAP)))
-    b:RegisterForClicks("AnyUp", "AnyDown")
+    -- One edge only: PreClick and PostClick run on every edge registered, so with both a
+    -- press would be recorded twice, once before the action fired.
+    b:RegisterForClicks("AnyUp")
+    b:SetAttribute("useOnKeyDown", false)
     b.label = label
     b:SetText(label)
     -- PostClick runs after the secure action and is not secure itself, which is fine: it
