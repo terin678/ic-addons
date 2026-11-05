@@ -73,7 +73,7 @@ should not. The counters cost two clock reads a call and need no console variabl
 | LibICComm-1.0 | 1 | Addon messages between players on the same addon: tables in, tables out, framed to fit, own echo dropped, a version hello, and a queue through lockdowns |
 | LibICStore-1.0 | 1 | Saved variables: defaults, schema, migrations, and whether the file really loaded |
 | LibICConsole-1.0 | 1 | Prefixed printing and the slash-command dispatcher with its help |
-| LibICTheme-1.0 | 1 | The theme registry: colour and font roles, the selected theme, change listeners |
+| LibICTheme-1.0 | 2 | The theme registry: colour and font roles, the selected theme, change listeners |
 | LibICWidgets-1.0 | 4 | Themed frames drawn from colour textures: panel, label, button, check box, edit box, slider, choice, scroll, tabs, list, resize grip, text area, raid icon, tooltip, menu, confirm |
 
 The libraries never print. An addon decides what to say, in its own voice. Only
@@ -439,7 +439,8 @@ whatever the selected theme says that is, so an addon never holds a colour of it
 (a title bar), `field` (somewhere to type or tick), `edge`, `text`, `textDim`,
 `textDisabled`, `done` (a finished line), `accent`, `accentHover`, `accentText`, `danger`,
 `dangerHover`, `dangerText`, `button`, `buttonHover`, `buttonText`, `hover`, `selected`,
-`check`. Each is `{ r, g, b, a }`. Font roles: `body`, `title`, `small`, `button`.
+`check`, and the status text roles `good`, `warn` and `bad` (green, amber, red, each readable
+as text on the theme's ground; `danger` is a button fill and is not). Each is `{ r, g, b, a }`. Font roles: `body`, `title`, `small`, `button`.
 
 The kit itself saves a choice the player made (`ICKitDB.settings.theme`, absent until they
 pick) and applies it at load; an addon does not select a theme, it only draws in the
