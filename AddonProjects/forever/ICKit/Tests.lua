@@ -1595,6 +1595,86 @@ T.Case("Widgets: tabs select one, show its page, and refuse a disabled one", fun
         "an unknown starting tab falls back to the first")
 end)
 
+T.Case("Widgets: list columns and the rows in view", function()
+    local l = W.ColumnLayout({ { key = "a", width = 100 }, { key = "b" }, { key = "c", width = 50 } }, 400)
+    T.Eq(l[1].x, 0, "the first column at the left")
+    T.Eq(l[2].x, 106, "the next a column and a gap along")
+    T.Eq(l[2].w, 238, "the column with no width fills what is left")
+    T.Eq(l[3].x, 350, "and the last sits after it")
+    T.Eq(l[3].x + l[3].w, 400, "ending at the edge")
+    l = W.ColumnLayout({ { key = "a", width = 300 }, { key = "b" } }, 200)
+    T.Eq(l[2].w, 24, "a fill column is never squeezed to nothing")
+    l = W.ColumnLayout({ { key = "a" }, { key = "b" } }, 100)
+    T.Eq(l[2].w, 24, "a second column with no width gets the least")
+    T.Eq(#W.ColumnLayout(nil, 100), 0, "no columns, no layout")
+
+    local first, last = W.VisibleRange(0, 18, 90, 100)
+    T.Eq(first, 1, "from the top")
+    T.Eq(last, 5, "five rows fill 90 pixels")
+    first, last = W.VisibleRange(27, 18, 90, 100)
+    T.Eq(first, 2, "scrolled half a row and more: the second is the first in view")
+    T.Eq(last, 7, "and the seventh is cut by the bottom")
+    first, last = W.VisibleRange(0, 18, 90, 3)
+    T.Eq(last, 3, "never past the items")
+    first, last = W.VisibleRange(0, 18, 90, 0)
+    T.True(last < first, "no items, no rows")
+end)
+
+T.Case("Widgets: a list fills pooled rows in full and blanks the rest", function()
+    local host = W.Panel(nil, { width = 300, height = 200 })
+    host:Hide()
+    local clicks, chosen = {}, nil
+    local list = W.List(host, 300, 20 + 18 * 4, {
+        columns = {
+            { key = "name", label = "Name" },
+            { key = "hp", label = "Health", width = 60, justify = "RIGHT", tip = "Out of combat" },
+            { key = "state", label = "State", width = 60,
+                text = function(item) return item.dead and "dead" or "alive", item.dead and "danger" or "good" end },
+        },
+        onClick = function(item, mouseButton) clicks[#clicks + 1] = item.name .. ":" .. mouseButton end,
+        selected = function(item) return item == chosen end,
+        empty = "Nobody here",
+    })
+    T.Eq(list.header:GetParent(), list, "the header belongs to the list, not to the scroll")
+    T.Eq(#list.header.cells, 3, "one header cell per column")
+    T.Eq(list.header.cells[1].label:GetText(), "Name", "with its label")
+    T.Eq(#list.rows, 5, "a view of four rows has five, for the one cut by the scroll")
+    T.Eq(list.emptyLabel:IsShown(), true, "an empty list says so")
+
+    local items = {}
+    for i = 1, 50 do items[i] = { name = "Unit " .. i, hp = i * 10, dead = i % 2 == 0 } end
+    list:SetItems(items)
+    T.Eq(list.emptyLabel:IsShown(), false, "with items it does not")
+    T.Eq(#list.rows, 5, "fifty items still use five rows")
+    T.Eq(list.rows[1].cells[1]:GetText(), "Unit 1", "the first row shows the first item")
+    T.Eq(list.rows[1].cells[2]:GetText(), "10", "a field by the column's key, as text")
+    T.Eq(list.rows[2].cells[3]:GetText(), "dead", "a column's own text")
+    T.Eq(list.rows[2].icRoles[3], "danger", "and its colour role")
+    list.rows[1]:GetScript("OnClick")(list.rows[1], "RightButton")
+    T.Eq(clicks[1], "Unit 1:RightButton", "a click reports the item and the button")
+
+    list:ScrollTo(18 * 10)
+    T.Eq(list.rows[1].cells[1]:GetText(), "Unit 11", "scrolled ten rows, the pooled rows show the next items")
+    T.Eq(list.rows[1].icItem, items[11], "and hold them for clicks and tooltips")
+    chosen = items[12]
+    list:Refresh()
+    T.Eq(list.rows[2].icSelected, true, "the selected item is drawn selected")
+    T.Eq(list.rows[1].icSelected, false, "and the row before is not")
+
+    list:SetItems({ { name = "Last" } })
+    T.Eq(list.rows[1].cells[1]:GetText(), "Last", "a shorter list starts again at the top")
+    T.Eq(list.rows[1].cells[2]:GetText(), "", "a missing value is blank, not the last item's")
+    T.Eq(list.rows[1].icSelected, false, "and nothing of the old selection survives")
+    T.Eq(list.rows[2]:IsShown(), false, "unused rows hide")
+    T.Eq(list.rows[2].icItem, false, "holding no item")
+    list.rows[2]:GetScript("OnClick")(list.rows[2], "LeftButton")
+    T.Eq(#clicks, 1, "a click on an empty row reports nothing")
+
+    list:Resize(300, 20 + 18 * 8)
+    T.Eq(#list.rows, 9, "a taller list makes the rows it now needs")
+    T.Eq(list.rows[9].cells[1]:GetText() == nil or list.rows[9]:IsShown() == false, true, "and the new ones start hidden")
+end)
+
 T.Case("Kit: the build and the login lines", function()
     local build = { version = "1.60.1", build = "70124", interface = 16001 }
     T.Eq(ns.DescribeBuild(build), "1.60.1 (70124), interface 16001", "version, build and interface")

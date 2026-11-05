@@ -16,6 +16,7 @@ is the exception: its bar is the client's own.
     W.Choice(parent, w, h, opts)        one of a short list, picked from a menu
     W.Scroll(parent, w, h, opts)        a window onto content taller than itself
     W.Tabs(parent, tabs, opts)          a row of tabs, each optionally showing its own page
+    W.List(parent, w, h, opts)          column headers above pooled, single-line rows
     W.Tooltip(frame, builder)           builder(GameTooltip, frame) adds the lines
     W.Menu(owner, items)                a context menu from a list
     W.Confirm(text, onAccept)           a yes/no dialog
@@ -798,10 +799,12 @@ they are; the mouse wheel and a thin bar on the right scroll it. The bar is the 
 own slider turned on its side, so dragging it runs no OnUpdate, and it hides itself when
 everything fits.
 
-opts = { step = 24 }                -- how far one notch of the wheel moves
+opts = { step = 24,                 -- how far one notch of the wheel moves
+         onScroll = fn(offset, s) } -- told after every move, wheel, bar or ScrollTo
 s.content                           -- parent your rows to this; it is `w` less the bar wide
 s:SetContentHeight(h)               -- call when the rows change
 s:SetViewHeight(h)                  -- the window itself became taller or shorter
+s:SetViewWidth(w)                   -- or wider or narrower
 s:ScrollTo(offset), s:GetOffset()
 ]]
 function W.Scroll(parent, w, h, opts)
@@ -813,6 +816,7 @@ function W.Scroll(parent, w, h, opts)
     s.icContentH = 0
     s.icOffset = 0
     s.icQuiet = false
+    s.icOnScroll = opts.onScroll or false
 
     local content = CreateFrame("Frame", nil, s)
     content:SetSize(w - SCROLL_BAR_W - 4, 1)
@@ -849,6 +853,7 @@ function W.Scroll(parent, w, h, opts)
         self.icQuiet = true
         self.bar:SetValue(self.icOffset)
         self.icQuiet = false
+        if self.icOnScroll then self.icOnScroll(self.icOffset, self) end
     end
 
     function s:SetContentHeight(height)
@@ -873,10 +878,17 @@ function W.Scroll(parent, w, h, opts)
         self:SetContentHeight(self.icContentH)
     end
 
+    function s:SetViewWidth(width)
+        width = math.max(SCROLL_BAR_W + 5, tonumber(width) or 0)
+        self:SetWidth(width)
+        self.content:SetWidth(width - SCROLL_BAR_W - 4)
+    end
+
     bar:SetScript("OnValueChanged", function(_, value)
         if s.icQuiet == true then return end
         s.icOffset = W.ScrollClamp(value, s.icContentH, s.icViewH)
         s:SetVerticalScroll(s.icOffset)
+        if s.icOnScroll then s.icOnScroll(s.icOffset, s) end
     end)
 
     s:EnableMouseWheel(true)
@@ -1040,6 +1052,302 @@ function W.Tabs(parent, tabs, opts)
 
     if not strip:Select(opts.selected) and tabs[1] then strip:Select(tabs[1].key) end
     return strip
+end
+
+--------------------------------------------------------------------------------
+-- List
+--------------------------------------------------------------------------------
+
+local LIST_ROW_H = 18       -- a row, fixed
+local LIST_HEADER_H = 20    -- the column header row above the scroll
+local LIST_PAD = 4          -- a cell's inset from its column's left edge
+local LIST_GAP = 6          -- between two columns
+local LIST_MIN_FILL = 24    -- the narrowest a fill column is squeezed to
+
+-- Pure. Where each column sits in a row `width` wide: { x, w } each. A column with a
+-- number `width` keeps it; the first without one fills what is left (at least
+-- LIST_MIN_FILL); any further one without a width gets LIST_MIN_FILL.
+function W.ColumnLayout(columns, width)
+    local out, fixed, fill = {}, 0, nil
+    for i, col in ipairs(columns or {}) do
+        if type(col.width) == "number" then
+            fixed = fixed + col.width
+        elseif not fill then
+            fill = i
+        else
+            fixed = fixed + LIST_MIN_FILL
+        end
+    end
+    local n = #(columns or {})
+    local rest = (width or 0) - fixed - math.max(0, n - 1) * LIST_GAP
+    local x = 0
+    for i, col in ipairs(columns or {}) do
+        local w = type(col.width) == "number" and col.width or LIST_MIN_FILL
+        if i == fill then w = math.max(LIST_MIN_FILL, rest) end
+        out[i] = { x = x, w = w }
+        x = x + w + LIST_GAP
+    end
+    return out
+end
+
+-- Pure. The items a view shows: rows `rowH` tall, the view `viewH` tall and scrolled
+-- `offset` down, over `count` items. Returns first, last (last < first when none).
+function W.VisibleRange(offset, rowH, viewH, count)
+    count = count or 0
+    if count < 1 or not rowH or rowH <= 0 then return 1, 0 end
+    local first = math.floor(math.max(0, offset or 0) / rowH) + 1
+    local last = math.ceil((math.max(0, offset or 0) + math.max(0, viewH or 0)) / rowH)
+    if first > count then first = count end
+    if last > count then last = count end
+    return first, last
+end
+
+local function RepaintRow(row, theme)
+    local c = theme.colors
+    if row.icSelected then
+        Paint(row, c.selected, nil)
+    elseif row.icHover then
+        Paint(row, c.hover, nil)
+    else
+        Paint(row, nil, nil)
+    end
+    for i, cell in ipairs(row.cells) do
+        local color = c[row.icRoles[i] or "text"] or c.text
+        cell:SetTextColor(color.r, color.g, color.b, color.a or 1)
+    end
+end
+
+local function RepaintHeader(header, theme)
+    Paint(header, theme.colors.raised, nil)
+    local dim = theme.colors.textDim
+    for _, cell in ipairs(header.cells) do cell.label:SetTextColor(dim.r, dim.g, dim.b, dim.a or 1) end
+end
+
+-- A cell's text and colour role for an item: the column's own `text(item)`, else the
+-- list's `cell(item, column)`, else the item's field named by the column's key.
+local function CellOf(list, item, col)
+    if col.text then return col.text(item) end
+    if list.icCell then return list.icCell(item, col) end
+    local v = type(item) == "table" and item[col.key] or nil
+    if v == nil then return "" end
+    return tostring(v)
+end
+
+local function RowTip(tip, row)
+    if not row.icItem or not row.icList.icTooltip then return end
+    row.icList.icTooltip(tip, row.icItem)
+end
+
+local function FontNoWrap(fs)
+    fs:SetWordWrap(false)
+    if fs.SetMaxLines then fs:SetMaxLines(1) end
+end
+
+--[[
+A list: a fixed column header row above a scroll of fixed-height, single-line rows. Only
+the rows in view exist; they are pooled and filled again as the list scrolls, so a list of
+thousands costs what a screenful does.
+
+columns = { { key, label, width, justify = "LEFT" | "RIGHT" | "CENTER", tip, text = fn(item) }, ... }
+    a column with no width fills what is left; tip is the header's hover text
+opts = {
+    rowHeight = 18, headerHeight = 20,
+    cell = fn(item, column) -> text, role     -- every column's text and colour role
+    onClick = fn(item, mouseButton, row),     -- left or right click on a row
+    tooltip = fn(GameTooltip, item),          -- a row's hover text: the full values go here
+    selected = fn(item) -> bool,              -- drawn in the selected colour
+    onHeader = fn(key, column),               -- a header was clicked (to sort, say)
+    empty = "Nothing here",                   -- shown when there are no items
+}
+list:SetItems(items)     the rows; the list redraws, keeping its scroll where it can
+list:Refresh()           redraws the same items (after a selection or a value changed)
+list:Resize(w, h)        the whole list, header included, for a window that resizes
+list:ScrollTo(offset), list:GetItems()
+list.header, list.scroll
+Every pooled row is filled in full each time: text, colour, selection, item. Nothing of the
+item that was there before survives. An item is any value but nil and false; row.icItem is
+false on an empty row.
+]]
+function W.List(parent, w, h, opts)
+    opts = opts or {}
+    local theme = Theme.Current()
+    local list = CreateFrame("Frame", nil, parent)
+    list.icColumns = opts.columns or {}
+    list.icRowH = opts.rowHeight or LIST_ROW_H
+    list.icHeaderH = opts.headerHeight or LIST_HEADER_H
+    list.icCell = opts.cell or false
+    list.icOnClick = opts.onClick or false
+    list.icTooltip = opts.tooltip or false
+    list.icSelectedFn = opts.selected or false
+    list.icOnHeader = opts.onHeader or false
+    list.icItems = {}
+    list.icW, list.icH = w, h
+    list.rows = {}
+    list:SetSize(w, h)
+
+    -- The header: its own frame above the scroll, never inside it.
+    local header = CreateFrame("Frame", nil, list)
+    header:SetPoint("TOPLEFT", list, "TOPLEFT", 0, 0)
+    header:SetSize(w, list.icHeaderH)
+    Skin(header)
+    header.cells = {}
+    for i, col in ipairs(list.icColumns) do
+        local cell = CreateFrame("Button", nil, header)
+        cell:SetHeight(list.icHeaderH)
+        cell.label = cell:CreateFontString(nil, "OVERLAY", theme.fonts.small)
+        cell.label:SetPoint("LEFT", cell, "LEFT", LIST_PAD, 0)
+        cell.label:SetPoint("RIGHT", cell, "RIGHT", -LIST_PAD, 0)
+        cell.label:SetJustifyH(col.justify or "LEFT")
+        FontNoWrap(cell.label)
+        cell.label:SetText(col.label or "")
+        cell.icKey = col.key
+        if list.icOnHeader then
+            cell:SetScript("OnClick", function(self) list.icOnHeader(self.icKey, col) end)
+        end
+        if col.tip then
+            W.Tooltip(cell, function(tip) tip:AddLine(col.label or ""); tip:AddLine(col.tip, 1, 1, 1, true) end)
+        end
+        cell:EnableMouse(list.icOnHeader ~= false or col.tip ~= nil)
+        header.cells[i] = cell
+    end
+    list.header = header
+
+    local scroll = W.Scroll(list, w, math.max(1, h - list.icHeaderH), {
+        step = list.icRowH * 3,
+        onScroll = function() list:Render() end,
+    })
+    scroll:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, 0)
+    list.scroll = scroll
+
+    list.emptyLabel = W.Label(list, opts.empty or "", { font = "small", color = "textDim", justify = "CENTER" })
+    list.emptyLabel:SetPoint("TOP", scroll, "TOP", 0, -12)
+    list.emptyLabel:Hide()
+
+    -- Row width: the scroll's content, which leaves room for the bar.
+    local function RowWidth(self)
+        return math.max(1, self.icW - 12)
+    end
+
+    local function PlaceCells(self)
+        local layout = W.ColumnLayout(self.icColumns, RowWidth(self))
+        for i, cell in ipairs(self.header.cells) do
+            cell:ClearAllPoints()
+            cell:SetPoint("TOPLEFT", self.header, "TOPLEFT", layout[i].x, 0)
+            cell:SetWidth(layout[i].w)
+        end
+        for _, row in ipairs(self.rows) do
+            row:SetWidth(RowWidth(self))
+            for i, fs in ipairs(row.cells) do
+                fs:ClearAllPoints()
+                fs:SetPoint("LEFT", row, "LEFT", layout[i].x + LIST_PAD, 0)
+                fs:SetWidth(math.max(1, layout[i].w - LIST_PAD))
+            end
+        end
+    end
+
+    local function MakeRow(self)
+        local row = CreateFrame("Button", nil, self.scroll.content)
+        row:SetHeight(self.icRowH)
+        Skin(row)
+        row.icList = self
+        row.icItem = false
+        row.icHover = false
+        row.icSelected = false
+        row.icRoles = {}
+        row.cells = {}
+        for i, col in ipairs(self.icColumns) do
+            local fs = row:CreateFontString(nil, "OVERLAY", theme.fonts.body)
+            fs:SetJustifyH(col.justify or "LEFT")
+            FontNoWrap(fs)
+            row.cells[i] = fs
+        end
+        row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        row:SetScript("OnClick", function(r, mouseButton)
+            if r.icItem and self.icOnClick then self.icOnClick(r.icItem, mouseButton, r) end
+        end)
+        row:SetScript("OnEnter", function(r)
+            r.icHover = true
+            RepaintRow(r, (Theme.Current()))
+        end)
+        row:SetScript("OnLeave", function(r)
+            r.icHover = false
+            RepaintRow(r, (Theme.Current()))
+        end)
+        W.Tooltip(row, RowTip)
+        row:Hide()
+        Track(row, RepaintRow)
+        self.rows[#self.rows + 1] = row
+        return row
+    end
+
+    -- Enough rows for a view and one more, for the one cut in half by the scroll.
+    local function EnsureRows(self)
+        local need = math.ceil(math.max(1, self.icH - self.icHeaderH) / self.icRowH) + 1
+        while #self.rows < need do MakeRow(self) end
+        PlaceCells(self)
+    end
+
+    function list:Render()
+        local items = self.icItems
+        local offset = self.scroll:GetOffset()
+        local first, last = W.VisibleRange(offset, self.icRowH, self.icH - self.icHeaderH, #items)
+        local current = Theme.Current()
+        for slot, row in ipairs(self.rows) do
+            local index = first + slot - 1
+            local item = index <= last and items[index] or nil
+            if item == nil then
+                row.icItem = false
+                row:Hide()
+            else
+                row.icItem = item
+                row:ClearAllPoints()
+                row:SetPoint("TOPLEFT", self.scroll.content, "TOPLEFT", 0, -(index - 1) * self.icRowH)
+                for i, col in ipairs(self.icColumns) do
+                    local text, role = CellOf(self, item, col)
+                    row.cells[i]:SetText(text or "")
+                    row.icRoles[i] = role or false
+                end
+                row.icSelected = self.icSelectedFn and self.icSelectedFn(item) == true or false
+                RepaintRow(row, current)
+                row:Show()
+            end
+        end
+        self.emptyLabel:SetShown(#items == 0)
+    end
+
+    function list:SetItems(items)
+        self.icItems = items or {}
+        self.scroll:SetContentHeight(#self.icItems * self.icRowH)
+        self:Render()
+    end
+
+    function list:GetItems()
+        return self.icItems
+    end
+
+    function list:Refresh()
+        self:Render()
+    end
+
+    function list:ScrollTo(offset)
+        self.scroll:ScrollTo(offset)
+    end
+
+    function list:Resize(width, height)
+        self.icW, self.icH = width or self.icW, height or self.icH
+        self:SetWidth(self.icW)
+        self:SetHeight(self.icH)
+        self.header:SetWidth(self.icW)
+        self.scroll:SetViewWidth(self.icW)
+        self.scroll:SetViewHeight(math.max(1, self.icH - self.icHeaderH))
+        EnsureRows(self)
+        self:Render()
+    end
+
+    Track(header, RepaintHeader)
+    EnsureRows(list)
+    list:Render()
+    return list
 end
 
 --------------------------------------------------------------------------------
