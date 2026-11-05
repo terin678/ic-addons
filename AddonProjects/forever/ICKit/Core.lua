@@ -12,6 +12,7 @@ it (Docs/forever/VISION.md has the rules and the order):
     layer 1   LibICEnv-1.0      what this client offers, and what the addons cost it
               LibICRestrict-1.0 what the client will not let an addon do or read now
               LibICGroup-1.0    who is in the group, read once as plain values
+              LibICChat-1.0     lines said in chat, sent only when the client will take them
               LibICStore-1.0    saved variables
               LibICConsole-1.0  printing and slash commands
               LibICTheme-1.0    the theme registry
@@ -26,7 +27,7 @@ says, it says here.
     Tests.lua     the kit's own cases
 ]]
 
-local VERSION = "0.9.0"
+local VERSION = "0.10.0"
 
 local Util = LibStub("LibICUtil-1.0")
 local Test = LibStub("LibICTest-1.0")
