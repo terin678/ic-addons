@@ -389,6 +389,93 @@ T.Case("Env.Wrap: calls and time are counted, the function behaves as before", f
 end)
 
 --------------------------------------------------------------------------------
+-- LibICRestrict
+--------------------------------------------------------------------------------
+
+local Restrict = LibStub("LibICRestrict-1.0")
+
+T.Case("Restrict.IsSecret and Readable: a secret is withheld, a plain value passes", function()
+    local mark = FakeSecret()
+    Env.SetSecretCheck(function(v) return v == mark end)
+    T.Eq(Restrict.IsSecret(mark), true, "the secret is one")
+    T.Eq(Restrict.IsSecret(12), false, "a number is not")
+    T.Eq(Restrict.Readable(mark), nil, "a secret reads as nothing")
+    T.Eq(Restrict.Readable(mark, 0), 0, "or as the fallback")
+    T.Eq(Restrict.Readable(12, 0), 12, "a plain value is itself")
+    T.Eq(Restrict.Readable(false, true), false, "false is a plain value, not a missing one")
+    Env.SetSecretCheck(nil)
+end)
+
+T.Case("Restrict.State: out of combat in the open world, nothing is on", function()
+    local s = Restrict.State({
+        states = { Combat = 0, Chat = 0, Encounter = 0, Map = 0, ChallengeMode = 0, PvPMatch = 0 },
+        lockdown = false, chatLockdown = false,
+    })
+    T.Eq(s.combat, false, "not in combat")
+    T.Eq(s.chat, false, "chat open")
+    T.Eq(s.secure, false, "secure frames can change")
+    T.Eq(s.restricted, false, "nothing restricted")
+    T.Eq(s.reason, nil, "and no reason")
+    T.Eq(next(s.active), nil, "no restriction on")
+    T.Eq(Restrict.State(nil).restricted, false, "nothing said is nothing on")
+end)
+
+T.Case("Restrict.State: combat by any of its three signs", function()
+    local s = Restrict.State({ regenDisabled = true, lockdown = false, states = { Combat = 0 } })
+    T.Eq(s.combat, true, "the regen event comes first, seconds before the rest")
+    T.Eq(s.secure, true, "so secure changes stop at once")
+    T.Eq(s.reason, "in combat", "and that is the reason")
+    s = Restrict.State({ lockdown = true })
+    T.Eq(s.combat and s.secure, true, "lockdown alone")
+    s = Restrict.State({ states = { Combat = 2 } })
+    T.Eq(s.combat, true, "the Combat restriction alone")
+    T.Eq(s.secure, false, "which alone does not say secure frames are locked")
+    T.True(s.active.Combat, "and is listed as on")
+    T.Eq(Restrict.State({ states = { Combat = 1 } }).combat, true, "1, the state the change event reports, counts as on")
+end)
+
+T.Case("Restrict.State: chat, encounter and other kinds, with the reason most fundamental first", function()
+    local s = Restrict.State({ chatLockdown = true })
+    T.Eq(s.chat, true, "chat lockdown")
+    T.Eq(s.combat, false, "is not combat")
+    T.Eq(s.reason, "chat is locked", "and says so")
+    T.Eq(Restrict.State({ states = { Chat = 2 } }).chat, true, "the Chat restriction locks chat too")
+    s = Restrict.State({ states = { Encounter = 2, Chat = 2 } })
+    T.Eq(s.encounter, true, "an encounter")
+    T.Eq(s.reason, "in an encounter", "comes before chat")
+    s = Restrict.State({ states = { Encounter = 2, Combat = 2 } })
+    T.Eq(s.reason, "in combat", "and combat before both")
+    s = Restrict.State({ states = { PvPMatch = 2, Map = 2 } })
+    T.Eq(s.restricted, true, "another kind still restricts")
+    T.Eq(s.combat or s.chat or s.encounter, false, "without claiming to be one of the three")
+    T.Eq(s.reason, "restricted (Map, PvPMatch)", "and names itself")
+end)
+
+T.Case("Restrict.State: a state that cannot be read is unknown, not on", function()
+    local mark = FakeSecret()
+    Env.SetSecretCheck(function(v) return v == mark end)
+    local s = Restrict.State({ states = { Combat = mark, Chat = "2" }, lockdown = mark })
+    T.True(s.unknown.Combat, "a secret state is unknown")
+    T.True(s.unknown.Chat, "so is one that is not a number")
+    T.Eq(s.combat, false, "an unreadable lockdown is not taken as combat")
+    T.Eq(s.restricted, false, "nothing is claimed")
+    Env.SetSecretCheck(nil)
+end)
+
+T.Case("Restrict.Changed: only what an addon acts on counts", function()
+    local calm = Restrict.State({ states = { Combat = 0 } })
+    local fight = Restrict.State({ states = { Combat = 2 }, lockdown = true })
+    T.Eq(Restrict.Changed(nil, calm), true, "the first reading is a change")
+    T.Eq(Restrict.Changed(calm, Restrict.State({ states = { Combat = 0, Map = 0 } })), false,
+        "a new kind reading off is not")
+    T.Eq(Restrict.Changed(calm, fight), true, "combat starting is")
+    T.Eq(Restrict.Changed(fight, Restrict.State({ states = { Combat = 1 }, lockdown = true })), false,
+        "1 and 2 are both on")
+    T.Eq(Restrict.Changed(Restrict.State({ states = { Map = 2 } }), Restrict.State({ states = { PvPMatch = 2 } })),
+        true, "a different kind on is")
+end)
+
+--------------------------------------------------------------------------------
 -- LibICStore
 --------------------------------------------------------------------------------
 

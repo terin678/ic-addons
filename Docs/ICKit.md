@@ -63,6 +63,7 @@ should not. The counters cost two clock reads a call and need no console variabl
 | LibICTest-1.0 | 1 | The case runner behind every addon's `test` command, headless and in game |
 | LibICJSON-1.0 | 1 | JSON text to and from tables, sorted and indented for people to read. Calls nothing in the game client |
 | LibICEnv-1.0 | 2 | What this client offers (build, a feature probe, secret values) and what handlers cost (call and time counters, memory) |
+| LibICRestrict-1.0 | 1 | What the client will not let an addon do or read right now: secret values, and combat, encounter and chat restrictions with a reason |
 | LibICStore-1.0 | 1 | Saved variables: defaults, schema, migrations, and whether the file really loaded |
 | LibICConsole-1.0 | 1 | Prefixed printing and the slash-command dispatcher with its help |
 | LibICTheme-1.0 | 1 | The theme registry: colour and font roles, the selected theme, change listeners |
@@ -173,6 +174,47 @@ Wrap every event handler and slash command at the point it is registered:
 ```lua
 frame:SetScript("OnEvent", Env.Wrap("Stickies events", function(self, event) ... end))
 ```
+
+## LibICRestrict-1.0
+
+```lua
+local Restrict = LibStub("LibICRestrict-1.0")
+
+local hp = Restrict.Readable(UnitHealth(unit))      -- nil when the client hides it
+local s = Restrict.State(reading)
+if s.secure then return "not while " .. s.reason end
+```
+
+On Forever the client hides some values from addons (secret values: comparing or doing
+arithmetic on one throws) and switches some actions off while a restriction is active.
+This library is where an addon asks. `State` is the pure half: it takes what the client
+said and decides. The half that reads the client and reports changes is not in yet.
+
+| Call | Returns |
+| --- | --- |
+| `Restrict.IsSecret(v)` | Whether `v` is a secret value (`Env.IsSecret`). |
+| `Restrict.Readable(v, fallback)` | `v` when it can be read, else `fallback` (nil by default). `false` is a readable value. |
+| `Restrict.State(reading)` | The decision, below. |
+| `Restrict.Changed(a, b)` | Whether two States differ in a flag or in which restrictions are on. A first reading (`a` nil) always differs. |
+
+`reading` is what the client said, every field optional: `states` maps each
+`Enum.AddOnRestrictionType` name (`Combat`, `Chat`, `Encounter`, `Map`, `ChallengeMode`,
+`PvPMatch`) to the number the client gave, where 0 is off and anything else on (the change
+event reports a start as 1, the state then reads 2); `lockdown` is `InCombatLockdown()`;
+`regenDisabled` is true between `PLAYER_REGEN_DISABLED` and `PLAYER_REGEN_ENABLED`;
+`chatLockdown` is `C_ChatInfo.InChatMessagingLockdown()`.
+
+The State:
+
+| Field | Meaning |
+| --- | --- |
+| `combat` | In combat by any sign: lockdown, the regen event, or the Combat restriction. The regen event comes a few seconds before the other two. |
+| `encounter` | The Encounter restriction is on. |
+| `chat` | Chat may not be sent: chat lockdown or the Chat restriction. |
+| `secure` | Secure frames may not be changed: lockdown, or the regen event that comes before it. |
+| `restricted` | Any of these, or any other restriction on. |
+| `active`, `unknown` | `{ [kind] = true }` for each restriction on, and for each state that was secret or not a number. An unknown state is never taken as on. |
+| `reason` | Words for the first thing on, combat before encounter before chat, then any other kinds by name; nil when nothing is. |
 
 ## LibICStore-1.0
 
