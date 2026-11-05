@@ -8,6 +8,7 @@ Target interface: 16001 (product `wow_classic_beta`, version 1.60.1). Client fol
 | ICKit | 0.7.0 | [Docs/ICKit.md](../../Docs/ICKit.md) |
 | Stickies | 0.1.0 | [Docs/Stickies.md](../../Docs/Stickies.md) |
 | RenderTuner | 0.4.0 | [Docs/RenderTuner.md](../../Docs/RenderTuner.md) |
+| MarkedForDeath | 0.1.0 | [Docs/forever/MarkedForDeath.md](../../Docs/forever/MarkedForDeath.md) |
 
 `ICKit` is the library addon for this flavor. Addons here list it under `## Dependencies`,
 so it must be installed alongside them; `scripts/package.ps1` bundles it into their zips

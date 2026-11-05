@@ -1,0 +1,56 @@
+## Interface: 16001
+## Title: Marked For Death
+## Notes: Raid crowd control and kill order the same every night: icons belong to seats, mob rules name a job. /mfd lists commands.
+## Author: Malexis
+## Version: 0.1.0
+## IconTexture: Interface\TargetingFrame\UI-RaidTargetingIcon_8
+## Group: ICKit
+## Category: Impulse Control
+## SavedVariables: MarkedForDeathDB
+## SavedVariablesPerCharacter: MarkedForDeathCharDB
+## Dependencies: ICKit
+
+Schema.lua
+Core.lua
+Data_CC.lua
+Data_Auras.lua
+Data_Instances.lua
+Data_Mobs.lua
+Log.lua
+Seats.lua
+Rules.lua
+Allocator.lua
+MarkPlan.lua
+Debug.lua
+Deaths.lua
+Announce.lua
+RaidCheckModel.lua
+Conflicts.lua
+Capture.lua
+Lead.lua
+Sense.lua
+MarkButtons.lua
+DeathWatch.lua
+RaidCheck.lua
+Comms.lua
+CombatLog.lua
+CaptureWatch.lua
+ChatCue.lua
+UI_Main.lua
+UI_Roles.lua
+UI_Rules.lua
+UI_Assignments.lua
+UI_Settings.lua
+UI_RaidCheck.lua
+UI_Deaths.lua
+UI_Bar.lua
+Launcher.lua
+Tests_Model.lua
+Tests_Marking.lua
+Tests_RaidCheck.lua
+Tests_Deaths.lua
+Tests_Capture.lua
+Tests_Comms.lua
+Tests_UI.lua
+Tests_Ops.lua
+Tests.lua
