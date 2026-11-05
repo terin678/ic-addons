@@ -50,7 +50,7 @@ local DEFAULT_BUDGET = {
 -- INSTANCE_CHAT in a party answer "You are not in a raid group"; INSTANCE_CHAT outside an
 -- instance group is refused; SAY sent from a timer in combat never arrived.
 local CHANNELS = {
-    PARTY = { group = { party = true, raid = true } },
+    PARTY = { group = { party = true, raid = true, group = true } },
     RAID = { group = { raid = true } },
     RAID_WARNING = { group = { raid = true }, lead = true },
     INSTANCE_CHAT = { instanceGroup = true },
@@ -92,7 +92,9 @@ local function Unfit(channel, state, line)
     local rule = CHANNELS[channel]
     if not rule then return "no such channel: " .. tostring(channel) end
     if rule.group and not rule.group[state.group or "solo"] then
-        return channel == "PARTY" and "not in a group" or "not in a raid"
+        if channel == "PARTY" then return "not in a group" end
+        if state.group == "group" then return "cannot tell whether this is a raid" end
+        return "not in a raid"
     end
     if rule.lead and state.lead ~= true then
         return state.lead == nil and "cannot tell whether you lead or assist" or "needs raid lead or assist"
@@ -114,7 +116,7 @@ end
 --   instance       "follow" (trust the client's lock, the default) or "locked" (treat
 --                  every instance as locked: the policy for a client that locks without
 --                  saying so)
---   group          "solo", "party" or "raid"
+--   group          "solo", "party", "raid", or "group" for one that may be a raid
 --   lead           leader or assist in a raid (nil when unreadable)
 --   instanceGroup  in an instance group
 --   sent, budget   for Chat.Budget
@@ -217,12 +219,14 @@ function Sender:State()
     if roster.kind == "raid" then
         lead = roster.canMark
     end
+    local group = roster.kind
+    if roster.kindKnown == false then group = "group" end
     return {
         now = Now(),
         chat = restrict.chat,
         inInstance = type(instanceType) == "string" and instanceType ~= "none" or nil,
         instance = self.instance,
-        group = roster.kind,
+        group = group,
         lead = lead,
         instanceGroup = Restrict.Readable(Ask(IsInGroup, LE_PARTY_CATEGORY_INSTANCE)) == true,
         sent = self.sent,
