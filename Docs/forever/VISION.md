@@ -45,6 +45,7 @@ the layers it needs exist.
 | --- | --- | --- | --- |
 | 0 | `LibICUtil-1.0` | Pure helpers: text, tables, lists | shipped in ICKit 0.1.0 |
 | 0 | `LibICTest-1.0` | The case runner, headless and in game | shipped in ICKit 0.1.0 |
+| 0 | `LibICJSON-1.0` | JSON text to and from tables, sorted and indented | shipped in ICKit 0.7.0 |
 | 1 | `LibICEnv-1.0` | What this client offers: build, feature probe, CPU and memory | shipped in ICKit 0.2.0 |
 | 1 | `LibICStore-1.0` | Saved variables: defaults, schema, migrations, the load check | shipped in ICKit 0.2.0 |
 | 1 | `LibICConsole-1.0` | Printing and slash commands | shipped in ICKit 0.2.0 |

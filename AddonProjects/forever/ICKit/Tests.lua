@@ -124,6 +124,132 @@ T.Case("Test: True and Near say what they wanted", function()
 end)
 
 --------------------------------------------------------------------------------
+-- LibICJSON
+--------------------------------------------------------------------------------
+
+local JSON = LibStub("LibICJSON-1.0")
+
+T.Case("JSON.Encode: plain values", function()
+    T.Eq(JSON.Encode(nil), "null", "nothing is null")
+    T.Eq(JSON.Encode(true), "true", "true")
+    T.Eq(JSON.Encode(false), "false", "false")
+    T.Eq(JSON.Encode(22890.0), "22890", "a whole number has no fraction")
+    T.Eq(JSON.Encode(-3), "-3", "a negative one")
+    T.Eq(JSON.Encode(1.5), "1.5", "a fraction keeps it")
+    T.Eq(JSON.Encode(0.1), "0.1", "in its shortest form")
+    T.Eq(JSON.Decode(JSON.Encode(1 / 3)), 1 / 3, "and reads back as the same number")
+    T.Eq(JSON.Encode('say "hi"\\now\n'), '"say \\"hi\\"\\\\now\\n"', "quotes, backslashes and line breaks escaped")
+    T.Eq(JSON.Encode("a\1b"), '"a\\u0001b"', "another control character as \\u")
+    T.Eq(JSON.Encode("caf\195\169"), '"caf\195\169"', "UTF-8 is written as it is")
+end)
+
+T.Case("JSON.Encode: tables, sorted and indented, or compact", function()
+    local t = { name = "Hyjal", ids = { 3, 1 }, boss = { hp = 10, alive = true }, empty = {} }
+    T.Eq(JSON.Encode(t), '{\n'
+        .. '  "boss": {\n'
+        .. '    "alive": true,\n'
+        .. '    "hp": 10\n'
+        .. '  },\n'
+        .. '  "empty": {},\n'
+        .. '  "ids": [\n'
+        .. '    3,\n'
+        .. '    1\n'
+        .. '  ],\n'
+        .. '  "name": "Hyjal"\n'
+        .. '}', "keys in order, two spaces a level, a list keeps its own order")
+    T.Eq(JSON.Encode(t, { compact = true }),
+        '{"boss":{"alive":true,"hp":10},"empty":{},"ids":[3,1],"name":"Hyjal"}', "compact is one line")
+    T.Eq(JSON.Encode({ a = 1 }, { indent = "\t" }), '{\n\t"a": 1\n}', "the indent is the caller's to pick")
+    T.Eq(JSON.Encode({ [10] = "x", [2] = "y", b = "z" }, { compact = true }), '{"2":"y","10":"x","b":"z"}',
+        "number keys by value, before text keys, and written as text")
+    T.Eq(JSON.Encode({ [1] = "a", [3] = "c" }, { compact = true }), '{"1":"a","3":"c"}', "a list with a hole is an object")
+    local one, two = {}, {}
+    for i = 1, 30 do one["k" .. i] = i end
+    for i = 30, 1, -1 do two["k" .. i] = i end
+    T.Eq(JSON.Encode(one), JSON.Encode(two), "the order a table was filled in never shows")
+end)
+
+T.Case("JSON.Encode: what JSON cannot hold is refused with a reason", function()
+    local text, why = JSON.Encode({ fn = print })
+    T.Eq(text, nil, "a function")
+    T.True(why:find("function", 1, true), "is named")
+    local loop = {}
+    loop.self = loop
+    text, why = JSON.Encode(loop)
+    T.Eq(text, nil, "a table inside itself")
+    T.True(why:find("itself", 1, true), "is named")
+    T.Eq(JSON.Encode({ 1 / 0 }), nil, "infinity")
+    T.Eq(JSON.Encode({ 0 / 0 }), nil, "NaN")
+    text, why = JSON.Encode({ [true] = 1 })
+    T.Eq(text, nil, "a key that is not text or a number")
+    T.True(why:find("key", 1, true), "is named")
+    local shared = { 1 }
+    T.Eq(JSON.Encode({ shared, shared }, { compact = true }), "[[1],[1]]", "one table used twice is not a loop")
+end)
+
+T.Case("JSON.Decode: objects, lists, numbers and words", function()
+    local t = JSON.Decode(' { "a" : [ 1, -2.5, 3e2, 1E-1 ], "b": { "c": true, "d": false }, "e": "x" } ')
+    T.Eq(t.a[1], 1, "a whole number")
+    T.Eq(t.a[2], -2.5, "a negative fraction")
+    T.Eq(t.a[3], 300, "an exponent")
+    T.Near(t.a[4], 0.1, 1e-12, "a capital E and a negative exponent")
+    T.Eq(t.b.c, true, "true")
+    T.Eq(t.b.d, false, "false")
+    T.Eq(t.e, "x", "text")
+    T.Eq(JSON.Decode("42"), 42, "a bare number")
+    T.Eq(next(JSON.Decode("{}")), nil, "an empty object")
+    T.Eq(next(JSON.Decode("[]")), nil, "an empty list")
+    t = JSON.Decode("[1, null, 3]")
+    T.Eq(t[2], nil, "a null in a list is a hole")
+    T.Eq(t[3], 3, "and what follows keeps its index")
+    T.Eq(JSON.Decode('{"a": null}').a, nil, "a null value is no value")
+end)
+
+T.Case("JSON.Decode: escapes, UTF-8 included", function()
+    T.Eq(JSON.Decode('"a\\"b\\\\c\\/d\\n\\t\\r\\b\\f"'), 'a"b\\c/d\n\t\r\b\f', "every short escape")
+    T.Eq(JSON.Decode('"\\u0041"'), "A", "a \\u escape")
+    T.Eq(JSON.Decode('"caf\\u00e9"'), "caf\195\169", "past 127 as UTF-8")
+    T.Eq(JSON.Decode('"\\u20AC"'), "\226\130\172", "three bytes, either case of hex")
+    T.Eq(JSON.Decode('"\\ud83d\\ude00"'), "\240\159\152\128", "a surrogate pair is one character")
+    T.Eq(JSON.Decode('"x\\ud83dy"'), "x\239\191\189y", "a lone surrogate is the replacement character")
+    T.Eq(JSON.Decode('"tab\there"'), "tab\there", "a raw tab a text editor left is kept")
+    T.Eq(JSON.Decode('"caf\195\169"'), "caf\195\169", "raw UTF-8 passes through")
+end)
+
+T.Case("JSON.Decode: text that is not JSON gets a reason, never an error", function()
+    local cases = {
+        { nil, "nothing to read" }, { "", "nothing to read" }, { "  \n ", "nothing to read" },
+        { "{", "ends where a key" }, { "[", "ends where a value" }, { "[1,]", "unexpected ]" }, { "[1 2]", "expected , or ]" },
+        { '{"a" 1}', "expected :" }, { "{a: 1}", "quoted key" }, { '{"a": 1,}', "quoted key" },
+        { '"open', "never ends" }, { '"\\q"', "unknown escape" }, { '"\\u12"', "four hex" },
+        { "1 2", "more text after" }, { "null", "only null" }, { "nope", "unexpected n" },
+        { string.rep("[", 300), "nested more than" },
+    }
+    for _, case in ipairs(cases) do
+        local value, why = JSON.Decode(case[1])
+        T.Eq(value, nil, tostring(case[1]) .. " reads as nothing")
+        T.True(type(why) == "string" and why:find(case[2], 1, true), tostring(case[1]) .. " says " .. case[2]
+            .. " (said " .. tostring(why) .. ")")
+    end
+    local _, why = JSON.Decode("[1, 2, x]")
+    T.True(why:find("character 8", 1, true), "the reason says where (" .. tostring(why) .. ")")
+end)
+
+T.Case("JSON: a table survives the trip out and back", function()
+    local rules = { version = 2, name = "Barrow \"Deeps\"", mobs = {}, flags = { true, false, true } }
+    for i = 1, 500 do
+        rules.mobs[i] = { id = 200000 + i, name = "Mob " .. i, weight = i / 8, marks = { i % 8 + 1 } }
+    end
+    local text = assert(JSON.Encode(rules))
+    local back = assert(JSON.Decode(text))
+    T.Eq(JSON.Encode(back), text, "encoding what was read gives the same text")
+    T.Eq(back.mobs[500].id, 200500, "deep values come back")
+    T.Eq(back.mobs[3].weight, 0.375, "fractions too")
+    T.Eq(back.name, rules.name, "and text with quotes in it")
+    T.Eq(JSON.Decode(JSON.Encode(rules, { compact = true })).mobs[250].name, "Mob 250", "compact reads back the same")
+end)
+
+--------------------------------------------------------------------------------
 -- LibICEnv
 --------------------------------------------------------------------------------
 
@@ -179,6 +305,62 @@ T.Case("Env.Try: an answer, several answers, or the error", function()
     T.Eq(t.ok, false, "an error is caught")
     T.True(t.err:find("no such thing", 1, true), "and kept")
     T.Eq(Env.Try("nothing", nil).err, "not a function", "asking nothing is said to be so")
+end)
+
+-- A stand-in for a secret value: like the client's, it refuses to become text.
+local function FakeSecret()
+    return setmetatable({}, {
+        __tostring = function() error("attempt to read a secret value") end,
+        __concat = function() error("attempt to concatenate a secret value") end,
+    })
+end
+
+T.Case("Env.IsSecret: the client's check, guarded, or false where there is none", function()
+    local mark = FakeSecret()
+    Env.SetSecretCheck(nil)
+    if type(issecretvalue) ~= "function" then
+        T.Eq(Env.IsSecret(mark), false, "a client without the check has no secrets")
+    end
+    Env.SetSecretCheck(function(v) return v == mark end)
+    T.Eq(Env.IsSecret(mark), true, "the check says so")
+    T.Eq(Env.IsSecret("plain"), false, "a plain value is not")
+    Env.SetSecretCheck(function() error("check broke") end)
+    T.Eq(Env.IsSecret(mark), false, "a check that fails is read as not secret, not raised")
+    Env.SetSecretCheck(function() return 1 end)
+    T.Eq(Env.IsSecret(mark), false, "only a true answer counts")
+    Env.SetSecretCheck(nil)
+end)
+
+T.Case("Env.Try: a secret return is marked, never joined into the text", function()
+    local mark = FakeSecret()
+    Env.SetSecretCheck(function(v) return v == mark end)
+    local t = Env.Try("unit", function() return "a", mark, 3 end)
+    T.Eq(t.ok, true, "the call answered")
+    T.Eq(t.n, 3, "all three returns counted")
+    T.Eq(t.text, "a, <secret>, 3", "the secret one is named, not read")
+    T.True(t.secret[2], "and its place is marked")
+    T.Eq(t.secret[1], nil, "a plain one is not")
+    T.True(t.values[2] == mark, "the value itself is handed back untouched")
+    t = Env.Try("secret error", function() error(mark) end)
+    T.Eq(t.ok, false, "an error raised with a secret is caught")
+    T.Eq(t.err, "<secret>", "and named, not read")
+    Env.SetSecretCheck(nil)
+end)
+
+T.Case("Env.Try: a return that will not become text leaves the answer intact", function()
+    local odd = FakeSecret()
+    Env.SetSecretCheck(function() return false end)
+    local t = Env.Try("odd", function() return 1, odd end)
+    T.Eq(t.ok, true, "the call still answered")
+    T.Eq(t.unreadable, true, "the text is said to be unreadable")
+    T.Eq(t.text, "<unreadable>", "rather than raising")
+    T.True(t.values[2] == odd, "and the values are all there")
+    t = Env.Try("odd error", function() error(odd) end)
+    T.Eq(t.err, "<unreadable>", "an error that will not become text is named too")
+    t = Env.Try("plain", function() return true end)
+    T.Eq(t.unreadable, nil, "a plain answer is readable")
+    T.Eq(next(t.secret), nil, "with nothing secret")
+    Env.SetSecretCheck(nil)
 end)
 
 T.Case("Env.Wrap: calls and time are counted, the function behaves as before", function()
