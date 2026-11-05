@@ -87,8 +87,8 @@ older version, dim nothing expected.
 - **Grey is never red.** A member out of sight or offline, a buff the client hid, or an
   aura list that came back empty is "could not be read", never "missing", and a callout
   never names anyone for a grey cell. Hover a row for the reason.
-- Durability is your own for now. Other members' durability and versions arrive with the
-  addon's comms; until then those cells are grey.
+- Other members' durability and versions come over the addon's comms (and durability from
+  boss mods that answer LibDurability). A member nobody heard from is grey.
 
 Buffs are matched by spell id. A flask, elixir or food whose id the addon does not know yet
 still counts, matched by its name or icon, and `/mfd check auras` lists it under "matched by

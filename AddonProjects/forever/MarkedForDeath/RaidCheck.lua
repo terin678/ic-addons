@@ -25,8 +25,10 @@ For other lanes:
     RaidCheck.Snapshot()              the last snapshot (nil before the first)
     RaidCheck.OnChange(key, fn)       fn(snapshot) after every read; fn nil to stop
     RaidCheck.Live(key, on)           keep the live events while any key wants them
-    RaidCheck.SetPeer(guid, info)     { version, durability, broken } heard over comms
-                                      (lane F's hook: nothing calls it yet)
+
+Other members' durability and versions come from lane F's Comms (ns.Comms.Durability and
+ns.Comms.Versions, keyed by player name), read guarded: before Comms exists those cells
+are grey. Comms tells the check when either changes (ns.Comms.Listen).
 ]]
 
 ns.RaidCheck = ns.RaidCheck or {}
@@ -50,7 +52,6 @@ local listeners = {}
 local wanted = {}                  -- [key] = true while something wants live events
 local isLive = false
 local pending = false
-local peers = {}                   -- [guid] = { version, durability, broken, at }
 local chat
 local lastCalloutAt = -CALLOUT_GAP
 
@@ -113,6 +114,22 @@ local function OwnDurability()
     return Model.Durability(slots)
 end
 
+-- A table from lane F's Comms (Durability or Versions), or an empty one while it is not
+-- there or fails.
+local function FromComms(name)
+    local comms = ns.Comms
+    local fn = comms and comms[name]
+    if type(fn) ~= "function" then return {} end
+    local ok, t = pcall(fn)
+    return ok and type(t) == "table" and t or {}
+end
+
+-- One member's entry in a Comms table, by the name the client gives senders ("First
+-- Second" on Forever), then by the first name alone.
+local function Heard(t, m)
+    return t[m.display or ""] or t[m.name or ""]
+end
+
 local function Notify()
     for _, fn in pairs(listeners) do
         local ok, err = pcall(fn, snapshot)
@@ -136,6 +153,7 @@ function RC.Scan(reason)
 
     local roster = Group.Now()
     local members = roster.members or {}
+    local durability, versions = FromComms("Durability"), FromComms("Versions")
     local states, extras = {}, {}
     for _, m in ipairs(members) do
         local key = m.guid or m.name
@@ -144,10 +162,10 @@ function RC.Scan(reason)
             if m.online ~= false and m.unit then auras = ReadUnit(m.unit) end
             states[key] = Model.Classify(auras, Auras.Lookup(), Auras)
             local extra = {}
-            local peer = m.guid and peers[m.guid]
-            if peer then
-                extra.version, extra.durability, extra.broken = peer.version, peer.durability, peer.broken
-            end
+            local dur = Heard(durability, m)
+            if dur then extra.durability, extra.broken = dur.percent, dur.broken end
+            local ver = Heard(versions, m)
+            if ver then extra.version = ver.version end
             if m.isMe then
                 extra.version = ns.VERSION
                 extra.durability, extra.broken = OwnDurability()
@@ -184,12 +202,6 @@ function RC.OnChange(key, fn)
     listeners[key] = fn
 end
 
-function RC.SetPeer(guid, info)
-    if type(guid) ~= "string" or type(info) ~= "table" then return end
-    peers[guid] = {
-        version = info.version, durability = info.durability, broken = info.broken, at = time(),
-    }
-end
 
 --------------------------------------------------------------------------------
 -- Live events
@@ -425,4 +437,10 @@ ns.AddCommand("check", "the raid buff and consumable grid; missing, callout, aur
 ns.OnReady("raidcheck", function()
     if IC_HEADLESS then return end
     ns.Events.On("READY_CHECK", KEY, OnReadyCheck)
+    local comms = ns.Comms
+    if comms and type(comms.Listen) == "function" then
+        pcall(comms.Listen, KEY, function(kind)
+            if (kind == "durability" or kind == "peers") and next(wanted) ~= nil then Soon() end
+        end)
+    end
 end)
