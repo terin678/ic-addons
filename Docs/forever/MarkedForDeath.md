@@ -97,6 +97,20 @@ On this client the log file stayed empty in the open world when tested. Whether 
 inside an instance is still being checked, and `/mfd combatlog` says so while anything is
 listed.
 
+## Log
+
+| Command | What it does |
+| --- | --- |
+| `/mfd log` | The newest 15 lines of what the addon did, oldest first, each with its age |
+| `/mfd log 40` | The newest 40 lines (up to 500) |
+| `/mfd log death`, `/mfd log 5 plan` | Only one kind of line |
+
+The kinds are `plan` (the plan or the macro changed), `held` (something was not sent or
+not written, and why), `say`, `death`, `lead`, `logging`, `conflict`, `capture` and
+`error`. An unknown kind lists the real ones. The log keeps the last 500 lines in the
+saved settings, so after a reload or logout it can also be read in
+`SavedVariables\MarkedForDeath.lua`.
+
 ## Saved settings
 
 Account-wide settings are in `MarkedForDeathDB`, per-character ones (window places, the bar)
