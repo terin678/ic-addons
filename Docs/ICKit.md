@@ -64,6 +64,7 @@ should not. The counters cost two clock reads a call and need no console variabl
 | LibICJSON-1.0 | 1 | JSON text to and from tables, sorted and indented for people to read. Calls nothing in the game client |
 | LibICEnv-1.0 | 2 | What this client offers (build, a feature probe, secret values) and what handlers cost (call and time counters, memory) |
 | LibICRestrict-1.0 | 1 | What the client will not let an addon do or read right now: secret values, and combat, encounter and chat restrictions with a reason |
+| LibICGroup-1.0 | 1 | Who is in the group: a roster snapshot of plain values, every field checked for secrets, and whether the player may mark |
 | LibICStore-1.0 | 1 | Saved variables: defaults, schema, migrations, and whether the file really loaded |
 | LibICConsole-1.0 | 1 | Prefixed printing and the slash-command dispatcher with its help |
 | LibICTheme-1.0 | 1 | The theme registry: colour and font roles, the selected theme, change listeners |
@@ -227,6 +228,44 @@ The State:
 | `restricted` | Any of these, or any other restriction on. |
 | `active`, `unknown` | `{ [kind] = true }` for each restriction on, and for each state that was secret or not a number. An unknown state is never taken as on. |
 | `reason` | Words for the first thing on, combat before encounter before chat, then any other kinds by name; nil when nothing is. |
+
+## LibICGroup-1.0
+
+```lua
+local Group = LibStub("LibICGroup-1.0")
+
+local roster = Group.Now()          -- out of combat
+for _, m in ipairs(roster.members) do
+    if m.role == "TANK" or m.mainTank then ... end
+end
+if roster.canMark == false then return "you need lead or assist" end
+```
+
+On Forever some unit values can come back secret, so a roster is read out of combat, every
+field is checked, and the snapshot is kept: a pull reads the snapshot, not the client.
+
+| Call | Returns |
+| --- | --- |
+| `Group.Snapshot(reading)` | The roster, below. Pure: a case hands in its own reading. |
+| `Group.Read()` | The reading, from the client now: `IsInRaid`, `IsInGroup`, `GetNumGroupMembers`, `IsEveryoneAssistant`, `UnitGUID("player")`, and for each unit (`player` and `party1..4`, or `raid1..40`) `UnitGUID`, `UnitName`'s two returns, `UnitClass`, `UnitGroupRolesAssigned`, `GetPartyAssignment("MAINTANK")`, `UnitIsGroupLeader`, `UnitIsGroupAssistant`, `UnitIsConnected` and `UnitIsDeadOrGhost`. Every call is guarded; one that is missing or raises is no answer. |
+| `Group.Now()` | `Snapshot(Read())`. |
+
+The roster: `kind` (`solo`, `party` or `raid`), `size`, `members` in unit order, `byGuid`,
+`me` (the player, found by guid), `leader`, `everyoneAssist`, `canMark` and `unknown` (how
+many fields came back unreadable).
+
+A member: `unit`, `guid`, `name` and `name2` (Forever names have two parts), `display` (both,
+for showing), `class` (the token, `MAGE`) and `classLocal` (as the client shows it), `role`
+(`TANK`, `HEALER`, `DAMAGER` or nil), `mainTank`, `rank` (`leader`, `assist` or `member`),
+`online`, `dead`, `isMe`, and `unknown`, the fields that came back secret or unreadable.
+
+Nothing is guessed. A field the client hid is nil and named in `unknown`, so read a nil as
+"not known", not as "no". A rank that cannot be read is nil, and then `canMark` is nil in a
+raid. `canMark` is the game's rule for raid target icons: always alone or in a party, in a
+raid only as leader or assist or when everyone is assist. Raid units are read the same way
+as party ones, but the probe has only seen a party so far.
+
+There is no change event yet: call `Group.Now()` when you need a roster, out of combat.
 
 ## LibICStore-1.0
 

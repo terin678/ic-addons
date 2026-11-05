@@ -561,6 +561,146 @@ T.Case("Restrict.OnChange: told at each change, with the regen event first", fun
 end)
 
 --------------------------------------------------------------------------------
+-- LibICGroup
+--------------------------------------------------------------------------------
+
+local Group = LibStub("LibICGroup-1.0")
+
+-- A party of two as the probe saw one: the player leads, the other is a mage.
+local function PartyReading()
+    return {
+        inGroup = true, inRaid = false, me = "Player-1-A",
+        units = {
+            { unit = "player", guid = "Player-1-A", name = "Mal", name2 = "Exis", classLocal = "Hunter",
+                class = "HUNTER", role = "TANK", mainTank = false, leader = true, assist = false, online = true,
+                dead = false },
+            { unit = "party1", guid = "Player-1-B", name = "Solo", name2 = "Siphyr", classLocal = "Mage",
+                class = "MAGE", role = "DAMAGER", mainTank = false, leader = false, online = true, dead = false },
+        },
+    }
+end
+
+T.Case("Group.Snapshot: a party, every field plain", function()
+    local s = Group.Snapshot(PartyReading())
+    T.Eq(s.kind, "party", "a party")
+    T.Eq(s.size, 2, "of two")
+    T.Eq(s.me.unit, "player", "the player is found by guid")
+    T.Eq(s.leader.unit, "player", "and leads")
+    T.Eq(s.me.rank, "leader", "rank leader")
+    local mage = s.byGuid["Player-1-B"]
+    T.Eq(mage.display, "Solo Siphyr", "both names, for showing")
+    T.Eq(mage.name, "Solo", "the first name on its own")
+    T.Eq(mage.class, "MAGE", "the class token")
+    T.Eq(mage.classLocal, "Mage", "and the class as the client shows it")
+    T.Eq(mage.role, "DAMAGER", "the role")
+    T.Eq(mage.rank, "member", "no assist answer in a party is a plain member")
+    T.Eq(mage.isMe, false, "not the player")
+    T.Eq(s.canMark, true, "anyone in a party may mark")
+    T.Eq(s.unknown, 0, "nothing unreadable")
+end)
+
+T.Case("Group.Snapshot: alone, and nothing said", function()
+    local s = Group.Snapshot({ me = "Player-1-A", units = { { unit = "player", guid = "Player-1-A", name = "Mal",
+        role = "NONE" } } })
+    T.Eq(s.kind, "solo", "alone")
+    T.Eq(s.me.display, "Mal", "one name is the whole name")
+    T.Eq(s.me.role, nil, "NONE is no role")
+    T.Eq(s.canMark, true, "marks work solo")
+    s = Group.Snapshot(nil)
+    T.Eq(s.size, 0, "nothing said is nobody")
+    T.Eq(s.me, nil, "with no player found")
+end)
+
+T.Case("Group.Snapshot: in a raid, marking needs leader, assist or everyone assist", function()
+    local reading = PartyReading()
+    reading.inRaid = true
+    reading.units[1].unit, reading.units[2].unit = "raid1", "raid2"
+    reading.units[1].leader = false
+    T.Eq(Group.Snapshot(reading).canMark, false, "a plain member may not")
+    reading.units[1].assist = true
+    local s = Group.Snapshot(reading)
+    T.Eq(s.me.rank, "assist", "an assist")
+    T.Eq(s.canMark, true, "may")
+    reading.units[1].assist = false
+    reading.everyoneAssist = true
+    T.Eq(Group.Snapshot(reading).canMark, true, "everyone assist lets anyone")
+    reading.everyoneAssist = nil
+    reading.units[1].mainTank = true
+    T.Eq(Group.Snapshot(reading).me.mainTank, true, "Main Tank is kept")
+    T.Eq(Group.Snapshot(reading).leader, nil, "a raid with no readable leader has none")
+end)
+
+T.Case("Group.Snapshot: a secret field is unknown, never guessed", function()
+    local mark = FakeSecret()
+    Env.SetSecretCheck(function(v) return v == mark end)
+    local reading = PartyReading()
+    reading.inRaid = true
+    reading.units[1].leader, reading.units[1].assist = mark, mark
+    reading.units[2].name, reading.units[2].role, reading.units[2].class = mark, mark, 7
+    local s = Group.Snapshot(reading)
+    T.Eq(s.me.rank, nil, "an unreadable rank is no rank")
+    T.Eq(s.canMark, nil, "so whether the player may mark in a raid is not known")
+    local mage = s.byGuid["Player-1-B"]
+    T.Eq(mage.name, nil, "a secret name is nil")
+    T.Eq(mage.display, nil, "and so is the shown name")
+    T.True(mage.unknown.name and mage.unknown.role, "both are named as unknown")
+    T.Eq(mage.class, nil, "a class that is not text is dropped")
+    T.Eq(s.unknown, 4, "four unreadable fields in all")
+    reading.me = mark
+    T.Eq(Group.Snapshot(reading).me, nil, "a secret player guid finds nobody")
+    Env.SetSecretCheck(nil)
+end)
+
+T.Case("Group.Read: the units of a party or a raid, every call guarded", function()
+    -- Headless only: in game, writing these globals would taint them.
+    if not IC_HEADLESS then return end
+    local names = { "IsInRaid", "IsInGroup", "GetNumGroupMembers", "UnitGUID", "UnitName", "UnitClass",
+        "UnitGroupRolesAssigned", "GetPartyAssignment", "UnitIsGroupLeader", "UnitIsGroupAssistant",
+        "UnitIsConnected", "UnitIsDeadOrGhost", "IsEveryoneAssistant" }
+    local saved = {}
+    for _, n in ipairs(names) do saved[n] = _G[n] end
+    local raid, count = false, 3
+    _G.IsInRaid = function() return raid end
+    _G.IsInGroup = function() return true end
+    _G.GetNumGroupMembers = function() return count end
+    _G.UnitGUID = function(unit) return unit == "player" and "G-player" or ("G-" .. unit) end
+    _G.UnitName = function(unit) return "N-" .. unit, "Two" end
+    _G.UnitClass = function() return "Priest", "PRIEST", 5 end
+    _G.UnitGroupRolesAssigned = function(unit) return unit == "party1" and "HEALER" or "NONE" end
+    _G.GetPartyAssignment = function(kind, unit) return kind == "MAINTANK" and unit == "party2" end
+    _G.UnitIsGroupLeader = function(unit) return unit == "player" end
+    _G.UnitIsGroupAssistant = function() error("not here") end
+    _G.UnitIsConnected = function() return true end
+    _G.UnitIsDeadOrGhost = function() return false end
+    _G.IsEveryoneAssistant = nil
+
+    local r = Group.Read()
+    T.Eq(#r.units, 3, "the player and two party units")
+    T.Eq(r.units[1].unit, "player", "the player first")
+    T.Eq(r.units[3].unit, "party2", "then party1 and party2")
+    T.Eq(r.units[2].name2, "Two", "both name returns")
+    T.Eq(r.units[2].class, "PRIEST", "the class token")
+    T.Eq(r.units[1].assist, nil, "a call that raises is no answer")
+    T.Eq(r.everyoneAssist, nil, "nor is one that is missing")
+    local s = Group.Snapshot(r)
+    T.Eq(s.me.rank, "leader", "and the snapshot reads it")
+    T.Eq(s.byGuid["G-party1"].role, "HEALER", "the healer")
+    T.Eq(s.byGuid["G-party2"].mainTank, true, "the Main Tank")
+    T.Eq(Group.Now().size, 3, "Now is the same snapshot")
+    raid, count = true, 4
+    r = Group.Read()
+    T.Eq(#r.units, 4, "a raid reads its count")
+    T.Eq(r.units[4].unit, "raid4", "as raid units")
+    count = 99
+    T.Eq(#Group.Read().units, 40, "never more than a raid holds")
+    _G.IsInGroup = function() return false end
+    raid = false
+    T.Eq(#Group.Read().units, 1, "alone is the player only")
+
+    for _, n in ipairs(names) do _G[n] = saved[n] end
+end)
+
+--------------------------------------------------------------------------------
 -- LibICStore
 --------------------------------------------------------------------------------
 

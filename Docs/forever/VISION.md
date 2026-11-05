@@ -48,6 +48,7 @@ the layers it needs exist.
 | 0 | `LibICJSON-1.0` | JSON text to and from tables, sorted and indented | shipped in ICKit 0.7.0 |
 | 1 | `LibICEnv-1.0` | What this client offers: build, feature probe, CPU and memory | shipped in ICKit 0.2.0 |
 | 1 | `LibICRestrict-1.0` | Secret values and restrictions: what an addon may read and do right now | built for ICKit 0.8.0 |
+| 1 | `LibICGroup-1.0` | Who is in the group: a roster snapshot of plain values | built for ICKit 0.9.0 |
 | 1 | `LibICStore-1.0` | Saved variables: defaults, schema, migrations, the load check | shipped in ICKit 0.2.0 |
 | 1 | `LibICConsole-1.0` | Printing and slash commands | shipped in ICKit 0.2.0 |
 | 1 | `LibICTheme-1.0` | The theme registry: colour and font roles, change listeners | shipped in ICKit 0.3.0 |
