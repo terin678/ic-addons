@@ -268,7 +268,9 @@ end
 -- MarkedForDeath, as it was
 --------------------------------------------------------------------------------
 
-if addonName == "MarkedForDeath" then
+-- The Anniversary addon only. The Forever MarkedForDeath has the same name and the
+-- ordinary shape, so it takes the path below.
+if addonName == "MarkedForDeath" and flavorDir:match("([^/]+)$") == "anniversary" then
     -- Core.lua cannot be loaded here because it creates a frame at file scope, but the
     -- logic modules register their client-side setup through RegisterInit at file scope.
     -- Seed a no-op so those calls succeed; the registered functions are never run
