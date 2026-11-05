@@ -117,6 +117,7 @@ request. Development happens on branches:
 | forever | [ICKit](AddonProjects/forever/ICKit) | The shared kit under the WoW Forever addons: small libraries added one layer at a time. Guide: [Docs/ICKit.md](Docs/ICKit.md). Start with [Docs/forever/VISION.md](Docs/forever/VISION.md) |
 | forever | [Stickies](AddonProjects/forever/Stickies) | Sticky notes that stay on screen: a title and a checklist, per character or shared across the account. Guide: [Docs/Stickies.md](Docs/Stickies.md) |
 | forever | [RenderTuner](AddonProjects/forever/RenderTuner) | Tunes the client's rendering: upscaling presets and a control for every graphics console variable. A floating panel with search, upscaling and quality presets, and commands so far. Guide: [Docs/RenderTuner.md](Docs/RenderTuner.md) |
+| forever | [MarkedForDeath](AddonProjects/forever/MarkedForDeath) | Raid crowd control and kill order the same every night, rebuilt for WoW Forever. Scaffold only so far: the console and saved settings. Guide: [Docs/forever/MarkedForDeath.md](Docs/forever/MarkedForDeath.md) |
 
 ## Client paths on the maintainer's machine
 
