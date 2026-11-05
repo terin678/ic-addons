@@ -16,7 +16,7 @@ ic-addons/
     era/                 Classic Era (interface 115xx)
     anniversary/         TBC Anniversary (interface 20506)
     retail/              Retail (interface 12xxxx)
-    forever/             WoW Forever (interface 16001; the beta client folder is _classic_beta_)
+    forever/             WoW Forever (interface 16001; the client folder is _forever_)
   scripts/               Scaffold, deploy, package (PowerShell) and lint (Python)
   .claude/skills/        Claude Code skills for working in this repo
   CODING_STANDARDS.md    Lua and addon conventions everyone follows here
@@ -125,6 +125,6 @@ request. Development happens on branches:
 | era | `D:\Program Files (x86)\World of Warcraft\_classic_era_\Interface\AddOns` |
 | anniversary | `D:\Program Files (x86)\World of Warcraft\_anniversary_\Interface\AddOns` |
 | retail | `D:\Program Files (x86)\World of Warcraft\_retail_\Interface\AddOns` |
-| forever | `D:\Program Files (x86)\World of Warcraft\_classic_beta_\Interface\AddOns` |
+| forever | `D:\Program Files (x86)\World of Warcraft\_forever_\Interface\AddOns` |
 
 Override with `-WowRoot` on the scripts if your install is elsewhere.

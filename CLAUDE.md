@@ -27,7 +27,7 @@ Guild World of Warcraft addons. Read `CODING_STANDARDS.md` before changing any L
 
 ## Rules that matter most
 
-- Interface versions: anniversary is 20506 (TBC), forever is 16001 (WoW Forever, client folder `_classic_beta_`). Verify against an installed addon on the
+- Interface versions: anniversary is 20506 (TBC), forever is 16001 (WoW Forever, client folder `_forever_`). Verify against an installed addon on the
   client before changing; do not guess.
 - Client API calls that wait on the game must have timeouts and a cancel path. See the
   scan state machine in `MalexisAuctionWatcher/Scanning.lua` for the pattern.

@@ -24,7 +24,7 @@ does, and it does not look the same.
 
 ## Install
 
-Extract into `_classic_beta_\Interface\AddOns` so you get `AddOns\RenderTuner\RenderTuner.toc`.
+Extract into `_forever_\Interface\AddOns` so you get `AddOns\RenderTuner\RenderTuner.toc`.
 RenderTuner needs **ICKit**, which goes beside it (`AddOns\ICKit`). Restart the client after
 installing; a `/reload` does not pick up a new addon.
 
@@ -51,7 +51,7 @@ The first time you open the panel in a session, a warning says this and waits fo
 
 **Save a set that works before trying one**, so Revert has somewhere to return to. If the
 game will not start afterwards, delete `WTF\Config.wtf` in the game folder
-(`_classic_beta_\WTF\Config.wtf`): the client starts with default settings and writes a new
+(`_forever_\WTF\Config.wtf`): the client starts with default settings and writes a new
 one. That file holds machine-wide settings only, such as graphics and sound, not your
 characters, keybinds or addons' data.
 

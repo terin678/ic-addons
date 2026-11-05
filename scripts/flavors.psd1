@@ -21,10 +21,10 @@
         Folder = "_retail_"; Interface = "120100"; Library = "ICLibs"
         Published = @(); Template = "ICTemplate"
     }
-    # WoW Forever. The beta installs as _classic_beta_; when the live client lands under
-    # another folder name, this is the one line to change.
+    # WoW Forever. The live client installs as _forever_ (the beta was _classic_beta_, which
+    # still holds the exported interface source). This is the one line to change.
     forever = @{
-        Folder = "_classic_beta_"; Interface = "16001"; Library = "ICKit"
+        Folder = "_forever_"; Interface = "16001"; Library = "ICKit"
         Published = @(); Template = ""
     }
 }

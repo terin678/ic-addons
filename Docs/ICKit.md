@@ -10,7 +10,7 @@ TBC Anniversary addons, and the two are never installed on the same client.
 
 ## Install
 
-Extract into `_classic_beta_\Interface\AddOns` so you get `AddOns\ICKit\ICKit.toc`. Restart
+Extract into `_forever_\Interface\AddOns` so you get `AddOns\ICKit\ICKit.toc`. Restart
 the client after installing; a `/reload` does not pick up a new addon.
 
 ## Commands

@@ -1,7 +1,7 @@
 # WoW Forever addons
 
 Target interface: 16001 (product `wow_classic_beta`, version 1.60.1). Client folder
-`_classic_beta_` while the game is in beta; `scripts/flavors.psd1` is where that changes.
+`_forever_` (the beta was `_classic_beta_`); `scripts/flavors.psd1` is where that changes.
 
 | Addon | Version | Guide |
 | --- | --- | --- |
