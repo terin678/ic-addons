@@ -169,6 +169,11 @@ local function StopDrag(panel)
     -- The client would otherwise remember the position itself, in its layout cache,
     -- and fight the one the addon saves.
     panel:SetUserPlaced(false)
+    -- The client may re-anchor a moved frame to whichever screen point is nearest. Pin it
+    -- back by its top-left, where W.SetPlace puts it, so it grows right and down when it
+    -- is resized and SetPlace and GetPlace stay in step.
+    local fx, fy = W.GetPlace(panel)
+    if fx then W.SetPlace(panel, fx, fy) end
     if panel.icOnMoved then panel.icOnMoved(panel) end
 end
 
@@ -1167,6 +1172,7 @@ list:SetItems(items)     the rows; the list redraws, keeping its scroll where it
 list:Refresh()           redraws the same items (after a selection or a value changed)
 list:Resize(w, h)        the whole list, header included, for a window that resizes
 list:ScrollTo(offset), list:GetItems()
+list:SetSortMark(key, ascending) an arrow after the sorted column's header; nil clears it
 list.header, list.scroll
 Every pooled row is filled in full each time: text, colour, selection, item. Nothing of the
 item that was there before survives. An item is any value but nil and false; row.icItem is
@@ -1200,11 +1206,12 @@ function W.List(parent, w, h, opts)
         cell:SetHeight(list.icHeaderH)
         cell.label = cell:CreateFontString(nil, "OVERLAY", theme.fonts.small)
         cell.label:SetPoint("LEFT", cell, "LEFT", LIST_PAD, 0)
-        cell.label:SetPoint("RIGHT", cell, "RIGHT", -LIST_PAD, 0)
+        cell.label:SetPoint("RIGHT", cell, "RIGHT", 0, 0)
         cell.label:SetJustifyH(col.justify or "LEFT")
         FontNoWrap(cell.label)
         cell.label:SetText(col.label or "")
         cell.icKey = col.key
+        cell.icLabel = col.label or ""
         if list.icOnHeader then
             cell:SetScript("OnClick", function(self) list.icOnHeader(self.icKey, col) end)
         end
@@ -1315,8 +1322,29 @@ function W.List(parent, w, h, opts)
                 RepaintRow(row, current)
                 row:Show()
             end
+            -- The wheel refills rows under a pointer that has not moved: a tooltip showing
+            -- for this row must follow the item now in it, or go.
+            if GameTooltip and GameTooltip.IsOwned and GameTooltip:IsOwned(row) then
+                if row.icItem and self.icTooltip then
+                    GameTooltip:ClearLines()
+                    RowTip(GameTooltip, row)
+                    GameTooltip:Show()
+                else
+                    GameTooltip:Hide()
+                end
+            end
         end
         self.emptyLabel:SetShown(#items == 0)
+    end
+
+    -- Marks the column the list is sorted by: an arrow after its header label, up for
+    -- ascending. nil clears the mark.
+    function list:SetSortMark(key, ascending)
+        for _, cell in ipairs(self.header.cells) do
+            local text = cell.icLabel
+            if key ~= nil and cell.icKey == key then text = text .. (ascending and " ^" or " v") end
+            cell.label:SetText(text)
+        end
     end
 
     function list:SetItems(items)

@@ -1545,6 +1545,17 @@ end
 -- The addon itself
 --------------------------------------------------------------------------------
 
+T.Case("Theme: every shipped theme has the status text roles", function()
+    for _, name in ipairs(Theme.Names()) do
+        local t = Theme.Get(name)
+        for _, role in ipairs({ "good", "warn", "bad" }) do
+            T.True(type(t.colors[role]) == "table", name .. " has " .. role)
+        end
+    end
+    local forever = Theme.Get("Forever").colors
+    T.True(forever.bad.r > forever.danger.r, "Forever's bad text is brighter than its danger fill")
+end)
+
 T.Case("Widgets: tabs lay out, shrinking alike when they would not fit", function()
     local l = W.TabLayout(3, 400, 96)
     T.Eq(l[1].x, 0, "the first at the left")
@@ -1669,6 +1680,15 @@ T.Case("Widgets: a list fills pooled rows in full and blanks the rest", function
     T.Eq(list.rows[2].icItem, false, "holding no item")
     list.rows[2]:GetScript("OnClick")(list.rows[2], "LeftButton")
     T.Eq(#clicks, 1, "a click on an empty row reports nothing")
+
+    list:SetSortMark("hp", false)
+    T.Eq(list.header.cells[2].label:GetText(), "Health v", "the sorted column carries an arrow")
+    T.Eq(list.header.cells[1].label:GetText(), "Name", "the others none")
+    list:SetSortMark("name", true)
+    T.Eq(list.header.cells[1].label:GetText() .. "|" .. list.header.cells[2].label:GetText(), "Name ^|Health",
+        "a new sort moves the arrow")
+    list:SetSortMark(nil)
+    T.Eq(list.header.cells[1].label:GetText(), "Name", "and nil clears it")
 
     list:Resize(300, 20 + 18 * 8)
     T.Eq(#list.rows, 9, "a taller list makes the rows it now needs")

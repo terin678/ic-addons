@@ -148,7 +148,7 @@ local function BuildList(page, w, h)
             { key = "class", label = "Class", width = 80 },
             { key = "hp", label = "Health", width = 60, justify = "RIGHT", tip = "A made-up number, 0 to 99",
                 text = function(item)
-                    return item.hp .. "%", item.hp < 30 and "danger" or (item.hp < 60 and "accent" or "text")
+                    return item.hp .. "%", item.hp < 30 and "bad" or (item.hp < 60 and "warn" or "good")
                 end },
         },
         selected = function(item) return item == chosen end,
@@ -167,11 +167,13 @@ local function BuildList(page, w, h)
         onHeader = function(key)
             if key == sortKey then sortUp = not sortUp else sortKey, sortUp = key, true end
             list:SetItems(Sorted(list:GetItems()))
+            list:SetSortMark(sortKey, sortUp)
         end,
         empty = "Nothing to show",
     })
     list:SetPoint("TOPLEFT", page, "TOPLEFT", 0, 0)
     list:SetItems(Sorted(SampleItems()))
+    list:SetSortMark(sortKey, sortUp)
     return list
 end
 
@@ -255,7 +257,7 @@ local function Build(width, height)
 
     local foot = W.Label(p, "Drag the title bar or the corner. Kept per character.", { font = "small", color = "textDim" })
     foot:SetPoint("BOTTOMLEFT", p, "BOTTOMLEFT", PAD, 10)
-    foot:SetPoint("RIGHT", p, "RIGHT", -24, 0)
+    foot:SetPoint("BOTTOMRIGHT", p, "BOTTOMRIGHT", -24, 10)
 
     W.Resize(p, {
         minWidth = WIDTH, minHeight = HEIGHT,
