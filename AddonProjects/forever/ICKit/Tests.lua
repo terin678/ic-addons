@@ -600,7 +600,7 @@ T.Case("Group.Snapshot: a party, every field plain", function()
 end)
 
 T.Case("Group.Snapshot: alone, and nothing said", function()
-    local s = Group.Snapshot({ me = "Player-1-A", units = { { unit = "player", guid = "Player-1-A", name = "Mal",
+    local s = Group.Snapshot({ inGroup = false, me = "Player-1-A", units = { { unit = "player", guid = "Player-1-A", name = "Mal",
         role = "NONE" } } })
     T.Eq(s.kind, "solo", "alone")
     T.Eq(s.me.display, "Mal", "one name is the whole name")
@@ -651,6 +651,38 @@ T.Case("Group.Snapshot: a secret field is unknown, never guessed", function()
     Env.SetSecretCheck(nil)
 end)
 
+T.Case("Group.Snapshot: whether this is a raid, and assist, are never guessed", function()
+    local mark = FakeSecret()
+    Env.SetSecretCheck(function(v) return v == mark end)
+    local reading = PartyReading()
+    reading.inRaid = mark
+    reading.units[1].leader, reading.units[1].assist = false, nil
+    local s = Group.Snapshot(reading)
+    T.Eq(s.kindKnown, false, "a secret IsInRaid leaves the kind unknown")
+    T.Eq(s.kind, "party", "the kind says group")
+    T.Eq(s.me.rank, nil, "with no assist answer, a non-leader's rank is unknown")
+    T.Eq(s.canMark, nil, "so whether the player may mark is unknown, not yes")
+    reading.units[1].assist = true
+    T.Eq(Group.Snapshot(reading).canMark, true, "an assist may mark either way")
+    reading.units[1].assist = nil
+    reading.units[1].unit, reading.units[2].unit = "raid1", "raid2"
+    s = Group.Snapshot(reading)
+    T.Eq(s.kind, "raid", "raid unit tokens prove a raid")
+    T.Eq(s.kindKnown, true, "and the kind is known")
+    T.Eq(s.me.rank, nil, "a raid member with no assist answer has no rank")
+    reading.units[1].assist = mark
+    T.Eq(Group.Snapshot(reading).me.unknown.assist, true, "a secret assist is named unknown")
+    reading.everyoneAssist = mark
+    T.Eq(Group.Snapshot(reading).everyoneAssist, nil, "a secret everyone-assist is nil, not false")
+    reading = PartyReading()
+    reading.inRaid, reading.units[2].assist = false, nil
+    s = Group.Snapshot(reading)
+    T.Eq(s.kindKnown and s.byGuid["Player-1-B"].rank, "member", "a known party member with no assist answer is a member")
+    reading = { inRaid = mark, inGroup = false, units = { { unit = "player" } } }
+    T.Eq(Group.Snapshot(reading).kindKnown, true, "not in a group is known alone")
+    Env.SetSecretCheck(nil)
+end)
+
 T.Case("Group.Read: the units of a party or a raid, every call guarded", function()
     -- Headless only: in game, writing these globals would taint them.
     if not IC_HEADLESS then return end
@@ -696,8 +728,310 @@ T.Case("Group.Read: the units of a party or a raid, every call guarded", functio
     _G.IsInGroup = function() return false end
     raid = false
     T.Eq(#Group.Read().units, 1, "alone is the player only")
+    local mark = FakeSecret()
+    Env.SetSecretCheck(function(v) return v == mark end)
+    _G.IsInGroup = function() return true end
+    _G.IsInRaid = function() return mark end
+    count = 8
+    T.Eq(Group.Read().units[1].unit, "raid1", "an unreadable IsInRaid with eight members reads raid units")
+    count = 3
+    T.Eq(Group.Read().units[1].unit, "player", "and with three, party units")
+    T.Eq(Group.Now().kindKnown, false, "leaving the kind unknown")
+    Env.SetSecretCheck(nil)
 
     for _, n in ipairs(names) do _G[n] = saved[n] end
+end)
+
+--------------------------------------------------------------------------------
+-- LibICChat
+--------------------------------------------------------------------------------
+
+local Chat = LibStub("LibICChat-1.0")
+
+local function RaidLead(extra)
+    local s = { now = 100, group = "raid", lead = true, chat = false, sent = {} }
+    for k, v in pairs(extra or {}) do s[k] = v end
+    return s
+end
+
+T.Case("Chat.Decide: the first channel the group allows, cleaned and cut", function()
+    local plan = Chat.Decide({ text = "Tank\ndown ", channels = { "RAID_WARNING", "RAID" } }, RaidLead())
+    T.Eq(plan.action, "send", "a raid lead sends")
+    T.Eq(plan.channel, "RAID_WARNING", "as a raid warning")
+    T.Eq(plan.text, "Tank down", "with the line break and the trailing space gone")
+    plan = Chat.Decide({ text = "x", channels = { "RAID_WARNING", "RAID" } }, RaidLead({ lead = false }))
+    T.Eq(plan.channel, "RAID", "a plain member falls back to RAID")
+    plan = Chat.Decide({ text = "x", channel = "RAID_WARNING" }, RaidLead({ lead = false }))
+    T.Eq(plan.action, "refuse", "with no fallback it is refused")
+    T.Eq(plan.reason, "needs raid lead or assist", "and says why")
+    local unread = RaidLead()
+    unread.lead = nil
+    T.Eq(Chat.Decide({ text = "x", channel = "RAID_WARNING" }, unread).reason,
+        "cannot tell whether you lead or assist", "an unreadable rank is said as such")
+    T.Eq(#Chat.Decide({ text = string.rep("a", 300), channel = "RAID" }, RaidLead()).text, 255,
+        "a long line is cut to what the client sends")
+    T.Eq(Chat.Decide({ text = "  \n", channel = "RAID" }, RaidLead()).reason, "nothing to say", "an empty line")
+end)
+
+T.Case("Chat.Decide: what each channel needs from the group", function()
+    local party = { group = "party", sent = {} }
+    T.Eq(Chat.Decide({ text = "x", channel = "PARTY" }, party).action, "send", "PARTY in a party")
+    T.Eq(Chat.Decide({ text = "x", channel = "PARTY" }, RaidLead()).action, "send", "and in a raid")
+    T.Eq(Chat.Decide({ text = "x", channel = "PARTY" }, { group = "solo" }).reason, "not in a group", "not alone")
+    T.Eq(Chat.Decide({ text = "x", channel = "RAID" }, party).reason, "not in a raid", "RAID needs a raid")
+    T.Eq(Chat.Decide({ text = "x", channel = "INSTANCE_CHAT" }, party).reason, "not in an instance group",
+        "INSTANCE_CHAT needs an instance group")
+    T.Eq(Chat.Decide({ text = "x", channel = "INSTANCE_CHAT" }, { instanceGroup = true }).action, "send", "and goes in one")
+    T.Eq(Chat.Decide({ text = "x", channel = "SAY" }, party).reason, "SAY needs a key press", "SAY from a timer")
+    T.Eq(Chat.Decide({ text = "x", channel = "SAY", pressed = true }, party).action, "send", "SAY from a press")
+    T.Eq(Chat.Decide({ text = "x", channel = "GUILD" }, party).reason, "no such channel: GUILD", "an unknown channel")
+    local maybe = { group = "group" }
+    T.Eq(Chat.Decide({ text = "x", channel = "RAID" }, maybe).reason, "cannot tell whether this is a raid",
+        "a group that may be a raid does not guess")
+    T.Eq(Chat.Decide({ text = "x", channels = { "RAID", "PARTY" } }, maybe).channel, "PARTY", "PARTY works either way")
+end)
+
+T.Case("Chat.Decide: locked chat queues or refuses, as the line asks", function()
+    local plan = Chat.Decide({ text = "x", channel = "RAID", whenLocked = "queue" }, RaidLead({ chat = true }))
+    T.Eq(plan.action, "queue", "a death call waits")
+    T.Eq(plan.channel, "RAID", "knowing where it will go")
+    T.Eq(plan.reason, "chat is locked here", "and why")
+    plan = Chat.Decide({ text = "x", channel = "RAID" }, RaidLead({ chat = true }))
+    T.Eq(plan.action, "refuse", "a pre-pull line is refused")
+    T.Eq(plan.reason, "chat is locked here", "with the same reason")
+    local inside = RaidLead({ inInstance = true })
+    T.Eq(Chat.Decide({ text = "x", channel = "RAID" }, inside).action, "send", "following the client, an open instance sends")
+    inside.instance = "locked"
+    T.Eq(Chat.Decide({ text = "x", channel = "RAID" }, inside).reason, "chat is locked here",
+        "the locked policy treats every instance as locked")
+    inside.inInstance = false
+    T.Eq(Chat.Decide({ text = "x", channel = "RAID" }, inside).action, "send", "and nowhere else")
+end)
+
+T.Case("Chat.Budget: lines per window, per channel", function()
+    local s = RaidLead({ sent = { RAID_WARNING = { 95, 99 }, RAID = { 91, 92, 93, 99 } } })
+    T.Eq(Chat.Budget("RAID_WARNING", s), 5, "two warnings in ten seconds: wait for the older to age out")
+    T.Eq(Chat.Budget("RAID", s), 1, "four raid lines: one second to go")
+    T.Eq(Chat.Budget("PARTY", s), 0, "an unused channel is free")
+    s.now = 106
+    T.Eq(Chat.Budget("RAID_WARNING", s), 0, "after the window it is free again")
+    s.budget = { RAID = { 10, 10 } }
+    s.now = 100
+    T.Eq(Chat.Budget("RAID", s), 0, "a sender's own budget is used")
+    local plan = Chat.Decide({ text = "x", channel = "RAID_WARNING", whenLocked = "queue" },
+        RaidLead({ sent = { RAID_WARNING = { 95, 99 } } }))
+    T.Eq(plan.action, "queue", "over budget, a queueable line waits")
+    T.Eq(plan.wait, 5, "saying how long")
+end)
+
+T.Case("Chat.Flush: sends what may go, drops what expired, keeps the rest", function()
+    local queue = {
+        { line = { text = "old", channel = "RAID", whenLocked = "queue" }, expires = 99 },
+        { line = { text = "a", channel = "RAID", whenLocked = "queue" }, expires = 110 },
+        { line = { text = "b", channel = "RAID_WARNING", whenLocked = "queue" }, expires = 110 },
+        { line = { text = "c", channel = "RAID_WARNING", whenLocked = "queue" }, expires = 110 },
+        { line = { text = "d", channel = "RAID_WARNING", whenLocked = "queue" }, expires = 110 },
+    }
+    local state = RaidLead({ sent = {} })
+    local out = Chat.Flush(queue, state)
+    T.Eq(#out.dropped, 1, "one expired")
+    T.Eq(out.dropped[1].reason, "expired", "said so")
+    T.Eq(#out.send, 3, "three go")
+    T.Eq(out.send[3].text, "c", "in the order they were said")
+    T.Eq(#out.keep, 1, "the third warning waits for the budget")
+    T.Eq(out.keep[1].line.text, "d", "and it is the last one")
+    T.Eq(next(state.sent), nil, "the caller's record is not touched")
+    out = Chat.Flush(queue, RaidLead({ chat = true }))
+    T.Eq(#out.keep, 4, "while chat is locked everything unexpired waits")
+    out = Chat.Flush(queue, RaidLead({ group = "party" }))
+    T.Eq(out.dropped[2].reason, "not in a raid", "a line the group no longer allows is dropped with why")
+end)
+
+T.Case("Chat.New: a sender holds a locked line and sends it when the lock lifts", function()
+    -- Headless only: in game, writing these globals would taint them.
+    if not IC_HEADLESS then return end
+    local saved = { SendChatMessage = SendChatMessage, GetTime = GetTime, C_Timer = C_Timer }
+    local savedNow, savedGroup = Restrict.Now, Group.Now
+    local clock, said, timers = 100, {}, {}
+    local locked = true
+    _G.GetTime = function() return clock end
+    _G.SendChatMessage = function(text, channel) said[#said + 1] = channel .. ": " .. text end
+    _G.C_Timer = { After = function(seconds, fn) timers[#timers + 1] = { seconds = seconds, fn = fn } end }
+    Restrict.Now = function() return Restrict.State({ chatLockdown = locked }) end
+    Group.Now = function() return { kind = "raid", canMark = true } end
+
+    local frame = Restrict.frame
+    frame:GetScript("OnEvent")(frame, "ADDON_RESTRICTION_STATE_CHANGED", 1, 1)
+    local drops = {}
+    local chat = Chat.New({ ttl = 5, onDrop = function(entry, reason) drops[#drops + 1] = reason end })
+    local plan = chat:Say({ text = "Healer down", channels = { "RAID_WARNING", "RAID" }, whenLocked = "queue" })
+    T.Eq(plan.action, "queue", "held while chat is locked")
+    T.Eq(#chat:Queue(), 1, "one line waiting")
+    T.Eq(timers[1].seconds, 1, "and a look again in a second")
+    T.Eq(chat:Say({ text = "Pull in 10", channel = "RAID" }).action, "refuse", "a pre-pull line is refused")
+
+    locked = false
+    frame:GetScript("OnEvent")(frame, "ADDON_RESTRICTION_STATE_CHANGED", 1, 0)
+    T.Eq(said[1], "RAID_WARNING: Healer down", "the lock lifting sends it")
+    T.Eq(#chat:Queue(), 0, "and the queue is empty")
+
+    locked = true
+    frame:GetScript("OnEvent")(frame, "ADDON_RESTRICTION_STATE_CHANGED", 1, 1)
+    chat:Say({ text = "Tank down", channel = "RAID", whenLocked = "queue" })
+    clock = 101
+    timers[#timers].fn()
+    T.Eq(#chat:Queue(), 1, "still locked a second later, it still waits")
+    locked = false
+    clock = 102
+    timers[#timers].fn()
+    T.Eq(said[2], "RAID: Tank down", "a lock that lifts without the event is caught by the next look")
+    locked = true
+    chat:Say({ text = "Mage down", channel = "RAID", whenLocked = "queue" })
+    clock = 108
+    timers[#timers].fn()
+    T.Eq(drops[1], "expired", "a line the lock outlasts is dropped and reported")
+    T.Eq(#said, 2, "never sent")
+
+    locked = false
+    frame:GetScript("OnEvent")(frame, "ADDON_RESTRICTION_STATE_CHANGED", 1, 0)
+    T.Eq(chat:Say({ text = "Ready", channel = "RAID" }).action, "send", "open chat sends at once")
+    T.Eq(said[3], "RAID: Ready", "and is said")
+    chat.stop()
+
+    Restrict.Now, Group.Now = savedNow, savedGroup
+    for k, v in pairs(saved) do _G[k] = v end
+end)
+
+--------------------------------------------------------------------------------
+-- LibICComm
+--------------------------------------------------------------------------------
+
+local Comm = LibStub("LibICComm-1.0")
+
+T.Case("Comm.Frame and Assemble: a message of any length comes back whole", function()
+    local frames = Comm.Frame("short", 5)
+    T.Eq(#frames, 1, "a short message is one frame")
+    T.Eq(frames[1], "S05short", "kind, two-digit id, then the text")
+    T.Eq(Comm.Assemble({}, "A", frames[1], 0), "short", "and reads back at once")
+    local long = string.rep("abcdefghij", 60)
+    frames = Comm.Frame(long, 37)
+    T.Eq(#frames, 3, "600 bytes is three frames")
+    T.Eq(frames[1]:sub(1, 3), "F11", "first, id 37 in base 36")
+    T.Eq(frames[2]:sub(1, 1), "M", "middle")
+    T.Eq(frames[3]:sub(1, 1), "L", "last")
+    for _, f in ipairs(frames) do T.True(#f <= 255, "every frame fits one message") end
+    local buffers = {}
+    local other = Comm.Frame(string.rep("z", 300), 1)
+    T.Eq(Comm.Assemble(buffers, "A", frames[1], 0), nil, "a first frame waits")
+    T.Eq(Comm.Assemble(buffers, "B", other[1], 0), nil, "another sender's first frame waits beside it")
+    T.Eq(Comm.Assemble(buffers, "A", frames[2], 1), nil, "a middle frame waits")
+    T.Eq(Comm.Assemble(buffers, "B", other[2], 1), string.rep("z", 300), "B's finishes")
+    T.Eq(Comm.Assemble(buffers, "A", frames[3], 2), long, "and so does A's, unmixed")
+    T.Eq(next(buffers), nil, "nothing left over")
+    T.Eq(Comm.Assemble(buffers, "A", frames[3], 3), nil, "a last frame with no first is dropped")
+    Comm.Assemble(buffers, "A", frames[1], 10)
+    T.Eq(Comm.Assemble(buffers, "A", frames[2], 50), nil, "a partial older than thirty seconds is dropped")
+    T.Eq(next(buffers), nil, "and forgotten")
+    T.Eq(Comm.Assemble({}, "A", "S0", 0), nil, "a frame too short to have a header is ignored")
+end)
+
+T.Case("Comm.Channel, Result and Newer", function()
+    T.Eq(Comm.Channel({ group = "party" }), "PARTY", "a party")
+    T.Eq(Comm.Channel({ group = "raid" }), "RAID", "a raid")
+    T.Eq(Comm.Channel({ group = "party", instanceGroup = true }), "INSTANCE_CHAT", "an instance group first")
+    local ch, why = Comm.Channel({ group = "raid", raid = "off" })
+    T.Eq(ch, nil, "raids can be switched off")
+    T.Eq(why, "addon messages are off in raids", "and say so")
+    T.Eq(select(2, Comm.Channel({ group = "group" })), "cannot tell whether this is a raid", "a maybe-raid")
+    T.Eq(select(2, Comm.Channel({ group = "solo" })), "not in a group", "alone")
+    T.Eq(Comm.Result("Success"), "sent", "success")
+    T.Eq(Comm.Result("AddOnMessageLockdown"), "hold", "lockdown holds")
+    T.Eq(Comm.Result("ChannelThrottle"), "retry", "throttle retries")
+    local verdict, reason = Comm.Result("NotInGroup")
+    T.Eq(verdict, "drop", "not in a group drops")
+    T.Eq(reason, "not in a group for that channel", "with why")
+    T.Eq(select(2, Comm.Result("Mystery")), "the client said Mystery", "an unknown result is dropped by name")
+    T.Eq(Comm.Newer("1.2.10", "1.2.9"), true, "parts compare as numbers")
+    T.Eq(Comm.Newer("1.2.0", "1.2"), false, "a missing part is zero")
+    T.Eq(Comm.Newer("0.2.0", "0.10.0"), false, "older is not newer")
+    T.Eq(Comm.Newer("1.0.0", nil), true, "anything beats no version")
+    T.Eq(Comm.Newer(nil, "1.0.0"), false, "and no version beats nothing")
+end)
+
+T.Case("Comm.New: send, loop back, receive, hold through a lockdown", function()
+    -- Headless only: in game, writing these globals would taint them.
+    if not IC_HEADLESS then return end
+    local saved = { C_ChatInfo = C_ChatInfo, GetTime = GetTime, C_Timer = C_Timer, UnitGUID = UnitGUID }
+    local savedGroup = Group.Now
+    local clock, wire, timers, result = 100, {}, {}, 0
+    _G.GetTime = function() return clock end
+    _G.UnitGUID = function() return "G-me" end
+    _G.C_Timer = { After = function(_, fn) timers[#timers + 1] = fn end }
+    _G.C_ChatInfo = {
+        RegisterAddonMessagePrefix = function() return true end,
+        SendAddonMessage = function(prefix, text, channel)
+            if result == 0 then wire[#wire + 1] = { prefix, text, channel } end
+            return result
+        end,
+    }
+    Group.Now = function() return { kind = "party", kindKnown = true } end
+
+    local drops = {}
+    local mine = Comm.New("ICKitCase", { version = "1.0.0", onDrop = function(_, reason) drops[#drops + 1] = reason end })
+    local theirs = Comm.New("ICKitCase", { version = "1.1.0" })
+    theirs.me = "G-them"
+    local got = {}
+    theirs:On("plan", function(msg, from) got[#got + 1] = { msg = msg, from = from } end)
+    mine:On("plan", function() got[#got + 1] = "echo" end)
+    T.Eq(mine.frame:IsEventRegistered("CHAT_MSG_ADDON"), true, "listens for addon messages")
+
+    local plan = mine:Send({ t = "plan", note = string.rep("x", 400) })
+    T.Eq(plan.action, "send", "sent at once")
+    T.Eq(plan.channel, "PARTY", "to the party")
+    T.Eq(#wire, 2, "as two frames")
+    for _, w in ipairs(wire) do
+        mine:Receive(w[1], w[2], w[3], "Mal Exis")
+        theirs:Receive(w[1], w[2], w[3], "Mal Exis")
+    end
+    T.Eq(#got, 1, "the looped-back copy is dropped")
+    T.Eq(got[1].msg.note, string.rep("x", 400), "the other client gets it whole")
+    T.Eq(got[1].from, "Mal Exis", "from the sender")
+    theirs:Receive("SomeoneElse", wire[1][2], "PARTY", "Mal Exis")
+    T.Eq(#got, 1, "another prefix is ignored")
+
+    wire = {}
+    mine:Hello()
+    theirs:Receive(wire[1][1], wire[1][2], wire[1][3], "Mal Exis")
+    T.Eq(theirs:Peers()["G-me"].version, "1.0.0", "a hello is recorded with its version")
+    T.Eq(#wire, 2, "and answered once")
+    mine:Receive(wire[2][1], wire[2][2], wire[2][3], "Solo Siphyr")
+    T.Eq(mine:Peers()["G-them"].version, "1.1.0", "the answer is recorded too")
+    T.Eq(#wire, 2, "and not answered back")
+    theirs:Receive(wire[1][1], wire[1][2], wire[1][3], "Mal Exis")
+    T.Eq(#wire, 2, "a second hello within a minute is not answered again")
+
+    result = 11
+    plan = mine:Send({ t = "plan" })
+    T.Eq(plan.action, "queue", "a lockdown holds the message")
+    T.Eq(plan.reason, "addon messages are locked down", "and says why")
+    result = 0
+    timers[#timers]()
+    T.Eq(#mine:Queue(), 0, "the next try sends it")
+    T.Eq(#wire, 3, "on the wire")
+    result = 5
+    T.Eq(mine:Send({ t = "plan" }).action, "refuse", "a refusal from the client")
+    T.Eq(drops[1], "not in a group for that channel", "is reported")
+    result = 11
+    mine:Send({ t = "plan" })
+    clock = 140
+    timers[#timers]()
+    T.Eq(drops[2], "addon messages are locked down", "a lockdown that outlasts the ttl drops with its reason")
+    T.Eq(mine:Send({ x = 1 }).reason, "a message needs a type, msg.t", "a message without a type is refused")
+
+    mine.stop()
+    theirs.stop()
+    Group.Now = savedGroup
+    for k, v in pairs(saved) do _G[k] = v end
 end)
 
 --------------------------------------------------------------------------------
