@@ -224,3 +224,29 @@ T.Case("CombatLog.StatusLines: says what is off and how to turn it on", function
     local unknown = CombatLog.StatusLines({ settings = { enabled = true, instances = {} } })
     T.True(unknown[2]:find("not known yet", 1, true) ~= nil, "an unknown place says so")
 end)
+
+T.Case("CombatLog.View: the client's answer and the session state, for the settings tab", function()
+    local ours, waiting = CombatLog.isOurs, CombatLog.waiting
+    CombatLog.isOurs, CombatLog.waiting = true, false
+    local v = CombatLog.View(function() return true end)
+    T.Eq(v.isLogging, true, "logging")
+    T.Eq(v.isOurs, true, "ours")
+    T.Eq(v.waiting, false, "not waiting")
+    CombatLog.isOurs, CombatLog.waiting = nil, 1
+    v = CombatLog.View(function() return false end)
+    T.Eq(v.isLogging, false, "not logging")
+    T.Eq(v.isOurs, false, "an unset flag reads false")
+    T.Eq(v.waiting, false, "only a real true counts")
+    T.Eq(CombatLog.View(function() return nil end).isLogging, nil, "unreadable stays nil")
+    T.Eq(CombatLog.View(function() return 1 end).isLogging, false, "a non-boolean answer is not logging")
+    -- No reader: the client read, which headless has no LoggingCombat for, so it will not say.
+    T.Eq(CombatLog.View().isLogging, nil, "no client, not readable")
+
+    -- Merged the way the settings tab does it.
+    local view = { settings = { enabled = true, instances = { ["i:409"] = true } }, key = "i:409" }
+    for k, val in pairs(CombatLog.View(function() return true end)) do view[k] = val end
+    local lines = CombatLog.StatusLines(view)
+    CombatLog.isOurs, CombatLog.waiting = ours, waiting
+    T.True(lines[2]:find("opened by someone else", 1, true) ~= nil, "a merged view fills the logging line")
+    T.True(lines[3]:find("late", 1, true) ~= nil, "the late-file caveat")
+end)

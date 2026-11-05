@@ -9,9 +9,9 @@ Owned by lane D (deaths and chat).
     UIDeaths.Build(parent)          builds the page into parent, once; returns the page
     UIDeaths.Refresh()              re-reads every control from the saved settings
 
-The page registers itself with ns.UI.AddTab("deaths", "Deaths", Build) at login when the
-window offers it. Frames are made only inside Build, never at file scope, and the ready
-hook returns early on IC_HEADLESS.
+The page registers itself with ns.UI.AddTab("deaths", "Deaths", Build, { refresh = Refresh })
+at login when the window offers it. Frames are made only inside Build, never at file scope,
+and the ready hook returns early on IC_HEADLESS.
 
 Layout, top to bottom (y offsets from the page's top, in pixels):
     8     toolbar: Announce, Test alert, Announce allowed, Death sound
@@ -362,7 +362,10 @@ function UIDeaths.Refresh()
         c.override:SetValue(cfg.override or "auto")
         if not c.extra:HasFocus() then c.extra:SetText(table.concat(Deaths.ExtraNames(cfg.extra), ", ")) end
     end
-    controls.wait:SetValue(tonumber(s.chat.deathTTL) or Deaths.DEFAULT_TTL)
+    -- A window refresh (roster, zone, comms) must not snap the thumb back mid-drag.
+    if controls.wait.icHeld ~= true then
+        controls.wait:SetValue(tonumber(s.chat.deathTTL) or Deaths.DEFAULT_TTL)
+    end
     controls.cue:SetChecked(s.cue.enabled == true)
     if not controls.word:HasFocus() then controls.word:SetText(s.cue.word or "") end
     if not controls.cueSound:HasFocus() then controls.cueSound:SetText(tostring(s.cue.sound or "")) end
@@ -408,6 +411,7 @@ end
 ns.OnReady("ui_deaths", function()
     if IC_HEADLESS then return end
     if type(ns.UI) == "table" and type(ns.UI.AddTab) == "function" then
-        ns.UI.AddTab("deaths", "Deaths", UIDeaths.Build)
+        -- refresh: ns.UI.Refresh() repaints this page while it is the tab showing.
+        ns.UI.AddTab("deaths", "Deaths", UIDeaths.Build, { refresh = UIDeaths.Refresh })
     end
 end)
