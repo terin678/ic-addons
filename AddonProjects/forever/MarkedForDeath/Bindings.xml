@@ -1,0 +1,6 @@
+<Bindings>
+    <Binding name="CLICK MFDMarkPack:LeftButton" header="MARKEDFORDEATH" category="ADDONS" description="Mark pack"/>
+    <Binding name="CLICK MFDClear:LeftButton" category="ADDONS" description="Clear all icons (not yet proven)"/>
+    <Binding name="CLICK MFDRemark:LeftButton" category="ADDONS" description="Re-mark: clear all, then Mark pack (not yet proven)"/>
+    <Binding name="CLICK MFDClearTarget:LeftButton" category="ADDONS" description="Clear the target's icon"/>
+</Bindings>

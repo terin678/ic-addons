@@ -21,6 +21,7 @@ state = {
     dropped     steps that did not fit in the macro (a count or a list)
     nameless    rules or mobs with no name a macro can target (a count or a list)
     built       false until the secure button has been written once
+    unbound     true when no key presses Mark pack (the keybind is the proven way)
     conflicts   names of marker addons found active
 }
 level: "block" (nothing will be marked), "warn" (some of it will not), "info".
@@ -75,6 +76,10 @@ function Debug.WhyNot(state)
     end
     if state.built == false then
         Add("notbuilt", "block", "the Mark pack button is not built yet: it is written at the first moment out of combat")
+    end
+    if state.unbound then
+        Add("unbound", "warn", "Mark pack has no key bound, and a key is the proven way to press it: "
+            .. "/mfd keys on, or Key Bindings > AddOns")
     end
     local conflicts = type(state.conflicts) == "table" and state.conflicts or {}
     if #conflicts > 0 then

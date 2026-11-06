@@ -31,7 +31,7 @@ local HEAD = 28             -- px, a section heading with the gap above it
 local LINE = 18             -- px, one status line
 local LOG_LINES = 4         -- status slots for combat logging
 local CONFLICT_LINES = 5    -- for other addons
-local WHY_LINES = 8         -- for the marking reasons (DebugWhy has nine; "solo" never shows with others)
+local WHY_LINES = 9         -- for the marking reasons: at most nine of DebugWhy's show at once (solo rules out rights, stale needs a built button)
 
 local LEVEL_ROLE = { block = "bad", warn = "warn", info = "textDim" }
 
