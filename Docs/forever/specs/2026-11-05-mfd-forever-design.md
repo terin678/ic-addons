@@ -19,6 +19,13 @@ section 15 says which, and the marks below read **OPEN WORLD: answer; instance
 PENDING-PROBE Pn** where only the instance half is left. It also raised the largest risk in
 this design: **no secure `/tm` macro has yet been seen to place a mark** (section 5.6).
 
+**Probe update, control test (probe branch f101e96).** Key-bound secure buttons placed raid
+marks **in combat** with nothing blocked, so the Mark pack path stands and the 5.6 fallback
+is a contingency, no longer the expected outcome. The same run found that
+`GetRaidTargetIndex` on a marked mob is **secret in combat** (plain nil when unmarked), so
+in combat MFD knows only "marked or not" and keeps its own record of what it pressed
+(section 5.8). `IsInRaid`, `UnitIsGroupAssistant` and `IsEveryoneAssistant` read plain.
+
 ## 1. Intent
 
 Marked For Death exists so a raid's crowd control and kill order are the same every night:
@@ -55,10 +62,12 @@ Condensed from the recon. "OOC" is out of combat.
 | Need | Forever | Probe |
 | --- | --- | --- |
 | Place a raid icon from Lua | **gone, confirmed**: `SetRaidTarget` raises `ADDON_ACTION_FORBIDDEN` and sets nothing, even OOC | settled |
-| Place one from a hardware press on a secure button | **not yet seen to work**: long macro, conditionals and a `/click` chain placed no mark; a control test is coming | P6, P7, P17 (section 5.6) |
+| Place one from a hardware press on a secure button | **works from a key binding, in combat too** (`SetOverrideBindingClick`, `AnyDown` with `useOnKeyDown`; no block). Which macro forms marked is not separated yet; a mouse click on a panel button has not been seen to mark | P6, P7, P17 (section 5) |
 | Set secure attributes in combat | **blocked, confirmed** (`ADDON_ACTION_BLOCKED`); a `SecureHandlerWrapScript` pre-body **can** rewrite its button's `macrotext` in combat | settled |
 | Clear all icons | secure `type=raidtarget`, `action=clear-all` | P6 |
-| Read an icon on a mob (`GetRaidTargetIndex`) | OPEN WORLD: plain in and out of combat (nil when unmarked) | instance P1 |
+| Read an icon on a mob (`GetRaidTargetIndex`) | OPEN WORLD: plain OOC. **In combat a marked mob reads secret** and an unmarked one a plain nil, so only "marked or not" is knowable (`issecretvalue`); never which icon | instance P1 |
+| `RAID_TARGET_UPDATE` | fires on each mark, in combat too; carries no arguments | settled |
+| `IsInRaid`, `UnitIsGroupAssistant`, `IsEveryoneAssistant`, `UnitIsGroupLeader` | OPEN WORLD party: plain | raid P10 |
 | `SetRaidTargetIconTexture` | throws on nil; pass only a number | settled |
 | Mob GUID, npc id, name, classification, creature type | OPEN WORLD: plain, in combat too; `ShouldUnitIdentityBeSecret` false | instance P2, P3 |
 | `UnitHealth`, `UnitHealthMax` | **secret everywhere, even OOC, even on the player**; never read them | settled |
@@ -101,7 +110,7 @@ when the probe answers; the "if the probe says no" column is what ships then.
 | Clear | keep changed | Secure clear-all button and keybind. PENDING-PROBE P6. | `/tm 0` on target only |
 | Re-mark | keep changed | Clear-all then Mark pack. One press if `/click` chains from macrotext (PENDING-PROBE P17), else two presses. | two presses |
 | Defend a wiped icon, back off after three | cut | Needs `SetRaidTarget` from Lua and readable icons. | n/a |
-| Manual override (a hand mark wins) | keep changed | `/tm ~N` never overwrites a marked mob, which keeps the spirit. Hand marks are read back into the plan OOC: OPEN WORLD `GetRaidTargetIndex` plain; instance PENDING-PROBE P1. | the `~` form only |
+| Manual override (a hand mark wins) | keep changed | `/tm ~N` never overwrites a marked mob, which keeps the spirit. Hand marks are read back into the plan **OOC only** (`Allocator` `held`): OPEN WORLD `GetRaidTargetIndex` plain OOC, secret in combat on a marked mob; instance PENDING-PROBE P1. In combat MFD knows only that a mob is marked, not with what. | the `~` form only |
 | Combat lock, release on mob death | cut | Nothing can re-mark in combat without a press, and mob deaths are invisible. | n/a |
 | Coverage guard (nameplate CVars) and `/mfd fixcvars` | keep | `SetCVar` OOC only. Matters only in sighted mode. | n/a |
 | Raid Lead designation | keep | Who sends pre-pull and death lines. | n/a |
@@ -128,8 +137,8 @@ when the probe answers; the "if the probe says no" column is what ships then.
 | Conflicts | keep changed | New list: EllesmereUIQoL raid tools and auto logging, EllesmereUIQuickdraw marker slots, ForeverDungeonJournal map markers, MRT if present. Read their saved settings, touch nothing. | n/a |
 | CC creature-type warning, bad-mark sound | keep changed | Where `UnitCreatureType` of the target is readable (OPEN WORLD: plain, in combat too), else from bundled data. Instance PENDING-PROBE P3. | bundled data only |
 | ChatCue (sound on one word) | keep changed | Quiet while the message is secret (`issecretvalue`). | n/a |
-| Action bar | keep changed | Secure buttons (Mark pack, Clear, Re-mark) beside plain ones (Announce, Tank calls, Healer calls, Marking on/off). Built OOC, refreshed OOC. | n/a |
-| Keybinds | keep changed | `Bindings.xml` with `CLICK MFDMarkPack:LeftButton` style bindings for the secure ones. | n/a |
+| Action bar | keep changed | Secure buttons (Mark pack, Clear, Re-mark) beside plain ones (Announce, Tank calls, Healer calls, Marking on/off). Built OOC, refreshed OOC. Whether a mouse click on them marks is PENDING-PROBE P6; until then each shows its key binding and the keybind is the way to press it. | the secure ones become key-binding reminders only |
+| Keybinds | keep changed | **The confirmed way to mark.** `Bindings.xml` with `CLICK MFDMarkPack:LeftButton` style bindings for the secure ones; the buttons register `AnyDown` and set `useOnKeyDown` as the probe did. | n/a |
 | Minimap button | keep changed | Addon Compartment first, ICKit rim button as the hideable extra (as Stickies and RenderTuner). | n/a |
 | One window with tabs, resizable panels | keep | ICKit widgets (needs Tabs, List, Resize, TextArea: section 10). | n/a |
 | `/mfd log`, `/mfd debug`, `/mfd off|on`, `/mfd out`, `/mfd scale`, `/mfd reset` | keep changed | Debug reasons change (section 5.7). | n/a |
@@ -172,17 +181,24 @@ it"; seat ownership only needs classes.
    and writes it into the secure **Mark pack** button. Triggers: entering an instance,
    roster change, a rule or plan edit, `PLAYER_REGEN_ENABLED`, and, in sighted mode, a
    nameplate added or removed (debounced to one rebuild per 0.5 s, no `OnUpdate`).
-2. **The player presses Mark pack** (action bar button or keybind), in or out of combat.
-   The macro targets each planned mob by name and marks it with its seat's icon, only if
-   the mob is unmarked, then puts the player's target back.
-3. **In combat nothing is rebuilt.** The button keeps the last plan written. A plan edit in
-   combat is held and written on `PLAYER_REGEN_ENABLED`, and the bar shows a "stale" tint
-   until then.
+2. **The player presses Mark pack**, in or out of combat. The keybind is the confirmed
+   route (control test, f101e96: key-bound secure buttons marked in combat with nothing
+   blocked); a mouse click on the bar button is PENDING-PROBE P6. The macro targets each
+   planned mob by name and marks it with its seat's icon, only if the mob is unmarked,
+   then puts the player's target back.
+3. **In combat nothing is rebuilt and no icon is read back.** The button keeps the last
+   plan written. A plan edit in combat is held and written on `PLAYER_REGEN_ENABLED`, and
+   the bar shows a "stale" tint until then. What MFD shows as "placed" in combat comes
+   from its own record of presses (5.8), never from `GetRaidTargetIndex`, which is secret
+   on a marked mob in combat.
+4. **Out of combat again**, the record is checked against the icons actually on mobs
+   (plain OOC) and replaced by them (5.8).
 
-Pressing needs raid leader or assist in a raid (any member in a party). The addon cannot
-stop a press from a player without rights; it greys the bar button and the Debug reasons
-say why. The macro is the same on every client with the same inputs, so any lead or
-assist with the addon can press it.
+Pressing needs raid leader or assist in a raid (any member in a party). `IsInRaid`,
+`UnitIsGroupLeader`, `UnitIsGroupAssistant` and `IsEveryoneAssistant` read plain (open
+world party; raid P10), so the addon greys the bar button and the Debug reasons say why;
+it still cannot stop a press. The macro is the same on every client with the same inputs,
+so any lead or assist with the addon can press it.
 
 ### 5.2 Sighted and blind
 
@@ -203,6 +219,13 @@ player sees the plan on the assignment panel and the names on nameplates.
 Which mode runs is decided per instance at runtime by `C_Secrets.ShouldUnitIdentityBeSecret`
 and `issecretvalue` on a read, never by flavour, so a later client change switches it on
 its own.
+
+**Sighted and blind are about mob identity, not icons.** Neither mode reads icons in
+combat: even sighted, where a mob's GUID and name are plain in combat (open world),
+`GetRaidTargetIndex` on a marked mob is secret, so the most a sighted client learns in
+combat is "this GUID carries some mark". Icons already on mobs feed the allocator
+(`held`) only from an OOC read. In both modes the in-combat picture of what is placed is
+the press record (5.8).
 
 ### 5.3 The macro
 
@@ -238,9 +261,11 @@ free seat of the KILL intent. It needs `/tm [@mouseover,harm,nodead] ~N` (P7) an
 snippet that advances N between presses, in combat. The snippet half is **answered**: a
 `SecureHandlerWrapScript` pre-body ran in combat and rewrote its own button's `macrotext`
 (P15). It is **keybind only**: a mouse click on a panel button puts `@mouseover` on the
-button itself, so the bar never shows it. If `/tm` marking fails (5.6), the button is not
-built. This is the one route to marking mobs that have no rule, which blind mode otherwise
-cannot touch.
+button itself, so the bar never shows it. The snippet advances its own counter only: the
+secure environment cannot see which icons are out, and an icon read in combat is secret
+anyway, so a mob that is already marked is left alone by `~` and the counter still moves.
+The counter resets OOC from the plan. This is the one route to marking mobs that have no
+rule, which blind mode otherwise cannot touch.
 
 ### 5.5 Clear and re-mark
 
@@ -251,17 +276,21 @@ cannot touch.
   Mark pack lines if P17 says `/click` works there; otherwise two presses and the button is
   not built.
 
-### 5.6 Risk: secure marking may not work at all
+### 5.6 Contingency: if secure marking stops working
 
-The open-world probe (2026-11-05) pressed a 300-character macro, `[@player]` conditionals
-and a `/click` chain; **none placed a mark and no `RAID_TARGET_UPDATE` fired**. "Mark by
-name" had no names to try. It is not yet known whether `/tm` is refused from secure
-macrotext or whether the probe's click did not count as a hardware press. A control test
-(a plain `/tm 8` macro on a secure button bound to a key, and the same line typed) is
-next. Until it passes, everything in 5.1 to 5.5 is **PENDING-PROBE P6, P7, P17**, and lane
-B does not start the secure buttons.
+**Decided 2026-11-05 on the control test (probe f101e96): build the secure buttons; this
+section is the contingency, not the plan.** The first open-world run pressed a
+300-character macro, `[@player]` conditionals and a `/click` chain and nothing marked. The
+control test then bound named secure buttons to keys (`SetOverrideBindingClick`, `AnyDown`
+with `useOnKeyDown`): ten presses in about four seconds of combat raised no
+`ADDON_ACTION_BLOCKED` or `FORBIDDEN`, `RAID_TARGET_UPDATE` fired 8 times and the target
+went from unmarked to marked. `/tm` itself is a registered slash command
+(`SLASH_TARGET_MARKER1`). Still open, and for the dungeon pass: which of the ten buttons
+marked (the presses came faster than the one-second read-back), whether one press marks
+several names, the longest text that runs (P6, P7), `/click` chains (P17), and whether a
+mouse click on a panel button marks at all.
 
-**If secure marking fails**, MFD becomes a planner and a checker, and the player places
+**If a later client change breaks it**, MFD becomes a planner and a checker, and the player places
 the icons with the game's own controls (the "Target markers" key bindings and the target
 frame menu, which are Blizzard's code and not affected):
 
@@ -284,7 +313,8 @@ What that costs the lanes: `MarkButtons.lua` and the secure bar buttons are drop
 `MarkPlan.lua` gains `IconFor` and keeps `Build` only for a possible later client change,
 lane B builds the guide and the plan check instead (same files: `Sense.lua`,
 `MarkButtons.lua` repurposed as `MarkGuide` logic, `UI_Bar.lua`), and K7 `LibICSecure`
-is shelved. The decision is taken the day the control test reports, and recorded here.
+is shelved. None of this is built now; `MarkPlan.IconFor` (already on main) is the only
+piece of it that exists, and it is used by the press record too (5.8).
 
 ### 5.7 Debug reasons, most fundamental first
 
@@ -292,7 +322,47 @@ is shelved. The decision is taken the day the control test reports, and recorded
 marks work solo); no lead or assist in a raid; in combat and the plan changed since the
 pull (stale); no rules for this instance; blind mode (names hidden here, rules by name
 only); macro too long, N seats dropped; secure button not built yet (first OOC moment after
-login); conflicting marker addon active.
+login); **Mark pack has no key bound** (the keybind is the confirmed way to press it);
+conflicting marker addon active.
+
+### 5.8 The press record: what MFD knows it placed
+
+In combat `GetRaidTargetIndex` answers a plain nil on an unmarked mob and a **secret** on a
+marked one, and `RAID_TARGET_UPDATE` carries no arguments. So in combat MFD can know that a
+mob is marked but never which icon it carries, and it cannot learn from the event which mob
+changed. Everything MFD shows about placed icons in combat comes from its own record.
+
+**The record** is a pure half of `MarkButtons.lua` (no client call; cases in
+`Tests_Marking.lua`), the way `CombatLog.lua` carries `ShouldLog`:
+
+    Ledger.New()                          empty record
+    Ledger.Pressed(led, kind, steps, now) a press of Mark pack, Re-mark or Clear
+    Ledger.Seen(led, now)                 a RAID_TARGET_UPDATE (count only)
+    Ledger.Settle(led, reads, now)        OOC: icons actually read on mobs replace the record
+    Ledger.View(led)                      { [icon] = { name, guid, state } } for the panel
+
+- A Mark pack press records the steps written to the button (from `MarkPlan`, the same
+  fingerprint the bar uses) as **planned**, not placed: the macro marks only the names in
+  range, and a `~` skips a mob already marked.
+- Clear empties the record; Re-mark is Clear then Mark pack.
+- `Seen` only counts events since the last press, so "pressed, 3 marks landed" can be
+  shown without saying which.
+- `Settle` runs out of combat (at `PLAYER_REGEN_ENABLED` after the lock lifts, and on an
+  OOC `RAID_TARGET_UPDATE`): the frame half reads `GetRaidTargetIndex` on target, focus,
+  mouseover, nameplates and group targets, drops any value that is secret, and passes
+  `{ guid or name, icon }` rows. Rows replace planned entries; planned entries no read
+  confirms stay "planned".
+- **In combat the frame half may call `GetRaidTargetIndex` only to ask "marked or not"**
+  (`Restrict.IsSecret(v)` first: secret means marked; only a plain `v` may then be tested
+  against nil, since a comparison on a secret throws). The value is
+  never compared, indexed, stored, concatenated or passed to `SetRaidTargetIconTexture`.
+  Where the unit's GUID or name is readable, `MarkPlan.IconFor(facts, steps, marked)` with
+  `marked` built from the record says which icon the plan meant there, shown as
+  "planned", never as fact.
+- `Allocator` `held` is built only from an OOC `Settle`, never from the in-combat record.
+
+What a raid sees: the assignment panel row for each seat says planned, placed (confirmed
+OOC) or unknown. A mob seen marked in combat with no plan step is "marked by someone".
 
 ## 6. Death calls
 
@@ -438,7 +508,7 @@ VISION layer table), in this order because each depends only downward:
 | K4 | `LibICGroup-1.0` | 1 | Roster snapshot OOC: name, class, rank, online, role, Main Tank, each guarded for secrets; lead/assist; `Group.Snapshot(rows)` pure half. | Restrict |
 | K5 | `LibICChat-1.0` | 1 | Outgoing chat: per-channel budget, refusal reasons, lockdown queue with time to live, flush on lift. Pure `Chat.Decide(line, state)`. | Restrict |
 | K6 | `LibICComm-1.0` | 1 | Addon messages: prefix, chunking, own-echo drop, version hello, `AddOnMessageLockdown` queue and flush. Pure framing half. | Restrict |
-| K7 | `LibICSecure-1.0` (held until the P6 control test passes; shelved if it fails) | 2 | Secure buttons: `Secure.MacroButton(name, opts)`, `Secure.ClearAllButton(name)`, `SetMacro(button, text)` deferred to `PLAYER_REGEN_ENABLED` while locked, binding names. Pure `Secure.Fit(lines, limit)`. | Restrict |
+| K7 | `LibICSecure-1.0` (go: the control test marked from key-bound secure buttons; buttons register `AnyDown`, set `useOnKeyDown`, and bind with `SetOverrideBindingClick` or `Bindings.xml`) | 2 | Secure buttons: `Secure.MacroButton(name, opts)`, `Secure.ClearAllButton(name)`, `SetMacro(button, text)` deferred to `PLAYER_REGEN_ENABLED` while locked, binding names. Pure `Secure.Fit(lines, limit)`. | Restrict |
 | K8 | `LibICWidgets` additions | 2 | `W.Tabs`, `W.List` (fixed header row above a scroll, fixed-height single-line rows, pooled), `W.Resize` grip, `W.TextArea` (multi-line paste box), `W.RaidIcon(parent, index)` (texcoords pure). One commit per widget. | Theme |
 
 K1 to K3 block the most work and go first. K2 is independent and can go any time. MFD may
@@ -527,7 +597,7 @@ the registry.
 | `Lead.lua` | pure | Raid Lead and election from roster and hellos | designated wins; leader fallback; election tie by name |
 | `Log.lua` | pure | ring buffer | wrap at 500; filter by kind |
 | `Sense.lua` | frame | instance, roster via LibICGroup, sighted candidates OOC | headless: returns early on `IC_HEADLESS` |
-| `MarkButtons.lua` | frame | secure Mark pack, Clear, Re-mark, Mark mouseover via LibICSecure; rebuild on triggers | stale flag logic is in `MarkPlan`; frame half returns early |
+| `MarkButtons.lua` | frame + pure `Ledger` half | secure Mark pack, Clear, Re-mark, Mark mouseover via LibICSecure; rebuild on triggers; the press record (5.8) | Ledger: press records planned; Clear empties; Seen counts only; Settle replaces planned with OOC reads and drops secret rows; View marks unconfirmed as planned; a secret value never reaches a comparison. Frame half returns early |
 | `DeathWatch.lua` | frame | events in 6.1 and 6.2, calls `Deaths.Decide`, acts | returns early |
 | `RaidCheck.lua` | frame | asks auras by id per member OOC, ready check, durability | returns early |
 | `Comms.lua` | frame | LibICComm wiring: hello, rules merge, published plan | returns early |
@@ -556,7 +626,7 @@ each, so later lanes only fill files they own.
 | **K: ICKit** (one lane, K1 to K8 as separate PRs in order) | everything under `AddonProjects/forever/ICKit/`, `Docs/ICKit.md`, the layer table in `Docs/forever/VISION.md` | n/a | K3 and K7 confirm against P4, P6, P7, P9 before merge |
 | **S: Scaffold** | `MarkedForDeath.toc`, `Core.lua`, `Schema.lua`, `Tests.lua`, every module stub, the row in `AddonProjects/forever/README.md` | K1 | none |
 | **A: Model** | `Data_CC.lua`, `Seats.lua`, `Rules.lua`, `Allocator.lua`, `MarkPlan.lua`, `Debug.lua`, `Log.lua`, `Tests_Model.lua` | S, K2 | P6, P7 set MarkPlan's limit and split, both behind constants |
-| **B: Marking runtime** | `Sense.lua`, `MarkButtons.lua`, `UI_Bar.lua`, `Bindings.xml`, `Tests_Marking.lua` | S, A, K3, K4, K7 (or no K7 on the fallback) | **the P6 control test decides secure buttons or the 5.6 fallback**; then P1, P2, P7, P17 |
+| **B: Marking runtime** | `Sense.lua`, `MarkButtons.lua`, `UI_Bar.lua`, `Bindings.xml`, `Tests_Marking.lua` | S, A, K3, K4, K7 | **Go on secure buttons** (control test passed, 5.6). Brief: Mark pack, Clear, Re-mark as named secure buttons registered `AnyDown` with `useOnKeyDown`, keybinds first and the bar second; the press record `Ledger` in `MarkButtons.lua` (5.8); `Sense` reads icons OOC only and in combat asks only "marked or not"; never pass a `GetRaidTargetIndex` value on in combat. Then P1, P2, P6 (multi-name, clear-all, mouse click), P7, P17 from the dungeon pass |
 | **C: Raid check** | `Data_Auras.lua`, `RaidCheckModel.lua`, `RaidCheck.lua`, `UI_RaidCheck.lua`, `Tests_RaidCheck.lua` | S, K3, K4, K6, K8 | P5, P8, P9 |
 | **D: Deaths and chat** | `Deaths.lua`, `Announce.lua`, `DeathWatch.lua`, `ChatCue.lua`, `UI_Deaths.lua`, `Tests_Deaths.lua` | S, K3, K4, K5, K8 | P4, P10, P11, P13, P16 |
 | **E: Data and capture** | `Data_Instances.lua`, `Data_Mobs.lua`, `Capture.lua`, `CaptureWatch.lua`, `scripts/mfd-forever-capture.lua`, `Tests_Capture.lua` | S, K2, K3 | P2, P11, P14; the Dec 9 raids |
@@ -574,6 +644,21 @@ Order: K1 and K2 now; S as soon as K1 merges; A, E (pure halves) and H straight 
 since they need no probe answer; K3 to K8 in order; then B, C, D, F, G as their ICKit pieces
 land and the probe answers arrive. The first build worth putting in front of the raid is
 S + A + B + G: the plan, the Mark pack button and the window.
+
+### 13.1 Merged modules against "icons are secret in combat" (main e7f941b)
+
+Checked after the control test. No merged module calls `GetRaidTargetIndex` or reads an
+icon off a mob; the readers will be lane B's `Sense.lua` and `MarkButtons.lua`, still
+stubs. Three merged modules take icons on mobs as an input and need their caller (lane B)
+to obey 5.8, plus two small follow-ups for their owners:
+
+| Module (lane) | What assumes it | Needed |
+| --- | --- | --- |
+| `Allocator.lua` (A) | `input.held` = "icons already on mobs" | Nothing in the code (its comment already says "read back out of combat"). Lane B builds `held` from an OOC `Ledger.Settle` only; a secret icon there would throw where it is used as a table key or compared. |
+| `MarkPlan.lua` (A) | `IconFor(facts, steps, marked)`: `marked` documented as "the icons seen on mobs" | Comment fix: in combat `marked` is the press record's planned icons, not icons seen. Code unchanged. |
+| `Debug.lua` (A) | none; `canMark` comes from lead and assist reads, now known plain | New reason "Mark pack has no key bound" (5.7), a field such as `unbound`. |
+| `UI_Assignments.lua` (G) | none; icons come from the seat plan and "Held by" is the seat owner | Later, once lane B lands: a per-row state (planned, placed, unknown) from `Ledger.View`. |
+| `Comms.lua` (F), `UI_Main.lua` (G), `Lead.lua` (F), `Conflicts.lua` (H) | none | none |
 
 ## 14. Errors and limits
 
@@ -594,6 +679,10 @@ S + A + B + G: the plan, the Mark pack button and the window.
   `InCombatLockdown()` arrive about 3 s later. Secure writes are gated on
   `InCombatLockdown()`, never on the event, and an OOC snapshot taken at the event is valid.
 - Pass `SetRaidTargetIconTexture` a number only; it throws on nil.
+- In combat `GetRaidTargetIndex` on a marked mob is secret: test it with
+  `Restrict.IsSecret` before anything else, treat secret as "marked, icon unknown", and
+  never compare, index, store or display the value. Icons shown in combat come from the
+  press record (5.8).
 
 ## 15. PENDING-PROBE list
 
@@ -603,23 +692,23 @@ raid passes.
 
 | Id | Question (short) | Decides | Status |
 | --- | --- | --- | --- |
-| P1 | `GetRaidTargetIndex` on instance mobs in and out of combat; `SetRaidTargetIconTexture` with a secret index | manual override OOC; plan check | open world: plain in and out of combat; icon texture throws on nil. **Instance pending** |
+| P1 | `GetRaidTargetIndex` on instance mobs in and out of combat; `SetRaidTargetIconTexture` with a secret index | manual override OOC; plan check; press record | open world: plain OOC; **in combat secret on a marked mob**, plain nil unmarked (only "marked or not"); icon texture throws on nil. **Instance pending** |
 | P2 | Instance mob `UnitGUID`/`UnitName` OOC; `ShouldUnitIdentityBeSecret` | sighted vs blind; `/mfd add`; learning; capture | open world: plain in combat too, identity not secret (sighted). **Instance pending** |
 | P3 | `UnitCreatureType`, `UnitClassification` on instance mobs | CC creature-type warning | open world: plain in combat too. **Instance pending** |
 | P4 | Chat and addon-message lockdown scope in a raid | announce, death calls, callouts, comms | open world: no chat lockdown in or out of combat, only `Combat` restriction. **Raid pending** |
 | P5 | Another member's auras by index and by name, OOC | raid check | open world: full tables OOC; in combat index throws, by name returns nothing. **Instance OOC pending** |
-| P6 | One press marks several names; nearest of two; clear-all; `/targetlasttarget` | Mark pack, Clear | **open: no mark placed by any secure macro yet; control test next** (5.6) |
-| P7 | Longest macrotext; conditionals | MarkPlan limit; Mark mouseover | **open**: 300-character macro and `[@player]` placed no mark; `@mouseover` cannot work from a panel click (keybind only) |
+| P6 | One press marks several names; nearest of two; clear-all; `/targetlasttarget` | Mark pack, Clear | **partly answered**: key-bound secure buttons mark in combat, nothing blocked (f101e96). Open: which of the pressed forms marked, several names per press, nearest of two, clear-all, `/targetlasttarget`, mouse click on a panel button. **Dungeon pass** |
+| P7 | Longest macrotext; conditionals | MarkPlan limit; Mark mouseover | **open**: the first run's 300-character and `[@player]` presses placed nothing, but the key-bound control test marked, so those misses are not evidence against the forms; the control test did not separate forms either. `@mouseover` cannot work from a panel click (keybind only) |
 | P8 | `ShouldAurasBeSecret`, `ShouldSpellAuraBeSecret` in a raid OOC | raid check | open world: false OOC, true in combat for every id tried; `GetSpellAuraSecrecy` 2. **Instance OOC pending** |
 | P9 | Addon messages in a raid OOC; LibDurability answers | comms, election, version, durability | open world party: addon messages return 0 and loop back, in combat too; nobody answered `LibDRBLT`. **Raid pending** |
-| P10 | `UnitGroupRolesAssigned`, `GetPartyAssignment("MAINTANK")` | tank and healer detection | open world party: both plain. **Raid pending** |
+| P10 | `UnitGroupRolesAssigned`, `GetPartyAssignment("MAINTANK")` | tank and healer detection; lead or assist rights | open world party: both plain, and `IsInRaid`, `UnitIsGroupAssistant`, `IsEveryoneAssistant` plain. **Raid pending** |
 | P11 | `ENCOUNTER_START` arguments; `UNIT_DIED`; `UnitIsDead` in combat | death calls, boss ticks, capture | open world: `UNIT_DIED`, `PARTY_KILL` plain GUIDs; `UnitIsDead(OrGhost)` plain. **`ENCOUNTER_START` and instance pending** |
 | P12 | `LoggingCombat` writes a usable file | combat logging | open world: file opened, stayed 0 bytes. **Instance pending**; logging ships off by default |
 | P13 | Globals present; RAID_WARNING sends | chat path, sounds | settled: `SendChatMessage` present; `GetSpellInfo`, `UnitAura`, `UnitBuff`, `UnitDebuff`, talent tab APIs, `CombatLogGetCurrentEventInfo` absent (none used by this design). **RAID / RAID_WARNING in a raid pending** |
 | P14 | Capture: raid ids, npc ids, trap / Well Fed / scroll / enchant / Trueshot / Repentance / Turtle ids | data files | partly: Well Fed 1248688 (Forever id, not classic), Power Word: Fortitude 1244, Arcane Intellect 1459. **Raid ids, trap aura, the rest pending** |
 | P15 | Secure snippet changing macrotext between presses in combat | Mark mouseover | **answered yes**: a `SecureHandlerWrapScript` pre-body rewrote `macrotext` in combat |
 | P16 | `RaidNotice_AddMessage` from addon code | local death alert | open world: shows in and out of combat. **Encounter pending** |
-| P17 | `/click <SecureButton>` inside secure macrotext | one-press re-mark; split plans | **open**: the chain placed no mark, but nothing else did either; rides on the P6 control test |
+| P17 | `/click <SecureButton>` inside secure macrotext | one-press re-mark; split plans | **open**: the first run's chain placed nothing before the key-bound control test; retest it key-bound in the dungeon pass |
 
 When the probe results are in, lane P rewrites each PENDING-PROBE mark above to the
 answer, moves the "if the probe says no" column into the feature table where it applies,
