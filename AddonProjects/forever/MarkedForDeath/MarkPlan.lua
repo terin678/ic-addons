@@ -172,7 +172,10 @@ end
 facts: what can be read of one unit right now, nothing secret: { guid, name }. steps: from
 Steps. Returns the icon the plan wants there and its step, or nil and why. A GUID match is
 exact; a name match takes the first step of that name not already marked (marked:
-{ [icon] = true }, the icons seen on mobs), the order a press would mark them in.
+{ [icon] = true }), the order a press would mark them in. Out of combat `marked` may be
+icons read on mobs. In combat it is the press record's planned icons (ns.Ledger), never
+icons read: GetRaidTargetIndex on a marked mob is secret then, so the answer is what the
+plan meant, shown as planned, not as fact (spec 5.8).
 ]]
 function MarkPlan.IconFor(facts, steps, marked)
     if type(facts) ~= "table" then return nil, "nothing readable on that unit" end

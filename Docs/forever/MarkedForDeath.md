@@ -47,7 +47,61 @@ A new install starts with this plan, with no players pinned:
 
 ## Marking
 
-*To come (lanes A and B).*
+On Forever an addon cannot place a raid icon from its own code. Marked For Death works the
+plan out of combat and writes it into a secure **Mark pack** button; your own keypress
+applies it, in combat too. A key is the proven way to press it (the probe's control test);
+a mouse click on the bar is not yet proven.
+
+| Command | What it does |
+| --- | --- |
+| `/mfd mark` | What Mark pack holds now, in press order; each button's keys; the last press; anything in the way |
+| `/mfd keys` | The keys on each button |
+| `/mfd keys on` | Binds Ctrl-1 Mark pack, Ctrl-2 Clear all, Ctrl-3 Re-mark, Ctrl-4 Clear target (this character) |
+| `/mfd keys off` | Drops those keys. Keys you set in Key Bindings stay |
+| `/mfd keys pack ALT-Q` | Puts one button on a key of your choice (`pack`, `clear`, `remark`, `target`); `none` drops it |
+| `/mfd bar` | Shows or hides the marking bar |
+| `/mfd bar show`, `hide`, `lock`, `unlock`, `reset` | Shows, hides, pins or unpins the bar, or puts it back in the middle |
+| `/mfd bar solo on`, `solo off` | Shows the bar when you are not in a group too (off by default) |
+
+You can also bind the buttons under **Key Bindings > AddOns > Marked For Death**; those keys
+are your own and are kept by the game. The `/mfd keys` set is kept per character and lies
+over your normal keys only while it is on.
+
+**The buttons.** The marking bar is a small strip you can drag; it shows in a group (or
+always, with `/mfd bar solo on`), with each button's key under it.
+
+- **Mark pack** targets each mob of the plan by its exact name, marks it with its seat's
+  icon (Skull first), skips a mob that already carries a mark, then puts your target back.
+  A press marks only the names in reach. The plan holds one mob per rule, best first, and
+  is cut at 255 characters on a whole name, so the last seats can drop off a long plan;
+  `/mfd mark` and the Settings tab say how many.
+- **Clear target** clears your target's icon. Proven.
+- **Clear all** uses the game's own clear-every-icon action. **Not yet proven** on this
+  client; Clear target is the fallback.
+- **Re-mark** is Clear all then Mark pack in one press. **Not yet proven** (it needs Clear
+  all and a `/click` inside a macro).
+- Pressing a key while the bar is hidden is **not yet proven** either; keep the bar shown
+  until it is.
+
+In a raid only the leader and assistants can mark; the bar's labels turn red when you
+cannot. Anyone with lead or assist and the addon holds the same plan.
+
+**In combat** nothing is rebuilt and no icon is read back: the game hides which icon a mob
+carries. A plan edit in combat waits: Mark pack's label turns amber ("stale") and the new
+plan is written the moment combat ends. What the addon shows as placed in combat is its own
+record of what you pressed, labelled **planned**; out of combat the icons on mobs in reach
+are read and replace the record.
+
+**The Assignments tab** shows exactly what Mark pack holds once it is built, with the
+marking strip on its toolbar: **Hide bar** / **Show bar**, **Keys** (hover for each key), a
+status line (names held, how many did not fit, the key, the last press), and under it the
+**Mark guide** for your target: which icon the plan gives it, or, in combat, that it is
+marked and which icon was planned there.
+
+Marking runs **blind** for now: every rule stands for one mob, marked by name. Marking
+several copies of one mob at once (sighted mode) and Mark mouseover are not built yet.
+`/mfd off` empties Mark pack, Re-mark and Clear target, so a press does nothing; Clear all
+still clears.
 
 ## Rules
 
