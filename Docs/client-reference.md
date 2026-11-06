@@ -160,11 +160,13 @@ nameplates. `C_Secrets.ShouldUnitIdentityBeSecret(unit)` is false for them. Plai
 party members: `UnitClass`, `UnitName` (the two-part name), `UnitGroupRolesAssigned`,
 `GetPartyAssignment("MAINTANK", unit)`, `UnitIsDeadOrGhost`, `CanInspect`,
 `UnitIsConnected` and `UnitGUID`. The group itself read plainly too: `IsInGroup()` true,
-`GetNumGroupMembers()` 2, `UnitIsGroupLeader("player")` true. `IsInRaid()`,
-`UnitIsGroupAssistant("player")` and `IsEveryoneAssistant()` did not read true, but that
-run filed a false and a secret alike, so whether they are plain is not yet shown. Raid
+`GetNumGroupMembers()` 2, `UnitIsGroupLeader("player")` true, and `IsInRaid()`,
+`UnitIsGroupAssistant("player")` and `IsEveryoneAssistant()` read a plain false. Raid
 behaviour is open.
-`GetRaidTargetIndex` reads plainly (nil on an unmarked unit) in and out of combat.
+`GetRaidTargetIndex` reads plainly out of combat. In combat an unmarked mob reads a plain
+nil, but once the same mob carried a mark the answer was **secret**, and it read plain nil
+again after a clear. So in combat an addon can tell a mark is there (`issecretvalue`) but
+not which one.
 
 **Auras.** `C_UnitAuras.GetAuraDataByIndex` returns full tables out of combat (player,
 party member, mob; spell id, name, source, expiry). In combat it **throws** "Auras cannot
@@ -209,7 +211,9 @@ INSTANCE_CHAT in a party answer "You are not in a raid group".
 INSTANCE_CHAT outside an instance group it returns 5. The durability request went out on
 `LibDRBLT`, the prefix MarkedForDeath used on Anniversary, but `LibDurability` as
 installed (in the Nova addons' copy) speaks on `Durability` (an `R` asks, `percent,broken`
-answers). So the silence is no evidence either way; the probe now asks on both. `RaidNotice_AddMessage(RaidWarningFrame, ...)` shows, in and out of
+answers). So the silence is no evidence either way; the probe now asks on both, and a
+second open-world party ask had no answer on either in 4 s (the other member may not run
+the library). `RaidNotice_AddMessage(RaidWarningFrame, ...)` shows, in and out of
 combat.
 
 **Inspect and talents.** `NotifyInspect` then `INSPECT_READY` answers in and out of
@@ -225,8 +229,18 @@ once. A
 `SecureHandlerWrapScript` pre-body ran in combat and rewrote its own button's `macrotext`.
 No secure `/tm` macro was seen to place a mark in this run: `[@player]` targets, a 300
 character macro and a `/click` chain all left nothing, and no `RAID_TARGET_UPDATE` fired.
-Whether that is `/tm` itself or how the probe clicked is still open. `[@mouseover]` cannot
-work from a mouse click on a panel button, because the pointer is on the button.
+`/tm` itself is not the cause: `SLASH_TARGET_MARKER1` and `2` are `/tm`,
+`SLASH_TARGET_EXACT1` is `/targetexact`, `SLASH_CLICK1` is `/click`, `SLASH_CLEAR_WORLD_MARKER1`
+is `/cwm`. `[@mouseover]` cannot work from a mouse click on a panel button, because the
+pointer is on the button.
+
+Key-bound presses (named secure buttons, `SetOverrideBindingClick`, `AnyDown` with
+`useOnKeyDown`) do mark in combat. Ten presses in about four seconds of open-world combat
+raised no `ADDON_ACTION_BLOCKED` or `FORBIDDEN` from the probe, `RAID_TARGET_UPDATE` fired
+8 times (it carries no arguments), and the target went from a plain nil to a secret
+index. The presses came faster than the one-second read-back, so which buttons marked is
+not separated yet. Out of combat only five of the ten keys were pressed, and only with
+no target or an unmarked one, so no button is confirmed there by the saved data.
 
 `GetInventoryItemDurability(slot)` returns current, max (nothing for an empty slot).
 Instance id is `select(8, GetInstanceInfo())`, 0 in Eastern Kingdoms.
