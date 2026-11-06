@@ -14,7 +14,6 @@ the client forbids it: a change asked for then is held and made when combat ends
     Secure.Fit(entries, limit, tail)    -> text, kept, dropped: whole entries that fit in limit bytes
     Secure.Words()                      -> { mark, exact, click, clearWorld }: this client's slash words
     Secure.ClickBinding(name, mouse)    -> "CLICK <name>:LeftButton", a binding command for Bindings.xml
-    Secure.ReadMark(value)              -> "none" | "marked" | "icon", icon: a GetRaidTargetIndex answer
 
     -- The client
     Secure.MacroButton(name, opts)      -> button, or nil and why
@@ -24,18 +23,19 @@ the client forbids it: a change asked for then is held and made when combat ends
     Secure.Pending(button or owner)     -> whether a change for it is waiting on combat to end
     Secure.Macro(button)                -> the macro the button runs now
     Secure.Locked()                     -> whether secure frames may not be changed now, and why
+    Secure.Flush()                      -> makes every held change now, if the client allows it
 
 What the probe proved, and what this library is built around:
 
   * A named SecureActionButtonTemplate button with type "macro", registered for "AnyDown"
     with useOnKeyDown, bound with SetOverrideBindingClick, placed marks in combat. That is
-    the shape every button here has.
+    the shape every button here has. The probe's buttons were visible panel buttons; a
+    `hidden` button, and the clear-all action, are not yet proven to work.
   * Attributes and click registration set in combat raised ADDON_ACTION_BLOCKED. So no
     attribute, binding or button is made or changed while Restrict says secure frames are
     locked (lockdown, or the seconds after PLAYER_REGEN_DISABLED before it).
   * GetRaidTargetIndex on a marked mob is secret in combat. Nothing here reads marks
-    back; a caller that wants to know what it marked tracks what it pressed, and
-    ReadMark says how much an answer tells.
+    back; a caller that wants to know what it marked tracks what it pressed.
   * A mouse click puts the pointer on the button, so [@mouseover] means the button. A
     button meant for [@mouseover] is pressed by key only.
 ]]
@@ -122,25 +122,15 @@ function Secure.ClickBinding(name, mouseButton)
     return "CLICK " .. tostring(name) .. ":" .. (mouseButton or "LeftButton")
 end
 
--- What a GetRaidTargetIndex answer says. A plain number 1 to 8 is that icon; a secret
--- (a marked unit in combat) is "marked" with no icon; nil or anything else is "none".
-function Secure.ReadMark(value)
-    if Env.IsSecret(value) then return "marked", nil end
-    if type(value) == "number" and value >= 1 and value <= 8 and value == math.floor(value) then
-        return "icon", value
-    end
-    return "none", nil
-end
-
 --------------------------------------------------------------------------------
 -- The client
 --------------------------------------------------------------------------------
 
 -- Changes held for the end of combat, newest wins: macros by button, key sets by owner.
+-- Kept on the library so a newer copy of it takes them over.
 Secure.heldMacros = Secure.heldMacros or {}
 Secure.heldKeys = Secure.heldKeys or {}
 local heldMacros, heldKeys = Secure.heldMacros, Secure.heldKeys
-local stopListening
 
 -- Whether secure frames may not be changed now, and why.
 function Secure.Locked()
@@ -149,11 +139,16 @@ function Secure.Locked()
     return false
 end
 
-local function ApplyMacro(button, text)
+-- A caller's callback, which must not stop the rest of a flush or another listener.
+local function Tell(fn, ...)
+    if fn then xpcall(fn, geterrorhandler(), ...) end
+end
+
+-- Writes the macro; the caller hears of it afterwards (Tell), never in the middle.
+local function WriteMacro(button, text)
     button:SetAttribute("type", "macro")
     button:SetAttribute("macrotext", text)
     button.icMacro = text
-    if button.icOnApplied then button.icOnApplied(button, text) end
 end
 
 local function ApplyKeys(owner, keys)
@@ -163,52 +158,68 @@ local function ApplyKeys(owner, keys)
     table.sort(list)
     for _, key in ipairs(list) do
         local target = keys[key]
-        local name, mouse = target, "LeftButton"
-        if type(target) == "table" then name, mouse = target[1], target[2] or "LeftButton" end
-        SetOverrideBindingClick(owner, true, key, name, mouse)
+        SetOverrideBindingClick(owner, true, key, target[1], target[2])
     end
 end
 
--- Makes every held change, oldest owner first, once the client allows it again.
-local function Flush()
+-- Makes every held change once the client allows it again: all of them first, then the
+-- callbacks, so a callback that errs or writes again cannot lose or undo a held change.
+function Secure.Flush()
     if Secure.Locked() then return end
     local macros, keys = {}, {}
     for button, text in pairs(heldMacros) do macros[#macros + 1] = { button, text } end
     for owner, set in pairs(heldKeys) do keys[#keys + 1] = { owner, set } end
     for button in pairs(heldMacros) do heldMacros[button] = nil end
     for owner in pairs(heldKeys) do heldKeys[owner] = nil end
-    for _, pair in ipairs(macros) do ApplyMacro(pair[1], pair[2]) end
+    for _, pair in ipairs(macros) do WriteMacro(pair[1], pair[2]) end
     for _, pair in ipairs(keys) do ApplyKeys(pair[1], pair[2]) end
+    for _, pair in ipairs(macros) do Tell(pair[1].icOnApplied, pair[1], pair[2]) end
 end
-Secure.Flush = Flush
 
--- Listens for the end of combat from the first button on.
+-- Listens for the end of combat from the first use on. A newer copy of the library stops
+-- the older copy's listener before starting its own.
 local function Listen()
-    if stopListening then return end
-    stopListening = Restrict.OnChange(function(now)
-        if not now.secure then Flush() end
+    if Secure.listening == MINOR then return end
+    if Secure.stopListening then Secure.stopListening() end
+    Secure.stopListening = Restrict.OnChange(function(now)
+        if not now.secure then Secure.Flush() end
     end)
+    Secure.listening = MINOR
 end
 
 local NAME_PATTERN = "^[%a_][%w_]*$"
 
 -- The one shape the probe proved: a named secure action button, pressed on the key's
 -- down edge only. Left unset, the edge would follow the ActionButtonUseKeyDown setting.
+-- A name already in use is refused, unless it is a button this library made, which is
+-- handed back as it is: a second frame under one name would leave the first one live,
+-- and writing over someone else's global would taint it.
 local function MakeButton(name, opts)
     if type(name) ~= "string" or not name:match(NAME_PATTERN) then
         return nil, "a secure button needs a global name of letters, digits and underscores"
+    end
+    local existing = _G[name]
+    if existing ~= nil then
+        if type(existing) == "table" and existing.icSecure then return existing, nil, true end
+        return nil, "the name " .. name .. " is taken"
     end
     Listen()
     local locked, why = Secure.Locked()
     if locked then return nil, why end
     local template = "SecureActionButtonTemplate"
     if opts.template then template = template .. ", " .. opts.template end
-    local b = CreateFrame("Button", name, opts.parent or UIParent, template)
+    -- A hidden button has no parent unless given one, so hiding the UI (Alt-Z) does not
+    -- hide it with UIParent.
+    local parent = opts.parent
+    if parent == nil and not opts.hidden then parent = UIParent end
+    local b = CreateFrame("Button", name, parent, template)
+    b.icSecure = true
     b:RegisterForClicks("AnyDown")
     b:SetAttribute("useOnKeyDown", true)
     if opts.hidden then
-        -- Pressed by key binding or /click only. Shown, because a press has to reach a live
-        -- button, but invisible, off the screen and deaf to the mouse.
+        -- Pressed by key binding or /click only, and NOT YET PROVEN to work: the probe's
+        -- marking buttons were visible. Shown in case a press must reach a live button,
+        -- but invisible, off the screen and deaf to the mouse.
         b:EnableMouse(false)
         b:SetSize(1, 1)
         b:SetAlpha(0)
@@ -219,26 +230,31 @@ local function MakeButton(name, opts)
 end
 
 -- name: the button's global name, which bindings and /click find it by.
--- opts: parent (UIParent), template (a look to add to the secure template, such as
---       "UIPanelButtonTemplate"), hidden (key and /click only), text (the first macro),
---       onApplied(button, text) each time its macro is written, a held one included
---       (when combat ends), so a caller can drop a "stale" tint then.
+-- opts: parent (UIParent; none for a hidden button), template (a look to add to the
+--       secure template, such as "UIPanelButtonTemplate"), hidden (key and /click only;
+--       unproven), text (the first macro), onApplied(button, text) each time its macro is
+--       written, a held one included (when combat ends), so a caller can drop a "stale"
+--       tint then.
 -- Out of combat only: in combat returns nil and why, because the client blocks the
--- attributes then.
+-- attributes then. Asking again for a name this library already made returns that button
+-- with its macro unchanged; use SetMacro to change it.
 function Secure.MacroButton(name, opts)
     opts = opts or {}
-    local b, why = MakeButton(name, opts)
-    if not b then return nil, why end
+    local b, why, old = MakeButton(name, opts)
+    if not b or old then return b, why end
     b.icOnApplied = opts.onApplied
-    ApplyMacro(b, opts.text or "")
+    local text = opts.text or ""
+    WriteMacro(b, text)
+    Tell(b.icOnApplied, b, text)
     return b
 end
 
--- The client's own clear-every-mark action on a secure button, no macro. Same options as
--- MacroButton, without text.
+-- The client's own clear-every-mark action on a secure button, no macro. NOT YET PROVEN:
+-- the probe pressed one among others and which of them marked was not separated. Same
+-- options as MacroButton, without text.
 function Secure.ClearAllButton(name, opts)
-    local b, why = MakeButton(name, opts or {})
-    if not b then return nil, why end
+    local b, why, old = MakeButton(name, opts or {})
+    if not b or old then return b, why end
     b:SetAttribute("type", "raidtarget")
     b:SetAttribute("action", "clear-all")
     return b
@@ -255,23 +271,32 @@ function Secure.SetMacro(button, text)
         return "held"
     end
     heldMacros[button] = nil
-    ApplyMacro(button, text)
+    WriteMacro(button, text)
+    Tell(button.icOnApplied, button, text)
     return "set"
 end
 
 -- keys: { [key] = buttonName or { buttonName, mouseButton } }, the whole set for owner (a
 -- frame); {} clears it. Override bindings, so they last until changed or the UI reloads
--- and never touch the player's saved keys.
+-- and never touch the player's saved keys. The set is copied, so changing the table
+-- afterwards changes nothing.
 function Secure.Bind(owner, keys)
     assert(type(owner) == "table", "LibICSecure: Bind needs an owner frame")
-    keys = keys or {}
+    local set = {}
+    for key, target in pairs(keys or {}) do
+        local name, mouse = target, "LeftButton"
+        if type(target) == "table" then name, mouse = target[1], target[2] or "LeftButton" end
+        assert(type(key) == "string" and type(name) == "string" and type(mouse) == "string",
+            "LibICSecure: Bind needs key = buttonName or { buttonName, mouseButton }")
+        set[key] = { name, mouse }
+    end
     Listen()
     if Secure.Locked() then
-        heldKeys[owner] = keys
+        heldKeys[owner] = set
         return "held"
     end
     heldKeys[owner] = nil
-    ApplyKeys(owner, keys)
+    ApplyKeys(owner, set)
     return "set"
 end
 

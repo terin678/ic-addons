@@ -519,14 +519,14 @@ combat is held and made when combat ends (`Restrict.State().secure` going false)
 | `Secure.Fit(entries, limit, tail)` | `text, kept, dropped`. `entries` is a list of strings or of line lists kept whole (a `/targetexact` and its `/tm`), most important first; `limit` is bytes (`Secure.MACRO_LIMIT`, 255, when nil); `tail` always ends the text and its room is kept first. Entries are kept in order and the first that does not fit ends the text, so a lower seat never takes a higher one's place; `dropped` lists the indexes left out. Pure. |
 | `Secure.Words()` | `{ mark, exact, click, clearWorld }`: the client's slash words from `SLASH_TARGET_MARKER1`, `SLASH_TARGET_EXACT1`, `SLASH_CLICK1` and `SLASH_CLEAR_WORLD_MARKER1`, English (`/tm`, `/targetexact`, `/click`, `/cwm`) when one is missing. |
 | `Secure.ClickBinding(name, mouseButton)` | `"CLICK <name>:LeftButton"`, the binding command for a `Bindings.xml` entry. Pure. |
-| `Secure.ReadMark(value)` | What a `GetRaidTargetIndex` answer says: `"icon", n` for a plain 1 to 8, `"marked"` for a secret (a marked unit in combat: there is a mark, not which), `"none"` otherwise. Pure. |
-| `Secure.MacroButton(name, opts)` | A named `SecureActionButtonTemplate` button of type `macro`, fired on the key's down edge (`RegisterForClicks("AnyDown")` and `useOnKeyDown`), or `nil` and why in combat. `opts`: `parent` (UIParent), `template` (a look added to the secure template, such as `UIPanelButtonTemplate`), `hidden` (pressed by key or `/click` only: shown but invisible, off screen and deaf to the mouse), `text` (the first macro), `onApplied(button, text)` each time its macro is written, a held one included. |
-| `Secure.ClearAllButton(name, opts)` | The client's own clear-every-mark action (`type` `raidtarget`, `action` `clear-all`), no macro. Same options, without `text`. |
+| `Secure.MacroButton(name, opts)` | A named `SecureActionButtonTemplate` button of type `macro`, fired on the key's down edge (`RegisterForClicks("AnyDown")` and `useOnKeyDown`), or `nil` and why in combat. `opts`: `parent` (UIParent), `template` (a look added to the secure template, such as `UIPanelButtonTemplate`), `hidden` (pressed by key or `/click` only: shown but invisible, off screen, deaf to the mouse and with no parent unless given one, so Alt-Z cannot hide it; **unproven**, the probe's marking buttons were visible), `text` (the first macro), `onApplied(button, text)` each time its macro is written, a held one included (called after every held change is made, an error in it reported and not stopping the rest). A name already in use is refused, except one this library made, which comes back unchanged. |
+| `Secure.ClearAllButton(name, opts)` | The client's own clear-every-mark action (`type` `raidtarget`, `action` `clear-all`), no macro. Same options, without `text`. **Unproven**: the probe pressed one among others and did not separate which marked. |
 | `Secure.SetMacro(button, text)` | `"set"`, or `"held"` in combat: written when combat ends, and a later write replaces a held one. The button keeps its last macro meanwhile. |
-| `Secure.Bind(owner, keys)` | `"set"` or `"held"`. `keys` is the whole override set for the frame `owner`: `{ [key] = buttonName or { buttonName, mouseButton } }`; `{}` clears it. Override bindings (`SetOverrideBindingClick`, priority) never touch the player's saved keys and last until changed or the UI reloads. |
+| `Secure.Bind(owner, keys)` | `"set"` or `"held"`. `keys` is the whole override set for the frame `owner`: `{ [key] = buttonName or { buttonName, mouseButton } }`; `{}` clears it, and the set is copied when it is held. Override bindings (`SetOverrideBindingClick`, priority) never touch the player's saved keys and last until changed or the UI reloads. |
 | `Secure.Pending(button or owner)` | Whether a held change waits for it. |
 | `Secure.Macro(button)` | The macro the button runs now, not a held one. |
 | `Secure.Locked()` | `true, reason` while secure frames may not be changed. |
+| `Secure.Flush()` | Makes every held change now, if the client allows it. Runs by itself when combat ends. |
 
 What it is built around:
 
@@ -536,7 +536,7 @@ What it is built around:
 - Creating a button, setting an attribute and binding a key happen out of combat only.
   The probe saw attributes set in combat raise `ADDON_ACTION_BLOCKED`.
 - Nothing reads marks back. In combat `GetRaidTargetIndex` on a marked mob is secret, so a
-  caller tracks what it pressed; `ReadMark` says how much an answer tells.
+  caller keeps its own record of what it pressed (MarkedForDeath's press record).
 - A mouse click puts the pointer on the button, so `[@mouseover]` there means the button.
   A button meant for `[@mouseover]` is bound to a key and made `hidden`.
 - Keep the macro text to what the probe ran: `/tm` with a target, `/targetexact` then

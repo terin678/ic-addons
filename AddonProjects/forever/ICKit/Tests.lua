@@ -1831,7 +1831,7 @@ T.Case("Secure.Fit: whole entries in order, inside the limit, the tail kept", fu
     T.Eq(select(2, Secure.Fit({ "", "/tm 8" }, 255)), 1, "an empty entry is skipped, not a stop")
 end)
 
-T.Case("Secure.Words, ClickBinding and ReadMark", function()
+T.Case("Secure.Words and ClickBinding", function()
     local words = Secure.Words()
     T.Eq(words.mark, "/tm", "the English mark word when the client gives none")
     T.Eq(words.exact, "/targetexact", "target exact")
@@ -1847,19 +1847,6 @@ T.Case("Secure.Words, ClickBinding and ReadMark", function()
 
     T.Eq(Secure.ClickBinding("MFDMarkPack"), "CLICK MFDMarkPack:LeftButton", "a left click by default")
     T.Eq(Secure.ClickBinding("MFDClear", "RightButton"), "CLICK MFDClear:RightButton", "or the button asked for")
-
-    T.Eq(Secure.ReadMark(nil), "none", "unmarked reads nil")
-    local kind, icon = Secure.ReadMark(8)
-    T.Eq(kind, "icon", "a plain index")
-    T.Eq(icon, 8, "is the icon")
-    T.Eq(Secure.ReadMark(9), "none", "out of range is no mark")
-    T.Eq(Secure.ReadMark(2.5), "none", "and so is a fraction")
-    local mark = FakeSecret()
-    Env.SetSecretCheck(function(v) return v == mark end)
-    kind, icon = Secure.ReadMark(mark)
-    T.Eq(kind, "marked", "a secret index means a mark is there")
-    T.Eq(icon, nil, "but not which")
-    Env.SetSecretCheck(nil)
 end)
 
 T.Case("Secure buttons: made out of combat, changes held through it", function()
@@ -1902,11 +1889,19 @@ T.Case("Secure buttons: made out of combat, changes held through it", function()
     T.Eq(b.attributes.macrotext, "/tm 8", "running the first macro")
     T.Eq(Secure.Macro(b), "/tm 8", "and says so")
     T.Eq(Secure.MacroButton("not a name!"), nil, "a name /click cannot find is refused")
+    T.Eq(Secure.MacroButton("ICKitTestMarkPack", { text = "/tm 1" }), b, "asking again hands back the same button")
+    T.Eq(b.attributes.macrotext, "/tm 8", "with its macro unchanged")
+    _G.ICKitTestTaken = {}
+    local none, taken = Secure.MacroButton("ICKitTestTaken")
+    T.Eq(none, nil, "a name someone else holds is refused")
+    T.Eq(taken, "the name ICKitTestTaken is taken", "and says so")
+    _G.ICKitTestTaken = nil
 
     local clear = Secure.ClearAllButton("ICKitTestClear", { hidden = true })
     T.Eq(clear.attributes.type, "raidtarget", "clear all is the raidtarget action")
     T.Eq(clear.attributes.action, "clear-all", "clearing every mark")
     T.Eq(clear.attributes.macrotext, nil, "with no macro")
+    T.Eq(rawget(clear, "_parent"), nil, "a hidden button has no parent, so hiding the UI cannot hide it")
 
     local owner = saved.CreateFrame("Frame")
     T.Eq(Secure.Bind(owner, { ["CTRL-1"] = "ICKitTestMarkPack", ["CTRL-2"] = { "ICKitTestClear", "RightButton" } }),
@@ -1920,7 +1915,8 @@ T.Case("Secure buttons: made out of combat, changes held through it", function()
     frame:GetScript("OnEvent")(frame, "PLAYER_REGEN_DISABLED")
     T.Eq(Secure.Locked(), true, "secure frames are locked in combat")
     local count = #made
-    local none, reason = Secure.MacroButton("ICKitTestLate", {})
+    local reason
+    none, reason = Secure.MacroButton("ICKitTestLate", {})
     T.Eq(none, nil, "no button is made in combat")
     T.Eq(reason, "in combat", "and why")
     T.Eq(#made, count, "not even created")
@@ -1928,22 +1924,43 @@ T.Case("Secure buttons: made out of combat, changes held through it", function()
     T.Eq(Secure.SetMacro(b, "/tm 6"), "held", "and a newer one replaces it")
     T.Eq(b.attributes.macrotext, "/tm 8", "the button keeps its last macro meanwhile")
     T.Eq(Secure.Pending(b), true, "and says a change waits")
-    T.Eq(Secure.Bind(owner, {}), "held", "a key change is held too")
+    local later = { ["CTRL-3"] = "ICKitTestMarkPack" }
+    T.Eq(Secure.Bind(owner, later), "held", "a key change is held too")
+    later["CTRL-4"] = "ICKitTestClear"
+    T.Eq(select(2, pcall(Secure.Bind, owner, { ["CTRL-5"] = { nil, "LeftButton" } })) ~= nil, true,
+        "a key with no button name is refused at once, not at the end of combat")
     T.Eq(bindings[owner]["CTRL-1"], "ICKitTestMarkPack:LeftButton first", "the keys still press it")
+
+    -- A second held button whose callback errs: neither it nor the first may lose its write
+    local other = (function()
+        locked = false
+        local o = Secure.MacroButton("ICKitTestOther", { onApplied = function(_, text) if text == "/tm 5" then error("caller broke") end end })
+        locked = true
+        return o
+    end)()
+    Secure.SetMacro(other, "/tm 5")
+    local savedHandler = geterrorhandler
+    local errors = 0
+    _G.geterrorhandler = function() return function() errors = errors + 1 end end
 
     locked = false
     frame:GetScript("OnEvent")(frame, "PLAYER_REGEN_ENABLED")
+    _G.geterrorhandler = savedHandler
+    T.Eq(other.attributes.macrotext, "/tm 5", "a held macro is written even when a callback errs")
+    T.Eq(errors >= 1, true, "the error goes to the error handler")
     T.Eq(b.attributes.macrotext, "/tm 6", "combat ending writes the newest macro")
     T.Eq(applied[#applied], "/tm 6", "and tells the caller")
     T.Eq(#applied, 2, "once: the first macro, then the held one")
     T.Eq(Secure.Pending(b), false, "nothing waits")
-    T.Eq(next(bindings[owner]), nil, "the held key set (none) is in place")
+    T.Eq(bindings[owner]["CTRL-3"], "ICKitTestMarkPack:LeftButton first", "the held key set is in place")
+    T.Eq(bindings[owner]["CTRL-1"], nil, "replacing the old one whole")
+    T.Eq(bindings[owner]["CTRL-4"], nil, "as it was when held, not as the caller changed it later")
     T.Eq(Secure.SetMacro(b, "/tm 0"), "set", "out of combat a macro is written at once")
     T.Eq(b.attributes.macrotext, "/tm 0", "there and then")
 
     Restrict.Now = savedNow
     for k, v in pairs(saved) do _G[k] = v end
-    _G.ICKitTestMarkPack, _G.ICKitTestClear = nil, nil
+    _G.ICKitTestMarkPack, _G.ICKitTestClear, _G.ICKitTestOther = nil, nil, nil
 end)
 
 T.Case("Gallery: builds every widget, and toggles", function()
