@@ -75,9 +75,11 @@ should not. The counters cost two clock reads a call and need no console variabl
 | LibICConsole-1.0 | 1 | Prefixed printing and the slash-command dispatcher with its help |
 | LibICTheme-1.0 | 2 | The theme registry: colour and font roles, the selected theme, change listeners |
 | LibICWidgets-1.0 | 4 | Themed frames drawn from colour textures: panel, label, button, check box, edit box, slider, choice, scroll, tabs, list, resize grip, text area, raid icon, tooltip, menu, confirm |
+| LibICSecure-1.0 | 1 | Secure buttons the player presses, for what addon Lua may not do (raid marks): macro and clear-all buttons, override key bindings, every change held until combat ends; the pure macro fitter |
 
 The libraries never print. An addon decides what to say, in its own voice. Only
-LibICWidgets creates frames, apart from the store's one event frame.
+LibICWidgets and LibICSecure create frames, apart from the one event frame each of the
+store and the restriction listener keeps.
 
 The MINOR goes up whenever a library's API changes. Bump it in the library source and in
 this table together; `scripts/lint.py` fails when the two disagree.
@@ -492,6 +494,55 @@ its focus (`box:ClearFocus()`) when combat starts.
 `Gallery.lua` in the kit is the worked example: a movable, resizable panel with a title bar
 that drags it, tabs that switch pages, a list with its header above the scroll, a text area,
 its place and size saved per character, a menu and a confirm.
+
+## LibICSecure-1.0
+
+```lua
+local Secure = LibStub("LibICSecure-1.0")
+
+local text, kept, dropped = Secure.Fit(pairs, Secure.MACRO_LIMIT, "/targetlasttarget")
+local pack = Secure.MacroButton("MFDMarkPack", { text = text, template = "UIPanelButtonTemplate" })
+Secure.Bind(bar, { ["CTRL-1"] = "MFDMarkPack" })
+-- later, a plan edit, in combat or out:
+if Secure.SetMacro(pack, newText) == "held" then ShowStale() end
+```
+
+Some things on Forever only the player's own press may do. `SetRaidTarget` from addon Lua
+is forbidden, but a secure button running a `/tm` macro, pressed through a key binding,
+marks in combat ([client-reference.md](client-reference.md), "Secure buttons"). This
+library makes those buttons in the one shape the probe proved, keeps their macros, binds
+keys to them, and never changes one while the client forbids it: a change asked for in
+combat is held and made when combat ends (`Restrict.State().secure` going false).
+
+| Call | Returns |
+| --- | --- |
+| `Secure.Fit(entries, limit, tail)` | `text, kept, dropped`. `entries` is a list of strings or of line lists kept whole (a `/targetexact` and its `/tm`), most important first; `limit` is bytes (`Secure.MACRO_LIMIT`, 255, when nil); `tail` always ends the text and its room is kept first. Entries are kept in order and the first that does not fit ends the text, so a lower seat never takes a higher one's place; `dropped` lists the indexes left out. Pure. |
+| `Secure.Words()` | `{ mark, exact, click, clearWorld }`: the client's slash words from `SLASH_TARGET_MARKER1`, `SLASH_TARGET_EXACT1`, `SLASH_CLICK1` and `SLASH_CLEAR_WORLD_MARKER1`, English (`/tm`, `/targetexact`, `/click`, `/cwm`) when one is missing. |
+| `Secure.ClickBinding(name, mouseButton)` | `"CLICK <name>:LeftButton"`, the binding command for a `Bindings.xml` entry. Pure. |
+| `Secure.MacroButton(name, opts)` | A named `SecureActionButtonTemplate` button of type `macro`, fired on the key's down edge (`RegisterForClicks("AnyDown")` and `useOnKeyDown`), or `nil` and why in combat. `opts`: `parent` (UIParent), `template` (a look added to the secure template, such as `UIPanelButtonTemplate`), `hidden` (pressed by key or `/click` only: shown but invisible, off screen, deaf to the mouse and with no parent unless given one, so Alt-Z cannot hide it; **unproven**, the probe's marking buttons were visible), `text` (the first macro), `onApplied(button, text)` each time its macro is written, a held one included (called after every held change is made, an error in it reported and not stopping the rest). A name already in use is refused, except one this library made, which comes back unchanged. |
+| `Secure.ClearAllButton(name, opts)` | The client's own clear-every-mark action (`type` `raidtarget`, `action` `clear-all`), no macro. Same options, without `text`. **Unproven**: the probe pressed one among others and did not separate which marked. |
+| `Secure.SetMacro(button, text)` | `"set"`, or `"held"` in combat: written when combat ends, and a later write replaces a held one. The button keeps its last macro meanwhile. |
+| `Secure.Bind(owner, keys)` | `"set"` or `"held"`. `keys` is the whole override set for the frame `owner`: `{ [key] = buttonName or { buttonName, mouseButton } }`; `{}` clears it, and the set is copied when it is held. Override bindings (`SetOverrideBindingClick`, priority) never touch the player's saved keys and last until changed or the UI reloads. |
+| `Secure.Pending(button or owner)` | Whether a held change waits for it. |
+| `Secure.Macro(button)` | The macro the button runs now, not a held one. |
+| `Secure.Locked()` | `true, reason` while secure frames may not be changed. |
+| `Secure.Flush()` | Makes every held change now, if the client allows it. Runs by itself when combat ends. |
+
+What it is built around:
+
+- The button shape is the probe's: named (bindings and `/click` find a button by its
+  global name), `AnyDown` with `useOnKeyDown` pinned (left unset, the edge follows the
+  player's key-down setting), bound with `SetOverrideBindingClick`.
+- Creating a button, setting an attribute and binding a key happen out of combat only.
+  The probe saw attributes set in combat raise `ADDON_ACTION_BLOCKED`.
+- Nothing reads marks back. In combat `GetRaidTargetIndex` on a marked mob is secret, so a
+  caller keeps its own record of what it pressed (MarkedForDeath's press record).
+- A mouse click puts the pointer on the button, so `[@mouseover]` there means the button.
+  A button meant for `[@mouseover]` is bound to a key and made `hidden`.
+- Keep the macro text to what the probe ran: `/tm` with a target, `/targetexact` then
+  `/tm`. Which of the probe's ten buttons marked (clear-all, a 300-byte macro,
+  conditionals, a `/click` chain) was not separated, so those stay unproven until a
+  slower read-back says.
 
 ## Running the cases
 
