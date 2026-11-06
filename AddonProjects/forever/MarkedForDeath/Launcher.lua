@@ -137,16 +137,19 @@ ns.OnReady("launcher", function()
         tooltip = Tip,
     })
     if type(W.MinimapButton) == "function" then
-        button = W.MinimapButton({
+        local refused
+        button, refused = W.MinimapButton({
+            name = "MarkedForDeathMinimapButton",
             icon = Launcher.ICON,
             angle = saved.angle,
             onClick = function(self, mouseButton) Launcher.Click(mouseButton, self) end,
             onMoved = function(angle) saved.angle = angle end,
-            tooltip = function(tip)
+            tooltip = function(tip, self)
                 Tip(tip)
-                tip:AddLine("Drag to move this button", 0.7, 0.7, 0.7)
+                if W.OnMinimap(self) then tip:AddLine("Drag to move this button", 0.7, 0.7, 0.7) end
             end,
         })
+        if refused then ns.Print("the minimap button has no name, so button collectors will not gather it: " .. refused) end
         button:SetShown(saved.hidden ~= true)
     end
 end)
