@@ -1795,6 +1795,157 @@ T.Case("Widgets: a raid icon from a plain number, hidden for anything else", fun
     T.Eq(icon:SetIndex(3), true, "a plain one shows again")
 end)
 
+--------------------------------------------------------------------------------
+-- LibICSecure
+--------------------------------------------------------------------------------
+
+local Secure = LibStub("LibICSecure-1.0")
+
+T.Case("Secure.Fit: whole entries in order, inside the limit, the tail kept", function()
+    local pairs8 = { { "/targetexact Scarlet Monk", "/tm ~8" }, { "/targetexact Scarlet Sorcerer", "/tm ~7" } }
+    local text, kept, dropped = Secure.Fit(pairs8, 255, "/targetlasttarget")
+    T.Eq(text, "/targetexact Scarlet Monk\n/tm ~8\n/targetexact Scarlet Sorcerer\n/tm ~7\n/targetlasttarget",
+        "a pair's lines stay together, the tail last")
+    T.Eq(kept, 2, "both pairs fit")
+    T.Eq(#dropped, 0, "nothing left out")
+    T.Eq(#Secure.Fit(pairs8), #text - #"\n/targetlasttarget", "no tail and the default limit")
+
+    -- 32 bytes for the first pair, 37 for the second, 17 for the tail
+    text, kept, dropped = Secure.Fit(pairs8, 60, "/targetlasttarget")
+    T.Eq(text, "/targetexact Scarlet Monk\n/tm ~8\n/targetlasttarget", "the second pair does not fit with the tail")
+    T.Eq(kept, 1, "one kept")
+    T.Eq(dropped[1], 2, "the second is named as dropped")
+    T.True(#text <= 60, "and the text is inside the limit")
+
+    text, kept, dropped = Secure.Fit({ "/tm 8", string.rep("x", 300), "/tm 7" }, 255)
+    T.Eq(text, "/tm 8", "the first entry that does not fit ends the text")
+    T.Eq(#dropped, 2, "so a later short one is dropped too")
+    T.Eq(dropped[2], 3, "by its index")
+
+    text, kept = Secure.Fit({ "/tm 8" }, 5)
+    T.Eq(text, "/tm 8", "an entry exactly the limit long fits")
+    text, kept, dropped = Secure.Fit({ "/tm 8" }, 4, "/targetlasttarget")
+    T.Eq(text, "", "a tail longer than the limit leaves nothing")
+    T.Eq(dropped[1], 1, "and every entry dropped")
+    T.Eq(Secure.Fit({}, 255, "/tm 0"), "/tm 0", "no entries is the tail alone")
+    T.Eq(select(2, Secure.Fit({ "", "/tm 8" }, 255)), 1, "an empty entry is skipped, not a stop")
+end)
+
+T.Case("Secure.Words, ClickBinding and ReadMark", function()
+    local words = Secure.Words()
+    T.Eq(words.mark, "/tm", "the English mark word when the client gives none")
+    T.Eq(words.exact, "/targetexact", "target exact")
+    T.Eq(words.click, "/click", "click")
+    T.Eq(words.clearWorld, "/cwm", "clear world marker")
+    if IC_HEADLESS then
+        _G.SLASH_TARGET_MARKER1 = "/marque"
+        T.Eq(Secure.Words().mark, "/marque", "the client's own word when it has one")
+        _G.SLASH_TARGET_MARKER1 = "not a word"
+        T.Eq(Secure.Words().mark, "/tm", "and English when that is not a slash word")
+        _G.SLASH_TARGET_MARKER1 = nil
+    end
+
+    T.Eq(Secure.ClickBinding("MFDMarkPack"), "CLICK MFDMarkPack:LeftButton", "a left click by default")
+    T.Eq(Secure.ClickBinding("MFDClear", "RightButton"), "CLICK MFDClear:RightButton", "or the button asked for")
+
+    T.Eq(Secure.ReadMark(nil), "none", "unmarked reads nil")
+    local kind, icon = Secure.ReadMark(8)
+    T.Eq(kind, "icon", "a plain index")
+    T.Eq(icon, 8, "is the icon")
+    T.Eq(Secure.ReadMark(9), "none", "out of range is no mark")
+    T.Eq(Secure.ReadMark(2.5), "none", "and so is a fraction")
+    local mark = FakeSecret()
+    Env.SetSecretCheck(function(v) return v == mark end)
+    kind, icon = Secure.ReadMark(mark)
+    T.Eq(kind, "marked", "a secret index means a mark is there")
+    T.Eq(icon, nil, "but not which")
+    Env.SetSecretCheck(nil)
+end)
+
+T.Case("Secure buttons: made out of combat, changes held through it", function()
+    -- Headless only: in game, writing these globals would taint them.
+    if not IC_HEADLESS then return end
+    local saved = {
+        CreateFrame = CreateFrame,
+        SetOverrideBindingClick = SetOverrideBindingClick,
+        ClearOverrideBindings = ClearOverrideBindings,
+    }
+    local savedNow = Restrict.Now
+    local locked = false
+    local made, bindings = {}, {}
+    _G.CreateFrame = function(kind, name, parent, template)
+        local f = saved.CreateFrame(kind, name, parent, template)
+        f.attributes, f.template, f.clicks = {}, template, false
+        f.SetAttribute = function(self, k, v) self.attributes[k] = v end
+        f.GetAttribute = function(self, k) return self.attributes[k] end
+        f.RegisterForClicks = function(self, ...) self.clicks = table.concat({ ... }, ",") end
+        made[#made + 1] = f
+        return f
+    end
+    _G.ClearOverrideBindings = function(owner) bindings[owner] = {} end
+    _G.SetOverrideBindingClick = function(owner, priority, key, name, mouse)
+        bindings[owner] = bindings[owner] or {}
+        bindings[owner][key] = name .. ":" .. mouse .. (priority and " first" or "")
+    end
+    Restrict.Now = function() return Restrict.State({ lockdown = locked }) end
+
+    local applied = {}
+    local b, why = Secure.MacroButton("ICKitTestMarkPack", {
+        text = "/tm 8", template = "UIPanelButtonTemplate",
+        onApplied = function(_, text) applied[#applied + 1] = text end,
+    })
+    T.True(b ~= nil, "made out of combat: " .. tostring(why))
+    T.Eq(b.template, "SecureActionButtonTemplate, UIPanelButtonTemplate", "the secure template, with a look")
+    T.Eq(b.clicks, "AnyDown", "fires on the down edge")
+    T.Eq(b.attributes.useOnKeyDown, true, "pinned there, whatever the key-down setting")
+    T.Eq(b.attributes.type, "macro", "a macro button")
+    T.Eq(b.attributes.macrotext, "/tm 8", "running the first macro")
+    T.Eq(Secure.Macro(b), "/tm 8", "and says so")
+    T.Eq(Secure.MacroButton("not a name!"), nil, "a name /click cannot find is refused")
+
+    local clear = Secure.ClearAllButton("ICKitTestClear", { hidden = true })
+    T.Eq(clear.attributes.type, "raidtarget", "clear all is the raidtarget action")
+    T.Eq(clear.attributes.action, "clear-all", "clearing every mark")
+    T.Eq(clear.attributes.macrotext, nil, "with no macro")
+
+    local owner = saved.CreateFrame("Frame")
+    T.Eq(Secure.Bind(owner, { ["CTRL-1"] = "ICKitTestMarkPack", ["CTRL-2"] = { "ICKitTestClear", "RightButton" } }),
+        "set", "keys bind out of combat")
+    T.Eq(bindings[owner]["CTRL-1"], "ICKitTestMarkPack:LeftButton first", "an override click binding, first in line")
+    T.Eq(bindings[owner]["CTRL-2"], "ICKitTestClear:RightButton first", "with the mouse button asked for")
+
+    -- Combat: nothing is touched, every change waits
+    local frame = Restrict.frame
+    locked = true
+    frame:GetScript("OnEvent")(frame, "PLAYER_REGEN_DISABLED")
+    T.Eq(Secure.Locked(), true, "secure frames are locked in combat")
+    local count = #made
+    local none, reason = Secure.MacroButton("ICKitTestLate", {})
+    T.Eq(none, nil, "no button is made in combat")
+    T.Eq(reason, "in combat", "and why")
+    T.Eq(#made, count, "not even created")
+    T.Eq(Secure.SetMacro(b, "/tm 7"), "held", "a new macro is held")
+    T.Eq(Secure.SetMacro(b, "/tm 6"), "held", "and a newer one replaces it")
+    T.Eq(b.attributes.macrotext, "/tm 8", "the button keeps its last macro meanwhile")
+    T.Eq(Secure.Pending(b), true, "and says a change waits")
+    T.Eq(Secure.Bind(owner, {}), "held", "a key change is held too")
+    T.Eq(bindings[owner]["CTRL-1"], "ICKitTestMarkPack:LeftButton first", "the keys still press it")
+
+    locked = false
+    frame:GetScript("OnEvent")(frame, "PLAYER_REGEN_ENABLED")
+    T.Eq(b.attributes.macrotext, "/tm 6", "combat ending writes the newest macro")
+    T.Eq(applied[#applied], "/tm 6", "and tells the caller")
+    T.Eq(#applied, 2, "once: the first macro, then the held one")
+    T.Eq(Secure.Pending(b), false, "nothing waits")
+    T.Eq(next(bindings[owner]), nil, "the held key set (none) is in place")
+    T.Eq(Secure.SetMacro(b, "/tm 0"), "set", "out of combat a macro is written at once")
+    T.Eq(b.attributes.macrotext, "/tm 0", "there and then")
+
+    Restrict.Now = savedNow
+    for k, v in pairs(saved) do _G[k] = v end
+    _G.ICKitTestMarkPack, _G.ICKitTestClear = nil, nil
+end)
+
 T.Case("Gallery: builds every widget, and toggles", function()
     -- Headless only: in game this would open the gallery in the middle of /ickit test.
     if not IC_HEADLESS then return end

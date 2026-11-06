@@ -18,6 +18,7 @@ it (Docs/forever/VISION.md has the rules and the order):
               LibICConsole-1.0  printing and slash commands
               LibICTheme-1.0    the theme registry
     layer 2   LibICWidgets-1.0  themed frames
+              LibICSecure-1.0   secure buttons the player presses, changed only out of combat
 
 This file is the addon around the libraries: its version, its saved tables, its commands,
 and the theme every addon on the kit is drawn in. The libraries never print; what the kit
@@ -28,7 +29,7 @@ says, it says here.
     Tests.lua     the kit's own cases
 ]]
 
-local VERSION = "0.12.0"
+local VERSION = "0.13.0"
 
 local Util = LibStub("LibICUtil-1.0")
 local Test = LibStub("LibICTest-1.0")
