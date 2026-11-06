@@ -124,6 +124,132 @@ T.Case("Test: True and Near say what they wanted", function()
 end)
 
 --------------------------------------------------------------------------------
+-- LibICJSON
+--------------------------------------------------------------------------------
+
+local JSON = LibStub("LibICJSON-1.0")
+
+T.Case("JSON.Encode: plain values", function()
+    T.Eq(JSON.Encode(nil), "null", "nothing is null")
+    T.Eq(JSON.Encode(true), "true", "true")
+    T.Eq(JSON.Encode(false), "false", "false")
+    T.Eq(JSON.Encode(22890.0), "22890", "a whole number has no fraction")
+    T.Eq(JSON.Encode(-3), "-3", "a negative one")
+    T.Eq(JSON.Encode(1.5), "1.5", "a fraction keeps it")
+    T.Eq(JSON.Encode(0.1), "0.1", "in its shortest form")
+    T.Eq(JSON.Decode(JSON.Encode(1 / 3)), 1 / 3, "and reads back as the same number")
+    T.Eq(JSON.Encode('say "hi"\\now\n'), '"say \\"hi\\"\\\\now\\n"', "quotes, backslashes and line breaks escaped")
+    T.Eq(JSON.Encode("a\1b"), '"a\\u0001b"', "another control character as \\u")
+    T.Eq(JSON.Encode("caf\195\169"), '"caf\195\169"', "UTF-8 is written as it is")
+end)
+
+T.Case("JSON.Encode: tables, sorted and indented, or compact", function()
+    local t = { name = "Hyjal", ids = { 3, 1 }, boss = { hp = 10, alive = true }, empty = {} }
+    T.Eq(JSON.Encode(t), '{\n'
+        .. '  "boss": {\n'
+        .. '    "alive": true,\n'
+        .. '    "hp": 10\n'
+        .. '  },\n'
+        .. '  "empty": {},\n'
+        .. '  "ids": [\n'
+        .. '    3,\n'
+        .. '    1\n'
+        .. '  ],\n'
+        .. '  "name": "Hyjal"\n'
+        .. '}', "keys in order, two spaces a level, a list keeps its own order")
+    T.Eq(JSON.Encode(t, { compact = true }),
+        '{"boss":{"alive":true,"hp":10},"empty":{},"ids":[3,1],"name":"Hyjal"}', "compact is one line")
+    T.Eq(JSON.Encode({ a = 1 }, { indent = "\t" }), '{\n\t"a": 1\n}', "the indent is the caller's to pick")
+    T.Eq(JSON.Encode({ [10] = "x", [2] = "y", b = "z" }, { compact = true }), '{"2":"y","10":"x","b":"z"}',
+        "number keys by value, before text keys, and written as text")
+    T.Eq(JSON.Encode({ [1] = "a", [3] = "c" }, { compact = true }), '{"1":"a","3":"c"}', "a list with a hole is an object")
+    local one, two = {}, {}
+    for i = 1, 30 do one["k" .. i] = i end
+    for i = 30, 1, -1 do two["k" .. i] = i end
+    T.Eq(JSON.Encode(one), JSON.Encode(two), "the order a table was filled in never shows")
+end)
+
+T.Case("JSON.Encode: what JSON cannot hold is refused with a reason", function()
+    local text, why = JSON.Encode({ fn = print })
+    T.Eq(text, nil, "a function")
+    T.True(why:find("function", 1, true), "is named")
+    local loop = {}
+    loop.self = loop
+    text, why = JSON.Encode(loop)
+    T.Eq(text, nil, "a table inside itself")
+    T.True(why:find("itself", 1, true), "is named")
+    T.Eq(JSON.Encode({ 1 / 0 }), nil, "infinity")
+    T.Eq(JSON.Encode({ 0 / 0 }), nil, "NaN")
+    text, why = JSON.Encode({ [true] = 1 })
+    T.Eq(text, nil, "a key that is not text or a number")
+    T.True(why:find("key", 1, true), "is named")
+    local shared = { 1 }
+    T.Eq(JSON.Encode({ shared, shared }, { compact = true }), "[[1],[1]]", "one table used twice is not a loop")
+end)
+
+T.Case("JSON.Decode: objects, lists, numbers and words", function()
+    local t = JSON.Decode(' { "a" : [ 1, -2.5, 3e2, 1E-1 ], "b": { "c": true, "d": false }, "e": "x" } ')
+    T.Eq(t.a[1], 1, "a whole number")
+    T.Eq(t.a[2], -2.5, "a negative fraction")
+    T.Eq(t.a[3], 300, "an exponent")
+    T.Near(t.a[4], 0.1, 1e-12, "a capital E and a negative exponent")
+    T.Eq(t.b.c, true, "true")
+    T.Eq(t.b.d, false, "false")
+    T.Eq(t.e, "x", "text")
+    T.Eq(JSON.Decode("42"), 42, "a bare number")
+    T.Eq(next(JSON.Decode("{}")), nil, "an empty object")
+    T.Eq(next(JSON.Decode("[]")), nil, "an empty list")
+    t = JSON.Decode("[1, null, 3]")
+    T.Eq(t[2], nil, "a null in a list is a hole")
+    T.Eq(t[3], 3, "and what follows keeps its index")
+    T.Eq(JSON.Decode('{"a": null}').a, nil, "a null value is no value")
+end)
+
+T.Case("JSON.Decode: escapes, UTF-8 included", function()
+    T.Eq(JSON.Decode('"a\\"b\\\\c\\/d\\n\\t\\r\\b\\f"'), 'a"b\\c/d\n\t\r\b\f', "every short escape")
+    T.Eq(JSON.Decode('"\\u0041"'), "A", "a \\u escape")
+    T.Eq(JSON.Decode('"caf\\u00e9"'), "caf\195\169", "past 127 as UTF-8")
+    T.Eq(JSON.Decode('"\\u20AC"'), "\226\130\172", "three bytes, either case of hex")
+    T.Eq(JSON.Decode('"\\ud83d\\ude00"'), "\240\159\152\128", "a surrogate pair is one character")
+    T.Eq(JSON.Decode('"x\\ud83dy"'), "x\239\191\189y", "a lone surrogate is the replacement character")
+    T.Eq(JSON.Decode('"tab\there"'), "tab\there", "a raw tab a text editor left is kept")
+    T.Eq(JSON.Decode('"caf\195\169"'), "caf\195\169", "raw UTF-8 passes through")
+end)
+
+T.Case("JSON.Decode: text that is not JSON gets a reason, never an error", function()
+    local cases = {
+        { nil, "nothing to read" }, { "", "nothing to read" }, { "  \n ", "nothing to read" },
+        { "{", "ends where a key" }, { "[", "ends where a value" }, { "[1,]", "unexpected ]" }, { "[1 2]", "expected , or ]" },
+        { '{"a" 1}', "expected :" }, { "{a: 1}", "quoted key" }, { '{"a": 1,}', "quoted key" },
+        { '"open', "never ends" }, { '"\\q"', "unknown escape" }, { '"\\u12"', "four hex" },
+        { "1 2", "more text after" }, { "null", "only null" }, { "nope", "unexpected n" },
+        { string.rep("[", 300), "nested more than" },
+    }
+    for _, case in ipairs(cases) do
+        local value, why = JSON.Decode(case[1])
+        T.Eq(value, nil, tostring(case[1]) .. " reads as nothing")
+        T.True(type(why) == "string" and why:find(case[2], 1, true), tostring(case[1]) .. " says " .. case[2]
+            .. " (said " .. tostring(why) .. ")")
+    end
+    local _, why = JSON.Decode("[1, 2, x]")
+    T.True(why:find("character 8", 1, true), "the reason says where (" .. tostring(why) .. ")")
+end)
+
+T.Case("JSON: a table survives the trip out and back", function()
+    local rules = { version = 2, name = "Barrow \"Deeps\"", mobs = {}, flags = { true, false, true } }
+    for i = 1, 500 do
+        rules.mobs[i] = { id = 200000 + i, name = "Mob " .. i, weight = i / 8, marks = { i % 8 + 1 } }
+    end
+    local text = assert(JSON.Encode(rules))
+    local back = assert(JSON.Decode(text))
+    T.Eq(JSON.Encode(back), text, "encoding what was read gives the same text")
+    T.Eq(back.mobs[500].id, 200500, "deep values come back")
+    T.Eq(back.mobs[3].weight, 0.375, "fractions too")
+    T.Eq(back.name, rules.name, "and text with quotes in it")
+    T.Eq(JSON.Decode(JSON.Encode(rules, { compact = true })).mobs[250].name, "Mob 250", "compact reads back the same")
+end)
+
+--------------------------------------------------------------------------------
 -- LibICEnv
 --------------------------------------------------------------------------------
 
@@ -181,6 +307,62 @@ T.Case("Env.Try: an answer, several answers, or the error", function()
     T.Eq(Env.Try("nothing", nil).err, "not a function", "asking nothing is said to be so")
 end)
 
+-- A stand-in for a secret value: like the client's, it refuses to become text.
+local function FakeSecret()
+    return setmetatable({}, {
+        __tostring = function() error("attempt to read a secret value") end,
+        __concat = function() error("attempt to concatenate a secret value") end,
+    })
+end
+
+T.Case("Env.IsSecret: the client's check, guarded, or false where there is none", function()
+    local mark = FakeSecret()
+    Env.SetSecretCheck(nil)
+    if type(issecretvalue) ~= "function" then
+        T.Eq(Env.IsSecret(mark), false, "a client without the check has no secrets")
+    end
+    Env.SetSecretCheck(function(v) return v == mark end)
+    T.Eq(Env.IsSecret(mark), true, "the check says so")
+    T.Eq(Env.IsSecret("plain"), false, "a plain value is not")
+    Env.SetSecretCheck(function() error("check broke") end)
+    T.Eq(Env.IsSecret(mark), false, "a check that fails is read as not secret, not raised")
+    Env.SetSecretCheck(function() return 1 end)
+    T.Eq(Env.IsSecret(mark), false, "only a true answer counts")
+    Env.SetSecretCheck(nil)
+end)
+
+T.Case("Env.Try: a secret return is marked, never joined into the text", function()
+    local mark = FakeSecret()
+    Env.SetSecretCheck(function(v) return v == mark end)
+    local t = Env.Try("unit", function() return "a", mark, 3 end)
+    T.Eq(t.ok, true, "the call answered")
+    T.Eq(t.n, 3, "all three returns counted")
+    T.Eq(t.text, "a, <secret>, 3", "the secret one is named, not read")
+    T.True(t.secret[2], "and its place is marked")
+    T.Eq(t.secret[1], nil, "a plain one is not")
+    T.True(t.values[2] == mark, "the value itself is handed back untouched")
+    t = Env.Try("secret error", function() error(mark) end)
+    T.Eq(t.ok, false, "an error raised with a secret is caught")
+    T.Eq(t.err, "<secret>", "and named, not read")
+    Env.SetSecretCheck(nil)
+end)
+
+T.Case("Env.Try: a return that will not become text leaves the answer intact", function()
+    local odd = FakeSecret()
+    Env.SetSecretCheck(function() return false end)
+    local t = Env.Try("odd", function() return 1, odd end)
+    T.Eq(t.ok, true, "the call still answered")
+    T.Eq(t.unreadable, true, "the text is said to be unreadable")
+    T.Eq(t.text, "<unreadable>", "rather than raising")
+    T.True(t.values[2] == odd, "and the values are all there")
+    t = Env.Try("odd error", function() error(odd) end)
+    T.Eq(t.err, "<unreadable>", "an error that will not become text is named too")
+    t = Env.Try("plain", function() return true end)
+    T.Eq(t.unreadable, nil, "a plain answer is readable")
+    T.Eq(next(t.secret), nil, "with nothing secret")
+    Env.SetSecretCheck(nil)
+end)
+
 T.Case("Env.Wrap: calls and time are counted, the function behaves as before", function()
     local now, step = 0, 5
     Env.SetClock(function() return now end)
@@ -204,6 +386,652 @@ T.Case("Env.Wrap: calls and time are counted, the function behaves as before", f
     T.Near(byLabel["case: adder"].total, 12, "five and seven milliseconds")
     T.Near(byLabel["case: adder"].max, 7, "the slower of the two")
     T.Eq(byLabel["case: thrower"].calls, 1, "the call that raised is counted")
+end)
+
+--------------------------------------------------------------------------------
+-- LibICRestrict
+--------------------------------------------------------------------------------
+
+local Restrict = LibStub("LibICRestrict-1.0")
+
+T.Case("Restrict.IsSecret and Readable: a secret is withheld, a plain value passes", function()
+    local mark = FakeSecret()
+    Env.SetSecretCheck(function(v) return v == mark end)
+    T.Eq(Restrict.IsSecret(mark), true, "the secret is one")
+    T.Eq(Restrict.IsSecret(12), false, "a number is not")
+    T.Eq(Restrict.Readable(mark), nil, "a secret reads as nothing")
+    T.Eq(Restrict.Readable(mark, 0), 0, "or as the fallback")
+    T.Eq(Restrict.Readable(12, 0), 12, "a plain value is itself")
+    T.Eq(Restrict.Readable(false, true), false, "false is a plain value, not a missing one")
+    Env.SetSecretCheck(nil)
+end)
+
+T.Case("Restrict.State: out of combat in the open world, nothing is on", function()
+    local s = Restrict.State({
+        states = { Combat = 0, Chat = 0, Encounter = 0, Map = 0, ChallengeMode = 0, PvPMatch = 0 },
+        lockdown = false, chatLockdown = false,
+    })
+    T.Eq(s.combat, false, "not in combat")
+    T.Eq(s.chat, false, "chat open")
+    T.Eq(s.secure, false, "secure frames can change")
+    T.Eq(s.restricted, false, "nothing restricted")
+    T.Eq(s.reason, nil, "and no reason")
+    T.Eq(next(s.active), nil, "no restriction on")
+    T.Eq(Restrict.State(nil).restricted, false, "nothing said is nothing on")
+end)
+
+T.Case("Restrict.State: combat by any of its three signs", function()
+    local s = Restrict.State({ regenDisabled = true, lockdown = false, states = { Combat = 0 } })
+    T.Eq(s.combat, true, "the regen event comes first, seconds before the rest")
+    T.Eq(s.secure, true, "so secure changes stop at once")
+    T.Eq(s.reason, "in combat", "and that is the reason")
+    s = Restrict.State({ lockdown = true })
+    T.Eq(s.combat and s.secure, true, "lockdown alone")
+    s = Restrict.State({ states = { Combat = 2 } })
+    T.Eq(s.combat, true, "the Combat restriction alone")
+    T.Eq(s.secure, false, "which alone does not say secure frames are locked")
+    T.True(s.active.Combat, "and is listed as on")
+    T.Eq(Restrict.State({ states = { Combat = 1 } }).combat, true, "1, the state the change event reports, counts as on")
+end)
+
+T.Case("Restrict.State: chat, encounter and other kinds, with the reason most fundamental first", function()
+    local s = Restrict.State({ chatLockdown = true })
+    T.Eq(s.chat, true, "chat lockdown")
+    T.Eq(s.combat, false, "is not combat")
+    T.Eq(s.reason, "chat is locked", "and says so")
+    T.Eq(Restrict.State({ states = { Chat = 2 } }).chat, true, "the Chat restriction locks chat too")
+    s = Restrict.State({ states = { Encounter = 2, Chat = 2 } })
+    T.Eq(s.encounter, true, "an encounter")
+    T.Eq(s.reason, "in an encounter", "comes before chat")
+    s = Restrict.State({ states = { Encounter = 2, Combat = 2 } })
+    T.Eq(s.reason, "in combat", "and combat before both")
+    s = Restrict.State({ states = { PvPMatch = 2, Map = 2 } })
+    T.Eq(s.restricted, true, "another kind still restricts")
+    T.Eq(s.combat or s.chat or s.encounter, false, "without claiming to be one of the three")
+    T.Eq(s.reason, "restricted (Map, PvPMatch)", "and names itself")
+end)
+
+T.Case("Restrict.State: a state that cannot be read is unknown, not on", function()
+    local mark = FakeSecret()
+    Env.SetSecretCheck(function(v) return v == mark end)
+    local s = Restrict.State({ states = { Combat = mark, Chat = "2" }, lockdown = mark })
+    T.True(s.unknown.Combat, "a secret state is unknown")
+    T.True(s.unknown.Chat, "so is one that is not a number")
+    T.Eq(s.combat, false, "an unreadable lockdown is not taken as combat")
+    T.Eq(s.restricted, false, "nothing is claimed")
+    Env.SetSecretCheck(nil)
+end)
+
+T.Case("Restrict.Changed: only what an addon acts on counts", function()
+    local calm = Restrict.State({ states = { Combat = 0 } })
+    local fight = Restrict.State({ states = { Combat = 2 }, lockdown = true })
+    T.Eq(Restrict.Changed(nil, calm), true, "the first reading is a change")
+    T.Eq(Restrict.Changed(calm, Restrict.State({ states = { Combat = 0, Map = 0 } })), false,
+        "a new kind reading off is not")
+    T.Eq(Restrict.Changed(calm, fight), true, "combat starting is")
+    T.Eq(Restrict.Changed(fight, Restrict.State({ states = { Combat = 1 }, lockdown = true })), false,
+        "1 and 2 are both on")
+    T.Eq(Restrict.Changed(Restrict.State({ states = { Map = 2 } }), Restrict.State({ states = { PvPMatch = 2 } })),
+        true, "a different kind on is")
+end)
+
+-- Stands a fake client in for the calls Restrict.Read makes; returns the knobs and a
+-- function that puts the real globals back.
+local function FakeRestrictClient()
+    local saved = { Enum = Enum, C_RestrictedActions = C_RestrictedActions, C_ChatInfo = C_ChatInfo,
+        InCombatLockdown = InCombatLockdown }
+    local client = { states = { [0] = 0, [1] = 0, [2] = 0 }, lockdown = false, chat = false }
+    _G.Enum = { AddOnRestrictionType = { Combat = 0, Chat = 1, Encounter = 2 } }
+    _G.C_RestrictedActions = {
+        GetAddOnRestrictionState = function(kind) return client.states[kind] end,
+    }
+    _G.C_ChatInfo = { InChatMessagingLockdown = function() return client.chat end }
+    _G.InCombatLockdown = function() return client.lockdown end
+    return client, function()
+        for k, v in pairs(saved) do _G[k] = v end
+    end
+end
+
+T.Case("Restrict.Read: the client's answers, in the shape State takes", function()
+    -- Headless only: in game, writing Enum and the C_ tables would taint them.
+    if not IC_HEADLESS then return end
+    local client, restore = FakeRestrictClient()
+    local r = Restrict.Read()
+    T.Eq(r.states.Combat, 0, "each kind by its name")
+    T.Eq(r.lockdown, false, "lockdown")
+    T.Eq(r.chatLockdown, false, "chat lockdown")
+    T.Eq(Restrict.InCombat(), false, "not in combat")
+    client.states[0], client.lockdown, client.chat = 2, true, true
+    T.Eq(Restrict.InCombat(), true, "in combat")
+    T.Eq(Restrict.ChatLocked(), true, "chat locked")
+    T.Eq(Restrict.Active("Combat"), true, "Combat on")
+    T.Eq(Restrict.Active("Encounter"), false, "Encounter off")
+    _G.C_RestrictedActions = { IsAddOnRestrictionActive = function(kind) return kind == 2 end }
+    T.Eq(Restrict.Read().states.Encounter, 2, "a client with only the yes-or-no call still answers")
+    T.Eq(Restrict.Read().states.Combat, 0, "and off reads as 0")
+    _G.C_RestrictedActions = { GetAddOnRestrictionState = function() error("nope") end }
+    T.Eq(Restrict.Read().states.Combat, nil, "a call that fails is no answer")
+    _G.C_RestrictedActions, _G.Enum, _G.C_ChatInfo, _G.InCombatLockdown = nil, nil, nil, nil
+    r = Restrict.Read()
+    T.Eq(next(r.states), nil, "a client without restrictions has none")
+    T.Eq(Restrict.State(r).restricted, false, "and nothing is restricted")
+    restore()
+end)
+
+T.Case("Restrict.OnChange: told at each change, with the regen event first", function()
+    -- Headless only: in game, writing Enum and the C_ tables would taint them.
+    if not IC_HEADLESS then return end
+    local client, restore = FakeRestrictClient()
+    local seen = {}
+    local stop = Restrict.OnChange(function(s, previous) seen[#seen + 1] = { s = s, previous = previous } end)
+    local frame = Restrict.frame
+    T.True(frame and frame:IsEventRegistered("ADDON_RESTRICTION_STATE_CHANGED"), "listens for the restriction event")
+    T.True(frame:IsEventRegistered("PLAYER_REGEN_DISABLED") and frame:IsEventRegistered("PLAYER_REGEN_ENABLED"),
+        "and the regen pair")
+    local fire = frame:GetScript("OnEvent")
+    T.Eq(#seen, 0, "nothing is said at the start")
+
+    fire(frame, "PLAYER_REGEN_DISABLED")
+    T.Eq(#seen, 1, "combat starts at the regen event")
+    T.Eq(seen[1].s.combat and seen[1].s.secure, true, "secure frames lock at once")
+    T.Eq(seen[1].previous.combat, false, "and the State before is handed in")
+
+    client.states[0], client.lockdown = 1, true
+    fire(frame, "ADDON_RESTRICTION_STATE_CHANGED", 0, 1)
+    T.Eq(#seen, 2, "the Combat restriction arriving is a change")
+    T.True(seen[2].s.active.Combat, "it is listed")
+    client.states[0] = 2
+    fire(frame, "ADDON_RESTRICTION_STATE_CHANGED", 0, 2)
+    T.Eq(#seen, 2, "1 to 2 is not")
+
+    client.states[0], client.lockdown = 0, false
+    fire(frame, "ADDON_RESTRICTION_STATE_CHANGED", 0, 0)
+    T.Eq(#seen, 3, "the restriction ending is a change")
+    T.Eq(seen[3].s.active.Combat, nil, "it is no longer listed")
+    T.Eq(seen[3].s.combat and seen[3].s.secure, true, "but combat holds while the regen window is open")
+    fire(frame, "PLAYER_REGEN_ENABLED")
+    T.Eq(#seen, 4, "the regen end is a change")
+    T.Eq(seen[4].s.combat or seen[4].s.secure, false, "and everything opens")
+
+    stop()
+    fire(frame, "PLAYER_REGEN_DISABLED")
+    T.Eq(#seen, 4, "a stopped listener hears nothing")
+    fire(frame, "PLAYER_REGEN_ENABLED")
+    restore()
+end)
+
+--------------------------------------------------------------------------------
+-- LibICGroup
+--------------------------------------------------------------------------------
+
+local Group = LibStub("LibICGroup-1.0")
+
+-- A party of two as the probe saw one: the player leads, the other is a mage.
+local function PartyReading()
+    return {
+        inGroup = true, inRaid = false, me = "Player-1-A",
+        units = {
+            { unit = "player", guid = "Player-1-A", name = "Mal", name2 = "Exis", classLocal = "Hunter",
+                class = "HUNTER", role = "TANK", mainTank = false, leader = true, assist = false, online = true,
+                dead = false },
+            { unit = "party1", guid = "Player-1-B", name = "Solo", name2 = "Siphyr", classLocal = "Mage",
+                class = "MAGE", role = "DAMAGER", mainTank = false, leader = false, online = true, dead = false },
+        },
+    }
+end
+
+T.Case("Group.Snapshot: a party, every field plain", function()
+    local s = Group.Snapshot(PartyReading())
+    T.Eq(s.kind, "party", "a party")
+    T.Eq(s.size, 2, "of two")
+    T.Eq(s.me.unit, "player", "the player is found by guid")
+    T.Eq(s.leader.unit, "player", "and leads")
+    T.Eq(s.me.rank, "leader", "rank leader")
+    local mage = s.byGuid["Player-1-B"]
+    T.Eq(mage.display, "Solo Siphyr", "both names, for showing")
+    T.Eq(mage.name, "Solo", "the first name on its own")
+    T.Eq(mage.class, "MAGE", "the class token")
+    T.Eq(mage.classLocal, "Mage", "and the class as the client shows it")
+    T.Eq(mage.role, "DAMAGER", "the role")
+    T.Eq(mage.rank, "member", "no assist answer in a party is a plain member")
+    T.Eq(mage.isMe, false, "not the player")
+    T.Eq(s.canMark, true, "anyone in a party may mark")
+    T.Eq(s.unknown, 0, "nothing unreadable")
+end)
+
+T.Case("Group.Snapshot: alone, and nothing said", function()
+    local s = Group.Snapshot({ inGroup = false, me = "Player-1-A", units = { { unit = "player", guid = "Player-1-A", name = "Mal",
+        role = "NONE" } } })
+    T.Eq(s.kind, "solo", "alone")
+    T.Eq(s.me.display, "Mal", "one name is the whole name")
+    T.Eq(s.me.role, nil, "NONE is no role")
+    T.Eq(s.canMark, true, "marks work solo")
+    s = Group.Snapshot(nil)
+    T.Eq(s.size, 0, "nothing said is nobody")
+    T.Eq(s.me, nil, "with no player found")
+end)
+
+T.Case("Group.Snapshot: in a raid, marking needs leader, assist or everyone assist", function()
+    local reading = PartyReading()
+    reading.inRaid = true
+    reading.units[1].unit, reading.units[2].unit = "raid1", "raid2"
+    reading.units[1].leader = false
+    T.Eq(Group.Snapshot(reading).canMark, false, "a plain member may not")
+    reading.units[1].assist = true
+    local s = Group.Snapshot(reading)
+    T.Eq(s.me.rank, "assist", "an assist")
+    T.Eq(s.canMark, true, "may")
+    reading.units[1].assist = false
+    reading.everyoneAssist = true
+    T.Eq(Group.Snapshot(reading).canMark, true, "everyone assist lets anyone")
+    reading.everyoneAssist = nil
+    reading.units[1].mainTank = true
+    T.Eq(Group.Snapshot(reading).me.mainTank, true, "Main Tank is kept")
+    T.Eq(Group.Snapshot(reading).leader, nil, "a raid with no readable leader has none")
+end)
+
+T.Case("Group.Snapshot: a secret field is unknown, never guessed", function()
+    local mark = FakeSecret()
+    Env.SetSecretCheck(function(v) return v == mark end)
+    local reading = PartyReading()
+    reading.inRaid = true
+    reading.units[1].leader, reading.units[1].assist = mark, mark
+    reading.units[2].name, reading.units[2].role, reading.units[2].class = mark, mark, 7
+    local s = Group.Snapshot(reading)
+    T.Eq(s.me.rank, nil, "an unreadable rank is no rank")
+    T.Eq(s.canMark, nil, "so whether the player may mark in a raid is not known")
+    local mage = s.byGuid["Player-1-B"]
+    T.Eq(mage.name, nil, "a secret name is nil")
+    T.Eq(mage.display, nil, "and so is the shown name")
+    T.True(mage.unknown.name and mage.unknown.role, "both are named as unknown")
+    T.Eq(mage.class, nil, "a class that is not text is dropped")
+    T.Eq(s.unknown, 4, "four unreadable fields in all")
+    reading.me = mark
+    T.Eq(Group.Snapshot(reading).me, nil, "a secret player guid finds nobody")
+    Env.SetSecretCheck(nil)
+end)
+
+T.Case("Group.Snapshot: whether this is a raid, and assist, are never guessed", function()
+    local mark = FakeSecret()
+    Env.SetSecretCheck(function(v) return v == mark end)
+    local reading = PartyReading()
+    reading.inRaid = mark
+    reading.units[1].leader, reading.units[1].assist = false, nil
+    local s = Group.Snapshot(reading)
+    T.Eq(s.kindKnown, false, "a secret IsInRaid leaves the kind unknown")
+    T.Eq(s.kind, "party", "the kind says group")
+    T.Eq(s.me.rank, nil, "with no assist answer, a non-leader's rank is unknown")
+    T.Eq(s.canMark, nil, "so whether the player may mark is unknown, not yes")
+    reading.units[1].assist = true
+    T.Eq(Group.Snapshot(reading).canMark, true, "an assist may mark either way")
+    reading.units[1].assist = nil
+    reading.units[1].unit, reading.units[2].unit = "raid1", "raid2"
+    s = Group.Snapshot(reading)
+    T.Eq(s.kind, "raid", "raid unit tokens prove a raid")
+    T.Eq(s.kindKnown, true, "and the kind is known")
+    T.Eq(s.me.rank, nil, "a raid member with no assist answer has no rank")
+    reading.units[1].assist = mark
+    T.Eq(Group.Snapshot(reading).me.unknown.assist, true, "a secret assist is named unknown")
+    reading.everyoneAssist = mark
+    T.Eq(Group.Snapshot(reading).everyoneAssist, nil, "a secret everyone-assist is nil, not false")
+    reading = PartyReading()
+    reading.inRaid, reading.units[2].assist = false, nil
+    s = Group.Snapshot(reading)
+    T.Eq(s.kindKnown and s.byGuid["Player-1-B"].rank, "member", "a known party member with no assist answer is a member")
+    reading = { inRaid = mark, inGroup = false, units = { { unit = "player" } } }
+    T.Eq(Group.Snapshot(reading).kindKnown, true, "not in a group is known alone")
+    Env.SetSecretCheck(nil)
+end)
+
+T.Case("Group.Read: the units of a party or a raid, every call guarded", function()
+    -- Headless only: in game, writing these globals would taint them.
+    if not IC_HEADLESS then return end
+    local names = { "IsInRaid", "IsInGroup", "GetNumGroupMembers", "UnitGUID", "UnitName", "UnitClass",
+        "UnitGroupRolesAssigned", "GetPartyAssignment", "UnitIsGroupLeader", "UnitIsGroupAssistant",
+        "UnitIsConnected", "UnitIsDeadOrGhost", "IsEveryoneAssistant" }
+    local saved = {}
+    for _, n in ipairs(names) do saved[n] = _G[n] end
+    local raid, count = false, 3
+    _G.IsInRaid = function() return raid end
+    _G.IsInGroup = function() return true end
+    _G.GetNumGroupMembers = function() return count end
+    _G.UnitGUID = function(unit) return unit == "player" and "G-player" or ("G-" .. unit) end
+    _G.UnitName = function(unit) return "N-" .. unit, "Two" end
+    _G.UnitClass = function() return "Priest", "PRIEST", 5 end
+    _G.UnitGroupRolesAssigned = function(unit) return unit == "party1" and "HEALER" or "NONE" end
+    _G.GetPartyAssignment = function(kind, unit) return kind == "MAINTANK" and unit == "party2" end
+    _G.UnitIsGroupLeader = function(unit) return unit == "player" end
+    _G.UnitIsGroupAssistant = function() error("not here") end
+    _G.UnitIsConnected = function() return true end
+    _G.UnitIsDeadOrGhost = function() return false end
+    _G.IsEveryoneAssistant = nil
+
+    local r = Group.Read()
+    T.Eq(#r.units, 3, "the player and two party units")
+    T.Eq(r.units[1].unit, "player", "the player first")
+    T.Eq(r.units[3].unit, "party2", "then party1 and party2")
+    T.Eq(r.units[2].name2, "Two", "both name returns")
+    T.Eq(r.units[2].class, "PRIEST", "the class token")
+    T.Eq(r.units[1].assist, nil, "a call that raises is no answer")
+    T.Eq(r.everyoneAssist, nil, "nor is one that is missing")
+    local s = Group.Snapshot(r)
+    T.Eq(s.me.rank, "leader", "and the snapshot reads it")
+    T.Eq(s.byGuid["G-party1"].role, "HEALER", "the healer")
+    T.Eq(s.byGuid["G-party2"].mainTank, true, "the Main Tank")
+    T.Eq(Group.Now().size, 3, "Now is the same snapshot")
+    raid, count = true, 4
+    r = Group.Read()
+    T.Eq(#r.units, 4, "a raid reads its count")
+    T.Eq(r.units[4].unit, "raid4", "as raid units")
+    count = 99
+    T.Eq(#Group.Read().units, 40, "never more than a raid holds")
+    _G.IsInGroup = function() return false end
+    raid = false
+    T.Eq(#Group.Read().units, 1, "alone is the player only")
+    local mark = FakeSecret()
+    Env.SetSecretCheck(function(v) return v == mark end)
+    _G.IsInGroup = function() return true end
+    _G.IsInRaid = function() return mark end
+    count = 8
+    T.Eq(Group.Read().units[1].unit, "raid1", "an unreadable IsInRaid with eight members reads raid units")
+    count = 3
+    T.Eq(Group.Read().units[1].unit, "player", "and with three, party units")
+    T.Eq(Group.Now().kindKnown, false, "leaving the kind unknown")
+    Env.SetSecretCheck(nil)
+
+    for _, n in ipairs(names) do _G[n] = saved[n] end
+end)
+
+--------------------------------------------------------------------------------
+-- LibICChat
+--------------------------------------------------------------------------------
+
+local Chat = LibStub("LibICChat-1.0")
+
+local function RaidLead(extra)
+    local s = { now = 100, group = "raid", lead = true, chat = false, sent = {} }
+    for k, v in pairs(extra or {}) do s[k] = v end
+    return s
+end
+
+T.Case("Chat.Decide: the first channel the group allows, cleaned and cut", function()
+    local plan = Chat.Decide({ text = "Tank\ndown ", channels = { "RAID_WARNING", "RAID" } }, RaidLead())
+    T.Eq(plan.action, "send", "a raid lead sends")
+    T.Eq(plan.channel, "RAID_WARNING", "as a raid warning")
+    T.Eq(plan.text, "Tank down", "with the line break and the trailing space gone")
+    plan = Chat.Decide({ text = "x", channels = { "RAID_WARNING", "RAID" } }, RaidLead({ lead = false }))
+    T.Eq(plan.channel, "RAID", "a plain member falls back to RAID")
+    plan = Chat.Decide({ text = "x", channel = "RAID_WARNING" }, RaidLead({ lead = false }))
+    T.Eq(plan.action, "refuse", "with no fallback it is refused")
+    T.Eq(plan.reason, "needs raid lead or assist", "and says why")
+    local unread = RaidLead()
+    unread.lead = nil
+    T.Eq(Chat.Decide({ text = "x", channel = "RAID_WARNING" }, unread).reason,
+        "cannot tell whether you lead or assist", "an unreadable rank is said as such")
+    T.Eq(#Chat.Decide({ text = string.rep("a", 300), channel = "RAID" }, RaidLead()).text, 255,
+        "a long line is cut to what the client sends")
+    T.Eq(Chat.Decide({ text = "  \n", channel = "RAID" }, RaidLead()).reason, "nothing to say", "an empty line")
+end)
+
+T.Case("Chat.Decide: what each channel needs from the group", function()
+    local party = { group = "party", sent = {} }
+    T.Eq(Chat.Decide({ text = "x", channel = "PARTY" }, party).action, "send", "PARTY in a party")
+    T.Eq(Chat.Decide({ text = "x", channel = "PARTY" }, RaidLead()).action, "send", "and in a raid")
+    T.Eq(Chat.Decide({ text = "x", channel = "PARTY" }, { group = "solo" }).reason, "not in a group", "not alone")
+    T.Eq(Chat.Decide({ text = "x", channel = "RAID" }, party).reason, "not in a raid", "RAID needs a raid")
+    T.Eq(Chat.Decide({ text = "x", channel = "INSTANCE_CHAT" }, party).reason, "not in an instance group",
+        "INSTANCE_CHAT needs an instance group")
+    T.Eq(Chat.Decide({ text = "x", channel = "INSTANCE_CHAT" }, { instanceGroup = true }).action, "send", "and goes in one")
+    T.Eq(Chat.Decide({ text = "x", channel = "SAY" }, party).reason, "SAY needs a key press", "SAY from a timer")
+    T.Eq(Chat.Decide({ text = "x", channel = "SAY", pressed = true }, party).action, "send", "SAY from a press")
+    T.Eq(Chat.Decide({ text = "x", channel = "GUILD" }, party).reason, "no such channel: GUILD", "an unknown channel")
+    local maybe = { group = "group" }
+    T.Eq(Chat.Decide({ text = "x", channel = "RAID" }, maybe).reason, "cannot tell whether this is a raid",
+        "a group that may be a raid does not guess")
+    T.Eq(Chat.Decide({ text = "x", channels = { "RAID", "PARTY" } }, maybe).channel, "PARTY", "PARTY works either way")
+end)
+
+T.Case("Chat.Decide: locked chat queues or refuses, as the line asks", function()
+    local plan = Chat.Decide({ text = "x", channel = "RAID", whenLocked = "queue" }, RaidLead({ chat = true }))
+    T.Eq(plan.action, "queue", "a death call waits")
+    T.Eq(plan.channel, "RAID", "knowing where it will go")
+    T.Eq(plan.reason, "chat is locked here", "and why")
+    plan = Chat.Decide({ text = "x", channel = "RAID" }, RaidLead({ chat = true }))
+    T.Eq(plan.action, "refuse", "a pre-pull line is refused")
+    T.Eq(plan.reason, "chat is locked here", "with the same reason")
+    local inside = RaidLead({ inInstance = true })
+    T.Eq(Chat.Decide({ text = "x", channel = "RAID" }, inside).action, "send", "following the client, an open instance sends")
+    inside.instance = "locked"
+    T.Eq(Chat.Decide({ text = "x", channel = "RAID" }, inside).reason, "chat is locked here",
+        "the locked policy treats every instance as locked")
+    inside.inInstance = false
+    T.Eq(Chat.Decide({ text = "x", channel = "RAID" }, inside).action, "send", "and nowhere else")
+end)
+
+T.Case("Chat.Budget: lines per window, per channel", function()
+    local s = RaidLead({ sent = { RAID_WARNING = { 95, 99 }, RAID = { 91, 92, 93, 99 } } })
+    T.Eq(Chat.Budget("RAID_WARNING", s), 5, "two warnings in ten seconds: wait for the older to age out")
+    T.Eq(Chat.Budget("RAID", s), 1, "four raid lines: one second to go")
+    T.Eq(Chat.Budget("PARTY", s), 0, "an unused channel is free")
+    s.now = 106
+    T.Eq(Chat.Budget("RAID_WARNING", s), 0, "after the window it is free again")
+    s.budget = { RAID = { 10, 10 } }
+    s.now = 100
+    T.Eq(Chat.Budget("RAID", s), 0, "a sender's own budget is used")
+    local plan = Chat.Decide({ text = "x", channel = "RAID_WARNING", whenLocked = "queue" },
+        RaidLead({ sent = { RAID_WARNING = { 95, 99 } } }))
+    T.Eq(plan.action, "queue", "over budget, a queueable line waits")
+    T.Eq(plan.wait, 5, "saying how long")
+end)
+
+T.Case("Chat.Flush: sends what may go, drops what expired, keeps the rest", function()
+    local queue = {
+        { line = { text = "old", channel = "RAID", whenLocked = "queue" }, expires = 99 },
+        { line = { text = "a", channel = "RAID", whenLocked = "queue" }, expires = 110 },
+        { line = { text = "b", channel = "RAID_WARNING", whenLocked = "queue" }, expires = 110 },
+        { line = { text = "c", channel = "RAID_WARNING", whenLocked = "queue" }, expires = 110 },
+        { line = { text = "d", channel = "RAID_WARNING", whenLocked = "queue" }, expires = 110 },
+    }
+    local state = RaidLead({ sent = {} })
+    local out = Chat.Flush(queue, state)
+    T.Eq(#out.dropped, 1, "one expired")
+    T.Eq(out.dropped[1].reason, "expired", "said so")
+    T.Eq(#out.send, 3, "three go")
+    T.Eq(out.send[3].text, "c", "in the order they were said")
+    T.Eq(#out.keep, 1, "the third warning waits for the budget")
+    T.Eq(out.keep[1].line.text, "d", "and it is the last one")
+    T.Eq(next(state.sent), nil, "the caller's record is not touched")
+    out = Chat.Flush(queue, RaidLead({ chat = true }))
+    T.Eq(#out.keep, 4, "while chat is locked everything unexpired waits")
+    out = Chat.Flush(queue, RaidLead({ group = "party" }))
+    T.Eq(out.dropped[2].reason, "not in a raid", "a line the group no longer allows is dropped with why")
+end)
+
+T.Case("Chat.New: a sender holds a locked line and sends it when the lock lifts", function()
+    -- Headless only: in game, writing these globals would taint them.
+    if not IC_HEADLESS then return end
+    local saved = { SendChatMessage = SendChatMessage, GetTime = GetTime, C_Timer = C_Timer }
+    local savedNow, savedGroup = Restrict.Now, Group.Now
+    local clock, said, timers = 100, {}, {}
+    local locked = true
+    _G.GetTime = function() return clock end
+    _G.SendChatMessage = function(text, channel) said[#said + 1] = channel .. ": " .. text end
+    _G.C_Timer = { After = function(seconds, fn) timers[#timers + 1] = { seconds = seconds, fn = fn } end }
+    Restrict.Now = function() return Restrict.State({ chatLockdown = locked }) end
+    Group.Now = function() return { kind = "raid", canMark = true } end
+
+    local frame = Restrict.frame
+    frame:GetScript("OnEvent")(frame, "ADDON_RESTRICTION_STATE_CHANGED", 1, 1)
+    local drops = {}
+    local chat = Chat.New({ ttl = 5, onDrop = function(entry, reason) drops[#drops + 1] = reason end })
+    local plan = chat:Say({ text = "Healer down", channels = { "RAID_WARNING", "RAID" }, whenLocked = "queue" })
+    T.Eq(plan.action, "queue", "held while chat is locked")
+    T.Eq(#chat:Queue(), 1, "one line waiting")
+    T.Eq(timers[1].seconds, 1, "and a look again in a second")
+    T.Eq(chat:Say({ text = "Pull in 10", channel = "RAID" }).action, "refuse", "a pre-pull line is refused")
+
+    locked = false
+    frame:GetScript("OnEvent")(frame, "ADDON_RESTRICTION_STATE_CHANGED", 1, 0)
+    T.Eq(said[1], "RAID_WARNING: Healer down", "the lock lifting sends it")
+    T.Eq(#chat:Queue(), 0, "and the queue is empty")
+
+    locked = true
+    frame:GetScript("OnEvent")(frame, "ADDON_RESTRICTION_STATE_CHANGED", 1, 1)
+    chat:Say({ text = "Tank down", channel = "RAID", whenLocked = "queue" })
+    clock = 101
+    timers[#timers].fn()
+    T.Eq(#chat:Queue(), 1, "still locked a second later, it still waits")
+    locked = false
+    clock = 102
+    timers[#timers].fn()
+    T.Eq(said[2], "RAID: Tank down", "a lock that lifts without the event is caught by the next look")
+    locked = true
+    chat:Say({ text = "Mage down", channel = "RAID", whenLocked = "queue" })
+    clock = 108
+    timers[#timers].fn()
+    T.Eq(drops[1], "expired", "a line the lock outlasts is dropped and reported")
+    T.Eq(#said, 2, "never sent")
+
+    locked = false
+    frame:GetScript("OnEvent")(frame, "ADDON_RESTRICTION_STATE_CHANGED", 1, 0)
+    T.Eq(chat:Say({ text = "Ready", channel = "RAID" }).action, "send", "open chat sends at once")
+    T.Eq(said[3], "RAID: Ready", "and is said")
+    chat.stop()
+
+    Restrict.Now, Group.Now = savedNow, savedGroup
+    for k, v in pairs(saved) do _G[k] = v end
+end)
+
+--------------------------------------------------------------------------------
+-- LibICComm
+--------------------------------------------------------------------------------
+
+local Comm = LibStub("LibICComm-1.0")
+
+T.Case("Comm.Frame and Assemble: a message of any length comes back whole", function()
+    local frames = Comm.Frame("short", 5)
+    T.Eq(#frames, 1, "a short message is one frame")
+    T.Eq(frames[1], "S05short", "kind, two-digit id, then the text")
+    T.Eq(Comm.Assemble({}, "A", frames[1], 0), "short", "and reads back at once")
+    local long = string.rep("abcdefghij", 60)
+    frames = Comm.Frame(long, 37)
+    T.Eq(#frames, 3, "600 bytes is three frames")
+    T.Eq(frames[1]:sub(1, 3), "F11", "first, id 37 in base 36")
+    T.Eq(frames[2]:sub(1, 1), "M", "middle")
+    T.Eq(frames[3]:sub(1, 1), "L", "last")
+    for _, f in ipairs(frames) do T.True(#f <= 255, "every frame fits one message") end
+    local buffers = {}
+    local other = Comm.Frame(string.rep("z", 300), 1)
+    T.Eq(Comm.Assemble(buffers, "A", frames[1], 0), nil, "a first frame waits")
+    T.Eq(Comm.Assemble(buffers, "B", other[1], 0), nil, "another sender's first frame waits beside it")
+    T.Eq(Comm.Assemble(buffers, "A", frames[2], 1), nil, "a middle frame waits")
+    T.Eq(Comm.Assemble(buffers, "B", other[2], 1), string.rep("z", 300), "B's finishes")
+    T.Eq(Comm.Assemble(buffers, "A", frames[3], 2), long, "and so does A's, unmixed")
+    T.Eq(next(buffers), nil, "nothing left over")
+    T.Eq(Comm.Assemble(buffers, "A", frames[3], 3), nil, "a last frame with no first is dropped")
+    Comm.Assemble(buffers, "A", frames[1], 10)
+    T.Eq(Comm.Assemble(buffers, "A", frames[2], 50), nil, "a partial older than thirty seconds is dropped")
+    T.Eq(next(buffers), nil, "and forgotten")
+    T.Eq(Comm.Assemble({}, "A", "S0", 0), nil, "a frame too short to have a header is ignored")
+end)
+
+T.Case("Comm.Channel, Result and Newer", function()
+    T.Eq(Comm.Channel({ group = "party" }), "PARTY", "a party")
+    T.Eq(Comm.Channel({ group = "raid" }), "RAID", "a raid")
+    T.Eq(Comm.Channel({ group = "party", instanceGroup = true }), "INSTANCE_CHAT", "an instance group first")
+    local ch, why = Comm.Channel({ group = "raid", raid = "off" })
+    T.Eq(ch, nil, "raids can be switched off")
+    T.Eq(why, "addon messages are off in raids", "and say so")
+    T.Eq(select(2, Comm.Channel({ group = "group" })), "cannot tell whether this is a raid", "a maybe-raid")
+    T.Eq(select(2, Comm.Channel({ group = "solo" })), "not in a group", "alone")
+    T.Eq(Comm.Result("Success"), "sent", "success")
+    T.Eq(Comm.Result("AddOnMessageLockdown"), "hold", "lockdown holds")
+    T.Eq(Comm.Result("ChannelThrottle"), "retry", "throttle retries")
+    local verdict, reason = Comm.Result("NotInGroup")
+    T.Eq(verdict, "drop", "not in a group drops")
+    T.Eq(reason, "not in a group for that channel", "with why")
+    T.Eq(select(2, Comm.Result("Mystery")), "the client said Mystery", "an unknown result is dropped by name")
+    T.Eq(Comm.Newer("1.2.10", "1.2.9"), true, "parts compare as numbers")
+    T.Eq(Comm.Newer("1.2.0", "1.2"), false, "a missing part is zero")
+    T.Eq(Comm.Newer("0.2.0", "0.10.0"), false, "older is not newer")
+    T.Eq(Comm.Newer("1.0.0", nil), true, "anything beats no version")
+    T.Eq(Comm.Newer(nil, "1.0.0"), false, "and no version beats nothing")
+end)
+
+T.Case("Comm.New: send, loop back, receive, hold through a lockdown", function()
+    -- Headless only: in game, writing these globals would taint them.
+    if not IC_HEADLESS then return end
+    local saved = { C_ChatInfo = C_ChatInfo, GetTime = GetTime, C_Timer = C_Timer, UnitGUID = UnitGUID }
+    local savedGroup = Group.Now
+    local clock, wire, timers, result = 100, {}, {}, 0
+    _G.GetTime = function() return clock end
+    _G.UnitGUID = function() return "G-me" end
+    _G.C_Timer = { After = function(_, fn) timers[#timers + 1] = fn end }
+    _G.C_ChatInfo = {
+        RegisterAddonMessagePrefix = function() return true end,
+        SendAddonMessage = function(prefix, text, channel)
+            if result == 0 then wire[#wire + 1] = { prefix, text, channel } end
+            return result
+        end,
+    }
+    Group.Now = function() return { kind = "party", kindKnown = true } end
+
+    local drops = {}
+    local mine = Comm.New("ICKitCase", { version = "1.0.0", onDrop = function(_, reason) drops[#drops + 1] = reason end })
+    local theirs = Comm.New("ICKitCase", { version = "1.1.0" })
+    theirs.me = "G-them"
+    local got = {}
+    theirs:On("plan", function(msg, from) got[#got + 1] = { msg = msg, from = from } end)
+    mine:On("plan", function() got[#got + 1] = "echo" end)
+    T.Eq(mine.frame:IsEventRegistered("CHAT_MSG_ADDON"), true, "listens for addon messages")
+
+    local plan = mine:Send({ t = "plan", note = string.rep("x", 400) })
+    T.Eq(plan.action, "send", "sent at once")
+    T.Eq(plan.channel, "PARTY", "to the party")
+    T.Eq(#wire, 2, "as two frames")
+    for _, w in ipairs(wire) do
+        mine:Receive(w[1], w[2], w[3], "Mal Exis")
+        theirs:Receive(w[1], w[2], w[3], "Mal Exis")
+    end
+    T.Eq(#got, 1, "the looped-back copy is dropped")
+    T.Eq(got[1].msg.note, string.rep("x", 400), "the other client gets it whole")
+    T.Eq(got[1].from, "Mal Exis", "from the sender")
+    theirs:Receive("SomeoneElse", wire[1][2], "PARTY", "Mal Exis")
+    T.Eq(#got, 1, "another prefix is ignored")
+
+    wire = {}
+    mine:Hello()
+    theirs:Receive(wire[1][1], wire[1][2], wire[1][3], "Mal Exis")
+    T.Eq(theirs:Peers()["G-me"].version, "1.0.0", "a hello is recorded with its version")
+    T.Eq(#wire, 2, "and answered once")
+    mine:Receive(wire[2][1], wire[2][2], wire[2][3], "Solo Siphyr")
+    T.Eq(mine:Peers()["G-them"].version, "1.1.0", "the answer is recorded too")
+    T.Eq(#wire, 2, "and not answered back")
+    theirs:Receive(wire[1][1], wire[1][2], wire[1][3], "Mal Exis")
+    T.Eq(#wire, 2, "a second hello within a minute is not answered again")
+
+    result = 11
+    plan = mine:Send({ t = "plan" })
+    T.Eq(plan.action, "queue", "a lockdown holds the message")
+    T.Eq(plan.reason, "addon messages are locked down", "and says why")
+    result = 0
+    timers[#timers]()
+    T.Eq(#mine:Queue(), 0, "the next try sends it")
+    T.Eq(#wire, 3, "on the wire")
+    result = 5
+    T.Eq(mine:Send({ t = "plan" }).action, "refuse", "a refusal from the client")
+    T.Eq(drops[1], "not in a group for that channel", "is reported")
+    result = 11
+    mine:Send({ t = "plan" })
+    clock = 140
+    timers[#timers]()
+    T.Eq(drops[2], "addon messages are locked down", "a lockdown that outlasts the ttl drops with its reason")
+    T.Eq(mine:Send({ x = 1 }).reason, "a message needs a type, msg.t", "a message without a type is refused")
+
+    mine.stop()
+    theirs.stop()
+    Group.Now = savedGroup
+    for k, v in pairs(saved) do _G[k] = v end
 end)
 
 --------------------------------------------------------------------------------
@@ -716,6 +1544,263 @@ end
 --------------------------------------------------------------------------------
 -- The addon itself
 --------------------------------------------------------------------------------
+
+T.Case("Theme: every shipped theme has the status text roles", function()
+    for _, name in ipairs(Theme.Names()) do
+        local t = Theme.Get(name)
+        for _, role in ipairs({ "good", "warn", "bad" }) do
+            T.True(type(t.colors[role]) == "table", name .. " has " .. role)
+        end
+    end
+    local forever = Theme.Get("Forever").colors
+    T.True(forever.bad.r > forever.danger.r, "Forever's bad text is brighter than its danger fill")
+end)
+
+T.Case("Widgets: tabs lay out, shrinking alike when they would not fit", function()
+    local l = W.TabLayout(3, 400, 96)
+    T.Eq(l[1].x, 0, "the first at the left")
+    T.Eq(l[2].x, 98, "the next a tab and a gap along")
+    T.Eq(l[3].w, 96, "full width when there is room")
+    l = W.TabLayout(4, 200, 96)
+    T.Eq(l[1].w, 48, "four in 200 shrink to 48 each")
+    T.True(l[4].x + l[4].w <= 200, "and fit")
+    T.Eq(#W.TabLayout(0, 100), 0, "no tabs, no layout")
+    T.Eq(W.TabLayout(2, nil, 50)[2].x, 52, "no width means room for all")
+end)
+
+T.Case("Widgets: tabs select one, show its page, and refuse a disabled one", function()
+    local host = W.Panel(nil, { width = 300, height = 200 })
+    host:Hide()
+    local pageA, pageB = CreateFrame("Frame", nil, host), CreateFrame("Frame", nil, host)
+    local picked = {}
+    local strip = W.Tabs(host, {
+        { key = "a", label = "Roles", page = pageA },
+        { key = "b", label = "Rules", page = pageB },
+        { key = "c", label = "Deaths" },
+    }, { width = 300, onSelect = function(key) picked[#picked + 1] = key end })
+    T.Eq(strip:GetSelected(), "a", "the first tab is selected to start")
+    T.Eq(pageA:IsShown() and not pageB:IsShown(), true, "its page shows, the other hides")
+    strip.buttons.b:GetScript("OnClick")(strip.buttons.b)
+    T.Eq(strip:GetSelected(), "b", "a click selects")
+    T.Eq(picked[1], "b", "and is reported")
+    T.Eq(pageB:IsShown() and not pageA:IsShown(), true, "and swaps the pages")
+    strip.buttons.b:GetScript("OnClick")(strip.buttons.b)
+    T.Eq(#picked, 1, "clicking the selected tab again says nothing")
+    T.Eq(strip:Select("c"), true, "Select works on a tab with no page")
+    T.Eq(#picked, 1, "and does not report")
+    T.Eq(pageA:IsShown() or pageB:IsShown(), false, "every page hides")
+    T.Eq(strip:Select("nope"), false, "an unknown key is refused")
+    T.Eq(strip:GetSelected(), "c", "and changes nothing")
+    strip:SetDisabled("a", "Needs a raid")
+    strip.buttons.a:GetScript("OnClick")(strip.buttons.a)
+    T.Eq(strip:GetSelected(), "c", "a disabled tab cannot be picked")
+    T.Eq(strip.buttons.a.icDisabled, "Needs a raid", "and keeps its reason for the tooltip")
+    strip:SetDisabled("a", nil)
+    strip.buttons.a:GetScript("OnClick")(strip.buttons.a)
+    T.Eq(strip:GetSelected(), "a", "enabled again, it can")
+    strip:SetLabel("b", "Rules (3)")
+    T.Eq(strip.buttons.b.label:GetText(), "Rules (3)", "a label can change")
+    local other = W.Tabs(host, { { key = "x" }, { key = "y" } }, { selected = "y" })
+    T.Eq(other:GetSelected(), "y", "a starting tab can be named")
+    T.Eq(W.Tabs(host, { { key = "x" } }, { selected = "zz" }):GetSelected(), "x",
+        "an unknown starting tab falls back to the first")
+end)
+
+T.Case("Widgets: list columns and the rows in view", function()
+    local l = W.ColumnLayout({ { key = "a", width = 100 }, { key = "b" }, { key = "c", width = 50 } }, 400)
+    T.Eq(l[1].x, 0, "the first column at the left")
+    T.Eq(l[2].x, 106, "the next a column and a gap along")
+    T.Eq(l[2].w, 238, "the column with no width fills what is left")
+    T.Eq(l[3].x, 350, "and the last sits after it")
+    T.Eq(l[3].x + l[3].w, 400, "ending at the edge")
+    l = W.ColumnLayout({ { key = "a", width = 300 }, { key = "b" } }, 200)
+    T.Eq(l[2].w, 24, "a fill column is never squeezed to nothing")
+    l = W.ColumnLayout({ { key = "a" }, { key = "b" } }, 100)
+    T.Eq(l[2].w, 24, "a second column with no width gets the least")
+    T.Eq(#W.ColumnLayout(nil, 100), 0, "no columns, no layout")
+
+    local first, last = W.VisibleRange(0, 18, 90, 100)
+    T.Eq(first, 1, "from the top")
+    T.Eq(last, 5, "five rows fill 90 pixels")
+    first, last = W.VisibleRange(27, 18, 90, 100)
+    T.Eq(first, 2, "scrolled half a row and more: the second is the first in view")
+    T.Eq(last, 7, "and the seventh is cut by the bottom")
+    first, last = W.VisibleRange(0, 18, 90, 3)
+    T.Eq(last, 3, "never past the items")
+    first, last = W.VisibleRange(0, 18, 90, 0)
+    T.True(last < first, "no items, no rows")
+end)
+
+T.Case("Widgets: a list fills pooled rows in full and blanks the rest", function()
+    local host = W.Panel(nil, { width = 300, height = 200 })
+    host:Hide()
+    local clicks, chosen = {}, nil
+    local list = W.List(host, 300, 20 + 18 * 4, {
+        columns = {
+            { key = "name", label = "Name" },
+            { key = "hp", label = "Health", width = 60, justify = "RIGHT", tip = "Out of combat" },
+            { key = "state", label = "State", width = 60,
+                text = function(item) return item.dead and "dead" or "alive", item.dead and "danger" or "good" end },
+        },
+        onClick = function(item, mouseButton) clicks[#clicks + 1] = item.name .. ":" .. mouseButton end,
+        selected = function(item) return item == chosen end,
+        empty = "Nobody here",
+    })
+    T.Eq(list.header:GetParent(), list, "the header belongs to the list, not to the scroll")
+    T.Eq(#list.header.cells, 3, "one header cell per column")
+    T.Eq(list.header.cells[1].label:GetText(), "Name", "with its label")
+    T.Eq(#list.rows, 5, "a view of four rows has five, for the one cut by the scroll")
+    T.Eq(list.emptyLabel:IsShown(), true, "an empty list says so")
+
+    local items = {}
+    for i = 1, 50 do items[i] = { name = "Unit " .. i, hp = i * 10, dead = i % 2 == 0 } end
+    list:SetItems(items)
+    T.Eq(list.emptyLabel:IsShown(), false, "with items it does not")
+    T.Eq(#list.rows, 5, "fifty items still use five rows")
+    T.Eq(list.rows[1].cells[1]:GetText(), "Unit 1", "the first row shows the first item")
+    T.Eq(list.rows[1].cells[2]:GetText(), "10", "a field by the column's key, as text")
+    T.Eq(list.rows[2].cells[3]:GetText(), "dead", "a column's own text")
+    T.Eq(list.rows[2].icRoles[3], "danger", "and its colour role")
+    list.rows[1]:GetScript("OnClick")(list.rows[1], "RightButton")
+    T.Eq(clicks[1], "Unit 1:RightButton", "a click reports the item and the button")
+
+    list:ScrollTo(18 * 10)
+    T.Eq(list.rows[1].cells[1]:GetText(), "Unit 11", "scrolled ten rows, the pooled rows show the next items")
+    T.Eq(list.rows[1].icItem, items[11], "and hold them for clicks and tooltips")
+    chosen = items[12]
+    list:Refresh()
+    T.Eq(list.rows[2].icSelected, true, "the selected item is drawn selected")
+    T.Eq(list.rows[1].icSelected, false, "and the row before is not")
+
+    list:SetItems({ { name = "Last" } })
+    T.Eq(list.rows[1].cells[1]:GetText(), "Last", "a shorter list starts again at the top")
+    T.Eq(list.rows[1].cells[2]:GetText(), "", "a missing value is blank, not the last item's")
+    T.Eq(list.rows[1].icSelected, false, "and nothing of the old selection survives")
+    T.Eq(list.rows[2]:IsShown(), false, "unused rows hide")
+    T.Eq(list.rows[2].icItem, false, "holding no item")
+    list.rows[2]:GetScript("OnClick")(list.rows[2], "LeftButton")
+    T.Eq(#clicks, 1, "a click on an empty row reports nothing")
+
+    list:SetSortMark("hp", false)
+    T.Eq(list.header.cells[2].label:GetText(), "Health v", "the sorted column carries an arrow")
+    T.Eq(list.header.cells[1].label:GetText(), "Name", "the others none")
+    list:SetSortMark("name", true)
+    T.Eq(list.header.cells[1].label:GetText() .. "|" .. list.header.cells[2].label:GetText(), "Name ^|Health",
+        "a new sort moves the arrow")
+    list:SetSortMark(nil)
+    T.Eq(list.header.cells[1].label:GetText(), "Name", "and nil clears it")
+
+    list:Resize(300, 20 + 18 * 8)
+    T.Eq(#list.rows, 9, "a taller list makes the rows it now needs")
+    T.Eq(list.rows[9].cells[1]:GetText() == nil or list.rows[9]:IsShown() == false, true, "and the new ones start hidden")
+end)
+
+T.Case("Widgets: a resize grip follows the pointer inside its bounds", function()
+    local w, h = W.ResizeSize(400, 300, 50, -20, 200, 120, 1000, 800)
+    T.Eq(w, 450, "dragged right, wider")
+    T.Eq(h, 280, "dragged up, shorter")
+    w, h = W.ResizeSize(400, 300, -500, -500, 200, 120)
+    T.Eq(w, 200, "never narrower than the least")
+    T.Eq(h, 120, "nor shorter")
+    w, h = W.ResizeSize(400, 300, 5000, 5000, 200, 120, 1000, 800)
+    T.Eq(w, 1000, "nor wider than the most")
+    T.Eq(h, 800, "nor taller")
+    w = W.ResizeSize(400, 300, 10.4, 0)
+    T.Eq(w, 410, "whole pixels, with no bounds given")
+
+    if not IC_HEADLESS then return end
+    local savedCursor = GetCursorPosition
+    local cx, cy = 500, 500
+    _G.GetCursorPosition = function() return cx, cy end
+    local frame = W.Panel(nil, { width = 400, height = 300 })
+    frame:Hide()
+    local sizes, done = {}, nil
+    local grip = W.Resize(frame, {
+        minWidth = 300, minHeight = 200, maxWidth = 2000, maxHeight = 2000,
+        onResize = function(nw, nh) sizes[#sizes + 1] = nw .. "x" .. nh end,
+        onResized = function(nw, nh) done = nw .. "x" .. nh end,
+    })
+    grip.icFrame.GetWidth = function() return 400 end
+    grip:GetScript("OnMouseDown")(grip, "LeftButton")
+    T.True(grip:GetScript("OnUpdate") ~= nil, "held, it follows the pointer")
+    cx, cy = 560, 440
+    grip:GetScript("OnUpdate")(grip)
+    T.Eq(sizes[1], "460x360", "sixty right and sixty down grows it")
+    grip:GetScript("OnUpdate")(grip)
+    T.Eq(#sizes, 1, "a pointer that has not moved changes nothing")
+    cx, cy = 0, 900
+    grip:GetScript("OnUpdate")(grip)
+    T.Eq(sizes[2], "300x200", "and it stops at the least")
+    grip:GetScript("OnMouseUp")(grip, "LeftButton")
+    T.Eq(grip:GetScript("OnUpdate"), nil, "let go, the OnUpdate is gone")
+    T.Eq(done, "300x200", "and the final size is reported once")
+    _G.GetCursorPosition = savedCursor
+end)
+
+T.Case("Widgets: a text area takes lines, or holds a copy box steady", function()
+    local host = W.Panel(nil, { width = 300, height = 200 })
+    host:Hide()
+    local changes = {}
+    local area = W.TextArea(host, 280, 120, {
+        text = "first line",
+        onChange = function(text) changes[#changes + 1] = text end,
+    })
+    T.Eq(area:GetText(), "first line", "starts with its text")
+    T.Eq(area.edit:GetParent(), area.scroll.content, "the box scrolls inside the area")
+    area.edit:SetText("first line\nsecond")
+    area.edit:GetScript("OnTextChanged")(area.edit, true)
+    T.Eq(changes[1], "first line\nsecond", "a typed change is reported")
+    area:SetText("{}")
+    T.Eq(#changes, 1, "SetText is not")
+    T.Eq(area:GetText(), "{}", "and replaces the text")
+    T.Eq(area.scroll:GetOffset(), 0, "back at the top")
+
+    local copy = W.TextArea(host, 280, 120, { text = "export", readOnly = true })
+    copy.edit:SetText("exporx")
+    copy.edit:GetScript("OnTextChanged")(copy.edit, true)
+    T.Eq(copy:GetText(), "export", "a copy box undoes what is typed")
+    copy:SetText("new export")
+    T.Eq(copy:GetText(), "new export", "but takes SetText")
+
+    area:Resize(400, 200)
+    T.Eq(area.scroll.icViewH, 192, "a resize gives the scroll the new height, less the inset")
+end)
+
+T.Case("Widgets: a raid icon from a plain number, hidden for anything else", function()
+    local l, r, t, b = W.RaidIconCoords(1)
+    T.Eq(l .. "," .. r .. "," .. t .. "," .. b, "0,0.25,0,0.25", "star is the first quarter of the top row")
+    l, r, t, b = W.RaidIconCoords(8)
+    T.Eq(l .. "," .. r .. "," .. t .. "," .. b, "0.75,1,0.25,0.5", "skull is the last of the second row")
+    l, r, t, b = W.RaidIconCoords(5)
+    T.Eq(l .. "," .. t, "0,0.25", "moon starts the second row")
+    T.Eq(W.RaidIconCoords(0), nil, "0 is no icon")
+    T.Eq(W.RaidIconCoords(9), nil, "nor is 9")
+    T.Eq(W.RaidIconCoords(2.5), nil, "nor a fraction")
+    T.Eq(W.RaidIconCoords("3"), nil, "nor text")
+    T.Eq(W.RaidIconCoords(nil), nil, "nor nothing")
+
+    local host = W.Panel(nil, { width = 40, height = 40 })
+    host:Hide()
+    local icon = W.RaidIcon(host, 8, 20)
+    T.Eq(icon:GetIndex(), 8, "it shows the index it was made with")
+    T.Eq(icon:IsShown(), true, "visibly")
+    T.Eq(icon:SetIndex(nil), false, "no index hides it")
+    T.Eq(icon:IsShown(), false, "it is hidden")
+    T.Eq(icon:GetIndex(), false, "and it holds none")
+    local mark = FakeSecret()
+    Env.SetSecretCheck(function(v) return v == mark end)
+    T.Eq(icon:SetIndex(mark), false, "a secret index is never used")
+    T.Eq(icon:IsShown(), false, "the icon hides instead")
+    Env.SetSecretCheck(nil)
+    T.Eq(icon:SetIndex(3), true, "a plain one shows again")
+end)
+
+T.Case("Gallery: builds every widget, and toggles", function()
+    -- Headless only: in game this would open the gallery in the middle of /ickit test.
+    if not IC_HEADLESS then return end
+    T.Eq(ns.Gallery.Toggle(), true, "the first call builds it and shows it")
+    T.Eq(ns.Gallery.Toggle(), false, "the next hides it")
+end)
 
 T.Case("Kit: the build and the login lines", function()
     local build = { version = "1.60.1", build = "70124", interface = 16001 }

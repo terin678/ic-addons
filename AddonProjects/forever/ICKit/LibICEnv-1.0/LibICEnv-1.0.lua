@@ -11,7 +11,9 @@ Env answers the question with data and never prints: the caller decides what to 
     Env.Resolve(path, root)         -> the value at a dotted path, or nil
     Env.Has(path, root)             -> present, kind
     Env.Probe(checks, root)         -> rows { path, present, kind, why }
-    Env.Try(label, fn, ...)         -> { label, ok, n, values, text } or { label, ok = false, err }
+    Env.Try(label, fn, ...)         -> { label, ok, n, values, text, secret } or { label, ok = false, err }
+    Env.IsSecret(v)                 -> whether v is a secret value the client will not let us read
+    Env.SetSecretCheck(fn)          stands in for the client's issecretvalue; tests hand in their own
 
     Env.Wrap(label, fn)             -> fn that counts its calls and its time
     Env.Counters()                  -> rows { label, calls, total, max }, costliest first
@@ -26,7 +28,7 @@ reads a call, and a handler that fires while the game is idle shows up as a call
 that keeps climbing. Resolve, Has and Probe are lifted from LibICCore-1.0's probe.
 ]]
 
-local MAJOR, MINOR = "LibICEnv-1.0", 1
+local MAJOR, MINOR = "LibICEnv-1.0", 2
 local Env = LibStub:NewLibrary(MAJOR, MINOR)
 if not Env then return end
 
@@ -78,23 +80,66 @@ function Env.Build(getBuildInfo)
     }
 end
 
+local SECRET = "<secret>"          -- stands in for a secret value in a report line
+local UNREADABLE = "<unreadable>"  -- the text when a return refused to become text at all
+
+local secretCheck
+
+-- Replaces the client's issecretvalue; nil goes back to it. A case hands in its own.
+function Env.SetSecretCheck(fn)
+    secretCheck = fn
+end
+
+-- Whether v is a secret value: the client hands it back but will not let an addon read,
+-- compare or join it into text. False on a client with no such thing, and false when the
+-- check itself fails, so a caller never has to guard this call.
+function Env.IsSecret(v)
+    local check = secretCheck or issecretvalue
+    if type(check) ~= "function" then return false end
+    local ok, secret = pcall(check, v)
+    return ok and secret == true
+end
+
 local function Pack(ok, ...)
     return ok, select("#", ...), { ... }
 end
 
+-- The first n values as one report line, and which of them are secret. Joining a secret
+-- value into text raises, so a secret one is written as SECRET instead; the caller runs
+-- this under pcall in case a value refuses tostring for some other reason.
+local function Describe(n, values)
+    local parts, secret = {}, {}
+    for i = 1, n do
+        if Env.IsSecret(values[i]) then
+            parts[i], secret[i] = SECRET, true
+        else
+            parts[i] = tostring(values[i])
+        end
+    end
+    return table.concat(parts, ", "), secret
+end
+
 -- Calls fn under pcall and reports what came back, so a probe can ask a question the
--- client may not be able to answer. `text` is every return joined for a report line.
+-- client may not be able to answer. `values` are the returns untouched, secret ones
+-- included; `text` is every return joined for a report line, with a secret one written
+-- as "<secret>" and its index set in `secret`. Building the text is protected too: a
+-- return that will not become text leaves `text` as "<unreadable>" and `unreadable`
+-- true, and the call still counts as answered.
 function Env.Try(label, fn, ...)
     if type(fn) ~= "function" then
         return { label = label, ok = false, err = "not a function" }
     end
     local ok, n, values = Pack(pcall(fn, ...))
     if not ok then
-        return { label = label, ok = false, err = tostring(values[1]) }
+        local readable, err = pcall(Describe, 1, values)
+        return { label = label, ok = false, err = readable and err or UNREADABLE }
     end
-    local parts = {}
-    for i = 1, n do parts[i] = tostring(values[i]) end
-    return { label = label, ok = true, n = n, values = values, text = table.concat(parts, ", ") }
+    local readable, text, secret = pcall(Describe, n, values)
+    if not readable then
+        return { label = label, ok = true, n = n, values = values, text = UNREADABLE,
+            secret = {}, unreadable = true }
+    end
+    return { label = label, ok = true, n = n, values = values, text = text, secret = secret }
 end
 
 --------------------------------------------------------------------------------

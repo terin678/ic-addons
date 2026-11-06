@@ -15,6 +15,11 @@ is the exception: its bar is the client's own.
     W.Slider(parent, opts)              a number between two ends, its value beside it
     W.Choice(parent, w, h, opts)        one of a short list, picked from a menu
     W.Scroll(parent, w, h, opts)        a window onto content taller than itself
+    W.Tabs(parent, tabs, opts)          a row of tabs, each optionally showing its own page
+    W.List(parent, w, h, opts)          column headers above pooled, single-line rows
+    W.Resize(frame, opts)               a grip in the corner that resizes the frame
+    W.TextArea(parent, w, h, opts)      many lines to paste into, or a copy box
+    W.RaidIcon(parent, index, size)     a raid target icon from a plain number, 1 to 8
     W.Tooltip(frame, builder)           builder(GameTooltip, frame) adds the lines
     W.Menu(owner, items)                a context menu from a list
     W.Confirm(text, onAccept)           a yes/no dialog
@@ -35,11 +40,12 @@ A field that is read before it is set is given a value at construction, always. 
 headless stub answers an unset field with a function, and "if not frame.x" would misread it.
 ]]
 
-local MAJOR, MINOR = "LibICWidgets-1.0", 3
+local MAJOR, MINOR = "LibICWidgets-1.0", 4
 local W = LibStub:NewLibrary(MAJOR, MINOR)
 if not W then return end
 
 local Theme = LibStub("LibICTheme-1.0")
+local Env = LibStub("LibICEnv-1.0")
 
 --------------------------------------------------------------------------------
 -- Painting, and repainting on a theme change
@@ -163,6 +169,11 @@ local function StopDrag(panel)
     -- The client would otherwise remember the position itself, in its layout cache,
     -- and fight the one the addon saves.
     panel:SetUserPlaced(false)
+    -- The client may re-anchor a moved frame to whichever screen point is nearest. Pin it
+    -- back by its top-left, where W.SetPlace puts it, so it grows right and down when it
+    -- is resized and SetPlace and GetPlace stay in step.
+    local fx, fy = W.GetPlace(panel)
+    if fx then W.SetPlace(panel, fx, fy) end
     if panel.icOnMoved then panel.icOnMoved(panel) end
 end
 
@@ -797,10 +808,12 @@ they are; the mouse wheel and a thin bar on the right scroll it. The bar is the 
 own slider turned on its side, so dragging it runs no OnUpdate, and it hides itself when
 everything fits.
 
-opts = { step = 24 }                -- how far one notch of the wheel moves
+opts = { step = 24,                 -- how far one notch of the wheel moves
+         onScroll = fn(offset, s) } -- told after every move, wheel, bar or ScrollTo
 s.content                           -- parent your rows to this; it is `w` less the bar wide
 s:SetContentHeight(h)               -- call when the rows change
 s:SetViewHeight(h)                  -- the window itself became taller or shorter
+s:SetViewWidth(w)                   -- or wider or narrower
 s:ScrollTo(offset), s:GetOffset()
 ]]
 function W.Scroll(parent, w, h, opts)
@@ -812,6 +825,7 @@ function W.Scroll(parent, w, h, opts)
     s.icContentH = 0
     s.icOffset = 0
     s.icQuiet = false
+    s.icOnScroll = opts.onScroll or false
 
     local content = CreateFrame("Frame", nil, s)
     content:SetSize(w - SCROLL_BAR_W - 4, 1)
@@ -848,6 +862,7 @@ function W.Scroll(parent, w, h, opts)
         self.icQuiet = true
         self.bar:SetValue(self.icOffset)
         self.icQuiet = false
+        if self.icOnScroll then self.icOnScroll(self.icOffset, self) end
     end
 
     function s:SetContentHeight(height)
@@ -872,10 +887,17 @@ function W.Scroll(parent, w, h, opts)
         self:SetContentHeight(self.icContentH)
     end
 
+    function s:SetViewWidth(width)
+        width = math.max(SCROLL_BAR_W + 5, tonumber(width) or 0)
+        self:SetWidth(width)
+        self.content:SetWidth(width - SCROLL_BAR_W - 4)
+    end
+
     bar:SetScript("OnValueChanged", function(_, value)
         if s.icQuiet == true then return end
         s.icOffset = W.ScrollClamp(value, s.icContentH, s.icViewH)
         s:SetVerticalScroll(s.icOffset)
+        if s.icOnScroll then s.icOnScroll(s.icOffset, s) end
     end)
 
     s:EnableMouseWheel(true)
@@ -889,6 +911,783 @@ function W.Scroll(parent, w, h, opts)
         self.icThumb:SetColorTexture(thumb.r, thumb.g, thumb.b, 1)
     end)
     return s
+end
+
+--------------------------------------------------------------------------------
+-- Tabs
+--------------------------------------------------------------------------------
+
+local TAB_GAP = 2           -- pixels between two tabs
+local TAB_W = 96            -- a tab's width when the strip has room
+local TAB_H = 22
+local TAB_MARK_H = 2        -- the accent line under the selected tab
+
+-- Pure. Where each of `count` tabs sits in a strip `width` wide: { x, w } each, `tabW`
+-- wide with TAB_GAP between, all shrunk alike when they would not fit. No width means
+-- room for all.
+function W.TabLayout(count, width, tabW)
+    local out = {}
+    if (count or 0) < 1 then return out end
+    local w = tabW or TAB_W
+    if width and count * w + (count - 1) * TAB_GAP > width then
+        w = math.max(1, math.floor((width - (count - 1) * TAB_GAP) / count))
+    end
+    for i = 1, count do out[i] = { x = (i - 1) * (w + TAB_GAP), w = w } end
+    return out
+end
+
+local function RepaintTab(b, theme)
+    local c = theme.colors
+    local text
+    if b.icDisabled then
+        Paint(b, nil, nil)
+        text = c.textDisabled
+    elseif b.icSelected then
+        Paint(b, c.selected, nil)
+        text = c.text
+    elseif b.icHover then
+        Paint(b, c.hover, nil)
+        text = c.text
+    else
+        Paint(b, c.raised, nil)
+        text = c.textDim
+    end
+    b.label:SetTextColor(text.r, text.g, text.b, text.a or 1)
+    local a = c.accent
+    b.mark:SetColorTexture(a.r, a.g, a.b, a.a or 1)
+    b.mark:SetShown(b.icSelected == true)
+end
+
+local function DisabledTip(tip, b)
+    tip:AddLine(b.label:GetText() or "")
+    tip:AddLine(tostring(b.icDisabled), 1, 1, 1, true)
+end
+
+--[[
+A row of tabs with one selected. A tab may own a page: selecting the tab shows its page
+and hides the others, so a window switches pages with no code of its own.
+
+tabs = { { key = "roles", label = "Roles", page = frame }, ... }   -- page is optional
+opts = {
+    width,                       -- the strip; tabs shrink alike to fit it
+    tabWidth = 96, height = 22,
+    selected = key,              -- the first tab otherwise
+    onSelect = fn(key, strip),   -- a click on another tab, not Select
+}
+strip:Select(key)                selects it without calling onSelect; false for no such tab
+strip:GetSelected()
+strip:SetLabel(key, text)
+strip:SetDisabled(key, reason)   a reason greys the tab and says why on hover; nil enables
+strip.buttons[key]
+]]
+function W.Tabs(parent, tabs, opts)
+    opts = opts or {}
+    tabs = tabs or {}
+    local theme = Theme.Current()
+    local height = opts.height or TAB_H
+    local layout = W.TabLayout(#tabs, opts.width, opts.tabWidth)
+    local strip = CreateFrame("Frame", nil, parent)
+    local last = layout[#layout]
+    strip:SetSize(opts.width or (last and last.x + last.w or 1), height)
+    strip.icTabs = tabs
+    strip.buttons = {}
+    strip.icSelected = false
+    strip.icOnSelect = opts.onSelect or false
+
+    function strip:Select(key)
+        if not self.buttons[key] then return false end
+        self.icSelected = key
+        local current = Theme.Current()
+        for _, tab in ipairs(self.icTabs) do
+            local b = self.buttons[tab.key]
+            b.icSelected = tab.key == key
+            RepaintTab(b, current)
+            if tab.page then tab.page:SetShown(tab.key == key) end
+        end
+        return true
+    end
+
+    function strip:GetSelected()
+        return self.icSelected
+    end
+
+    function strip:SetLabel(key, text)
+        local b = self.buttons[key]
+        if b then b.label:SetText(text or "") end
+    end
+
+    function strip:SetDisabled(key, reason)
+        local b = self.buttons[key]
+        if not b then return end
+        b.icDisabled = reason or false
+        W.Tooltip(b, reason and DisabledTip or nil)
+        RepaintTab(b, (Theme.Current()))
+    end
+
+    for i, tab in ipairs(tabs) do
+        local b = CreateFrame("Button", nil, strip)
+        b:SetSize(layout[i].w, height)
+        b:SetPoint("TOPLEFT", strip, "TOPLEFT", layout[i].x, 0)
+        Skin(b)
+        b.icKey = tab.key
+        b.icSelected = false
+        b.icHover = false
+        b.icDisabled = false
+        b.label = b:CreateFontString(nil, "OVERLAY", theme.fonts.button)
+        b.label:SetPoint("LEFT", b, "LEFT", 4, 0)
+        b.label:SetPoint("RIGHT", b, "RIGHT", -4, 0)
+        b.label:SetWordWrap(false)
+        b.label:SetText(tab.label or tab.key)
+        b.mark = b:CreateTexture(nil, "ARTWORK")
+        b.mark:SetPoint("BOTTOMLEFT", b, "BOTTOMLEFT", 0, 0)
+        b.mark:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", 0, 0)
+        b.mark:SetHeight(TAB_MARK_H)
+        b:SetScript("OnEnter", function(self)
+            self.icHover = true
+            RepaintTab(self, (Theme.Current()))
+        end)
+        b:SetScript("OnLeave", function(self)
+            self.icHover = false
+            RepaintTab(self, (Theme.Current()))
+        end)
+        b:SetScript("OnClick", function(self)
+            if self.icDisabled or self.icKey == strip.icSelected then return end
+            strip:Select(self.icKey)
+            if strip.icOnSelect then strip.icOnSelect(self.icKey, strip) end
+        end)
+        strip.buttons[tab.key] = b
+        Track(b, RepaintTab)
+    end
+
+    if not strip:Select(opts.selected) and tabs[1] then strip:Select(tabs[1].key) end
+    return strip
+end
+
+--------------------------------------------------------------------------------
+-- List
+--------------------------------------------------------------------------------
+
+local LIST_ROW_H = 18       -- a row, fixed
+local LIST_HEADER_H = 20    -- the column header row above the scroll
+local LIST_PAD = 4          -- a cell's inset from its column's left edge
+local LIST_GAP = 6          -- between two columns
+local LIST_MIN_FILL = 24    -- the narrowest a fill column is squeezed to
+
+-- Pure. Where each column sits in a row `width` wide: { x, w } each. A column with a
+-- number `width` keeps it; the first without one fills what is left (at least
+-- LIST_MIN_FILL); any further one without a width gets LIST_MIN_FILL.
+function W.ColumnLayout(columns, width)
+    local out, fixed, fill = {}, 0, nil
+    for i, col in ipairs(columns or {}) do
+        if type(col.width) == "number" then
+            fixed = fixed + col.width
+        elseif not fill then
+            fill = i
+        else
+            fixed = fixed + LIST_MIN_FILL
+        end
+    end
+    local n = #(columns or {})
+    local rest = (width or 0) - fixed - math.max(0, n - 1) * LIST_GAP
+    local x = 0
+    for i, col in ipairs(columns or {}) do
+        local w = type(col.width) == "number" and col.width or LIST_MIN_FILL
+        if i == fill then w = math.max(LIST_MIN_FILL, rest) end
+        out[i] = { x = x, w = w }
+        x = x + w + LIST_GAP
+    end
+    return out
+end
+
+-- Pure. The items a view shows: rows `rowH` tall, the view `viewH` tall and scrolled
+-- `offset` down, over `count` items. Returns first, last (last < first when none).
+function W.VisibleRange(offset, rowH, viewH, count)
+    count = count or 0
+    if count < 1 or not rowH or rowH <= 0 then return 1, 0 end
+    local first = math.floor(math.max(0, offset or 0) / rowH) + 1
+    local last = math.ceil((math.max(0, offset or 0) + math.max(0, viewH or 0)) / rowH)
+    if first > count then first = count end
+    if last > count then last = count end
+    return first, last
+end
+
+local function RepaintRow(row, theme)
+    local c = theme.colors
+    if row.icSelected then
+        Paint(row, c.selected, nil)
+    elseif row.icHover then
+        Paint(row, c.hover, nil)
+    else
+        Paint(row, nil, nil)
+    end
+    for i, cell in ipairs(row.cells) do
+        local color = c[row.icRoles[i] or "text"] or c.text
+        cell:SetTextColor(color.r, color.g, color.b, color.a or 1)
+    end
+end
+
+local function RepaintHeader(header, theme)
+    Paint(header, theme.colors.raised, nil)
+    local dim = theme.colors.textDim
+    for _, cell in ipairs(header.cells) do cell.label:SetTextColor(dim.r, dim.g, dim.b, dim.a or 1) end
+end
+
+-- A cell's text and colour role for an item: the column's own `text(item)`, else the
+-- list's `cell(item, column)`, else the item's field named by the column's key.
+local function CellOf(list, item, col)
+    if col.text then return col.text(item) end
+    if list.icCell then return list.icCell(item, col) end
+    local v = type(item) == "table" and item[col.key] or nil
+    if v == nil then return "" end
+    return tostring(v)
+end
+
+local function RowTip(tip, row)
+    if not row.icItem or not row.icList.icTooltip then return end
+    row.icList.icTooltip(tip, row.icItem)
+end
+
+local function FontNoWrap(fs)
+    fs:SetWordWrap(false)
+    if fs.SetMaxLines then fs:SetMaxLines(1) end
+end
+
+--[[
+A list: a fixed column header row above a scroll of fixed-height, single-line rows. Only
+the rows in view exist; they are pooled and filled again as the list scrolls, so a list of
+thousands costs what a screenful does.
+
+columns = { { key, label, width, justify = "LEFT" | "RIGHT" | "CENTER", tip, text = fn(item) }, ... }
+    a column with no width fills what is left; tip is the header's hover text
+opts = {
+    rowHeight = 18, headerHeight = 20,
+    cell = fn(item, column) -> text, role     -- every column's text and colour role
+    onClick = fn(item, mouseButton, row),     -- left or right click on a row
+    tooltip = fn(GameTooltip, item),          -- a row's hover text: the full values go here
+    selected = fn(item) -> bool,              -- drawn in the selected colour
+    onHeader = fn(key, column),               -- a header was clicked (to sort, say)
+    empty = "Nothing here",                   -- shown when there are no items
+}
+list:SetItems(items)     the rows; the list redraws, keeping its scroll where it can
+list:Refresh()           redraws the same items (after a selection or a value changed)
+list:Resize(w, h)        the whole list, header included, for a window that resizes
+list:ScrollTo(offset), list:GetItems()
+list:SetSortMark(key, ascending) an arrow after the sorted column's header; nil clears it
+list.header, list.scroll
+Every pooled row is filled in full each time: text, colour, selection, item. Nothing of the
+item that was there before survives. An item is any value but nil and false; row.icItem is
+false on an empty row.
+]]
+function W.List(parent, w, h, opts)
+    opts = opts or {}
+    local theme = Theme.Current()
+    local list = CreateFrame("Frame", nil, parent)
+    list.icColumns = opts.columns or {}
+    list.icRowH = opts.rowHeight or LIST_ROW_H
+    list.icHeaderH = opts.headerHeight or LIST_HEADER_H
+    list.icCell = opts.cell or false
+    list.icOnClick = opts.onClick or false
+    list.icTooltip = opts.tooltip or false
+    list.icSelectedFn = opts.selected or false
+    list.icOnHeader = opts.onHeader or false
+    list.icItems = {}
+    list.icW, list.icH = w, h
+    list.rows = {}
+    list:SetSize(w, h)
+
+    -- The header: its own frame above the scroll, never inside it.
+    local header = CreateFrame("Frame", nil, list)
+    header:SetPoint("TOPLEFT", list, "TOPLEFT", 0, 0)
+    header:SetSize(w, list.icHeaderH)
+    Skin(header)
+    header.cells = {}
+    for i, col in ipairs(list.icColumns) do
+        local cell = CreateFrame("Button", nil, header)
+        cell:SetHeight(list.icHeaderH)
+        cell.label = cell:CreateFontString(nil, "OVERLAY", theme.fonts.small)
+        cell.label:SetPoint("LEFT", cell, "LEFT", LIST_PAD, 0)
+        cell.label:SetPoint("RIGHT", cell, "RIGHT", 0, 0)
+        cell.label:SetJustifyH(col.justify or "LEFT")
+        FontNoWrap(cell.label)
+        cell.label:SetText(col.label or "")
+        cell.icKey = col.key
+        cell.icLabel = col.label or ""
+        if list.icOnHeader then
+            cell:SetScript("OnClick", function(self) list.icOnHeader(self.icKey, col) end)
+        end
+        if col.tip then
+            W.Tooltip(cell, function(tip) tip:AddLine(col.label or ""); tip:AddLine(col.tip, 1, 1, 1, true) end)
+        end
+        cell:EnableMouse(list.icOnHeader ~= false or col.tip ~= nil)
+        header.cells[i] = cell
+    end
+    list.header = header
+
+    local scroll = W.Scroll(list, w, math.max(1, h - list.icHeaderH), {
+        step = list.icRowH * 3,
+        onScroll = function() list:Render() end,
+    })
+    scroll:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, 0)
+    list.scroll = scroll
+
+    list.emptyLabel = W.Label(list, opts.empty or "", { font = "small", color = "textDim", justify = "CENTER" })
+    list.emptyLabel:SetPoint("TOP", scroll, "TOP", 0, -12)
+    list.emptyLabel:Hide()
+
+    -- Row width: the scroll's content, which leaves room for the bar.
+    local function RowWidth(self)
+        return math.max(1, self.icW - 12)
+    end
+
+    local function PlaceCells(self)
+        local layout = W.ColumnLayout(self.icColumns, RowWidth(self))
+        for i, cell in ipairs(self.header.cells) do
+            cell:ClearAllPoints()
+            cell:SetPoint("TOPLEFT", self.header, "TOPLEFT", layout[i].x, 0)
+            cell:SetWidth(layout[i].w)
+        end
+        for _, row in ipairs(self.rows) do
+            row:SetWidth(RowWidth(self))
+            for i, fs in ipairs(row.cells) do
+                fs:ClearAllPoints()
+                fs:SetPoint("LEFT", row, "LEFT", layout[i].x + LIST_PAD, 0)
+                fs:SetWidth(math.max(1, layout[i].w - LIST_PAD))
+            end
+        end
+    end
+
+    local function MakeRow(self)
+        local row = CreateFrame("Button", nil, self.scroll.content)
+        row:SetHeight(self.icRowH)
+        Skin(row)
+        row.icList = self
+        row.icItem = false
+        row.icHover = false
+        row.icSelected = false
+        row.icRoles = {}
+        row.cells = {}
+        for i, col in ipairs(self.icColumns) do
+            local fs = row:CreateFontString(nil, "OVERLAY", theme.fonts.body)
+            fs:SetJustifyH(col.justify or "LEFT")
+            FontNoWrap(fs)
+            row.cells[i] = fs
+        end
+        row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        row:SetScript("OnClick", function(r, mouseButton)
+            if r.icItem and self.icOnClick then self.icOnClick(r.icItem, mouseButton, r) end
+        end)
+        row:SetScript("OnEnter", function(r)
+            r.icHover = true
+            RepaintRow(r, (Theme.Current()))
+        end)
+        row:SetScript("OnLeave", function(r)
+            r.icHover = false
+            RepaintRow(r, (Theme.Current()))
+        end)
+        W.Tooltip(row, RowTip)
+        row:Hide()
+        Track(row, RepaintRow)
+        self.rows[#self.rows + 1] = row
+        return row
+    end
+
+    -- Enough rows for a view and one more, for the one cut in half by the scroll.
+    local function EnsureRows(self)
+        local need = math.ceil(math.max(1, self.icH - self.icHeaderH) / self.icRowH) + 1
+        while #self.rows < need do MakeRow(self) end
+        PlaceCells(self)
+    end
+
+    function list:Render()
+        local items = self.icItems
+        local offset = self.scroll:GetOffset()
+        local first, last = W.VisibleRange(offset, self.icRowH, self.icH - self.icHeaderH, #items)
+        local current = Theme.Current()
+        for slot, row in ipairs(self.rows) do
+            local index = first + slot - 1
+            local item = index <= last and items[index] or nil
+            if item == nil then
+                row.icItem = false
+                row:Hide()
+            else
+                row.icItem = item
+                row:ClearAllPoints()
+                row:SetPoint("TOPLEFT", self.scroll.content, "TOPLEFT", 0, -(index - 1) * self.icRowH)
+                for i, col in ipairs(self.icColumns) do
+                    local text, role = CellOf(self, item, col)
+                    row.cells[i]:SetText(text or "")
+                    row.icRoles[i] = role or false
+                end
+                row.icSelected = self.icSelectedFn and self.icSelectedFn(item) == true or false
+                RepaintRow(row, current)
+                row:Show()
+            end
+            -- The wheel refills rows under a pointer that has not moved: a tooltip showing
+            -- for this row must follow the item now in it, or go.
+            if GameTooltip and GameTooltip.IsOwned and GameTooltip:IsOwned(row) then
+                if row.icItem and self.icTooltip then
+                    GameTooltip:ClearLines()
+                    RowTip(GameTooltip, row)
+                    GameTooltip:Show()
+                else
+                    GameTooltip:Hide()
+                end
+            end
+        end
+        self.emptyLabel:SetShown(#items == 0)
+    end
+
+    -- Marks the column the list is sorted by: an arrow after its header label, up for
+    -- ascending. nil clears the mark.
+    function list:SetSortMark(key, ascending)
+        for _, cell in ipairs(self.header.cells) do
+            local text = cell.icLabel
+            if key ~= nil and cell.icKey == key then text = text .. (ascending and " ^" or " v") end
+            cell.label:SetText(text)
+        end
+    end
+
+    function list:SetItems(items)
+        self.icItems = items or {}
+        self.scroll:SetContentHeight(#self.icItems * self.icRowH)
+        self:Render()
+    end
+
+    function list:GetItems()
+        return self.icItems
+    end
+
+    function list:Refresh()
+        self:Render()
+    end
+
+    function list:ScrollTo(offset)
+        self.scroll:ScrollTo(offset)
+    end
+
+    function list:Resize(width, height)
+        self.icW, self.icH = width or self.icW, height or self.icH
+        self:SetWidth(self.icW)
+        self:SetHeight(self.icH)
+        self.header:SetWidth(self.icW)
+        self.scroll:SetViewWidth(self.icW)
+        self.scroll:SetViewHeight(math.max(1, self.icH - self.icHeaderH))
+        EnsureRows(self)
+        self:Render()
+    end
+
+    Track(header, RepaintHeader)
+    EnsureRows(list)
+    list:Render()
+    return list
+end
+
+--------------------------------------------------------------------------------
+-- Resize grip
+--------------------------------------------------------------------------------
+
+local GRIP = 16             -- the grip's square, in the frame's bottom-right corner
+local GRIP_DOT = 2          -- one dot of the grip's mark
+local RESIZE_MIN_W, RESIZE_MIN_H = 200, 120
+
+-- Pure. A frame's size after its grip has been dragged `dx` right and `dy` down from
+-- where it was `startW` by `startH`, held inside the bounds. A bound that is nil or not
+-- a number does not hold.
+function W.ResizeSize(startW, startH, dx, dy, minW, minH, maxW, maxH)
+    local function Hold(v, lo, hi)
+        if type(lo) == "number" and v < lo then v = lo end
+        if type(hi) == "number" and v > hi then v = hi end
+        return v
+    end
+    local w = Hold((startW or 0) + (dx or 0), minW, maxW)
+    local h = Hold((startH or 0) + (dy or 0), minH, maxH)
+    return math.floor(w + 0.5), math.floor(h + 0.5)
+end
+
+local function RepaintGrip(grip, theme)
+    local c = grip.icHover and theme.colors.accent or theme.colors.edge
+    for _, dot in ipairs(grip.dots) do dot:SetColorTexture(c.r, c.g, c.b, c.a or 1) end
+end
+
+-- Runs only while the grip is held.
+local function FollowGrip(grip)
+    local frame = grip.icFrame
+    local px, py = GetCursorPosition()
+    local scale = frame:GetEffectiveScale() or 1
+    if scale <= 0 then scale = 1 end
+    local maxW, maxH = grip.icMaxW, grip.icMaxH
+    if maxW == false then maxW = UIParent:GetWidth() end
+    if maxH == false then maxH = UIParent:GetHeight() end
+    local w, h = W.ResizeSize(grip.icStartW, grip.icStartH, (px - grip.icStartX) / scale,
+        (grip.icStartY - py) / scale, grip.icMinW, grip.icMinH, maxW, maxH)
+    if w == grip.icLastW and h == grip.icLastH then return end
+    grip.icLastW, grip.icLastH = w, h
+    frame:SetSize(w, h)
+    if grip.icOnResize then grip.icOnResize(w, h, frame) end
+end
+
+local function StopGrip(grip)
+    if grip.icHeld ~= true then return end
+    grip.icHeld = false
+    grip:SetScript("OnUpdate", nil)
+    if grip.icOnResized then grip.icOnResized(grip.icLastW, grip.icLastH, grip.icFrame) end
+end
+
+--[[
+A grip in a frame's bottom-right corner that resizes it. The frame should be placed by its
+top-left corner (W.SetPlace does that), so it grows right and down. While the grip is held,
+and only then, it follows the pointer in an OnUpdate, the same as the minimap button.
+
+opts = {
+    minWidth = 200, minHeight = 120,
+    maxWidth, maxHeight,             -- the screen's size by default
+    onResize = fn(w, h, frame),      -- while dragging, each time the size changes
+    onResized = fn(w, h, frame),     -- let go: save the size here
+}
+Returns the grip. Lay out what the frame holds again in onResize: a list's Resize, a
+scroll's SetViewHeight.
+]]
+function W.Resize(frame, opts)
+    opts = opts or {}
+    local grip = CreateFrame("Button", nil, frame)
+    grip:SetSize(GRIP, GRIP)
+    grip:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -1, 1)
+    grip:SetFrameLevel((frame:GetFrameLevel() or 0) + 10)
+    grip.icFrame = frame
+    grip.icMinW = opts.minWidth or RESIZE_MIN_W
+    grip.icMinH = opts.minHeight or RESIZE_MIN_H
+    grip.icMaxW = opts.maxWidth or false
+    grip.icMaxH = opts.maxHeight or false
+    grip.icOnResize = opts.onResize or false
+    grip.icOnResized = opts.onResized or false
+    grip.icHeld = false
+    grip.icHover = false
+    grip.icStartX, grip.icStartY, grip.icStartW, grip.icStartH = 0, 0, 0, 0
+    grip.icLastW, grip.icLastH = 0, 0
+
+    -- Six dots in a triangle against the corner, the usual mark, drawn from colour.
+    grip.dots = {}
+    for row = 0, 2 do
+        for col = 0, 2 - row do
+            local dot = grip:CreateTexture(nil, "OVERLAY")
+            dot:SetSize(GRIP_DOT, GRIP_DOT)
+            dot:SetPoint("BOTTOMRIGHT", grip, "BOTTOMRIGHT", -2 - col * 4, 2 + row * 4)
+            grip.dots[#grip.dots + 1] = dot
+        end
+    end
+
+    grip:SetScript("OnMouseDown", function(self, button)
+        if button ~= "LeftButton" then return end
+        local px, py = GetCursorPosition()
+        self.icStartX, self.icStartY = px or 0, py or 0
+        self.icStartW, self.icStartH = self.icFrame:GetWidth() or 0, self.icFrame:GetHeight() or 0
+        self.icLastW, self.icLastH = self.icStartW, self.icStartH
+        self.icHeld = true
+        if GameTooltip then GameTooltip:Hide() end
+        self:SetScript("OnUpdate", FollowGrip)
+    end)
+    grip:SetScript("OnMouseUp", function(self, button)
+        if button == "LeftButton" then StopGrip(self) end
+    end)
+    -- Hidden mid-drag (the window closed): let go.
+    grip:SetScript("OnHide", StopGrip)
+    grip:SetScript("OnEnter", function(self)
+        self.icHover = true
+        RepaintGrip(self, (Theme.Current()))
+    end)
+    grip:SetScript("OnLeave", function(self)
+        self.icHover = false
+        RepaintGrip(self, (Theme.Current()))
+    end)
+    W.Tooltip(grip, function(tip) tip:AddLine("Drag to resize") end)
+    Track(grip, RepaintGrip)
+    return grip
+end
+
+--------------------------------------------------------------------------------
+-- Text area
+--------------------------------------------------------------------------------
+
+local AREA_INSET = 4        -- the text's inset from the area's edge
+
+-- Keeps the line with the cursor in view: y is the cursor's top (0 or less, down from the
+-- top of the text) and h its height, as OnCursorChanged gives them.
+local function FollowCursor(area, y, h)
+    local s = area.scroll
+    local top = -(tonumber(y) or 0)
+    local bottom = top + (tonumber(h) or 0)
+    local offset, view = s:GetOffset(), s.icViewH
+    if top < offset then
+        s:ScrollTo(top)
+    elseif bottom > offset + view then
+        s:ScrollTo(bottom - view)
+    end
+end
+
+local function FitText(area)
+    local e = area.edit
+    local height = math.max(area.scroll.icViewH, (e:GetHeight() or 0) + AREA_INSET)
+    area.scroll:SetContentHeight(height)
+end
+
+--[[
+A box of many lines: somewhere to paste a shared rule set, or a copy box to take an export
+from. A multi-line edit box in a themed scroll; the wheel and the bar move it, and the line
+being typed on stays in view.
+
+opts = {
+    text = "",
+    maxBytes,                          -- the most it takes; none by default
+    readOnly = true,                   -- a copy box: what is typed is undone, and focus
+                                       -- selects everything ready for Ctrl+C
+    onChange = fn(text, area),         -- each change the player makes, not SetText's
+}
+area:SetText(text)                     scrolls back to the top
+area:GetText()
+area:SelectAll()                       focuses the box and selects everything
+area:Resize(w, h)
+area.edit, area.scroll
+Escape drops focus. A box with focus takes every key, so drop it (area.edit:ClearFocus())
+when combat starts.
+]]
+function W.TextArea(parent, w, h, opts)
+    opts = opts or {}
+    local theme = Theme.Current()
+    local area = CreateFrame("Frame", nil, parent)
+    area:SetSize(w, h)
+    Skin(area)
+    area.icW, area.icH = w, h
+    area.icReadOnly = opts.readOnly == true
+    area.icOnChange = opts.onChange or false
+    area.icText = opts.text or ""
+
+    local scroll = W.Scroll(area, w - 2 * AREA_INSET, h - 2 * AREA_INSET, { step = 42 })
+    scroll:SetPoint("TOPLEFT", area, "TOPLEFT", AREA_INSET, -AREA_INSET)
+    area.scroll = scroll
+
+    local e = CreateFrame("EditBox", nil, scroll.content)
+    e:SetMultiLine(true)
+    e:SetAutoFocus(false)
+    e:SetFontObject(_G[theme.fonts.body] or theme.fonts.body)
+    e:SetPoint("TOPLEFT", scroll.content, "TOPLEFT", 0, 0)
+    e:SetWidth(w - 2 * AREA_INSET - SCROLL_BAR_W - 4)
+    if opts.maxBytes then e:SetMaxBytes(opts.maxBytes + 1) end
+    e:SetText(area.icText)
+    area.edit = e
+
+    e:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+    e:SetScript("OnEditFocusGained", function(self)
+        if area.icReadOnly then self:HighlightText() end
+    end)
+    e:SetScript("OnTextChanged", function(self, userInput)
+        if userInput and area.icReadOnly then
+            -- A copy box: put back what it holds and select it again.
+            self:SetText(area.icText)
+            self:HighlightText()
+            return
+        end
+        FitText(area)
+        if userInput then
+            area.icText = self:GetText() or ""
+            if area.icOnChange then area.icOnChange(area.icText, area) end
+        end
+    end)
+    if e:HasScript("OnCursorChanged") then
+        e:SetScript("OnCursorChanged", function(_, _, y, _, cursorH) FollowCursor(area, y, cursorH) end)
+    end
+    -- A press anywhere in the area, below the last line too, puts the cursor in the box.
+    scroll:EnableMouse(true)
+    scroll:SetScript("OnMouseDown", function() e:SetFocus() end)
+
+    function area:SetText(text)
+        self.icText = text or ""
+        self.edit:SetText(self.icText)
+        FitText(self)
+        self.scroll:ScrollTo(0)
+    end
+
+    function area:GetText()
+        return self.edit:GetText() or ""
+    end
+
+    function area:SelectAll()
+        self.edit:SetFocus()
+        self.edit:HighlightText()
+    end
+
+    function area:Resize(width, height)
+        self.icW, self.icH = width or self.icW, height or self.icH
+        self:SetWidth(self.icW)
+        self:SetHeight(self.icH)
+        self.scroll:SetViewWidth(self.icW - 2 * AREA_INSET)
+        self.scroll:SetViewHeight(math.max(1, self.icH - 2 * AREA_INSET))
+        self.edit:SetWidth(math.max(1, self.icW - 2 * AREA_INSET - SCROLL_BAR_W - 4))
+        FitText(self)
+    end
+
+    Track(area, function(self, current)
+        Paint(self, current.colors.field, current.colors.edge)
+        local c = current.colors.text
+        self.edit:SetTextColor(c.r, c.g, c.b, 1)
+    end)
+    FitText(area)
+    return area
+end
+
+--------------------------------------------------------------------------------
+-- Raid icon
+--------------------------------------------------------------------------------
+
+-- The eight raid target icons, four to a row in one texture: star, circle, diamond,
+-- triangle, then moon, square, cross, skull.
+local RAID_ICONS = "Interface\\TargetingFrame\\UI-RaidTargetingIcons"
+local RAID_ICON_COUNT = 8
+
+-- Pure. The texcoords (left, right, top, bottom) of raid icon `index` (1 to 8) in the
+-- icons' texture, or nil for anything else: a number out of range, a fraction, text, nil.
+function W.RaidIconCoords(index)
+    if type(index) ~= "number" or index ~= math.floor(index) or index < 1 or index > RAID_ICON_COUNT then
+        return nil
+    end
+    local col, row = (index - 1) % 4, math.floor((index - 1) / 4)
+    return col * 0.25, (col + 1) * 0.25, row * 0.25, (row + 1) * 0.25
+end
+
+--[[
+One raid target icon, from a plain number. The client's own SetRaidTargetIconTexture is not
+used: it throws when handed a secret index. Here anything that is not a plain whole number
+from 1 to 8, a secret one included, hides the icon instead.
+
+icon = W.RaidIcon(parent, index, size)   size is 16 by default
+icon:SetIndex(index)                     returns whether it is showing
+icon:GetIndex()                          the index shown, or false
+]]
+function W.RaidIcon(parent, index, size)
+    local icon = parent:CreateTexture(nil, "ARTWORK")
+    icon:SetSize(size or 16, size or 16)
+    icon:SetTexture(RAID_ICONS)
+    icon.icIndex = false
+
+    function icon:SetIndex(i)
+        local l, r, t, b
+        if not Env.IsSecret(i) then l, r, t, b = W.RaidIconCoords(i) end
+        if not l then
+            self.icIndex = false
+            self:Hide()
+            return false
+        end
+        self.icIndex = i
+        self:SetTexCoord(l, r, t, b)
+        self:Show()
+        return true
+    end
+
+    function icon:GetIndex()
+        return self.icIndex
+    end
+
+    icon:SetIndex(index)
+    return icon
 end
 
 --------------------------------------------------------------------------------
