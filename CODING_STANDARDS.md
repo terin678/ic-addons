@@ -35,8 +35,9 @@ AddonName/
   exports off `ns`, which the client gives each addon privately. A module claims its own
   table idempotently: `ns.Log = ns.Log or {}` then `local Log = ns.Log`. The only
   intentional globals are the saved-variable tables named in the `.toc`, frames that must
-  be named for `UISpecialFrames` or a template, and the `BINDING_*` strings and functions
-  `Bindings.xml` calls by name.
+  be named for `UISpecialFrames` or a template, minimap buttons named through
+  `W.MinimapButton`'s `name` so collectors (EllesmereUI's flyout, MBB-style bars) can
+  gather them, and the `BINDING_*` strings and functions `Bindings.xml` calls by name.
 - The plumbing every addon shares -- Print, the saved-variable bootstrap and its load
   check, Util, Log, the test harness, the slash dispatcher, the minimap launcher -- is
   `LibICCore-1.0` in ICLibs, installed by one `Core:Attach(ns, {...})` call in

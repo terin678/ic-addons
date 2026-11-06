@@ -40,7 +40,7 @@ A field that is read before it is set is given a value at construction, always. 
 headless stub answers an unset field with a function, and "if not frame.x" would misread it.
 ]]
 
-local MAJOR, MINOR = "LibICWidgets-1.0", 4
+local MAJOR, MINOR = "LibICWidgets-1.0", 5
 local W = LibStub:NewLibrary(MAJOR, MINOR)
 if not W then return end
 
@@ -1823,13 +1823,42 @@ opts = {
     onClick = fn(button, mouseButton),  -- left or right
     onMoved = fn(angle),                -- dragged round the rim and dropped
     tooltip = fn(GameTooltip, button),
+    name = "MyAddonMinimapButton",      -- optional global name, below
 }
+A name lets minimap button collectors (EllesmereUI's flyout, MBB-style bars) gather the
+button: they take only named buttons, and skip a name ending in a digit as one of a
+numbered set. So the name is letters, digits and underscores, starts with a letter or
+underscore and does not end in a digit. A name that breaks that rule, or is already a
+global, is not used: the button is made without one and the reason comes back second,
+so the addon still gets its button.
+A collector reparents the button into its own bar or flyout and places it there. While the
+button is not on the Minimap it is the collector's to place: SetAngle only records the
+angle, and a drag does nothing (W.OnMinimap(button) says which).
 button:SetAngle(degrees) moves it. Dragging is the one place a widget runs an OnUpdate,
 and only between the drag starting and the button being dropped.
 ]]
+-- Whether a minimap button is still on the Minimap, rather than taken into a collector.
+function W.OnMinimap(button)
+    return button:GetParent() == Minimap
+end
+
+-- The name a minimap button may take, or nil and why not.
+function W.MinimapButtonName(name)
+    if name == nil then return nil end
+    if type(name) ~= "string" or not name:match("^[%a_][%w_]*$") then
+        return nil, "a minimap button name is letters, digits and underscores"
+    end
+    if name:match("%d$") then
+        return nil, "a minimap button name ending in a digit is skipped by collectors"
+    end
+    if _G[name] ~= nil then return nil, "the name " .. name .. " is taken" end
+    return name
+end
+
 function W.MinimapButton(opts)
     opts = opts or {}
-    local b = CreateFrame("Button", nil, Minimap)
+    local name, refused = W.MinimapButtonName(opts.name)
+    local b = CreateFrame("Button", name, Minimap)
     b:SetSize(31, 31)
     b:SetFrameStrata("MEDIUM")
     b:SetFrameLevel(8)
@@ -1857,7 +1886,7 @@ function W.MinimapButton(opts)
 
     function b:SetAngle(degrees)
         self.icAngle = (tonumber(degrees) or 0) % 360
-        PlaceOnMinimap(self)
+        if W.OnMinimap(self) then PlaceOnMinimap(self) end
     end
 
     b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
@@ -1867,6 +1896,7 @@ function W.MinimapButton(opts)
     -- the button only goes round the rim once the pointer has really moved.
     b:RegisterForDrag("LeftButton")
     b:SetScript("OnDragStart", function(self)
+        if not W.OnMinimap(self) then return end
         self.icDragging = true
         if GameTooltip then GameTooltip:Hide() end
         self:SetScript("OnUpdate", FollowPointer)
@@ -1880,7 +1910,7 @@ function W.MinimapButton(opts)
 
     if opts.tooltip then W.Tooltip(b, opts.tooltip, "ANCHOR_LEFT") end
     b:SetAngle(b.icAngle)
-    return b
+    return b, refused
 end
 
 --[[

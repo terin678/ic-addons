@@ -1538,6 +1538,43 @@ if IC_HEADLESS then
         T.Eq(b.icDragging, false, "and ends when dropped")
         T.Eq(moved, 270, "reporting where it was left")
         T.Eq(W.Compartment({ text = "Case" }), false, "a client with no addon compartment says so")
+        T.Eq(rawget(b, "_name"), nil, "no name asked for, none given")
+    end)
+
+    T.Case("Widgets: a minimap button takes a name collectors can gather, or none", function()
+        local b, why = W.MinimapButton({ name = "ICKitCaseMinimapButton" })
+        T.Eq(b:GetName(), "ICKitCaseMinimapButton", "a good name is the frame's global name")
+        T.Eq(why, nil, "with nothing to say")
+        T.Eq(_G.ICKitCaseMinimapButton, b, "findable by it")
+        local again, taken = W.MinimapButton({ name = "ICKitCaseMinimapButton" })
+        T.True(again ~= nil, "a taken name still makes a button")
+        T.Eq(rawget(again, "_name"), nil, "but an unnamed one")
+        T.Eq(taken, "the name ICKitCaseMinimapButton is taken", "and says why")
+        _G.ICKitCaseMinimapButton = nil
+        T.Eq(select(2, W.MinimapButtonName("ICKitButton2")), "a minimap button name ending in a digit is skipped by collectors", "a trailing digit")
+        T.Eq(select(2, W.MinimapButtonName("my button")), "a minimap button name is letters, digits and underscores", "a space")
+        T.Eq(select(2, W.MinimapButtonName("2Fast")), "a minimap button name is letters, digits and underscores", "a leading digit")
+        T.Eq(W.MinimapButtonName("Fine_Name"), "Fine_Name", "a good one passes")
+        T.Eq(W.MinimapButtonName(nil), nil, "and no name is fine")
+    end)
+
+    T.Case("Widgets: a minimap button a collector has taken is left where it put it", function()
+        local moved
+        local b = W.MinimapButton({ angle = 90, onMoved = function(angle) moved = angle end })
+        T.Eq(W.OnMinimap(b), true, "made on the Minimap")
+        local placed = 0
+        b.ClearAllPoints = function() placed = placed + 1 end
+        b:SetAngle(10)
+        T.Eq(placed, 1, "and placed round its rim")
+        b:SetParent(CreateFrame("Frame"))
+        T.Eq(W.OnMinimap(b), false, "a collector's flyout is not the Minimap")
+        b:SetAngle(20)
+        T.Eq(placed, 1, "so it is not pulled back to the rim")
+        T.Eq(b.icAngle, 20, "though the angle is kept for when it returns")
+        b:GetScript("OnDragStart")(b)
+        T.Eq(b.icDragging, false, "a drag inside the collector does not start")
+        b:GetScript("OnDragStop")(b)
+        T.Eq(moved, nil, "and saves no angle")
     end)
 end
 

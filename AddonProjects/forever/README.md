@@ -5,7 +5,7 @@ Target interface: 16001 (product `wow_classic_beta`, version 1.60.1). Client fol
 
 | Addon | Version | Guide |
 | --- | --- | --- |
-| ICKit | 0.13.0 | [Docs/ICKit.md](../../Docs/ICKit.md) |
+| ICKit | 0.13.1 | [Docs/ICKit.md](../../Docs/ICKit.md) |
 | Stickies | 0.1.0 | [Docs/Stickies.md](../../Docs/Stickies.md) |
 | RenderTuner | 0.4.0 | [Docs/RenderTuner.md](../../Docs/RenderTuner.md) |
 | MarkedForDeath | 0.1.0 | [Docs/forever/MarkedForDeath.md](../../Docs/forever/MarkedForDeath.md) |

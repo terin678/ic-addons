@@ -29,7 +29,7 @@ says, it says here.
     Tests.lua     the kit's own cases
 ]]
 
-local VERSION = "0.13.0"
+local VERSION = "0.13.1"
 
 local Util = LibStub("LibICUtil-1.0")
 local Test = LibStub("LibICTest-1.0")

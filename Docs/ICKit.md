@@ -74,7 +74,7 @@ should not. The counters cost two clock reads a call and need no console variabl
 | LibICStore-1.0 | 1 | Saved variables: defaults, schema, migrations, and whether the file really loaded |
 | LibICConsole-1.0 | 1 | Prefixed printing and the slash-command dispatcher with its help |
 | LibICTheme-1.0 | 2 | The theme registry: colour and font roles, the selected theme, change listeners |
-| LibICWidgets-1.0 | 4 | Themed frames drawn from colour textures: panel, label, button, check box, edit box, slider, choice, scroll, tabs, list, resize grip, text area, raid icon, tooltip, menu, confirm |
+| LibICWidgets-1.0 | 5 | Themed frames drawn from colour textures: panel, label, button, check box, edit box, slider, choice, scroll, tabs, list, resize grip, text area, raid icon, tooltip, menu, confirm |
 | LibICSecure-1.0 | 1 | Secure buttons the player presses, for what addon Lua may not do (raid marks): macro and clear-all buttons, override key bindings, every change held until combat ends; the pure macro fitter |
 
 The libraries never print. An addon decides what to say, in its own voice. Only
@@ -477,7 +477,7 @@ Blizzard frame template, repaints when the theme changes, and runs no `OnUpdate`
 | `W.Menu(owner, items)` | A context menu. Items: `{ title }`, `{ text, onClick }`, `{ text, checked = fn, onClick }`, `{ text, radio = fn, onClick }` (one of several; picking closes the menu), `{ divider = true }`. An item may carry `disabled = true` or `disabled = "the reason"`. |
 | `W.Confirm(text, onAccept)` | A yes/no dialog. |
 | `W.Compartment(opts)` | An entry in the client's Addon Compartment, the list of addons beside the minimap: the modern way onto the minimap, costing no frame. `opts`: `text`, `icon`, `onClick(mouseButton)`, `tooltip`. Returns false on a client without one. |
-| `W.MinimapButton(opts)` | A round button on the minimap's rim in the client's own art, for one-click access. `opts`: `icon`, `angle` (degrees; 0 east, 90 north), `onClick(button, mouseButton)`, `onMoved(angle)`, `tooltip`. Drag it round the rim; `button:SetAngle(degrees)`. |
+| `W.MinimapButton(opts)` | A round button on the minimap's rim in the client's own art, for one-click access. `opts`: `icon`, `angle` (degrees; 0 east, 90 north), `onClick(button, mouseButton)`, `onMoved(angle)`, `tooltip`, `name`. Drag it round the rim; `button:SetAngle(degrees)`. Give it a `name` so minimap button collectors (EllesmereUI's flyout, MBB-style bars) gather it: they take only named buttons and skip a name ending in a digit. The name is letters, digits and underscores, starts with a letter or underscore and does not end in a digit; one that breaks that rule or is already a global is not used, and the button is made unnamed with the reason returned second. `W.MinimapButtonName(name)` is that check. Once a collector has taken the button off the Minimap it places it: `SetAngle` only records the angle and a drag does nothing; `W.OnMinimap(button)` says which. |
 | `W.GetPlace(frame)` / `W.SetPlace(frame, fx, fy)` | Where a frame's top-left sits, as fractions of the screen. Save these, not pixels: they survive a change of resolution or interface scale. `SetPlace` holds the whole frame on screen. |
 | `W.Repaint()` | Redraws everything in the current theme. |
 
